@@ -323,8 +323,12 @@ benchmark" below.
   a node's own move loop), so it's a search-behaviour change for the A/B
   tier, not a free speedup. **Measured +12.0% NPS vs v26** (idle, interleaved
   3x3s over the 10-position suite: v26 78,242 -> v27 87,656 NPS; +0.2 ply avg
-  depth, every position faster). Since search is node-identical, this speed
-  should convert ~+12 Elo at a clock TC -- A/B vs v26 pending.
+  depth, every position faster). **A/B vs v26 (2026-07-06): 8,000 games @
+  45+0.15s clock, 3342W/2123D/2535L = 55.04% -> +35.17 +/-7.7 Elo** (ptnml
+  341/676/1457/887/639, pair ratio 1.50, normalized +60.78) -- far above the
+  ~+12 expected from +12% NPS alone, the same over-delivery seen in v26-vs-v25
+  (+41.9 from +18.5% speed): at a clock TC a node-identical speedup converts to
+  more Elo than the naive time-to-depth model predicts.
   Also folded in (node-identical, verified 2026-07-06 -- perft --deep ALL PASS
   1.49B nodes + the 148,775-node suite exact + h1h8/3495): Z-04 (`_capture_moves`
   returns rows), W-10 (rook open-file scored inside the rook mobility loops --
