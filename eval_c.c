@@ -22,9 +22,9 @@ static int SHIELD_MG = 5,  SHIELD_EG = 2;
 static int RING_MG   = 13, RING_EG   = 0;
 static int OPEN_MG   = 28, OPEN_EG   = 2;
 
-/* #2.5: positional_extras tuning (overridden by set_positional_params).
- * Read by both `mobility_king_safety` (the #2.5b inlined rook_files +
- * bishop_pair pass) and the standalone `positional_extras` helper. */
+/* #2.5: rook_files + bishop_pair + mopup constants (overridden by
+ * set_positional_params). Read by mobility_king_safety's #2.5b inlined
+ * rook_files + bishop_pair pass and its folded low-phase mop-up. */
 static int POS_ROOK_OPEN = 22, POS_ROOK_SEMI = 11;
 static int POS_BP_MG = 30, POS_BP_EG = 50;
 static int POS_MOPUP_MIN = 500;
@@ -451,9 +451,7 @@ int mobility_king_safety(
      * it). The Python flow always added _rook_files_bb + _bishop_pair_bb on
      * top of the C call, so we fold them in here unconditionally and have
      * the Python side skip those two calls. Removes a second / third Python
-     * function call per eval at no extra ctypes round-trip -- the gain that
-     * the standalone positional_extras (kept above for completeness)
-     * couldn't capture.
+     * function call per eval at no extra ctypes round-trip.
      */
     {
         /* W-10: rook (semi-)open files now scored inside the rook mobility
@@ -546,10 +544,9 @@ int mobility_king_safety(
     }
 
     /* --- C-18: low-phase mop-up folded in (ABI 2) ----------------------- *
-     * Copy of positional_extras' include_mopup branch (kept below for
-     * reference), active at phase <= 6 -- mirroring engine.py's old
-     * dispatch, whose Python side now skips its separate _mopup_bb call
-     * whenever this C eval ran. */
+     * Active at phase <= 6 -- mirroring engine.py's old dispatch, whose
+     * Python side now skips its separate _mopup_bb call whenever this C
+     * eval ran. */
     if (phase <= 6 && wksq >= 0 && bksq >= 0) {
         int npm_w = npm_side(occ_w, knights, bishops, rooks, queens);  /* W-14 */
         int npm_b = npm_side(occ_b, knights, bishops, rooks, queens);
@@ -570,24 +567,15 @@ int mobility_king_safety(
 }
 
 /* ====================================================================== *
- * #2.5: positional_extras = bishop_pair + rook_files + mopup
+ * #2.5: eval-constant setters (rook_files + bishop_pair + mopup + extras)
  *
- * Folds three small Python helpers into one C call. Same semantics as
- * _bishop_pair_bb + _rook_files_bb + _mopup_bb in engine.py: returns the
- * combined delta from White's perspective in centipawns.
- *
- * `strong != 0` mirrors the lone-loser branch in _eval_positional_white:
- * skip bishop_pair / rook_files, run mopup with the heavier weights so a
- * winning K + Q (+ B/P) vs K never shuffles into a draw.
- *
- * Constants are kept in sync with the Engine tuner via set_positional_params,
- * called once from Engine.__init__ (just like set_mobility_params already
- * does). CENTER_MANHATTAN is a pure function of (file, rank) so it lives
- * statically here; the table is identical to engine.py's _center_manhattan.
- *
- * Constants ALSO read by mobility_king_safety's #2.5b inlined rook_files +
- * bishop_pair pass; that's why they live at file scope (the read is from a
- * function defined earlier in this TU, so they're forward-declared above).
+ * Kept in sync with the Engine tuner via the set_*_params calls below, each
+ * invoked once from Engine.__init__ (just like set_mobility_params). The
+ * rook_files + bishop_pair + mopup values are consumed by mobility_king_
+ * safety's #2.5b inlined pass and its folded low-phase mop-up; they live at
+ * file scope because that function is defined earlier in this TU and reads
+ * them directly. CENTER_MANHATTAN is a pure function of (file, rank), stored
+ * statically here identical to engine.py's _center_manhattan.
  * ====================================================================== */
 
 /* #3.x: rook-on-7th setter. Called once from Engine.__init__ to keep the
@@ -654,79 +642,6 @@ void set_positional_params(int rook_open, int rook_semi,
     POS_MOPUP_MIN = mopup_min;
     POS_MOPUP_CMD = mopup_cmd; POS_MOPUP_KING = mopup_king;
     POS_MOPUP_STRONG_CMD = mopup_str_cmd; POS_MOPUP_STRONG_KING = mopup_str_king;
-}
-
-int positional_extras(uint64_t knights, uint64_t bishops,
-                      uint64_t rooks, uint64_t queens,
-                      uint64_t occ_w, uint64_t occ_b,
-                      uint64_t wp, uint64_t bp,
-                      int wksq, int bksq,
-                      int phase, int strong, int include_mopup)
-{
-    /* Lone-loser branch: only mopup with the heavy weights, sign by adv. */
-    if (strong) {
-        int npm_w = npm_side(occ_w, knights, bishops, rooks, queens);  /* W-14 */
-        int npm_b = npm_side(occ_b, knights, bishops, rooks, queens);
-        int adv = npm_w - npm_b;
-        int aadv = adv < 0 ? -adv : adv;
-        if (aadv < POS_MOPUP_MIN || wksq < 0 || bksq < 0) return 0;
-        int loser = (adv > 0) ? bksq : wksq;
-        int dfile = (wksq & 7) - (bksq & 7); if (dfile < 0) dfile = -dfile;
-        int drank = (wksq >> 3) - (bksq >> 3); if (drank < 0) drank = -drank;
-        int md = dfile + drank;
-        int bonus = POS_MOPUP_STRONG_CMD * CENTER_MANHATTAN(loser)
-                  + POS_MOPUP_STRONG_KING * (14 - md);
-        return (adv > 0) ? bonus : -bonus;
-    }
-
-    int score = 0;
-
-    /* rook_files: (semi-)open file bonus per rook. */
-    uint64_t rw = rooks & occ_w;
-    while (rw) {
-        int sq = __builtin_ctzll(rw);
-        rw &= rw - 1;
-        uint64_t fmask = 0x0101010101010101ULL << (sq & 7);
-        if (!(wp & fmask))
-            score += (bp & fmask) ? POS_ROOK_SEMI : POS_ROOK_OPEN;
-    }
-    uint64_t rb = rooks & occ_b;
-    while (rb) {
-        int sq = __builtin_ctzll(rb);
-        rb &= rb - 1;
-        uint64_t fmask = 0x0101010101010101ULL << (sq & 7);
-        if (!(bp & fmask))
-            score -= (wp & fmask) ? POS_ROOK_SEMI : POS_ROOK_OPEN;
-    }
-
-    /* bishop_pair: phased blend, applied for either side at >= 2 bishops. */
-    if (PHASE_MAX > 0) {
-        int bpv = (POS_BP_MG * phase + POS_BP_EG * (PHASE_MAX - phase)) / PHASE_MAX;
-        if (__builtin_popcountll(bishops & occ_w) >= 2) score += bpv;
-        if (__builtin_popcountll(bishops & occ_b) >= 2) score -= bpv;
-    }
-
-    /* mopup: drive the losing side's king toward an edge when one side
-     * has a decisive non-pawn material edge. Gated by include_mopup so
-     * the midgame branch (high phase) can call positional_extras for the
-     * bishop_pair + rook_files terms ALONE -- matching engine.py exactly. */
-    if (include_mopup && wksq >= 0 && bksq >= 0) {
-        int npm_w = npm_side(occ_w, knights, bishops, rooks, queens);  /* W-14 */
-        int npm_b = npm_side(occ_b, knights, bishops, rooks, queens);
-        int adv = npm_w - npm_b;
-        int aadv = adv < 0 ? -adv : adv;
-        if (aadv >= POS_MOPUP_MIN) {
-            int loser = (adv > 0) ? bksq : wksq;
-            int dfile = (wksq & 7) - (bksq & 7); if (dfile < 0) dfile = -dfile;
-            int drank = (wksq >> 3) - (bksq >> 3); if (drank < 0) drank = -drank;
-            int md = dfile + drank;
-            int bonus = POS_MOPUP_CMD * CENTER_MANHATTAN(loser)
-                      + POS_MOPUP_KING * (14 - md);
-            score += (adv > 0) ? bonus : -bonus;
-        }
-    }
-
-    return score;
 }
 
 /* ====================================================================== *
