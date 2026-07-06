@@ -245,16 +245,22 @@ static int compute_shelter(int ksq, uint64_t own_pawns, int is_white,
 /* ---------- main function ------------------------------------------------ */
 /*
  * Mirrors _mobility_king_safety_bb in engine.py exactly.
- * wksq / bksq: king square index 0-63, or -1 if the king is not on the board.
+ * kings: both kings' bitboard; the per-side square (0-63, or -1 if that king
+ * is off the board) is derived below via kings & occ_w / occ_b.
  * Returns the score from White's perspective (positive = White better).
  */
 int mobility_king_safety(
     uint64_t occ_w, uint64_t occ_b,
     uint64_t knights, uint64_t bishops, uint64_t rooks, uint64_t queens,
     uint64_t wp, uint64_t bp,
-    int wksq, int bksq,
+    uint64_t kings,
     int phase)
 {
+    /* U-04: derive king squares in C from the kings bitboard instead of
+     * taking them as two int args -- drops two board.king() calls per eval
+     * node on the Python side. -1 == that king is off the board. */
+    int wksq = (kings & occ_w) ? __builtin_ctzll(kings & occ_w) : -1;
+    int bksq = (kings & occ_b) ? __builtin_ctzll(kings & occ_b) : -1;
 
     uint64_t occ   = occ_w | occ_b;
     uint64_t wring = (wksq >= 0) ? KING_ATT[wksq] : 0ULL;
@@ -870,5 +876,7 @@ int see(uint64_t pawns, uint64_t knights, uint64_t bishops, uint64_t rooks,
  * exported signature or the semantics of an existing export change, so a
  * stale-but-loadable .so is rejected at load instead of silently
  * mis-evaluating. */
-int abi_version(void) { return 2; }   /* 2: C-18 folded mopup into
-                                       * mobility_king_safety at phase <= 6 */
+int abi_version(void) { return 3; }   /* 2: C-18 folded mopup into
+                                       *    mobility_king_safety at phase <= 6
+                                       * 3: U-04 mobility_king_safety takes a
+                                       *    kings bitboard, not wksq/bksq ints */
