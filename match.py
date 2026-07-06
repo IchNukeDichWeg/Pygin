@@ -46,7 +46,7 @@ FEN_FILE = "UHO_4060_v4.epd"                 # positions (plain FEN or EPD, one 
 other_elo = 2450
 stockfish_elo = 2500
 
-NUM_GAMES = 4000            # number of starting POSITIONS to play (default when
+NUM_GAMES = 5000            # number of starting POSITIONS to play (default when
                             #   no arg passed). Each position is played twice --
                             #   once with each engine as White -- so the actual
                             #   TOTAL games played is NUM_GAMES * 2.
@@ -57,10 +57,10 @@ MODE = "clock"             # "time"  -> fixed milliseconds per move (TIME_PER_MO
                             # "depth" -> fixed search depth in plies (FIXED_DEPTH)
                             # "clock" -> real clock per side (TC_SECONDS + TC_INCREMENT),
                             #            per-move budget via time_manager.calculate_move_time
-TIME_PER_MOVE_MS = 100      # used when MODE == "time"
-FIXED_DEPTH = 6             # used when MODE == "depth"
+TIME_PER_MOVE_MS = 1000      # used when MODE == "time"
+FIXED_DEPTH = 10             # used when MODE == "depth"
 TC_SECONDS = 45             # used when MODE == "clock": starting clock per side, in seconds
-TC_INCREMENT = 0.15         # used when MODE == "clock": seconds added per move
+TC_INCREMENT = 0.10         # used when MODE == "clock": seconds added per move
 
 # --- WDL-based adjudication (OFF until wdl_model.json is calibrated) ------- #
 # Shortens decided games: a win is adjudicated when BOTH engines' own
@@ -73,7 +73,7 @@ ADJUDICATE = False          # turn on/off adjudication (requires wdl_model.json)
 ADJ_WIN_P = 0.99            # per-phase cp threshold = model's P(win) 99% point
 ADJ_WIN_COUNT = 7           # consecutive own moves (each side) for a win call
 ADJ_DRAW_CP = 10            # |cp| <= this from both sides...
-ADJ_DRAW_COUNT = 20          # ...for this many consecutive plies...
+ADJ_DRAW_COUNT = 16          # ...for this many consecutive plies...
 ADJ_DRAW_MIN_PLY = 100       # ...never before this game ply
 
 ENGINE_USE_BOOK = False     # opening books off -> a fair, search-only test
