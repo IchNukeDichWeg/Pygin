@@ -1555,6 +1555,19 @@ class Engine:
             for _sq in range(64):
                 _ct[1][_pt][_sq] = self._piece_contrib(_pt, chess.WHITE, _sq)
                 _ct[0][_pt][_sq] = self._piece_contrib(_pt, chess.BLACK, _sq)
+        # V-06: precompute the tapered passed-pawn bonus as a [phase][rel] table
+        # (PHASE_MAX+1 x 8). `phase` reaching _pawn_structure_bb is clamped to
+        # [0, PHASE_MAX], so the per-passer taper multiply/blend becomes one
+        # index. Rebuilt here whenever PASSED_PAWN_MG/EG or PHASE_MAX change;
+        # needed on the pure-Python fallback path too, hence before the early
+        # return.
+        _pm = self.PHASE_MAX
+        _ppm = self.PASSED_PAWN_MG
+        _ppe = self.PASSED_PAWN_EG
+        self._passed_taper = [
+            [(_ppm[rel] * ph + _ppe[rel] * (_pm - ph)) // _pm for rel in range(8)]
+            for ph in range(_pm + 1)
+        ]
         # P-47: memoized static evals were computed under the old params.
         self._eval_memo = {}
         if not _USE_C_EVAL:
@@ -2386,11 +2399,9 @@ class Engine:
                 self._pawn_cache.clear()
             self._pawn_cache[key] = cached = (base, passers)
         score, passers = cached
-        pm = self.PHASE_MAX
-        ppm = self.PASSED_PAWN_MG
-        ppe = self.PASSED_PAWN_EG
-        for sign, rel in passers:      # identical per-passer taper arithmetic
-            score += sign * ((ppm[rel] * phase + ppe[rel] * (pm - phase)) // pm)
+        taper = self._passed_taper[phase]   # V-06: precomputed [rel] row
+        for sign, rel in passers:
+            score += sign * taper[rel]
         return score
 
     def _is_passed_pawn(self, board, square, color):
