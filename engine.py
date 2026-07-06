@@ -2,9 +2,9 @@
 engine.py
 =========
 
-A self-contained chess engine built on top of the ``chess`` library (used
-only for board representation, move generation and legality checking -- *not*
-for evaluation or search).
+A self-contained chess engine. It uses the ``chess`` library only for the
+board, move generation and legality checks -- never for evaluation or search,
+which are entirely our own.
 
 
 Search features
@@ -78,36 +78,30 @@ Search features
 
 Evaluation
 ----------
-A tapered hand-crafted evaluation (HCE), blended middlegame<->endgame by game
-phase and returned in centipawns from White's perspective (positive favours
-White; ``_evaluate_stm`` flips it to the side to move for negamax). Terms:
+A tapered hand-crafted evaluation (HCE): middlegame and endgame scores blended
+by game phase, returned in centipawns from White's view (``_evaluate_stm``
+flips it to the side to move for negamax).
+
+Terms:
 
 * Material + piece-square tables + tempo bonus.
 * Pawn structure: doubled / isolated / passed / backward pawns.
 * King safety: pawn shield, open files, attacker count.
-* Mobility, rook on open / semi-open file, the bishop pair.
+* Mobility, rook on open / semi-open file, bishop pair.
 
-The cheap base half (material + PST + phase + tempo) is maintained
-*incrementally* via an accumulator updated by a small per-move delta on every
-make/unmake (``use_incremental_eval``) instead of being rescanned per node; the
-accumulator is byte-for-byte identical to the from-scratch scan. The
-pawn-structure term -- a pure function of the pawn bitboards and phase -- is
-memoized in a pawn hash keyed on ``(white pawns, black pawns, phase)``. Several
-further eval/search refinements (pin penalty, trade-down simplification,
-recapture extension, alternative TT-replacement schemes, quiescence SEE
-ordering) exist as off-by-default A/B toggles in ``__init__``; see the per-flag
-verdicts there.
+Speed tricks:
 
-NNUE
-----
-A real NNUE evaluation is **not** integrated. Pure-Python NNUE inference would
-require an incremental accumulator and ≈hundreds of multiply-accumulates per
-node; at the few-tens-of-thousands of nodes/second this interpreter manages
-that would make the engine *slower*, not stronger, and it would need a C
-extension (e.g. a Stockfish binding) to be worthwhile -- which defeats the
-"from scratch in Python" goal. Instead the hand-crafted evaluation below was
-substantially expanded (backward pawns, per-piece mobility, king-zone attacker
-counts, rook files, bishop pair, tempo) as the practical substitute.
+* The cheap base half (material + PST + phase + tempo) is kept *incrementally*:
+  a per-move delta updates an accumulator on every make/unmake
+  (``use_incremental_eval``), so it's never rescanned per node. The result is
+  byte-for-byte identical to a from-scratch scan.
+* The pawn-structure term depends only on the pawn bitboards and phase, so it
+  is memoized in a pawn hash keyed on ``(white pawns, black pawns, phase)``.
+
+Several further eval/search refinements (pin penalty, trade-down
+simplification, recapture extension, alternative TT-replacement schemes,
+quiescence SEE ordering) exist as off-by-default A/B toggles in ``__init__``;
+see the per-flag verdicts there.
 
 Early correctness fixes (pre-v15)
 ----------------------------------
@@ -131,9 +125,10 @@ per-node cost. Fixed and flagged inline with ``# FIX``:
 
 Version history
 ---------------
-Each version is a saved snapshot in ``Old Engine/<N>/``. Only what changed is
-logged here -- see "Search features" / "Evaluation" above for what the
-*current* build does.
+Each version is a saved snapshot in ``Old Engine/<N>/``; only the *changes* are
+logged here. For what the current build does, see "Search features" and
+"Evaluation" above. Aggregate NPS/Elo numbers live in "Cross-version
+benchmark" below.
 
 * **v15**: pre-C-extension baseline, folding in the earliest optimization
   pass -- itemgetter-based move sort, a mutable eval accumulator, the
@@ -214,20 +209,6 @@ logged here -- see "Search features" / "Evaluation" above for what the
   (``_tt_get``/``_tt_store``). +0.5-1.36% NPS depending on position (real,
   if small). Both v23 and v24 are kept for code quality regardless.
 
-**Cross-version benchmark (2026-07-02):** 24 versions x 8 positions x 6 timed
-5s runs (1152 searches total). NPS rose **+79.2%** v1->v24; average search
-depth rose **+7.96 ply** (9.98 -> 17.94) and is the cleaner signal -- one
-benchmark position hits the depth cap on every version and dilutes the NPS
-aggregate (excluded from future NPS-only comparisons). v9 (LMP) and
-v18->v19 (Zobrist/shared-TT) both dip in NPS but gain depth -- heavier,
-smarter search, not a slowdown. v16/v17 (C-eval / C-movegen) remain the two
-biggest wins in both metrics. **A/B result (2026-07-04): v24 vs v21, 10,000
-games @ ≈8.3 s/game: +11.75 +/-6.8 Elo (51.69%), normalized Elo +22.08
-(pentanomial 362/1120/1802/1250/466, pair ratio 1.16).** The whole v21->v24
-batch (9 bug fixes + 6 NPS items + 2 method-swap fixes) is confirmed
-net-positive; v21->v24 NPS moved only ≈+2%, so the gain is mostly the bug
-fixes (low-phase king safety, mate-at-clock-100, LAZY_MARGIN).
-
 * **v25 (2026-07-04): the 18-item [BUG] block from improvements_v24.md.**
   Single-thread search is byte-identical to v24 (h1h8/3495 reference) apart
   from the intended fixes (zeitnot budgets, in-search TT cap).
@@ -298,6 +279,23 @@ fixes (low-phase king safety, mate-at-clock-100, LAZY_MARGIN).
   3495): V-05 (predecessor key computed once in `_negamax`), V-07 (`_capture_moves`
   carries `victim_value` on the row so quiescence doesn't re-decode it), V-08
   (`see_attackers` skips the slider magic lookup when no such slider exists).
+
+Cross-version benchmark
+-----------------------
+Sweep (2026-07-02): 24 versions x 8 positions x 6 timed 5s runs (1152 searches).
+
+* **NPS +79.2%** v1->v24.
+* **Search depth +7.96 ply** (9.98 -> 17.94) -- the cleaner signal, since one
+  position hits the depth cap on every version and dilutes the NPS aggregate.
+* v9 (LMP) and v18->v19 (Zobrist/shared-TT) dip in NPS but gain depth --
+  heavier, smarter search, not a slowdown.
+* v16/v17 (C-eval / C-movegen) are the two biggest wins in both metrics.
+
+A/B result (2026-07-04): v24 vs v21, 10,000 games @ ≈8.3 s/game -> **+11.75
++/-6.8 Elo** (51.69%; normalized +22.08; pentanomial 362/1120/1802/1250/466,
+pair ratio 1.16). The whole v21->v24 batch is net-positive; NPS moved only
+≈+2%, so the gain is mostly the bug fixes (low-phase king safety,
+mate-at-clock-100, LAZY_MARGIN).
 
 Strength (absolute, vs Stockfish)
 ----------------------------------
@@ -382,10 +380,22 @@ were all tested and kept OFF -- see "Rejected / shelved experiments" above.)
    - Material Hash Table: Caching material evaluations for a large speedup since 
      material changes rarely.
 
-3. The Ultimate Goal: NNUE
-   As noted earlier, integrating an Efficiently Updatable Neural Network (NNUE) 
-   would yield a massive leap (potentially +200-300 Elo) by replacing all the 
-   hand-crafted terms with learned weights.
+NNUE (why it isn't here, and the ultimate goal)
+-----------------------------------------------
+A real NNUE is **not** integrated, on purpose:
+
+* Pure-Python inference needs an incremental accumulator plus ≈hundreds of
+  multiply-accumulates per node. At the few-tens-of-thousands of nodes/sec this
+  interpreter manages, that makes the engine *slower*, not stronger.
+* Doing it properly would need a C extension (e.g. a Stockfish binding) --
+  which defeats the "from scratch in Python" goal.
+* Instead, the hand-crafted eval was expanded (backward pawns, per-piece
+  mobility, king-zone attacker counts, rook files, bishop pair, tempo) as the
+  practical substitute.
+
+That said, a proper NNUE remains the biggest single upgrade available:
+replacing all hand-crafted terms with learned weights could be worth
+**+200-300 Elo**.
 """
 
 import ctypes
