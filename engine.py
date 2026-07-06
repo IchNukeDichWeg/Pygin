@@ -483,7 +483,7 @@ try:
         ctypes.c_uint64, ctypes.c_uint64,   # knights, bishops
         ctypes.c_uint64, ctypes.c_uint64,   # rooks, queens
         ctypes.c_uint64, ctypes.c_uint64,   # wp, bp
-        ctypes.c_int, ctypes.c_int,         # wksq, bksq (-1 if absent)
+        ctypes.c_uint64,                    # kings (C derives wksq/bksq, U-04)
         ctypes.c_int,                       # phase
     ]
     _eval_lib.mobility_king_safety.restype = ctypes.c_int
@@ -544,7 +544,7 @@ try:
     # P-12: ABI handshake. Bump together with abi_version() in eval_c.c on
     # any export-signature or semantics change -- a stale-but-loadable .so
     # must be rejected here, not trusted silently.
-    _EVAL_C_ABI = 2      # 2: C-18 folded the low-phase mopup into the C eval
+    _EVAL_C_ABI = 3      # 3: U-04 mobility_king_safety takes a kings bitboard
     _eval_lib.abi_version.restype = ctypes.c_int
     if _eval_lib.abi_version() != _EVAL_C_ABI:
         raise OSError(f"eval_c.so ABI {_eval_lib.abi_version()} != expected "
@@ -2428,13 +2428,11 @@ class Engine:
     def _mobility_king_safety_bb(self, board, occ_w, occ_b,
                                  knights, bishops, rooks, queens, wp, bp, phase):
         if _USE_C_EVAL:
-            wksq = board.king(chess.WHITE)
-            bksq = board.king(chess.BLACK)
+            # U-04: C derives wksq/bksq from the kings bitboard, so the two
+            # board.king() calls per eval node are gone.
             return _C_MKS(
                 occ_w, occ_b, knights, bishops, rooks, queens, wp, bp,
-                wksq if wksq is not None else -1,
-                bksq if bksq is not None else -1,
-                phase,
+                board.kings, phase,
             )
         am = board.attacks_mask
         wksq = board.king(chess.WHITE)
