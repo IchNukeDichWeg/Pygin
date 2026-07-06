@@ -665,6 +665,12 @@ MV_SHIFT_VICTIM = 18
 MV_BIT_EP = 1 << 21
 MV_MASK_PT = 7              # 3-bit piece-type field
 
+# V-14c: file-A/file-H exclusion masks used by the Python eval fallback's
+# pawn-attack shifts. Constant, so compute once at import instead of per call.
+_U64 = (1 << 64) - 1
+_NOT_FILE_A = ~int(chess.BB_FILE_A) & _U64
+_NOT_FILE_H = ~int(chess.BB_FILE_H) & _U64
+
 
 # Roadmap item #12: the history/capt_history/cont_history tables were keyed
 # by 3- or 5-element tuples, built and hashed twice per quiet move per node
@@ -1774,8 +1780,9 @@ class Engine:
         if reader is None:
             return None
         try:
+            legal = set(board.legal_moves)   # V-14b: build once, not per entry
             entries = [e for e in reader.find_all(board)
-                       if e.move in board.legal_moves]
+                       if e.move in legal]
         except Exception:
             return None      # read error
         if not entries:
@@ -2444,8 +2451,8 @@ class Engine:
         w_ring_att = 0          # incidences of black pieces attacking White's ring
         b_ring_att = 0          # incidences of white pieces attacking Black's ring
         # #3.x: pawn attack sets used by mobility-area AND the threats block.
-        FA = ~int(chess.BB_FILE_A) & ((1 << 64) - 1)
-        FH = ~int(chess.BB_FILE_H) & ((1 << 64) - 1)
+        FA = _NOT_FILE_A          # V-14c: precomputed at module scope
+        FH = _NOT_FILE_H
         patk_w = ((wp << 9) & FA) | ((wp << 7) & FH)
         patk_b = ((bp >> 7) & FA) | ((bp >> 9) & FH)
         if self.use_mobility_area:
@@ -2569,8 +2576,8 @@ class Engine:
         score = 0
         am = board.attacks_mask
         # Pawn attack sets used by mobility-area AND threats.
-        FA = ~int(chess.BB_FILE_A) & ((1 << 64) - 1)
-        FH = ~int(chess.BB_FILE_H) & ((1 << 64) - 1)
+        FA = _NOT_FILE_A          # V-14c: precomputed at module scope
+        FH = _NOT_FILE_H
         patk_w = ((wp << 9) & FA) | ((wp << 7) & FH)
         patk_b = ((bp >> 7) & FA) | ((bp >> 9) & FH)
         if self.use_mobility_area:
@@ -4237,9 +4244,11 @@ class Engine:
         """Abort the search (via exception) once the time budget is used up
         or the host set ``_abort`` (see its note in __init__). Checked at the
         same node-mask cadence for both, so untimed (fixed-depth) searches are
-        abortable too."""
-        if (self.nodes & 4095) != 0:
-            return
+        abortable too.
+
+        V-14a: no internal `nodes & 4095` backstop -- the only callers already
+        gate on `nodes & _poll_mask == 0` with `_poll_mask == 4095` for the std
+        path, so it could never fire."""
         if self._abort:
             raise _TimeUp()
         if (self.time_limit is not None
