@@ -1,0 +1,6 @@
+# Pygin chess engine -- runtime dependencies.
+# The engine itself needs only python-chess (board representation + move
+# generation/legality); everything else it uses is the Python standard library
+# (ctypes, multiprocessing, json, ...). The C evaluator/movegen are built from
+# source by setup.sh, not pip-installed.
+python-chess>=1.11,<2.0
