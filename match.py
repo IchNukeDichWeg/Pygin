@@ -18,6 +18,7 @@ Arguments (all optional, fall back to CONFIG section below):
   offset          skip this many positions into the pool (for non-overlapping
                   parallel runs on different machines)  (default: 0)
   --workers N     parallel game pairs; keep N * 2 <= CPU cores  (default: N_WORKERS)
+                  0 or 'auto' => all cores but one
   --engine-smp N  SMP workers inside each engine; use 1 for match runs,
                   higher only when playing a single game  (default: 1)
 
@@ -810,8 +811,8 @@ def main():
 
     if workers_str is None:
         n_workers = max(1, int(N_WORKERS))
-    elif workers_str.lower() == "auto":
-        n_workers = max(1, mp.cpu_count() - 1)
+    elif workers_str.lower() == "auto" or int(workers_str) == 0:
+        n_workers = max(1, mp.cpu_count() - 1)  # 0 / auto => all cores but one
     else:
         n_workers = max(1, int(workers_str))
 
