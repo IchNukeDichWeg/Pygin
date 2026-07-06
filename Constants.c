@@ -1,5 +1,5 @@
 
-#include "constants.h"
+#include "Constants.h"
 
 const unsigned long long ROOK_ATTACKS[64][4096] =
 {
