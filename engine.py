@@ -2907,7 +2907,9 @@ class Engine:
             else:
                 frm = raw & 63                    # P-28: from/to from the tag
                 to = (raw >> 6) & 63
-                hkey = _hist_key(color, frm, to)  # Y-06: one key, three tables
+                # #64: inline of _hist_key(color, frm, to) at this hot site --
+                # MUST stay identical to that helper's packing (engine.py:683).
+                hkey = to | (frm << 6) | (color << 12)   # Y-06: one key, 3 tables
                 score = self.history[hkey]
                 # Continuation history (#1.6): add 1-ply and 2-ply scores
                 # for the same predecessor when one is in scope.
@@ -3910,7 +3912,9 @@ class Engine:
             if is_quiet:
                 frm = raw & 63                    # P-28: from/to from the tag
                 to = (raw >> 6) & 63
-                hkey = _hist_key(color, frm, to)
+                # #64: inline of _hist_key(color, frm, to) -- keep identical to
+                # that helper's packing (engine.py:683).
+                hkey = to | (frm << 6) | (color << 12)
                 hist = hist_tab[hkey]
                 if pm1 is not None:               # Y-06: flat-array reads
                     arr = cont1_get(pm1)
