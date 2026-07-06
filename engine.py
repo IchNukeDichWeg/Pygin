@@ -2780,7 +2780,7 @@ class Engine:
     # Move ordering
     # ================================================================== #
     def order_moves(self, board, tt_move=None, ply=0, counter=None,
-                    prev_move=None, pm1=0, pm2=0):
+                    prev_move=None, pm1=0, pm2=0, in_check=False):
         """Legal moves ordered best-first: TT move, MVV-LVA captures /
         promotions, killers, then the history heuristic for quiet moves.
         Returns the sorted ``scored`` rows directly -- a list of
@@ -2829,9 +2829,12 @@ class Engine:
         # #9 + #2.3: C move generator returns moves AND raws (parallel lists);
         # None => in check, fall back to python-chess and synthesise raws so
         # the search loop's tag reads keep working uniformly.
-        if self.use_c_movegen:
+        if self.use_c_movegen and not in_check:
+            # V-09: in check the C generate_legal returns -1 anyway (evasion
+            # order is left to python-chess), so when the caller already knows
+            # we're in check, skip the wasted C call + its clean_castling_rights.
             moves, raws = _c_legal_moves(board)
-            if moves is None:
+            if moves is None:              # safety net if in_check wasn't passed
                 moves = list(board.legal_moves)
                 raws = self._synth_raws(board, moves)
         else:
@@ -3829,7 +3832,7 @@ class Engine:
             if pm2_move is not None:
                 pm2 = pm2_move.from_square | (pm2_move.to_square << 6)
         scored = self.order_moves(board, tt_move, ply, counter, prev_move,
-                                  pm1, pm2)   # P-19 rows / W-08 shared pms
+                                  pm1, pm2, in_check)   # P-19 rows / V-09 in_check
         if not scored:
             return -self.MATE_SCORE + ply if in_check else 0
 
@@ -4172,7 +4175,7 @@ class Engine:
 
         if in_check:
             # Must consider every evasion (else we could stand-pat out of mate).
-            scored = self.order_moves(board, None, ply)   # P-19: rows
+            scored = self.order_moves(board, None, ply, in_check=True)  # V-09
             if not scored:
                 return -self.MATE_SCORE + ply        # checkmate
             best = -self.INF
