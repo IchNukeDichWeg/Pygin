@@ -1,0 +1,19 @@
+#!/bin/sh
+# Launcher for the ClaudeChess UCI engine (for lichess-bot, or any UCI GUI).
+# Prefers PyPy (~1.5x faster); falls back to CPython if pypy3 is missing or
+# can't import python-chess.
+#
+# lichess-bot config.yml:
+#     engine:
+#       dir: "/Users/sam/Desktop/bot/NeuerOrdner/ClaudeChess"
+#       name: "claudechess"
+#       protocol: "uci"
+#
+# Make executable once:  chmod +x claudechess
+
+DIR="$(cd "$(dirname "$0")" && pwd)"
+
+if command -v pypy3 >/dev/null 2>&1 && pypy3 -c 'import chess' >/dev/null 2>&1; then
+    exec pypy3 "$DIR/uci.py"
+fi
+exec python3 "$DIR/uci.py"
