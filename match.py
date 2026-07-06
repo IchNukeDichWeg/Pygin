@@ -81,7 +81,7 @@ SUBSET_SEED = 42            # FIXED so parallel windows shuffle identically
 MAX_PLIES = 200             # games longer than this are adjudicated a draw
 VERBOSE_MOVES = False       # also print every move to the terminal
                             #   (per-move info is ALWAYS written to the log file)
-N_WORKERS = 11              # parallel game workers (override via --workers N|auto)
+N_WORKERS = 10              # parallel game workers (override via --workers N|auto)
                             #   1  -> sequential (one engine pair, plays all games)
                             #   >1 -> N worker processes, each with its own engine pair
 
