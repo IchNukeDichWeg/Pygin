@@ -1,0 +1,109 @@
+# ======================================================================
+# Pygin .gitignore
+# Compiled C artifacts are rebuilt by setup.sh; everything below is either a
+# build product, local data, a large third-party file, or NOT part of the
+# engine (other apps / private analysis).  NOTHING with credentials is tracked.
+# ======================================================================
+
+# --- built C libraries (rebuilt from the .c sources by setup.sh) ---
+*.so
+*.o
+*.dylib
+build/
+
+# --- Python bytecode ---
+__pycache__/
+*.pyc
+*.pyo
+
+# --- match / benchmark output (local, per-run) ---
+*_vs_*.txt
+*_vs_*.pgn
+*.pgn
+nps_history_results_*.json
+nps_history_results_*.md
+profile_report.html
+*.log
+
+# --- large third-party opening books / nets (download separately) ---
+UHO_*.epd
+# ...except the default match.py book, which is kept in the repo:
+!UHO_4060_v4.epd
+*.bin
+Elo2400.bin
+
+# --- NEVER publish: private / credential-bearing helper (chess.com cookies) ---
+chesscom_analysis.py
+*secret*
+*token*
+*.key
+.env
+
+# --- not part of the headless engine (GUIs, other sub-projects, experiments) ---
+gui.py
+gui_pypy.py
+main.py
+experiment.py
+engine_subproc.py
+pypy_client.py
+engine_battle*.py
+engine_cy*
+fastboard*
+chess_bitboard.py
+bench_interp.py
+engine_test.py
+engine_smp4.py
+engine_outpost.py
+engine_space.py
+engine_phalanx.py
+engine_storm.py
+engine_shelter.py
+engine_combined.py
+WebChess/
+Chess/
+ChessAnalyzer/
+cutechess/
+AllIn1/
+Mephisto-2.0.0-fix/
+Testing/
+PGN/
+New logs/
+logs/
+claudechess/
+
+# macOS Finder metadata
+.DS_Store
+
+# local tooling / non-release engines
+.claude/
+Bad Engine/
+
+# --- not needed to run benchmarks or headless games (kept local) ---
+uci.py
+lichess/
+lichess_bot.js
+lichess-big3-resolved.book
+selfplay.py
+selfplay/
+snapshot_v1/
+tune.py
+param_sweep.py
+tuning_config.json
+tactics.py
+tc_ab.py
+score_positions.py
+start.py
+test.py
+main.c
+run_engine.sh
+ClaudeChess.command
+paintball-app
+claudechess
+stockfish-18-asm.js
+openings.epd
+quiet-labeled.v7.epd
+wdl_training_data.csv
+*.book
+elo.md
+audit_engine_*.md
+improvements_*.md
