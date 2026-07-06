@@ -134,51 +134,67 @@ benchmark" below.
   an inline dict transposition table, quiescence search, null-move pruning,
   killer moves and a material + piece-square-table eval. This is the naive
   baseline the "Early correctness fixes" section above refers to.
+
 * **v2**: the main search + eval build-out. Selectivity added -- PVS,
   reverse-futility (static null-move), futility pruning and LMR -- plus
   aspiration-window root search. New bitboard eval terms: pawn structure,
   mobility, king safety, bishop pair, rook files. History-heuristic updates
   and an optional Polyglot opening book (``use_book``).
+
 * **v3**: endgame + draw handling -- the mop-up term (``_mopup_bb``) that drives
   the weak king to the edge, contempt-aware draw scoring (``_draw_score``) and
   the counter-move heuristic.
+
 * **v4**: Static Exchange Evaluation (``_see``, ``use_see``) for move ordering
   and pruning losing captures.
+
 * **v5**: recapture extension (``_recapture_at``).
+
 * **v6**: endgame eval fix -- lone-loser detection so the king-safety terms are
   no longer dropped in lone-king endings.
+
 * **v7**: pin evaluation (``_pin_penalty_bb``, ``use_pin_eval``).
+
 * **v8**: eval refactor + quiescence stand-pat -- eval split into base /
   positional halves, mobility and king safety merged into one pass
   (``_mobility_king_safety_bb``), quiescence stand-pat (``_qs_stand_pat``),
   trade-down simplification (``use_simplify``) and PV extraction.
+
 * **v9**: late-move pruning (``use_lmp``), the history malus
   (``use_history_malus``) and the "improving" heuristic. NPS drops ~14% by
   design (LMP skips near-leaf quiets) but the search reaches deeper per second.
+
 * **v10**: transposition-table refactor -- probe/store split into ``_tt_get`` /
   ``_tt_store`` with two-tier and depth-preferred replacement variants
   (toggles), plus a quiescence-SEE ordering toggle.
+
 * **v11**: incremental base eval (``use_incremental_eval``) -- material + PST +
   phase + tempo maintained by a per-move delta in ``_make`` / ``_unmake``
   instead of a per-node rescan (byte-identical to the from-scratch scan).
+
 * **v12**: extension budgeting -- a separate check-extension budget and a
   ``MAX_EXTENSIONS`` cap so a capture-heavy line cannot starve the other
   extensions.
+
 * **v13**: eval-weight retune -- bishop pair, rook files, tempo and the
   pawn-structure penalties reset from a tuning run.
+
 * **v14**: online Lichess Syzygy tablebase (``use_tb`` / ``_tb_probe``,
   root-only, triviality-guarded so trivial mop-ups skip the ≈150-400ms round
   trip, network-safe), Internal Iterative Reduction (depth >= 4 with no TT
   move) and a pawn-structure hash keyed on ``(wp, bp, phase)`` (phase-tapered,
   so the naive ``(pawns, occ_white)`` key would be wrong).
+
 * **v15**: pre-C-extension baseline. LMR divisor tuned 2.25 -> 2.0 (~12% more
   reductions; an overnight 5-variant sweep found every value a statistical
   tie -- 2.0 is just the noise-peak). Probcut was tried and removed here (+4
   +/-12 Elo at 1s/move, ≈0 at 500ms -- null at both TCs) -- see "Rejected /
   shelved experiments" below.
+
 * **v16**: ``_mobility_king_safety_bb`` ported to C (``eval_c.c``, loaded via
   ``ctypes``; build ``python3 eval_build.py``). 0/10,000 positions differ
   from the Python path. **NPS 21,369 -> 27,507 (+28.7%)** at fixed depth.
+
 * **v17**: legal + capture move generation ported to C (``movegen.c``; build
   ``python3 movegen_build.py``; toggle ``use_c_movegen``), reproducing
   python-chess's exact pseudo-legal move order so the search stays
@@ -187,12 +203,14 @@ benchmark" below.
   why order-matching was mandatory here. Perft-verified to depth 6 on the
   full standard suite. **NPS +24.8%** at fixed depth. **v16+v17 combined vs
   v15: +69 +/-16 Elo** (2000 games).
+
 * **v18**: Lazy SMP groundwork -- incremental 64-bit Zobrist hashing
   (``use_zobrist``, maintained in ``_make``/``_unmake``, never rebuilt from
   scratch) so the dict TT's key can eventually live in shared memory (a
   plain tuple key can't, and a tuple's ``hash()`` is per-process-randomised
   anyway). Off by default -- zero overhead in normal play. Verified over 7M
   make/unmake checks (incremental == from-scratch).
+
 * **v19**: Lazy SMP finished -- a lock-free shared-memory transposition table
   (``shared_tt.SharedTT``/``use_shared_tt``, Stockfish-style XOR'd 64-bit
   slots so a torn read is always detected as a miss, never a corrupt hit)
@@ -205,12 +223,14 @@ benchmark" below.
   magic bitboards for slider attacks in ``eval_c.c``/``movegen.c``, and a
   packed move word (mover/victim piece type + en-passant flag) so the
   search loop skips several python-chess calls per move.
+
 * **v20**: three new eval terms -- ``use_rook_on_7th`` (rook on the 7th vs an
   exposed enemy king/pawn), ``use_mobility_area`` (mobility excludes squares
   attacked by an enemy pawn), ``use_threats`` (bonus per enemy piece attacked
   by a cheaper one of ours) -- plus folding rook-files/bishop-pair into the
   existing mobility/king-safety C call to remove a second ctypes round trip.
   **A/B vs v19: +45 +/-11 Elo** (4000 games, 0.75+0.25 TC).
+
 * **v21**: capture-history move ordering (``use_capt_history``), SEE-pruning
   of losing captures at depth <= 2 (``use_see_prune_captures``), LMR for
   losing captures, and an in-check static-eval proxy (``use_check_eval_proxy``)
@@ -219,6 +239,7 @@ benchmark" below.
   time-check interval, a pre-allocated SEE gain array, a bitboard passed-
   pawn-push check, and direct killer slots). **A/B vs v20: +16 +/-10 Elo**
   (5000 games, 0.65+0.1 TC).
+
 * **v22**: nine correctness bug fixes -- low-phase eval was dropping king
   safety and the post-v21 toggles entirely; the lone-loser mop-up shortcut
   returned 0 instead of falling through below its gate; a false
@@ -233,11 +254,13 @@ benchmark" below.
   objects, int-packing history-table keys, reusing ordering-time SEE in
   the prune gate, porting SEE itself to C, and reordering the quiet-history
   lookup past the prune checks that might skip it). Not yet A/B'd for Elo.
+
 * **v23**: fixed a Zobrist method-swap bug -- a permanently-off ``if`` guard
   in the hottest functions (``_make``/``_make_null``/``_unmake``) isn't free
   in CPython even when it never fires. Split into branch-free variants
   bound once per search instead of checked every node. No measurable NPS
   effect (within noise).
+
 * **v24**: the same fix applied to the TT dispatch
   (``_tt_get``/``_tt_store``). +0.5-1.36% NPS depending on position (real,
   if small). Both v23 and v24 are kept for code quality regardless.
