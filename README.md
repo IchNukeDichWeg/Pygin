@@ -158,4 +158,4 @@ other.
 
 ## License
 
-MIT — see `LICENSE` if present, otherwise released under the MIT terms.
+MIT — see [`LICENSE`](LICENSE).
