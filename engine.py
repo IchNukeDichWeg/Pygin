@@ -130,19 +130,52 @@ logged here. For what the current build does, see "Search features" and
 "Evaluation" above. Aggregate NPS/Elo numbers live in "Cross-version
 benchmark" below.
 
-* **v15**: pre-C-extension baseline, folding in the earliest optimization
-  pass -- itemgetter-based move sort, a mutable eval accumulator, the
-  "improving" heuristic, razoring, history-based LMR/LMP, continuation
-  history, ``piece_at`` -> ``piece_type_at`` in MVV-LVA/SEE/quiescence
-  (``piece_at`` allocates a full ``Piece`` just to read one field), a
-  pawn-structure hash keyed on ``(wp, bp, phase)`` (phase-tapered, so the
-  naive ``(pawns, occ_white)`` key would be wrong), the Lichess Syzygy
-  tablebase probe (``_tb_probe``/``use_tb``, root-only, triviality-guarded
-  so trivial mop-ups skip the ≈150-400ms round trip, network-safe), Internal
-  Iterative Reduction (depth >= 4 with no TT move), and an LMR divisor tuned
-  2.25 -> 2.0 (an overnight 5-variant sweep found every value a statistical
-  tie -- 2.0 is just the noise-peak). Probcut was also tried and removed
-  here -- see "Rejected / shelved experiments" below.
+* **v1**: initial working engine -- negamax + alpha-beta, iterative deepening,
+  an inline dict transposition table, quiescence search, null-move pruning,
+  killer moves and a material + piece-square-table eval. This is the naive
+  baseline the "Early correctness fixes" section above refers to.
+* **v2**: the main search + eval build-out. Selectivity added -- PVS,
+  reverse-futility (static null-move), futility pruning and LMR -- plus
+  aspiration-window root search. New bitboard eval terms: pawn structure,
+  mobility, king safety, bishop pair, rook files. History-heuristic updates
+  and an optional Polyglot opening book (``use_book``).
+* **v3**: endgame + draw handling -- the mop-up term (``_mopup_bb``) that drives
+  the weak king to the edge, contempt-aware draw scoring (``_draw_score``) and
+  the counter-move heuristic.
+* **v4**: Static Exchange Evaluation (``_see``, ``use_see``) for move ordering
+  and pruning losing captures.
+* **v5**: recapture extension (``_recapture_at``).
+* **v6**: endgame eval fix -- lone-loser detection so the king-safety terms are
+  no longer dropped in lone-king endings.
+* **v7**: pin evaluation (``_pin_penalty_bb``, ``use_pin_eval``).
+* **v8**: eval refactor + quiescence stand-pat -- eval split into base /
+  positional halves, mobility and king safety merged into one pass
+  (``_mobility_king_safety_bb``), quiescence stand-pat (``_qs_stand_pat``),
+  trade-down simplification (``use_simplify``) and PV extraction.
+* **v9**: late-move pruning (``use_lmp``), the history malus
+  (``use_history_malus``) and the "improving" heuristic. NPS drops ~14% by
+  design (LMP skips near-leaf quiets) but the search reaches deeper per second.
+* **v10**: transposition-table refactor -- probe/store split into ``_tt_get`` /
+  ``_tt_store`` with two-tier and depth-preferred replacement variants
+  (toggles), plus a quiescence-SEE ordering toggle.
+* **v11**: incremental base eval (``use_incremental_eval``) -- material + PST +
+  phase + tempo maintained by a per-move delta in ``_make`` / ``_unmake``
+  instead of a per-node rescan (byte-identical to the from-scratch scan).
+* **v12**: extension budgeting -- a separate check-extension budget and a
+  ``MAX_EXTENSIONS`` cap so a capture-heavy line cannot starve the other
+  extensions.
+* **v13**: eval-weight retune -- bishop pair, rook files, tempo and the
+  pawn-structure penalties reset from a tuning run.
+* **v14**: online Lichess Syzygy tablebase (``use_tb`` / ``_tb_probe``,
+  root-only, triviality-guarded so trivial mop-ups skip the ≈150-400ms round
+  trip, network-safe), Internal Iterative Reduction (depth >= 4 with no TT
+  move) and a pawn-structure hash keyed on ``(wp, bp, phase)`` (phase-tapered,
+  so the naive ``(pawns, occ_white)`` key would be wrong).
+* **v15**: pre-C-extension baseline. LMR divisor tuned 2.25 -> 2.0 (~12% more
+  reductions; an overnight 5-variant sweep found every value a statistical
+  tie -- 2.0 is just the noise-peak). Probcut was tried and removed here (+4
+  +/-12 Elo at 1s/move, ≈0 at 500ms -- null at both TCs) -- see "Rejected /
+  shelved experiments" below.
 * **v16**: ``_mobility_king_safety_bb`` ported to C (``eval_c.c``, loaded via
   ``ctypes``; build ``python3 eval_build.py``). 0/10,000 positions differ
   from the Python path. **NPS 21,369 -> 27,507 (+28.7%)** at fixed depth.
@@ -570,7 +603,7 @@ def _c_legal_moves(board, _gen=(_mg_lib.generate_legal if _USE_C_MOVEGEN else No
     or ``(None, None)`` if the side to move is in check (caller falls back
     to board.legal_moves; the in-check evasion order is left to python-chess).
 
-    #2.3: each raw int packs the move's mover-PT (bits 15-17), victim-PT
+    # #2.3: each raw int packs the move's mover-PT (bits 15-17), victim-PT
     (bits 18-20, 0 = quiet) and en-passant bit (21) on top of the from/to/
     promo low bits. Callers read those tags directly so the search loop no
     longer needs board.is_capture / board.piece_type_at / is_en_passant per
@@ -2188,7 +2221,7 @@ class Engine:
         pins, summed (White's perspective). ``ctx`` comes from
         ``_eval_base_white`` so no bitboards are recomputed.
 
-        #2.5b: at high phase WITH the C eval available, the single
+        # #2.5b: at high phase WITH the C eval available, the single
         ``mobility_king_safety`` ctypes call now also returns the
         rook_files + bishop_pair contributions (folded in-line on the C
         side). The two Python helpers are skipped in that branch so we
@@ -2734,13 +2767,13 @@ class Engine:
         setup per comparison, which matters because this sort runs at every
         interior search node.
 
-        #1.6: when ``prev_move`` is supplied (the move played to reach this
+        # #1.6: when ``prev_move`` is supplied (the move played to reach this
         node) the per-quiet score is augmented with the 1-ply continuation
         history; if ``ply >= 2`` and ``_move_stack[ply-2]`` is set, the 2-ply
         continuation history is added too. Both bias quiet ordering toward
         moves that have repeatedly followed the same predecessor well.
 
-        #2.3: when raws come from the C generator the capture branch reads
+        # #2.3: when raws come from the C generator the capture branch reads
         mover_pt / victim_pt / is_ep straight out of the move word -- no
         is_capture / is_en_passant / piece_type_at calls per move. The
         in-check / no-movegen fallback path synthesises raws from board
@@ -3142,7 +3175,7 @@ class Engine:
     def get_best_move_timed(self, board, time_limit, max_depth=10):
         """Best move via iterative deepening bounded by ``time_limit`` seconds.
 
-        #13 Lazy SMP: when ``smp_workers > 1`` (or a pool was attached via
+        # #13 Lazy SMP: when ``smp_workers > 1`` (or a pool was attached via
         ``_smp_pool``), the search runs across a PERSISTENT pool of worker
         processes sharing a lock-free TT. The pool is spawned ONCE (lazily, on
         first use) and reused for every later move -- no per-move spawning or
