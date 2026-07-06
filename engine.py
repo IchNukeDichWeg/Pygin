@@ -2802,12 +2802,11 @@ class Engine:
         # uniformly on the in-check fallback too: _synth_raws tags those.
         tt_key15 = (tt_move.from_square | (tt_move.to_square << 6)
                     | ((tt_move.promotion or 0) << 12)) if tt_move is not None else -1
-        k0_key15 = (k0.from_square | (k0.to_square << 6)
-                    | ((k0.promotion or 0) << 12)) if k0 is not None else -1
-        k1_key15 = (k1.from_square | (k1.to_square << 6)
-                    | ((k1.promotion or 0) << 12)) if k1 is not None else -1
-        ct_key15 = (counter.from_square | (counter.to_square << 6)
-                    | ((counter.promotion or 0) << 12)) if counter is not None else -1
+        # V-04: killers and counter are stored pre-packed as their 15-bit key
+        # (raw & 0x7FFF) at write time, so no per-node Move decode is needed.
+        k0_key15 = k0 if k0 is not None else -1
+        k1_key15 = k1 if k1 is not None else -1
+        ct_key15 = counter if counter is not None else -1
         scored = []
         # #9 + #2.3: C move generator returns moves AND raws (parallel lists);
         # None => in check, fall back to python-chess and synthesise raws so
@@ -3143,11 +3142,13 @@ class Engine:
                 return chess.lsb(subset), self.PIECE_VALUES[piece_type]
         return None, 0
 
-    def _store_killer(self, move, ply):
-        if self.killer_0[ply] == move or self.killer_1[ply] == move:
+    def _store_killer(self, key15, ply):
+        # V-04: slots hold the move's 15-bit key (from|to<<6|promo<<12), not a
+        # Move object -- killers are only ever identity-compared, never pushed.
+        if self.killer_0[ply] == key15 or self.killer_1[ply] == key15:
             return
         self.killer_1[ply] = self.killer_0[ply]
-        self.killer_0[ply] = move
+        self.killer_0[ply] = key15
 
     def _update_history(self, color, move, bonus):
         """Nudge the (color, from, to) history score by ``bonus`` (which may be
@@ -4050,15 +4051,16 @@ class Engine:
                         self._update_capt_history(mover_pt_raw, move.to_square,
                                                   victim_pt_raw, bonus)
                 if is_quiet:
-                    self._store_killer(move, ply)
+                    self._store_killer(raw & 0x7FFF, ply)   # V-04: pre-packed key
                     self._update_history(color, move, bonus)         # reward refutation
                     # Malus: every quiet searched earlier here failed to cut.
                     if use_hist_malus:
                         for q in searched_quiets[:-1]:
                             self._update_history(color, q, -bonus)
                     if prev_move is not None:        # record refutation as counter-move
+                        # V-04: store the refutation's 15-bit key, not the Move.
                         self.countermoves[prev_move.from_square
-                                          | (prev_move.to_square << 6)] = move   # P-23
+                                          | (prev_move.to_square << 6)] = raw & 0x7FFF
                     # #1.6: mirror the bonus / malus into the continuation
                     # tables for the same predecessors that ordering used.
                     # Skip when no predecessor is in scope (root / ply 1).
