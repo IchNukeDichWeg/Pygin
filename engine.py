@@ -307,7 +307,7 @@ benchmark" below.
   - C group: ``-O3 -mcpu=native``, constructor table init, directional ring
     popcounts, ``attacked()`` slider guards, mopup folded into the C eval
     (=> eval ABI 2).
-* **v27 (2026-07-06, current ``engine.py``): the risk-free Python NPS batch
+* **v27 (2026-07-06): the risk-free Python NPS batch
   from improvements_v24.md merge #6.** Search is NODE-IDENTICAL to v26
   (every item gated on the 10-position suite = 148,775 nodes + the
   h1h8/3495 reference), so this is a pure speed refactor -- byte-identical
@@ -339,6 +339,20 @@ benchmark" below.
   3495): V-05 (predecessor key computed once in `_negamax`), V-07 (`_capture_moves`
   carries `victim_value` on the row so quiescence doesn't re-decode it), V-08
   (`see_attackers` skips the slider magic lookup when no such slider exists).
+* **v28 (2026-07-06, current ``engine.py``): another node-identical NPS batch.**
+  Search is NODE-IDENTICAL to v27 (every item gated on the 148,775-node
+  depth-6 suite + the h1h8/3495 reference). Items: U-04 (king squares derived
+  inside the C eval from the ``kings`` bitboard, eval ABI 2 -> 3), V-04
+  (killers/counter stored pre-packed as their 15-bit key, not ``Move``
+  objects), V-06 (passed-pawn taper as a precomputed ``[phase][rel]`` table),
+  item 64 (``_hist_key`` inlined at its two hottest read sites), V-09 (skip the
+  C ``generate_legal`` round-trip + its ``clean_castling_rights`` on in-check
+  nodes), and the V-14a-d cleanup cluster (dead poll backstop, one-shot book
+  legal set, module-scope file masks, arch-aware build flags). Also removed the
+  dead ``positional_extras`` C export. **Measured +4.38% NPS vs v27**
+  (interleaved subprocess best-of-5, own-.so each: 90,393 -> 94,351). Since
+  search is node-identical, this should convert ~+13 Elo at a clock TC --
+  A/B vs v27 pending.
 
 Cross-version benchmark
 -----------------------
