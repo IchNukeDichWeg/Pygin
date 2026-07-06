@@ -82,6 +82,8 @@ CC="$(command -v clang || command -v cc || command -v gcc)"
 ensure stockfish stockfish || true
 
 # --- 4. python deps --------------------------------------------------- #
+have pip3 || ensure pip3 python3-pip
+export PIP_BREAK_SYSTEM_PACKAGES=1   # Debian/Ubuntu PEP 668 guard -- this box is dedicated to the engine
 echo "-> installing Python dependencies (python-chess) ..."
 python3 -m pip install --upgrade pip >/dev/null 2>&1 || true
 python3 -m pip install -r requirements.txt
