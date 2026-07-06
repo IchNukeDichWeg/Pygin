@@ -487,10 +487,10 @@ try:
         ctypes.c_int,                       # phase
     ]
     _eval_lib.mobility_king_safety.restype = ctypes.c_int
-    # #2.5: positional_extras = bishop_pair + rook_files + mopup, in one call.
-    # set_positional_params keeps the C-side constants in sync with the Python
-    # tuner (called once from Engine.__init__, same pattern as the mobility
-    # params). `strong != 0` mirrors the lone-loser branch in _eval_positional_white.
+    # #2.5: rook_files + bishop_pair + mopup constants. set_positional_params
+    # keeps the C-side values in sync with the Python tuner (called once from
+    # Engine.__init__, same pattern as the mobility params). These constants
+    # are read by mobility_king_safety's inlined #2.5b pass + folded mopup.
     _eval_lib.set_positional_params.argtypes = [ctypes.c_int] * 9
     _eval_lib.set_positional_params.restype = None
     # #3.x: rook on 7th rank. Phased (mg, eg) weights; 0/0 disables on the
@@ -519,16 +519,6 @@ try:
     _eval_lib.set_storm_params.restype = None
     _eval_lib.set_shelter_params.argtypes = [ctypes.c_int] * 3
     _eval_lib.set_shelter_params.restype = None
-    _eval_lib.positional_extras.argtypes = [
-        ctypes.c_uint64, ctypes.c_uint64,   # knights, bishops
-        ctypes.c_uint64, ctypes.c_uint64,   # rooks, queens
-        ctypes.c_uint64, ctypes.c_uint64,   # occ_w, occ_b
-        ctypes.c_uint64, ctypes.c_uint64,   # wp, bp
-        ctypes.c_int, ctypes.c_int,         # wksq, bksq
-        ctypes.c_int, ctypes.c_int,         # phase, strong
-        ctypes.c_int,                       # include_mopup
-    ]
-    _eval_lib.positional_extras.restype = ctypes.c_int
     # Roadmap item #15: Static Exchange Evaluation, ported from _see/
     # _see_attackers/_least_valuable_attacker (engine.py) to eval_c.c.
     _eval_lib.see.argtypes = [
@@ -1588,7 +1578,7 @@ class Engine:
             self.KING_RING_ATTACK_MG, self.KING_RING_ATTACK_EG,
             self.KING_OPEN_FILE_MG,  self.KING_OPEN_FILE_EG,
         )
-        # #2.5: same sync for the new positional_extras call.
+        # #2.5: sync the rook_files + bishop_pair + mopup constants.
         _eval_lib.set_positional_params(
             self.ROOK_OPEN_FILE, self.ROOK_SEMIOPEN_FILE,
             self.BISHOP_PAIR_MG, self.BISHOP_PAIR_EG,
@@ -2253,8 +2243,7 @@ class Engine:
         rook_files + bishop_pair contributions (folded in-line on the C
         side). The two Python helpers are skipped in that branch so we
         don't double-count. Low phase / pure-Python fallback still calls
-        them; the standalone ``positional_extras`` C helper (kept in
-        eval_c.c) is unused but documents the prior trial fold.
+        them.
         """
         (occ_w, occ_b, pawns, knights, bishops, rooks, queens, kings,
          wp, bp, phase) = ctx
