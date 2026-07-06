@@ -9,15 +9,17 @@ Also links in Constants.c so the magic-bitboard tables (ROOK_ATTACKS,
 BISHOP_ATTACKS, INBETWEEN_BITBOARDS, the magic numbers, masks, REL_BITS) are
 visible to the slider-attack helpers in eval_c.c (#2.1 / #2.2).
 """
-import subprocess, sys, os
+import platform, subprocess, sys, os
 
 here = os.path.dirname(os.path.abspath(__file__))
 srcs = [os.path.join(here, 'eval_c.c'), os.path.join(here, 'Constants.c')]
 out = os.path.join(here, 'eval_c.so')
 # C-03/C-04: -O3 (more aggressive inlining/unrolling of the popcount-heavy
-# eval loops) + -mcpu=native (schedule for this exact core; the .so is
-# host-local by design). On x86 Linux use -march=native instead.
-cmd = ['clang', '-O3', '-mcpu=native', '-shared', '-fPIC', '-o', out] + srcs
+# eval loops) + tune for this exact core (the .so is host-local by design).
+# V-14d: ARM wants -mcpu=native, x86 wants -march=native.
+_mach = platform.machine().lower()
+_tune = '-mcpu=native' if _mach.startswith(('arm', 'aarch')) else '-march=native'
+cmd = ['clang', '-O3', _tune, '-shared', '-fPIC', '-o', out] + srcs
 print(' '.join(cmd))
 r = subprocess.run(cmd)
 if r.returncode == 0:
