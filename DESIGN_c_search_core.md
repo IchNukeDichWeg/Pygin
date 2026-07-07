@@ -123,8 +123,21 @@ Driven from Python at the root only; each sub-step verified before the next:
    11.4M → 6.9M (probe/store/hash + a conservative full clear per search; in
    real iterative-deepening the TT persists across iterations and moves, so
    this understates steady-state). ~76× the Python engine.
-3. **Pruning** — null-move, RFP, razoring, futility, LMR/LMP, extensions,
-   aspiration windows, the singular-extension machinery (dormant is fine).
+3. **Pruning — DONE (2026-07-08).** PVS + null-move + reverse-futility (static
+   null) + LMR (log table) + LMP + frontier futility, with the `in_chk` hint
+   threaded to children (parent's post-move `in_check` → child, and `0` to the
+   null child). First lossy step, so verified differently: **98.7% node
+   reduction** at depth 8 (`set_prune` 0 vs 1) and a **tactical suite intact**
+   — free queen (fxg4 +899), back-rank mate (Rd8# found at depth 2 in pure
+   alpha-beta, confirming mate detection), promotion (g8=Q), and correctly
+   *declining* a rook-defended knight capture (down-a-knight −342). Move
+   quality on quiet positions is still governed by the impoverished eval
+   (material + mobility only — no PST/pawn-structure), which is step 5;
+   the *search machinery* is correct. Razoring/extensions deferred (razoring
+   wants qsearch = step 4; check extensions want a budget to avoid the
+   fixed-depth infinite-extension trap). NPS 6.9M → 3.8M (extra static eval +
+   per-move gives-check + PVS re-searches), but nodes/depth fell ~75×, so
+   effective depth-in-fixed-time rose sharply — NPS alone understates pruning.
 4. **Quiescence** — stand-pat + delta pruning + SEE, matching the Python qsearch.
 5. **Full static eval in C** — add material+PST+phase-taper+pawn-structure to
    the mobility/king-safety already used here (differential vs the Python eval
