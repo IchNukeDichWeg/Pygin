@@ -43,7 +43,7 @@ REF_NODES = 3495          # update on confirmed search changes (see docstring)
 # When a feature's A/B confirms it into a version: remove it from this tuple
 # AND re-measure REF_NODES with it on. (Time-policy toggles never appear here
 # -- they don't change fixed-depth node counts.)
-BASELINE_OFF = ("use_corr_hist",)   # P-42, A/B pending vs v30
+BASELINE_OFF = ()   # (none pending; P-42 was here, A/B'd -16.4 and reverted)
 
 _failed = []
 
