@@ -4094,24 +4094,6 @@ class Engine:
                         victim_pt_raw = (raw >> MV_SHIFT_VICTIM) & MV_MASK_PT
                         self._update_capt_history(mover_pt_raw, move.to_square,
                                                   victim_pt_raw, bonus)
-                    # P-41: the quiets searched before this capture cutoff also
-                    # failed to refute -- penalize them, as Stockfish does. The
-                    # cutting move is a capture (never in searched_quiets), so
-                    # the whole list gets the malus (no [:-1]). Main + both
-                    # continuation tables, mirroring the quiet-cutoff malus below.
-                    if use_hist_malus:
-                        for q in searched_quiets:
-                            self._update_history(color, q, -bonus)
-                        if pm1 is not None:
-                            for q in searched_quiets:
-                                self._update_cont_history(self.cont_history, pm1,
-                                    _hist_key(color, q.from_square, q.to_square),
-                                    -bonus)
-                        if pm2 is not None:
-                            for q in searched_quiets:
-                                self._update_cont_history(self.cont_history_2, pm2,
-                                    _hist_key(color, q.from_square, q.to_square),
-                                    -bonus)
                 if is_quiet:
                     self._store_killer(raw & 0x7FFF, ply)   # V-04: pre-packed key
                     self._update_history(color, move, bonus)         # reward refutation
