@@ -128,7 +128,7 @@ NEAR_EQUAL_BASES = {
     "engine_outpost", "engine_space", "engine_phalanx", "engine_storm",
     "engine_shelter", "engine_combined",
     # near-current snapshots (v24-vs-v21 +11.75; v25-vs-v24 ~0)
-    "engine21", "engine24", "engine25", "engine26", "engine27","engine28", "engine29", "engine30",
+    "engine24", "engine25", "engine26", "engine27","engine28", "engine29", "engine30",
     # v14-era near-equal cluster (engine-of-2026-06-23 vs v14 measured ~0;
     # the param-sweep variants were within +-8 of v14)
     "engine14", "sweep_lmr175", "sweep_lmr225", "sweep_pc150", "sweep_pc250",
