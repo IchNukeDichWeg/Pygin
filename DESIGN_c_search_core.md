@@ -106,8 +106,14 @@ conservative 3-6× slowdown from here still leaves ~25-50× the current engine.
 ## Phase 3 breakdown (the big multi-session port)
 
 Driven from Python at the root only; each sub-step verified before the next:
-1. **Move ordering in C** — history/killers/countermove/continuation tables as
-   C arrays; SEE (already in `eval_c.c`) for capture ordering + pruning.
+1. **Move ordering in C — DONE (2026-07-08).** history[color][from<<6|to],
+   killers[ply], counter[prev] C arrays + SEE-demoted MVV-LVA captures, with
+   gravity history + killer/counter updates on quiet beta-cutoffs. Verified
+   **value-identical** to plain alpha-beta (`set_order_mode` 0 vs 1: root score
+   matches on startpos/Kiwipete/middlegame) with node reductions of 47% / 4% /
+   16%. NPS 13.5M → 11.4M (ordering overhead; the large ordering win is the
+   TT move, which lands in step 2). Continuation history deferred (needs the
+   move stack; fold in with step 3).
 2. **C-array transposition table** — fixed-size, packed entries
    (`shared_tt.py`'s 128-bit layout is the prototype); mate-score encoding.
 3. **Pruning** — null-move, RFP, razoring, futility, LMR/LMP, extensions,
