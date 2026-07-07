@@ -364,7 +364,7 @@ benchmark" below.
   Elo** (ptnml 709/1188/2375/1359/869, pair ratio 1.17, normalized +22.53) --
   spot on the ~+13 predicted from +4.38% NPS, and the node-identical-speed ->
   Elo ratio (~3 Elo per 1% NPS) now holds steady across v26/v27/v28.
-* **v29 (2026-07-07, current ``engine.py``): P-35 soft-stop + two bug fixes.**
+* **v29 (2026-07-07): P-35 soft-stop + two bug fixes.**
   ``soft_stop_frac = 0.55``: after completing a depth, don't start the next
   ID iteration once 55% of the move budget is spent -- it typically costs at
   least as much as all previous iterations combined and would be aborted
@@ -382,6 +382,21 @@ benchmark" below.
   so it played in permanent self-inflicted time pressure. Caveat: time policy
   is worth the most when effective clocks are thin (heavily parallel server);
   expect a smaller edge at leisurely TCs.
+* **v30 (2026-07-07, current ``engine.py``): U-06 stability time scaling +
+  dormant singular extensions.** U-06 (``use_stability_time``) scales the
+  P-35 soft-stop fraction by best-move stability across completed ID
+  iterations: unchanged >= 2 iterations -> stop at 0.40 of the budget (the
+  move needs no more confirmation; bank the clock), flipped on the last
+  iteration -> allow 0.80 (contested position, spend where it matters),
+  else the flat 0.55. Hard budget cap still rules; fixed-depth searches
+  untouched. Also carries P-33 singular extensions as DORMANT infrastructure
+  (min-depth 8; A/B'd null there and negative at 6 -- see the Extensions
+  bullet) and the V-02/V-03 bug fixes. **A/B vs v29 (2026-07-07): 10,000
+  games @ 45+0.1s, 3930W/2454D/3616L = 51.57% -> +10.91 +/-6.8 Elo** (ptnml
+  615/855/1831/999/700, pair ratio 1.16, normalized +18.32) -- within the
+  +0-8 estimate band. The time-policy vein is 2-for-2 (P-35 +38.3, U-06
+  +10.9) while depth-8-regime tree surgery went 0-for-2 (P-41, P-33):
+  at thin effective clocks, clock intelligence is where the Elo is.
 
 Cross-version benchmark
 -----------------------
