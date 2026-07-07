@@ -107,6 +107,14 @@ Speed tricks:
 * The pawn-structure term depends only on the pawn bitboards and phase, so it
   is memoized in a pawn hash keyed on ``(white pawns, black pawns, phase)``.
 
+**Correction history** (``use_corr_hist``, A/B pending): a per-(side,
+pawn-structure) damped average of ``search score - raw static eval`` is added
+to the static eval before the RFP / razoring / null-move / futility gates read
+it, so a systematically biased HCE eval doesn't make all eval-gated pruning
+uniformly too timid or too reckless. The RAW eval is what is stored in the TT
+and what the update measures against; only the corrected value feeds the
+pruning gates, so a TT reuse never double-applies the correction.
+
 Several further eval/search refinements (pin penalty, trade-down
 simplification, recapture extension, alternative TT-replacement schemes,
 quiescence SEE ordering) exist as off-by-default A/B toggles in ``__init__``;
