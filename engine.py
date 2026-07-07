@@ -446,12 +446,14 @@ from the internal ledger (chain-audit validated) and from the odds series
 below.
 
 **Odds series vs FULL-strength Stockfish 18 (no limiter, 45+0.15):**
-queen odds (Qd1) 100/100 (2026-07-06, saturated); **rook odds (Ra1) 48.00%
-over 100 games (2026-07-07) -- dead even with full Stockfish a rook down.**
-Full-strength SF plays real chess (no error scheduler), so this series
-actually moves with engine improvements; rook odds is the recurring
-external progress benchmark (~13 min per 100 games; the 100-game CI is
-±69, use ~400 games for ±35).
+queen odds (Qd1) 100/100 (2026-07-06, saturated); **rook odds (Ra1): 48.00%
+(v29 era) -> 50.50% (v30, 2026-07-07) over 100 games each -- dead even with
+full Stockfish a rook down.** The +2.5-point move matches the +49 internal
+Elo banked between the runs in direction, but a 100-game sample (CI ±69)
+cannot resolve it. Full-strength SF plays real chess (no error scheduler),
+so this series actually moves with engine improvements; rook odds is the
+recurring external progress benchmark (~13 min per 100 games; use ~400
+games / ±35 when the point is to SEE a ~+50 Elo step).
 
 Earlier SMP benchmark: Stockfish skill ≈2400, engine running
 ``SMP_WORKERS = 4``: 400 games, 188W / 131D / 81L (63.4%) -> +95 +/-37 Elo
