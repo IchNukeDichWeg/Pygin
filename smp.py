@@ -45,8 +45,16 @@ def pick_best(rows, stm_white):
     """Deepest-completed iteration wins; ties broken by the score best for the
     SIDE TO MOVE. Worker scores (row[2]) are White-POV, so they are negated
     when Black is the mover -- the old raw-score tiebreak systematically
-    picked the move WORST for Black (P-02)."""
-    return max(rows, key=lambda r: (r[1], r[2] if stm_white else -r[2]))
+    picked the move WORST for Black (P-02).
+
+    U-10: on an EXACT (depth, stm-score) tie between workers proposing
+    different moves, pick randomly among the tied rows -- `max()` alone
+    returns the first by wall-clock arrival, mirroring the root's
+    `random.choice(near)` tiebreak instead of a nondeterministic race."""
+    key = lambda r: (r[1], r[2] if stm_white else -r[2])
+    best = max(key(r) for r in rows)
+    tied = [r for r in rows if key(r) == best]
+    return random.choice(tied) if len(tied) > 1 else tied[0]
 
 
 def _apply_cfg(e, cfg, applied=None):
