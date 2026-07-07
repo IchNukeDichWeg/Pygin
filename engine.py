@@ -339,7 +339,7 @@ benchmark" below.
   3495): V-05 (predecessor key computed once in `_negamax`), V-07 (`_capture_moves`
   carries `victim_value` on the row so quiescence doesn't re-decode it), V-08
   (`see_attackers` skips the slider magic lookup when no such slider exists).
-* **v28 (2026-07-06, current ``engine.py``): another node-identical NPS batch.**
+* **v28 (2026-07-06): another node-identical NPS batch.**
   Search is NODE-IDENTICAL to v27 (every item gated on the 148,775-node
   depth-6 suite + the h1h8/3495 reference). Items: U-04 (king squares derived
   inside the C eval from the ``kings`` bitboard, eval ABI 2 -> 3), V-04
@@ -355,6 +355,24 @@ benchmark" below.
   Elo** (ptnml 709/1188/2375/1359/869, pair ratio 1.17, normalized +22.53) --
   spot on the ~+13 predicted from +4.38% NPS, and the node-identical-speed ->
   Elo ratio (~3 Elo per 1% NPS) now holds steady across v26/v27/v28.
+* **v29 (2026-07-07, current ``engine.py``): P-35 soft-stop + two bug fixes.**
+  ``soft_stop_frac = 0.55``: after completing a depth, don't start the next
+  ID iteration once 55% of the move budget is spent -- it typically costs at
+  least as much as all previous iterations combined and would be aborted
+  mid-depth; the banked clock compounds via the time manager on later moves
+  (None disables; replicated to SMP workers). Fixed-depth searches are
+  untouched (148,775-node suite exact). Plus V-02 (SMP pool path syncs
+  ``nodes_searched``, reporting-only) and V-03 (in-check quiescence gets the
+  same ``_path`` repetition draw guard as ``_negamax``; node-identical on
+  non-repeating lines). P-41 (capture-cutoff history malus) was tried between
+  v28 and v29 and REJECTED at -7.99 -- see "Rejected / shelved experiments".
+  **A/B vs v28 (2026-07-07): 10,000 games @ 45+0.1s clock, 4363W/2373D/3264L
+  = 55.50% -> +38.34 +/-6.9 Elo** (ptnml 477/731/1871/1058/863, pair ratio
+  1.59, normalized +64.97) -- ~5x the +3-8 predicted: the v28 baseline burned
+  its full budget on every move (always starting a doomed final iteration),
+  so it played in permanent self-inflicted time pressure. Caveat: time policy
+  is worth the most when effective clocks are thin (heavily parallel server);
+  expect a smaller edge at leisurely TCs.
 
 Cross-version benchmark
 -----------------------
