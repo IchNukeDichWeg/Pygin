@@ -425,6 +425,14 @@ Rejected / shelved experiments
   **+5 +/-4 Elo FOR the base** -- i.e. ≈5 Elo weaker combined; individually-
   marginal features didn't compose additively. All five features above stay
   OFF; eval-tuning phase closed 2026-07-02.
+* **History malus on capture cutoffs (P-41)** (penalize the quiets searched
+  before a CAPTURE causes the cutoff, as Stockfish does -- the existing malus
+  only fires on quiet cutoffs): **-7.99 +/-9.6 Elo** (5,000 games vs v28 @
+  45+0.1s, 48.85%, pair ratio 0.88, normalized -13.69). Expected +0-4;
+  measured clearly negative -- with this engine's ordering, penalizing the
+  whole quiet list on every capture cutoff over-damps quiet history (capture
+  cutoffs vastly outnumber quiet ones, so the malus flux swamps the bonus
+  flux). Reverted 2026-07-07; the quiet-cutoff-only malus stays.
 
 Future Improvements (vs. Stockfish)
 -----------------------------------
