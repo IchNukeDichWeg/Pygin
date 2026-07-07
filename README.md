@@ -59,6 +59,14 @@ stockfish, `python-chess`), builds the C libraries (`eval_c.so`, `movegen.so`)
 for your platform, best-effort builds the C libraries for the `Old Engine/`
 snapshots (so you can play them head-to-head), and runs a quick self-test.
 
+To check the installation health at any time (C libraries loaded with the
+right ABI, move generation exact, search reproducing the reference position
+node-for-node, snapshots ready for A/B matches):
+
+```bash
+python3 selftest.py        # ~5 s; exit 0 = everything OK, chainable
+```
+
 > If you prefer to keep things isolated, create a virtualenv first
 > (`python3 -m venv .venv && source .venv/bin/activate`) and then run
 > `./setup.sh`.
