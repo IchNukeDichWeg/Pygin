@@ -114,8 +114,15 @@ Driven from Python at the root only; each sub-step verified before the next:
    16%. NPS 13.5M → 11.4M (ordering overhead; the large ordering win is the
    TT move, which lands in step 2). Continuation history deferred (needs the
    move stack; fold in with step 3).
-2. **C-array transposition table** — fixed-size, packed entries
-   (`shared_tt.py`'s 128-bit layout is the prototype); mate-score encoding.
+2. **C-array transposition table — DONE (2026-07-08).** Fixed 2^21 x 24-byte
+   entries, depth-preferred replace, ply-relative mate encoding, O(1) mix-hash
+   board key (full key stored + checked on probe → collisions rejected). TT
+   move scored first in ordering (`ORD_TT`). Verified **value-identical** to
+   the no-TT search (`set_use_tt` 0 vs 1: root score matches at depth 8) with
+   node reductions **53% / 59% / 45%** (startpos / Kiwipete / middlegame). NPS
+   11.4M → 6.9M (probe/store/hash + a conservative full clear per search; in
+   real iterative-deepening the TT persists across iterations and moves, so
+   this understates steady-state). ~76× the Python engine.
 3. **Pruning** — null-move, RFP, razoring, futility, LMR/LMP, extensions,
    aspiration windows, the singular-extension machinery (dormant is fine).
 4. **Quiescence** — stand-pat + delta pruning + SEE, matching the Python qsearch.
