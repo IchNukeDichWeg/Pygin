@@ -350,9 +350,11 @@ benchmark" below.
   nodes), and the V-14a-d cleanup cluster (dead poll backstop, one-shot book
   legal set, module-scope file masks, arch-aware build flags). Also removed the
   dead ``positional_extras`` C export. **Measured +4.38% NPS vs v27**
-  (interleaved subprocess best-of-5, own-.so each: 90,393 -> 94,351). Since
-  search is node-identical, this should convert ~+13 Elo at a clock TC --
-  A/B vs v27 pending.
+  (interleaved subprocess best-of-5, own-.so each: 90,393 -> 94,351). **A/B vs
+  v27 (2026-07-06): 13,000 games, 5028W/3435D/4537L = 51.89% -> +13.13 +/-6.0
+  Elo** (ptnml 709/1188/2375/1359/869, pair ratio 1.17, normalized +22.53) --
+  spot on the ~+13 predicted from +4.38% NPS, and the node-identical-speed ->
+  Elo ratio (~3 Elo per 1% NPS) now holds steady across v26/v27/v28.
 
 Cross-version benchmark
 -----------------------
