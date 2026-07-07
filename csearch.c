@@ -479,14 +479,54 @@ static uint32_t g_counter[4096];
 static int g_order_mode = 1;
 void set_order_mode(int m) { g_order_mode = m; }
 
+#define ORD_TT       2000000
 #define ORD_CAPTURE  1000000
 #define ORD_KILLER0   900000
 #define ORD_KILLER1   800000
 #define ORD_COUNTER   700000
 #define ORD_BADCAP   (-900000)
 
+/* --- Phase-3 step 2: C-array transposition table ---------------------- *
+ * Fixed-size, always-allocated, 24-byte entries; depth-preferred replace;
+ * ply-relative mate encoding. Position key is an O(1) mix hash of the board
+ * state (the 6 piece bitboards fully define piece placement; occ[WHITE]
+ * splits colour; + castling/turn/ep). The full key is stored and checked on
+ * probe, so a hash collision is rejected, never trusted. */
+#include <stdlib.h>
+#define TT_BITS 21
+#define TT_SIZE (1u << TT_BITS)
+#define TT_MASK (TT_SIZE - 1u)
+#define TT_EXACT 0
+#define TT_LOWER 1
+#define TT_UPPER 2
+#define MATE_THRESH (CS_INF - 1000)
+
+typedef struct {
+    uint64_t key;
+    int32_t  value;
+    uint32_t move;      /* 16-bit move key in low bits */
+    int16_t  depth;
+    int16_t  flag;
+} TTEntry;
+
+static TTEntry* g_tt = NULL;
+static int g_use_tt = 1;
+void set_use_tt(int v) { g_use_tt = v; }
+
+static inline uint64_t board_key(const Board* b)
+{
+    uint64_t h = 0x9E3779B97F4A7C15ULL, x;
+    #define MIX(v) x = (v); h ^= x; h *= 0xFF51AFD7ED558CCDULL; h ^= h >> 29;
+    MIX(b->pawns) MIX(b->knights) MIX(b->bishops)
+    MIX(b->rooks) MIX(b->queens) MIX(b->kings)
+    MIX(b->occ[WHITE]) MIX(b->castling)
+    MIX((uint64_t)b->turn | ((uint64_t)(b->ep + 1) << 8))
+    #undef MIX
+    return h;
+}
+
 static void order_moves(const Board* b, uint32_t* mv, int n, int ply,
-                        uint32_t counter_key)
+                        uint32_t counter_key, uint32_t tt_move)
 {
     int color = b->turn, full = g_order_mode;
     uint32_t k0 = g_killers[ply][0], k1 = g_killers[ply][1];
@@ -497,7 +537,9 @@ static void order_moves(const Board* b, uint32_t* mv, int n, int ply,
         int victim = (m >> MV_SHIFT_VICTIM) & 7;
         int mover  = (m >> MV_SHIFT_MOVER) & 7;
         int s;
-        if (victim) {
+        if (full && tt_move && (m & 0x7FFF) == tt_move) {
+            s = ORD_TT;                                /* TT move first */
+        } else if (victim) {
             s = ORD_CAPTURE + victim * 100 - mover;   /* MVV-LVA */
             if (full && mover > victim) {              /* maybe losing -> SEE */
                 int sv = see(b->pawns, b->knights, b->bishops, b->rooks,
@@ -537,15 +579,38 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     g_nodes++;
     if (depth == 0) return eval_full_stm(b);
 
+    /* --- TT probe -------------------------------------------------- */
+    uint64_t key = 0;
+    uint32_t tt_move = 0;
+    TTEntry* tte = NULL;
+    if (g_use_tt) {
+        key = board_key(b);
+        tte = &g_tt[key & TT_MASK];
+        if (tte->key == key) {
+            tt_move = tte->move;
+            if (tte->depth >= depth) {
+                int v = tte->value;                 /* ply-relative -> node */
+                if (v >= MATE_THRESH) v -= ply;
+                else if (v <= -MATE_THRESH) v += ply;
+                if (tte->flag == TT_EXACT) return v;
+                if (tte->flag == TT_LOWER && v > alpha) alpha = v;
+                else if (tte->flag == TT_UPPER && v < beta) beta = v;
+                if (alpha >= beta) return v;
+            }
+        }
+    }
+    int alpha_orig = alpha;                          /* AFTER the TT narrowing */
+
     uint32_t moves[256];
     int n = gen_legal(b, moves);
     if (n == 0)
-        return in_check(b) ? -CS_INF + (100 - depth) : 0;
+        return in_check(b) ? -CS_INF + ply : 0;      /* ply-relative mate */
 
     uint32_t counter_key = (prev12 != 0xFFFFFFFF) ? g_counter[prev12] : 0;
-    order_moves(b, moves, n, ply, counter_key);
+    order_moves(b, moves, n, ply, counter_key, tt_move);
 
     int color = b->turn, best = -CS_INF;
+    uint32_t best_move = moves[0];
     uint32_t quiets[256]; int nq = 0;   /* quiet from<<6|to searched, for malus */
     for (int i = 0; i < n; i++) {
         uint32_t m = moves[i];
@@ -556,7 +621,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         apply_move(&c, m);
         int v = -negamax(&c, depth - 1, -beta, -alpha, ply + 1,
                          (ply + 1 < CS_MAXPLY) ? (uint32_t)fromto : 0xFFFFFFFF);
-        if (v > best) best = v;
+        if (v > best) { best = v; best_move = m; }
         if (v > alpha) alpha = v;
         if (alpha >= beta) {                /* fail-hard cutoff */
             if (!victim && g_order_mode) {  /* quiet cutoff -> ordering updates */
@@ -564,15 +629,26 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                 hist_update(color, fromto, bonus);
                 for (int q = 0; q < nq - 1; q++)
                     hist_update(color, quiets[q], -bonus);
-                uint32_t key = m & 0x7FFF;
-                if (ply < CS_MAXPLY && g_killers[ply][0] != key) {
+                uint32_t kk = m & 0x7FFF;
+                if (ply < CS_MAXPLY && g_killers[ply][0] != kk) {
                     g_killers[ply][1] = g_killers[ply][0];
-                    g_killers[ply][0] = key;
+                    g_killers[ply][0] = kk;
                 }
-                if (prev12 != 0xFFFFFFFF) g_counter[prev12] = key;
+                if (prev12 != 0xFFFFFFFF) g_counter[prev12] = kk;
             }
             break;
         }
+    }
+
+    /* --- TT store: depth-preferred, ply-relative mate encoding ----- */
+    if (g_use_tt && (tte->key != key || tte->depth <= depth)) {
+        int flag = (best <= alpha_orig) ? TT_UPPER
+                 : (best >= beta)       ? TT_LOWER : TT_EXACT;
+        int sv = best;
+        if (sv >= MATE_THRESH) sv += ply;
+        else if (sv <= -MATE_THRESH) sv -= ply;
+        tte->key = key; tte->value = sv; tte->move = best_move & 0xFFFF;
+        tte->depth = (int16_t)depth; tte->flag = (int16_t)flag;
     }
     return best;
 }
@@ -591,9 +667,11 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
     memset(g_history, 0, sizeof(g_history));
     memset(g_killers, 0, sizeof(g_killers));
     memset(g_counter, 0, sizeof(g_counter));
+    if (g_tt == NULL) g_tt = (TTEntry*)calloc(TT_SIZE, sizeof(TTEntry));
+    memset(g_tt, 0, TT_SIZE * sizeof(TTEntry));   /* fresh TT per search */
     uint32_t moves[256];
     int n = gen_legal(&b, moves);
-    order_moves(&b, moves, n, 0, 0);
+    order_moves(&b, moves, n, 0, 0, 0);
     int best = -CS_INF, alpha = -CS_INF, beta = CS_INF;
     uint32_t best_move = n ? moves[0] : 0;
     for (int i = 0; i < n; i++) {
