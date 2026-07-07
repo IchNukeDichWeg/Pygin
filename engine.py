@@ -969,6 +969,14 @@ class Engine:
     NULL_MOVE_R = 2                          # base null-move reduction
     LMR_MIN_MOVE = 3                         # first move index eligible for LMR
     MAX_EXTENSIONS = 5                      # non-check extension plies per line
+    # P-33 singular extensions: at depth >= SINGULAR_MIN_DEPTH with a
+    # TT_LOWER/TT_EXACT entry of depth >= depth - SINGULAR_TT_SLACK, search
+    # the OTHER moves at depth // 2 against tt_value - SINGULAR_MARGIN*depth;
+    # if they all fail low, the TT move is "singular" -- extend it by 1
+    # (drawing on ext_budget like the other non-check extensions).
+    SINGULAR_MIN_DEPTH = 8
+    SINGULAR_MARGIN = 2                      # cp per ply of depth
+    SINGULAR_TT_SLACK = 3
     # Check extensions get their OWN budget so a line full of recaptures can't
     # starve them -- that was why long checking/mating sequences (especially in
     # the endgame) stopped being extended. Generous, but still capped (and
@@ -1208,6 +1216,15 @@ class Engine:
         #                             indexed by _hist_key(color, frm, to)}
         self.cont_history_2 = {}  # same shape, keyed by the move from ply-2
         self._move_stack = [None] * (self.MAX_PLY + 2)
+
+        # P-33 singular extensions (see the SINGULAR_* constants). The
+        # exclusion search re-enters _negamax at the SAME ply with
+        # _excl[ply] set to the TT move's 15-bit key; that node then skips
+        # the TT cutoff (the triggering entry would short-circuit it), the
+        # excluded move itself, null-move pruning and its TT store. -1 =
+        # no exclusion (int sentinel so the per-move compare stays int==int).
+        self.use_singular_ext = True
+        self._excl = [-1] * (self.MAX_PLY + 2)
 
         # #13: incremental Zobrist (maintained only while use_zobrist is on, for
         # the SMP shared TT). Off by default -> zero overhead in normal play.
@@ -1725,6 +1742,7 @@ class Engine:
         "lazy_pv_eval", "use_history_malus", "use_see", "use_qsee_order",
         "use_tt_depth_replace", "use_tt_two_tier", "use_pin_eval",
         "use_simplify", "recapture_ext", "lmr_aggressive", "soft_stop_frac",
+        "use_singular_ext",
     )
 
     def _smp_config(self):
@@ -3731,13 +3749,19 @@ class Engine:
         if self._path.get(key):
             return self._draw_score(board)
 
+        # P-33: exclusion marker for this ply. Set (to a move's 15-bit key)
+        # only while a singular-extension exclusion search is re-searching
+        # this node; -1 otherwise. While set: no TT cutoff, no null move,
+        # skip the excluded move, no TT store.
+        excl = self._excl[ply]
+
         # --- Transposition-table probe --------------------------------- #
         tt_entry = self._tt_get(key)
         tt_move = None
         tt_eval = None                # cached static eval from a prior visit
         if tt_entry is not None:
             tt_depth, tt_flag, tt_value, tt_move, tt_eval, _tt_entry_gen = tt_entry
-            if tt_depth >= depth:
+            if tt_depth >= depth and excl == -1:
                 value = self._tt_value_from(tt_value, ply)
                 if tt_flag == TT_EXACT:
                     return value
@@ -3835,7 +3859,10 @@ class Engine:
                 return q
 
         # --- Null-move pruning ----------------------------------------- #
-        if (depth >= 3 and not in_check and not is_pv
+        # P-33: never null-prune inside an exclusion search -- the position
+        # is being probed with its best move removed, exactly the situation
+        # where "do nothing" bounds mislead.
+        if (depth >= 3 and not in_check and not is_pv and excl == -1
                 and static_eval >= beta
                 and self._has_non_pawn_material(board, board.turn)
                 and beta < self.MATE_THRESHOLD):
@@ -3907,6 +3934,35 @@ class Engine:
         # the engine from cutting off forcing endgame mating sequences early.
         single_reply = len(scored) == 1
 
+        # --- P-33: singular-extension probe ----------------------------- #
+        # If a deep-enough TT entry proves the TT move is a LOWER/EXACT bound,
+        # ask whether ANY other move comes close: re-search this node at half
+        # depth with the TT move excluded, null-window at tt_value - margin.
+        # All others failing low => the TT move is "singular" -- extend it.
+        # MUST run before this node's _path increment below (the same-ply
+        # re-entry would otherwise see itself as a repetition), and never
+        # nests (excl == -1 guard).
+        singular_rid = -1
+        if (self.use_singular_ext and depth >= self.SINGULAR_MIN_DEPTH
+                and excl == -1 and not in_check and not single_reply
+                and tt_move is not None
+                and tt_flag != TT_UPPER
+                and tt_depth >= depth - self.SINGULAR_TT_SLACK):
+            tt_val_here = self._tt_value_from(tt_value, ply)
+            if abs(tt_val_here) < self.MATE_THRESHOLD:
+                sbeta = tt_val_here - self.SINGULAR_MARGIN * depth
+                tt_rid = (tt_move.from_square | (tt_move.to_square << 6)
+                          | ((tt_move.promotion or 0) << 12))
+                self._excl[ply] = tt_rid
+                try:
+                    excl_score = self._negamax(
+                        board, depth // 2, sbeta - 1, sbeta, ply,
+                        ext_budget, last_cap_sq, prev_move, chk_budget, False)
+                finally:
+                    self._excl[ply] = -1
+                if excl_score < sbeta:
+                    singular_rid = tt_rid   # extend the TT move in the loop
+
         best_value = -self.INF
         best_move = None
         move_index = 0
@@ -3943,6 +3999,8 @@ class Engine:
         use_hist_malus = self.use_history_malus
 
         for _sc, move, raw, ordering_see in scored:    # P-19: no re-zip
+            if (raw & 0x7FFF) == excl:
+                continue        # P-33: the excluded move; -1 never matches
             # #2.3: tags read from the packed move word -- no board queries.
             is_capture = ((raw >> MV_SHIFT_VICTIM) & MV_MASK_PT) != 0
             is_quiet = not is_capture and not (raw & 0x7000)   # X-08: promo bits
@@ -4036,6 +4094,8 @@ class Engine:
             if ext_budget > 0:
                 if single_reply:
                     extension = 1
+                elif (raw & 0x7FFF) == singular_rid:
+                    extension = 1            # P-33: TT move proved singular
                 elif (self._recapture_at(board, move, is_capture, last_cap_sq)):
                     extension = 1            # capture-sequence (recapture) extension
                 elif (((raw >> MV_SHIFT_MOVER) & MV_MASK_PT) == 1
@@ -4205,9 +4265,13 @@ class Engine:
         # alpha/beta window -- read it back via tt_eval as if it were a real
         # cached eval, polluting ITS improving heuristic with an arbitrary
         # number that has nothing to do with the position.
-        self._tt_store(key, (depth, flag, self._tt_value_to(best_value, ply),
-                             best_move, None if in_check else static_eval,
-                             self._tt_gen))
+        # P-33: an exclusion search scored a CRIPPLED version of this position
+        # (best move removed) -- persisting it would poison the real entry.
+        if excl == -1:
+            self._tt_store(key, (depth, flag,
+                                 self._tt_value_to(best_value, ply),
+                                 best_move, None if in_check else static_eval,
+                                 self._tt_gen))
         return best_value
 
     def _is_passed_pawn_push(self, board, move):
