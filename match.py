@@ -77,7 +77,7 @@ TC_INCREMENT = 0.10         # used when MODE == "clock": seconds added per move
 import os                   # config-time env read; harmlessly re-imported below
 ADJUDICATE = (os.environ.get("MATCH_ADJUDICATE", "1") != "0")
 ADJ_WIN_P = 0.99            # per-phase cp threshold = model's P(win) 99% point
-ADJ_WIN_COUNT = 7           # consecutive own moves (each side) for a win call
+ADJ_WIN_COUNT = 8           # consecutive own moves (each side) for a win call
 ADJ_DRAW_CP = 10            # |cp| <= this from both sides...
 ADJ_DRAW_COUNT = 16          # ...for this many consecutive plies...
 ADJ_DRAW_MIN_PLY = 100       # ...never before this game ply
