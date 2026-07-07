@@ -995,7 +995,12 @@ class Engine:
     # the OTHER moves at depth // 2 against tt_value - SINGULAR_MARGIN*depth;
     # if they all fail low, the TT move is "singular" -- extend it by 1
     # (drawing on ext_budget like the other non-check extensions).
-    SINGULAR_MIN_DEPTH = 8
+    # Min depth retuned 8 -> 6 (2026-07-07): at 45+0.1 the engine averages
+    # search depth ~8, so a depth>=8 gate left the feature nearly dormant --
+    # the 10k A/B vs v29 read -0.69 +/-6.8 (null) with only +0.24% nodes.
+    # At 6 the probe engages through most of the tree. (Stockfish's own
+    # equivalent gate is ~4.)
+    SINGULAR_MIN_DEPTH = 6
     SINGULAR_MARGIN = 2                      # cp per ply of depth
     SINGULAR_TT_SLACK = 3
     # Check extensions get their OWN budget so a line full of recaptures can't
