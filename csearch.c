@@ -37,6 +37,14 @@ static const uint64_t RANK_8 = 0xFF00000000000000ULL;
 static uint64_t PAWN_ATT[2][64];   /* [WHITE]/[BLACK] */
 static int tables_ready = 0;
 
+/* --- step-5 eval masks (built once alongside PAWN_ATT; ports of
+ * engine.py's _build_pawn_masks) ------------------------------------------ */
+static uint64_t FILE_BB8[8], ADJ_FILES[8];
+static uint64_t PASSED_MASK[2][64];    /* enemy pawns that stop/guard a passer */
+static uint64_t SUPPORT_MASK[2][64];   /* own pawns adjacent, at-or-behind */
+static uint64_t STOPATK_MASK[2][64];   /* enemy pawns attacking the stop square */
+static int CENTER_MANH[64];            /* centre Manhattan distance, 0..6 */
+
 /* C-06: runs once at .so load (constructor) -- see eval_c.c's note; the
  * exported generators no longer pay an init call + branch per invocation. */
 __attribute__((constructor))
@@ -48,6 +56,40 @@ static void init_tables(void)
         /* W-15: knight/king aliased to Constants.c; only pawn stays here. */
         PAWN_ATT[WHITE][sq] = ((b << 9) & ~FILE_A) | ((b << 7) & ~FILE_H);
         PAWN_ATT[BLACK][sq] = ((b >> 7) & ~FILE_A) | ((b >> 9) & ~FILE_H);
+    }
+    for (int f = 0; f < 8; f++) FILE_BB8[f] = FILE_A << f;
+    for (int f = 0; f < 8; f++)
+        ADJ_FILES[f] = (f > 0 ? FILE_BB8[f - 1] : 0) | (f < 7 ? FILE_BB8[f + 1] : 0);
+    static const int edge[8] = {3, 2, 1, 0, 0, 1, 2, 3};
+    for (int sq = 0; sq < 64; sq++)
+        CENTER_MANH[sq] = edge[sq & 7] + edge[sq >> 3];
+    for (int sq = 0; sq < 64; sq++) {
+        int f = sq & 7, r = sq >> 3;
+        for (int color = 0; color < 2; color++) {
+            uint64_t passed = 0, support = 0, stop = 0;
+            int alo = (color == WHITE) ? r + 1 : 0;   /* ranks strictly ahead */
+            int ahi = (color == WHITE) ? 8 : r;
+            for (int nf = f - 1; nf <= f + 1; nf++) {
+                if (nf < 0 || nf > 7) continue;
+                for (int nr = alo; nr < ahi; nr++) passed |= 1ULL << (nr * 8 + nf);
+            }
+            int blo = (color == WHITE) ? 0 : r;       /* ranks at-or-behind */
+            int bhi = (color == WHITE) ? r + 1 : 8;
+            for (int nf = f - 1; nf <= f + 1; nf += 2) {
+                if (nf < 0 || nf > 7) continue;
+                for (int nr = blo; nr < bhi; nr++) support |= 1ULL << (nr * 8 + nf);
+            }
+            int stop_r = (color == WHITE) ? r + 1 : r - 1;
+            if (stop_r >= 0 && stop_r < 8) {
+                int atk_r = (color == WHITE) ? stop_r + 1 : stop_r - 1;
+                if (atk_r >= 0 && atk_r < 8)
+                    for (int nf = f - 1; nf <= f + 1; nf += 2)
+                        if (nf >= 0 && nf <= 7) stop |= 1ULL << (atk_r * 8 + nf);
+            }
+            PASSED_MASK[color][sq] = passed;
+            SUPPORT_MASK[color][sq] = support;
+            STOPATK_MASK[color][sq] = stop;
+        }
     }
     tables_ready = 1;
 }
@@ -445,14 +487,175 @@ static int game_phase(const Board* b)
     return ph > 24 ? 24 : ph;
 }
 
+/* ====================================================================== *
+ * Phase-3 step 5: FULL static eval -- port of engine.py's _evaluate_static.
+ *
+ * White-perspective terms, stm sign applied at the end:
+ *   base  : tapered material + PST (White reads sq^56, Black reads sq) +
+ *           tempo; the mg/eg blend truncates toward zero exactly like the
+ *           Python original (C integer division IS trunc-toward-zero).
+ *   mopup : lone-loser strong mop-up SHORTCUT -- when one side is a bare
+ *           king(+pawns) and the other leads by >= MOPUP_MIN_ADV non-pawn
+ *           material, it REPLACES all positional terms (engine.py returns
+ *           early the same way, so the weak mop-up folded into
+ *           mobility_king_safety can never double-count).
+ *   pawns : doubled / isolated / backward / passed (tapered passer bonus,
+ *           V-06-style precomputed [phase][rel] table).
+ *   mks   : eval_c.c's mobility_king_safety, linked in -- mobility, king
+ *           safety, rook files, bishop pair, rook-on-7th, threats and the
+ *           weak mop-up. Its params are process globals: the host must sync
+ *           them through the same exported set_* calls engine.py uses
+ *           (csearch.so carries its OWN copy of those globals).
+ *
+ * Tables/params arrive via csearch_set_eval so engine.py stays the single
+ * source of truth (a retune cannot desync this copy). Until it is called,
+ * eval_full_stm falls back to the phase-2 gate eval (material + mks) so
+ * the earlier NPS harnesses keep working unchanged.
+ * ====================================================================== */
+static int g_eval_ready = 0;
+static int g_mg_pst[7][64], g_eg_pst[7][64];        /* by PT 1..6 */
+static int g_mg_val[7], g_eg_val[7], g_phase_w[7];
+static int g_tempo, g_doubled, g_isolated, g_backward;
+static int g_passed_taper[25][8];                   /* [phase][rel rank] */
+static int g_mopup_min, g_mopup_scmd, g_mopup_sking;
+
+void csearch_set_eval(const int* mg_pst, const int* eg_pst,  /* [6*64] P,N,B,R,Q,K */
+                      const int* mg_val, const int* eg_val,  /* [7] by PT, [0] unused */
+                      const int* phase_w,                    /* [7] by PT */
+                      int tempo, int doubled, int isolated, int backward,
+                      const int* passed_mg, const int* passed_eg,  /* [8] by rel rank */
+                      int mopup_min, int mopup_strong_cmd, int mopup_strong_king)
+{
+    for (int pt = 1; pt <= 6; pt++)
+        for (int sq = 0; sq < 64; sq++) {
+            g_mg_pst[pt][sq] = mg_pst[(pt - 1) * 64 + sq];
+            g_eg_pst[pt][sq] = eg_pst[(pt - 1) * 64 + sq];
+        }
+    for (int pt = 0; pt < 7; pt++) {
+        g_mg_val[pt] = mg_val[pt];
+        g_eg_val[pt] = eg_val[pt];
+        g_phase_w[pt] = phase_w[pt];
+    }
+    g_tempo = tempo; g_doubled = doubled;
+    g_isolated = isolated; g_backward = backward;
+    g_mopup_min = mopup_min;
+    g_mopup_scmd = mopup_strong_cmd; g_mopup_sking = mopup_strong_king;
+    for (int ph = 0; ph <= 24; ph++)
+        for (int rel = 0; rel < 8; rel++)
+            g_passed_taper[ph][rel] =
+                (passed_mg[rel] * ph + passed_eg[rel] * (24 - ph)) / 24;
+    g_eval_ready = 1;
+}
+
+/* Doubled / isolated / backward / passed, White's perspective. */
+static int pawn_structure(uint64_t wp, uint64_t bp, int phase)
+{
+    int s = 0;
+    const int* taper = g_passed_taper[phase];
+    for (int f = 0; f < 8; f++) {
+        int c = __builtin_popcountll(wp & FILE_BB8[f]);
+        if (c > 1) s -= g_doubled * (c - 1);
+        c = __builtin_popcountll(bp & FILE_BB8[f]);
+        if (c > 1) s += g_doubled * (c - 1);
+    }
+    for (uint64_t t = wp; t; t &= t - 1) {
+        int sq = __builtin_ctzll(t), f = sq & 7;
+        if (!(wp & ADJ_FILES[f]))                    s -= g_isolated;
+        else if (!(wp & SUPPORT_MASK[WHITE][sq])
+                 && (bp & STOPATK_MASK[WHITE][sq]))  s -= g_backward;
+        if (!(bp & PASSED_MASK[WHITE][sq]))          s += taper[sq >> 3];
+    }
+    for (uint64_t t = bp; t; t &= t - 1) {
+        int sq = __builtin_ctzll(t), f = sq & 7;
+        if (!(bp & ADJ_FILES[f]))                    s += g_isolated;
+        else if (!(bp & SUPPORT_MASK[BLACK][sq])
+                 && (wp & STOPATK_MASK[BLACK][sq]))  s += g_backward;
+        if (!(wp & PASSED_MASK[BLACK][sq]))          s -= taper[7 - (sq >> 3)];
+    }
+    return s;
+}
+
+static int eval_white(const Board* b)
+{
+    uint64_t occ_w = b->occ[WHITE], occ_b = b->occ[BLACK];
+    const uint64_t bbs[7] = {0, b->pawns, b->knights, b->bishops,
+                             b->rooks, b->queens, b->kings};
+    int mg = 0, eg = 0, phase = 0;
+    for (int pt = 1; pt <= 6; pt++) {
+        const int* mgt = g_mg_pst[pt];
+        const int* egt = g_eg_pst[pt];
+        int mv = g_mg_val[pt], ev = g_eg_val[pt], pw = g_phase_w[pt];
+        for (uint64_t t = bbs[pt] & occ_w; t; t &= t - 1) {
+            int i = __builtin_ctzll(t) ^ 56;         /* White reads mirrored */
+            mg += mv + mgt[i]; eg += ev + egt[i]; phase += pw;
+        }
+        for (uint64_t t = bbs[pt] & occ_b; t; t &= t - 1) {
+            int i = __builtin_ctzll(t);
+            mg -= mv + mgt[i]; eg -= ev + egt[i]; phase += pw;
+        }
+    }
+    if (phase > 24) phase = 24;
+    int score = (mg * phase + eg * (24 - phase)) / 24;
+    score += (b->turn == WHITE) ? g_tempo : -g_tempo;
+
+    /* lone-loser strong mop-up shortcut (replaces ALL positional terms).
+     * Kingless test positions skip it (Python would index [-1]; C won't). */
+    uint64_t wk = b->kings & occ_w, bk = b->kings & occ_b;
+    int lone_w = (occ_w & ~b->kings & ~b->pawns) == 0;
+    int lone_b = (occ_b & ~b->kings & ~b->pawns) == 0;
+    if (lone_w != lone_b && wk && bk) {
+        int npm_w = 320 * __builtin_popcountll(b->knights & occ_w)
+                  + 330 * __builtin_popcountll(b->bishops & occ_w)
+                  + 500 * __builtin_popcountll(b->rooks   & occ_w)
+                  + 900 * __builtin_popcountll(b->queens  & occ_w);
+        int npm_b = 320 * __builtin_popcountll(b->knights & occ_b)
+                  + 330 * __builtin_popcountll(b->bishops & occ_b)
+                  + 500 * __builtin_popcountll(b->rooks   & occ_b)
+                  + 900 * __builtin_popcountll(b->queens  & occ_b);
+        int adv = npm_w - npm_b;
+        if ((adv < 0 ? -adv : adv) >= g_mopup_min) {
+            int wks = __builtin_ctzll(wk), bks = __builtin_ctzll(bk);
+            int loser = (adv > 0) ? bks : wks;
+            int df = (wks & 7) - (bks & 7), dr = (wks >> 3) - (bks >> 3);
+            int md = (df < 0 ? -df : df) + (dr < 0 ? -dr : dr);
+            int bonus = g_mopup_scmd * CENTER_MANH[loser]
+                      + g_mopup_sking * (14 - md);
+            return score + ((adv > 0) ? bonus : -bonus);
+        }
+    }
+
+    score += pawn_structure(b->pawns & occ_w, b->pawns & occ_b, phase);
+    score += mobility_king_safety(occ_w, occ_b, b->knights, b->bishops,
+                                  b->rooks, b->queens,
+                                  b->pawns & occ_w, b->pawns & occ_b,
+                                  b->kings, phase);
+    return score;
+}
+
 static int eval_full_stm(const Board* b)
 {
-    int mat = eval_material_stm(b);
-    uint64_t wp = b->pawns & b->occ[WHITE], bp = b->pawns & b->occ[BLACK];
-    int white_pos = mobility_king_safety(b->occ[WHITE], b->occ[BLACK],
-        b->knights, b->bishops, b->rooks, b->queens, wp, bp, b->kings,
-        game_phase(b));
-    return mat + ((b->turn == WHITE) ? white_pos : -white_pos);
+    if (!g_eval_ready) {                /* phase-2 gate eval (fallback) */
+        int mat = eval_material_stm(b);
+        uint64_t wp = b->pawns & b->occ[WHITE], bp = b->pawns & b->occ[BLACK];
+        int white_pos = mobility_king_safety(b->occ[WHITE], b->occ[BLACK],
+            b->knights, b->bishops, b->rooks, b->queens, wp, bp, b->kings,
+            game_phase(b));
+        return mat + ((b->turn == WHITE) ? white_pos : -white_pos);
+    }
+    int w = eval_white(b);
+    return (b->turn == WHITE) ? w : -w;
+}
+
+/* Exported oracle entry for the differential test: White-perspective full
+ * static eval of an arbitrary position (compare vs _evaluate_static). */
+int csearch_eval_white(uint64_t pawns, uint64_t knights, uint64_t bishops,
+                       uint64_t rooks, uint64_t queens, uint64_t kings,
+                       uint64_t occ_w, uint64_t occ_b,
+                       int turn, int ep, uint64_t castling)
+{
+    Board b = make_board(pawns, knights, bishops, rooks, queens, kings,
+                         occ_w, occ_b, turn, ep, castling);
+    return eval_white(&b);
 }
 
 #include <string.h>
@@ -842,4 +1045,4 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
     return best_move & 0x7FFF;   /* 15-bit move key: from|to<<6|promo<<12 */
 }
 
-int csearch_abi(void) { return 2; }
+int csearch_abi(void) { return 3; }   /* 3 = csearch_set_eval / full eval */
