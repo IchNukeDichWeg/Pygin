@@ -1226,6 +1226,12 @@ class Engine:
         # ID iterations (see the SOFT_STOP_* constants). False = the flat
         # P-35 fraction above, i.e. exactly v29's behaviour.
         self.use_stability_time = True
+        # X-09: when the just-completed iteration FAILED LOW at the root (the
+        # previous PV move's score is collapsing), spend up to the unstable
+        # budget even if the best move looks stable -- stopping early is most
+        # costly exactly there. False = v30 behaviour.
+        self.use_faillow_time = True
+        self._root_fail_low = False
         # Host-requested abort (uci.py `stop`). Set by the host thread, polled
         # in _check_time, and NEVER reset by the engine itself -- the host
         # clears it before starting the next search. That ownership rule is
@@ -1803,7 +1809,7 @@ class Engine:
         "lazy_pv_eval", "use_history_malus", "use_see", "use_qsee_order",
         "use_tt_depth_replace", "use_tt_two_tier", "use_pin_eval",
         "use_simplify", "recapture_ext", "lmr_aggressive", "soft_stop_frac",
-        "use_singular_ext", "use_stability_time",
+        "use_singular_ext", "use_stability_time", "use_faillow_time",
     )
 
     def _smp_config(self):
@@ -3611,14 +3617,21 @@ class Engine:
                 # P-35 soft-stop: the hard check (>= budget) is subsumed when a
                 # fraction is set; keep it as the fallback for soft_stop_frac=None.
                 soft = self.soft_stop_frac
-                if soft is not None and self.use_stability_time:
-                    # U-06: a stable best move needs less confirmation (stop
-                    # earlier, bank the clock); a flipping one deserves more
-                    # of the budget. The hard >= time_limit cap still rules.
-                    if _stab_changed:
+                if soft is not None:
+                    if self.use_faillow_time and self._root_fail_low:
+                        # X-09: this iteration failed low at the root -- the
+                        # PV move's score is collapsing, so a stable-looking
+                        # move is NOT safe. Spend up to the unstable budget.
                         soft = self.SOFT_STOP_UNSTABLE_FRAC
-                    elif _stab_iters >= self.SOFT_STOP_STABLE_ITERS:
-                        soft = self.SOFT_STOP_STABLE_FRAC
+                    elif self.use_stability_time:
+                        # U-06: a stable best move needs less confirmation
+                        # (stop earlier, bank the clock); a flipping one
+                        # deserves more of the budget. The hard >= time_limit
+                        # cap still rules.
+                        if _stab_changed:
+                            soft = self.SOFT_STOP_UNSTABLE_FRAC
+                        elif _stab_iters >= self.SOFT_STOP_STABLE_ITERS:
+                            soft = self.SOFT_STOP_STABLE_FRAC
                 if elapsed >= time_limit or (
                         soft is not None and elapsed >= soft * time_limit):
                     break
@@ -3695,6 +3708,9 @@ class Engine:
         is a net win once move ordering is good. We widen geometrically and
         fall back to a full window so we never loop forever.
         """
+        # X-09: per-iteration root fail-low flag, read by the ID loop's
+        # soft-stop after this call returns.
+        self._root_fail_low = False
         if (depth < self.ASPIRATION_MIN_DEPTH or prev_score is None
                 or abs(prev_score) >= self.MATE_THRESHOLD):
             return self._search_root(board, depth, pv_move, -self.INF, self.INF)
@@ -3705,6 +3721,7 @@ class Engine:
         while True:
             score, move = self._search_root(board, depth, pv_move, alpha, beta)
             if score <= alpha:                       # fail low: widen downward
+                self._root_fail_low = True           # X-09: PV score collapsing
                 alpha = max(-self.INF, score - delta)
             elif score >= beta:                      # fail high: widen upward
                 beta = min(self.INF, score + delta)
