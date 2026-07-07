@@ -573,11 +573,40 @@ static inline void hist_update(int color, int fromto, int bonus)
     *h += bonus - (*h) * ab / HIST_MAX;
 }
 
+/* --- Phase-3 step 3: pruning ------------------------------------------ */
+#include <math.h>
+static int g_prune = 1;                 /* 0 = no pruning (verification) */
+void set_prune(int v) { g_prune = v; }
+
+#define RFP_MARGIN   80                 /* per ply, reverse-futility */
+#define FUT_MARGIN  150                 /* frontier futility */
+static const int LMP_COUNT[4] = {0, 6, 10, 14};   /* by depth 1..3 */
+
+static int g_lmr[64][64];
+static int g_lmr_ready = 0;
+static void init_lmr(void)
+{
+    for (int d = 1; d < 64; d++)
+        for (int m = 1; m < 64; m++)
+            g_lmr[d][m] = (int)(0.75 + log((double)d) * log((double)m) / 2.0);
+    g_lmr_ready = 1;
+}
+
+/* null move: pass the turn, clear the (single-move) ep right. */
+static inline void make_null(Board* b) { b->turn ^= 1; b->ep = -1; }
+
+/* side has a knight/bishop/rook/queen (null-move zugzwang guard). */
+static inline int has_non_pawn(const Board* b, int side)
+{
+    return (b->knights | b->bishops | b->rooks | b->queens) & b->occ[side] ? 1 : 0;
+}
+
 static int negamax(Board* b, int depth, int alpha, int beta, int ply,
-                   uint32_t prev12)
+                   uint32_t prev12, int in_chk)
 {
     g_nodes++;
-    if (depth == 0) return eval_full_stm(b);
+    if (in_chk < 0) in_chk = in_check(b);
+    if (depth <= 0) return eval_full_stm(b);   /* leaf (quiescence = step 4) */
 
     /* --- TT probe -------------------------------------------------- */
     uint64_t key = 0;
@@ -600,31 +629,82 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         }
     }
     int alpha_orig = alpha;                          /* AFTER the TT narrowing */
+    int is_pv = (beta - alpha) > 1;
+
+    /* static eval (for pruning); meaningless in check, unused at PV nodes. */
+    int static_eval = (!in_chk && !is_pv) ? eval_full_stm(b) : 0;
+
+    /* --- pre-move pruning (non-PV, not in check) ------------------- */
+    if (g_prune && !is_pv && !in_chk && abs(beta) < MATE_THRESH) {
+        /* reverse futility / static null-move */
+        if (depth <= 6 && static_eval - RFP_MARGIN * depth >= beta)
+            return static_eval;
+        /* null-move pruning */
+        if (depth >= 3 && static_eval >= beta && has_non_pawn(b, b->turn)) {
+            int R = 2 + depth / 6;
+            Board c = *b; make_null(&c);
+            int ns = -negamax(&c, depth - 1 - R, -beta, -beta + 1, ply + 1,
+                              0xFFFFFFFF, 0);
+            if (ns >= beta) return beta;
+        }
+    }
 
     uint32_t moves[256];
     int n = gen_legal(b, moves);
     if (n == 0)
-        return in_check(b) ? -CS_INF + ply : 0;      /* ply-relative mate */
+        return in_chk ? -CS_INF + ply : 0;           /* ply-relative mate */
 
     uint32_t counter_key = (prev12 != 0xFFFFFFFF) ? g_counter[prev12] : 0;
     order_moves(b, moves, n, ply, counter_key, tt_move);
 
     int color = b->turn, best = -CS_INF;
     uint32_t best_move = moves[0];
-    uint32_t quiets[256]; int nq = 0;   /* quiet from<<6|to searched, for malus */
+    uint32_t quiets[256]; int nq = 0;
+    int lmp_lim = (g_prune && !is_pv && !in_chk && depth <= 3) ? LMP_COUNT[depth] : 999;
     for (int i = 0; i < n; i++) {
         uint32_t m = moves[i];
         int victim = (m >> MV_SHIFT_VICTIM) & 7;
         int fromto = (m & 63) << 6 | ((m >> 6) & 63);
-        if (!victim) quiets[nq++] = fromto;
+        int quiet  = !victim && !((m >> 12) & 7);    /* not capture/promo */
+
+        if (quiet && best > -MATE_THRESH && nq >= lmp_lim)
+            continue;                                /* late-move pruning */
+
         Board c = *b;
         apply_move(&c, m);
-        int v = -negamax(&c, depth - 1, -beta, -alpha, ply + 1,
-                         (ply + 1 < CS_MAXPLY) ? (uint32_t)fromto : 0xFFFFFFFF);
+        int gives_check = in_check(&c);
+
+        if (g_prune && quiet && !is_pv && !in_chk && !gives_check && depth == 1
+                && best > -MATE_THRESH && static_eval + FUT_MARGIN <= alpha)
+            continue;                                /* frontier futility */
+
+        if (quiet) quiets[nq++] = fromto;
+
+        /* late-move reduction on quiet, late, non-checking moves */
+        int R = 0;
+        if (g_prune && depth >= 3 && i >= 3 && quiet && !in_chk && !gives_check) {
+            R = g_lmr[depth < 64 ? depth : 63][i < 64 ? i : 63];
+            if (is_pv && R) R--;
+            if (R > depth - 2) R = depth - 2;
+            if (R < 0) R = 0;
+        }
+
+        uint32_t cp = (ply + 1 < CS_MAXPLY) ? (uint32_t)fromto : 0xFFFFFFFF;
+        int v;
+        if (i == 0) {
+            v = -negamax(&c, depth - 1, -beta, -alpha, ply + 1, cp, gives_check);
+        } else {                                     /* PVS scout (reduced) */
+            v = -negamax(&c, depth - 1 - R, -alpha - 1, -alpha, ply + 1, cp, gives_check);
+            if (R && v > alpha)                      /* reduced scout beat alpha */
+                v = -negamax(&c, depth - 1, -alpha - 1, -alpha, ply + 1, cp, gives_check);
+            if (v > alpha && v < beta)               /* full-window PV re-search */
+                v = -negamax(&c, depth - 1, -beta, -alpha, ply + 1, cp, gives_check);
+        }
+
         if (v > best) { best = v; best_move = m; }
         if (v > alpha) alpha = v;
-        if (alpha >= beta) {                /* fail-hard cutoff */
-            if (!victim && g_order_mode) {  /* quiet cutoff -> ordering updates */
+        if (alpha >= beta) {                         /* fail-hard cutoff */
+            if (quiet) {
                 int bonus = depth * depth;
                 hist_update(color, fromto, bonus);
                 for (int q = 0; q < nq - 1; q++)
@@ -669,17 +749,28 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
     memset(g_counter, 0, sizeof(g_counter));
     if (g_tt == NULL) g_tt = (TTEntry*)calloc(TT_SIZE, sizeof(TTEntry));
     memset(g_tt, 0, TT_SIZE * sizeof(TTEntry));   /* fresh TT per search */
+    if (!g_lmr_ready) init_lmr();
     uint32_t moves[256];
     int n = gen_legal(&b, moves);
     order_moves(&b, moves, n, 0, 0, 0);
+    /* Root: full-width PVS, no reductions/pruning (root moves are few and
+     * important). First move full window; rest scout + re-search. */
     int best = -CS_INF, alpha = -CS_INF, beta = CS_INF;
     uint32_t best_move = n ? moves[0] : 0;
     for (int i = 0; i < n; i++) {
         uint32_t m = moves[i];
         Board c = b;
         apply_move(&c, m);
-        int v = -negamax(&c, depth - 1, -beta, -alpha, 1,
-                         (uint32_t)((m & 63) << 6 | ((m >> 6) & 63)));
+        int gc = in_check(&c);
+        uint32_t cp = (uint32_t)((m & 63) << 6 | ((m >> 6) & 63));
+        int v;
+        if (i == 0) {
+            v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc);
+        } else {
+            v = -negamax(&c, depth - 1, -alpha - 1, -alpha, 1, cp, gc);
+            if (v > alpha)
+                v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc);
+        }
         if (v > best) { best = v; best_move = m; }
         if (v > alpha) alpha = v;
     }
