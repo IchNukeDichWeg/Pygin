@@ -31,12 +31,15 @@ Search features
 * **Extensions**: check extension (post-push, draws on its own ``chk_budget``
   so a line full of captures cannot starve it), single-reply / forced-move
   extension, passed-pawn push extension (5th rank or beyond), and **singular
-  extension** (``use_singular_ext``, A/B pending): at depth >= 6, when a deep
-  TT_LOWER/TT_EXACT entry backs the TT move, an exclusion search (same node,
-  TT move excluded, half depth, null window at ``tt_value - 2*depth``) tests
-  whether any other move comes close -- if none does, the TT move is extended.
-  (First A/B at min-depth 8 was null -- the gate barely engaged at 45+0.1
-  where average search depth is ~8; retuned to 6, re-A/B pending.)
+  extension** (``use_singular_ext``, dormant at fast TCs): at depth >= 8,
+  when a deep TT_LOWER/TT_EXACT entry backs the TT move, an exclusion search
+  (same node, TT move excluded, half depth, null window at ``tt_value -
+  2*depth``) tests whether any other move comes close -- if none does, the
+  TT move is extended. A/B'd twice vs v29 at 45+0.1: null at min-depth 8
+  (-0.69 +/-6.8, 10k -- barely engages when average search depth is ~8) and
+  NEGATIVE at min-depth 6 (-13.1 +/-10.8 at 4k, stopped early -- probe
+  overhead beats the selectivity gain at these depths). Kept at 8: measured
+  zero cost, and it engages by itself once searches run deeper.
   All non-check extensions share a single ``ext_budget`` cap. A recapture
   extension also exists (``recapture_ext`` toggle) but is **off by default** --
   the quiescence search already resolves exchanges at the leaves and extending
@@ -494,7 +497,9 @@ were all tested and kept OFF -- see "Rejected / shelved experiments" above.)
 
 1. Search Enhancements
    - Singular Extensions: IMPLEMENTED 2026-07-07 (P-33, ``use_singular_ext``
-     -- see "Search features" above); Elo A/B vs v29 pending.
+     -- see "Search features" above). A/B verdict: no Elo at this engine's
+     working depths (null at min-depth 8, negative at 6); kept as dormant
+     infrastructure for deeper searches.
    - Null Move Verification: A shallow verification search before returning a
      null-move cutoff at high depths (depth >= 10–12) to avoid incorrect prunes
      in zugzwang positions.  Low code cost; prevents rare but decisive errors
@@ -997,12 +1002,15 @@ class Engine:
     # the OTHER moves at depth // 2 against tt_value - SINGULAR_MARGIN*depth;
     # if they all fail low, the TT move is "singular" -- extend it by 1
     # (drawing on ext_budget like the other non-check extensions).
-    # Min depth retuned 8 -> 6 (2026-07-07): at 45+0.1 the engine averages
-    # search depth ~8, so a depth>=8 gate left the feature nearly dormant --
-    # the 10k A/B vs v29 read -0.69 +/-6.8 (null) with only +0.24% nodes.
-    # At 6 the probe engages through most of the tree. (Stockfish's own
-    # equivalent gate is ~4.)
-    SINGULAR_MIN_DEPTH = 6
+    # Min depth: 8, settled by two A/Bs vs v29 at 45+0.1 (2026-07-07).
+    # At 8 the gate barely engages at this TC (avg search depth ~8; +0.24%
+    # nodes) and measured exactly null (-0.69 +/-6.8 over 10k). Retuned to 6
+    # it engaged hard (+4.34% nodes) and REGRESSED (-13.1 +/-10.8 at 4k
+    # games, stopped early) -- the probe overhead beats the selectivity gain
+    # at these depths. Kept at 8 as dormant infrastructure: costs ~nothing,
+    # engages by itself in deep searches (longer TCs / analysis). Do not
+    # lower below 8 without a fresh A/B at a much slower TC.
+    SINGULAR_MIN_DEPTH = 8
     SINGULAR_MARGIN = 2                      # cp per ply of depth
     SINGULAR_TT_SLACK = 3
     # Check extensions get their OWN budget so a line full of recaptures can't
