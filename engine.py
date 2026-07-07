@@ -765,6 +765,17 @@ _U64 = (1 << 64) - 1
 _NOT_FILE_A = ~int(chess.BB_FILE_A) & _U64
 _NOT_FILE_H = ~int(chess.BB_FILE_H) & _U64
 
+# P-42 correction history: index the 2^14-slot table by a multiplicative hash
+# of the full (both-colour) pawn bitboard. Take the HIGH 14 bits -- bit i of a
+# 64-bit product depends only on input bits <= i, so masking the LOW bits would
+# hash on the a1..h2 pawns alone and collide every structure that shares them.
+_CORR_HASH_MULT = 0x9E3779B97F4A7C15
+
+
+def _pawn_ck(pawns):
+    """Pawn-structure bucket index (0..16383) for correction history."""
+    return ((pawns * _CORR_HASH_MULT) & _U64) >> 50
+
 
 # Roadmap item #12: the history/capt_history/cont_history tables were keyed
 # by 3- or 5-element tuples, built and hashed twice per quiet move per node
@@ -1027,6 +1038,15 @@ class Engine:
     # at these depths. Kept at 8 as dormant infrastructure: costs ~nothing,
     # engages by itself in deep searches (longer TCs / analysis). Do not
     # lower below 8 without a fresh A/B at a much slower TC.
+    # P-42 correction history: a damped average of (search score - raw static
+    # eval) per (side, pawn-structure bucket), added to the static eval before
+    # the pruning gates (RFP / razor / null / futility) read it. Entries are
+    # fixed-point in cp*256; the applied correction is entry >> 8, kept small
+    # by the entry clamp so a mistuned bucket can't dominate the eval.
+    CORR_N = 16384                  # 2^14 buckets (matches _pawn_ck's 14 bits)
+    CORR_EWMA_SHIFT = 6             # move ~1/64 toward each new observation
+    CORR_OBS_CLAMP = 512            # clamp a single node's (best - static) obs
+    CORR_ENTRY_MAX = 32 << 8        # applied correction capped at +/- 32 cp
     SINGULAR_MIN_DEPTH = 8
     SINGULAR_MARGIN = 2                      # cp per ply of depth
     SINGULAR_TT_SLACK = 3
@@ -1211,6 +1231,11 @@ class Engine:
         # X-05: _hist_key packs into 13 bits -> a flat 8192-slot list makes
         # every probe/store C-speed indexing with a free 0 default.
         self.history = [0] * 8192   # _hist_key(color, from, to) -> score
+        # P-42 correction history: [side][pawn-bucket] -> fixed-point cp*256
+        # damped avg of (search - raw static eval). Reset per search like the
+        # other history tables. use_corr_hist False => v30 (no correction).
+        self.use_corr_hist = True
+        self._corr_hist = [[0] * self.CORR_N, [0] * self.CORR_N]
         # P-23: indexed by (prev_from | prev_to << 6) -- a 4096-slot list kills
         # both the per-node tuple allocation and the dict hashing.
         self.countermoves = [None] * 4096
@@ -1805,7 +1830,7 @@ class Engine:
         "lazy_pv_eval", "use_history_malus", "use_see", "use_qsee_order",
         "use_tt_depth_replace", "use_tt_two_tier", "use_pin_eval",
         "use_simplify", "recapture_ext", "lmr_aggressive", "soft_stop_frac",
-        "use_singular_ext", "use_stability_time",
+        "use_singular_ext", "use_stability_time", "use_corr_hist",
     )
 
     def _smp_config(self):
@@ -3425,6 +3450,7 @@ class Engine:
         self.history = [0] * 8192          # X-05: see __init__
         self.capt_history = [0] * 4096
         self.countermoves = [None] * 4096             # P-23: see __init__
+        self._corr_hist = [[0] * self.CORR_N, [0] * self.CORR_N]  # P-42
         self.cont_history = {}
         self.cont_history_2 = {}
         # perf_counter, not time.time(): monotonic, so an NTP step mid-search
@@ -3889,11 +3915,20 @@ class Engine:
         # the search (same nodes, scores and move). `lazy_pv_eval` lets the
         # benchmark A/B the eval-call count on identical code.
         static_eval = None
+        raw_static = None            # P-42: uncorrected eval (TT store + the
+        #        correction-update measurement both use the RAW value; only the
+        #        pruning gates / improving see the corrected static_eval).
         if not in_check and not (self.lazy_pv_eval and is_pv):
             if self.tt_cached_eval and tt_eval is not None:
-                static_eval = tt_eval                 # reuse: identical to recompute
+                raw_static = tt_eval                  # reuse: identical to recompute
             else:
-                static_eval = self._evaluate_stm(board, key)   # W-07
+                raw_static = self._evaluate_stm(board, key)   # W-07
+            static_eval = raw_static
+            # P-42: add this pawn structure's learned (search - static) bias.
+            if self.use_corr_hist:
+                c = self._corr_hist[board.turn][_pawn_ck(board.pawns)]
+                if c:
+                    static_eval = raw_static + (c >> 8)
         elif in_check and self.use_check_eval_proxy:
             # Use cached eval or alpha as a proxy so the improving heuristic
             # can track through check-evasion sequences.  Only feeds
@@ -4341,6 +4376,30 @@ class Engine:
             flag = TT_LOWER
         else:
             flag = TT_EXACT
+
+        # P-42: update correction history. Only when the search score is a
+        # trustworthy signal about how the RAW static eval was wrong for this
+        # pawn structure: not in check, a real static eval exists, not a mate
+        # score, and the bound direction agrees (EXACT always; a fail-high
+        # only teaches "static was too low"; a fail-low only "too high").
+        if (self.use_corr_hist and raw_static is not None and not in_check
+                and abs(best_value) < MATE_TH
+                and (flag == TT_EXACT
+                     or (flag == TT_LOWER and best_value > raw_static)
+                     or (flag == TT_UPPER and best_value < raw_static))):
+            diff = best_value - raw_static
+            if diff > self.CORR_OBS_CLAMP:
+                diff = self.CORR_OBS_CLAMP
+            elif diff < -self.CORR_OBS_CLAMP:
+                diff = -self.CORR_OBS_CLAMP
+            slot = self._corr_hist[color]
+            ck = _pawn_ck(board.pawns)
+            entry = slot[ck] + (((diff << 8) - slot[ck]) >> self.CORR_EWMA_SHIFT)
+            if entry > self.CORR_ENTRY_MAX:
+                entry = self.CORR_ENTRY_MAX
+            elif entry < -self.CORR_ENTRY_MAX:
+                entry = -self.CORR_ENTRY_MAX
+            slot[ck] = entry
         # Cache static_eval (None at PV-skipped nodes; a later visit that
         # needs it will recompute when the cached slot is None). Bug fix
         # (roadmap item #5): explicitly force None when in_check too, even
@@ -4358,8 +4417,8 @@ class Engine:
         if excl == -1:
             self._tt_store(key, (depth, flag,
                                  self._tt_value_to(best_value, ply),
-                                 best_move, None if in_check else static_eval,
-                                 self._tt_gen))
+                                 best_move, None if in_check else raw_static,
+                                 self._tt_gen))   # P-42: store RAW eval, never corrected
         return best_value
 
     def _is_passed_pawn_push(self, board, move):
