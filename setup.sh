@@ -139,4 +139,4 @@ PY
 echo ""
 echo "== setup complete =="
 echo "Run a headless engine-vs-engine match (uses the bundled fen.txt book):"
-echo "    python3 match.py engine.py \"Old Engine/26/engine26.py\" 100 0 --workers 4"
+echo "    python3 match.py --workers 0"
