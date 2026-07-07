@@ -65,9 +65,9 @@ from datetime import datetime
 import chess
 
 RUNS_PER_POSITION = 10
-SECONDS_PER_RUN = 5.0
+SECONDS_PER_RUN = 4.0
 MAX_DEPTH = 100         # high enough that time, not depth, is always the limit
-WORKERS = 5
+WORKERS = 7
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
