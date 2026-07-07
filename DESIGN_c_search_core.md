@@ -138,7 +138,15 @@ Driven from Python at the root only; each sub-step verified before the next:
    fixed-depth infinite-extension trap). NPS 6.9M → 3.8M (extra static eval +
    per-move gives-check + PVS re-searches), but nodes/depth fell ~75×, so
    effective depth-in-fixed-time rose sharply — NPS alone understates pruning.
-4. **Quiescence** — stand-pat + delta pruning + SEE, matching the Python qsearch.
+4. **Quiescence — DONE (2026-07-08).** Stand-pat (fail-soft), SEE-pruned
+   losing captures, delta pruning, full evasions when in check (never
+   stand-pat out of a mate), recursion guard. Verified: tactical suite still
+   PASS (free queen, back-rank mate, queen promotion), and — the clearest
+   sign the core now behaves like a real engine — quiescence **stabilises the
+   leaf scores**: qs-off gave horizon-distorted negatives (startpos −10,
+   Kiwipete −73, middlegame −42), qs-on gives sensible near-zero values
+   (+1 / +7 / +22) and better moves (Nf3, captures) even under the impoverished
+   eval. NPS 3.8M → 2.2M (~24× the Python engine).
 5. **Full static eval in C** — add material+PST+phase-taper+pawn-structure to
    the mobility/king-safety already used here (differential vs the Python eval
    as the oracle, millions of positions).

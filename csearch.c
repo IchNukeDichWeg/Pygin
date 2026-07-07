@@ -601,12 +601,70 @@ static inline int has_non_pawn(const Board* b, int side)
     return (b->knights | b->bishops | b->rooks | b->queens) & b->occ[side] ? 1 : 0;
 }
 
+/* --- Phase-3 step 4: quiescence --------------------------------------- *
+ * Resolve noisy moves (captures + promotions) at the leaves so the static
+ * eval isn't fooled by a pending exchange. Stand-pat, SEE-pruned losing
+ * captures, delta pruning; when in check, search ALL evasions (never
+ * stand-pat out of a mate). Fail-soft. */
+static int g_qsearch = 1;
+void set_qsearch(int v) { g_qsearch = v; }
+#define DELTA_MARGIN 200
+
+static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
+{
+    g_nodes++;
+    if (in_chk < 0) in_chk = in_check(b);
+    if (ply >= CS_MAXPLY + 60)                       /* hard recursion guard */
+        return in_chk ? 0 : eval_full_stm(b);
+
+    int color = b->turn, best, stand = 0;
+    uint32_t moves[256];
+    int n = gen_legal(b, moves);
+    if (in_chk) {
+        if (n == 0) return -CS_INF + ply;            /* checkmate */
+        best = -CS_INF;
+    } else {
+        stand = eval_full_stm(b);
+        if (stand >= beta) return stand;             /* fail-soft stand-pat */
+        if (stand > alpha) alpha = stand;
+        best = stand;
+    }
+
+    order_moves(b, moves, n, ply < CS_MAXPLY ? ply : 0, 0, 0);
+    for (int i = 0; i < n; i++) {
+        uint32_t m = moves[i];
+        int victim   = (m >> MV_SHIFT_VICTIM) & 7;
+        int is_promo = (m >> 12) & 7;
+        if (!in_chk) {
+            if (!victim && !is_promo) continue;      /* quiets: not in qsearch */
+            if (victim && !is_promo) {               /* pure capture */
+                int from = m & 63, to = (m >> 6) & 63;
+                int sv = see(b->pawns, b->knights, b->bishops, b->rooks,
+                             b->queens, b->kings, b->occ[WHITE], b->occ[BLACK],
+                             color, from, to, (m & MV_BIT_EP) ? 1 : 0);
+                if (sv < 0) continue;                /* skip losing captures */
+                if (stand + PIECE_VAL[victim] + DELTA_MARGIN <= alpha)
+                    continue;                        /* delta pruning */
+            }
+        }
+        Board c = *b;
+        apply_move(&c, m);
+        int v = -qsearch(&c, -beta, -alpha, ply + 1, in_check(&c));
+        if (v > best) best = v;
+        if (v > alpha) alpha = v;
+        if (alpha >= beta) break;
+    }
+    return best;
+}
+
 static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                    uint32_t prev12, int in_chk)
 {
     g_nodes++;
     if (in_chk < 0) in_chk = in_check(b);
-    if (depth <= 0) return eval_full_stm(b);   /* leaf (quiescence = step 4) */
+    if (depth <= 0)
+        return g_qsearch ? qsearch(b, alpha, beta, ply, in_chk)
+                         : eval_full_stm(b);
 
     /* --- TT probe -------------------------------------------------- */
     uint64_t key = 0;
