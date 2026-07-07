@@ -455,72 +455,159 @@ static int eval_full_stm(const Board* b)
     return mat + ((b->turn == WHITE) ? white_pos : -white_pos);
 }
 
-static uint64_t g_nodes;
-#define CS_INF 30000
+#include <string.h>
 
-/* MVV-LVA-ish: sort captures (higher victim first) before quiets, in place. */
-static void order_moves(uint32_t* mv, int n)
+static uint64_t g_nodes;
+#define CS_INF    30000
+#define CS_MAXPLY 64
+#define HIST_MAX  16384
+
+/* SEE (exchange evaluation) from eval_c.c -- demotes losing captures. */
+extern int see(uint64_t pawns, uint64_t knights, uint64_t bishops, uint64_t rooks,
+               uint64_t queens, uint64_t kings, uint64_t occ_w, uint64_t occ_b,
+               int turn, int from_sq, int to_sq, int is_ep);
+
+/* Phase-3 step 1: move-ordering state (reset per search). history is
+ * [color][from<<6|to]; killers[ply] and counter[prev_from<<6|prev_to] hold a
+ * move's 15-bit key (from|to<<6|promo<<12). A real move key is never 0
+ * (from==to is illegal), so 0 doubles as the "empty" sentinel. */
+static int      g_history[2][4096];
+static uint32_t g_killers[CS_MAXPLY][2];
+static uint32_t g_counter[4096];
+
+/* 0 = plain MVV-LVA baseline (for value-identity verification), 1 = full. */
+static int g_order_mode = 1;
+void set_order_mode(int m) { g_order_mode = m; }
+
+#define ORD_CAPTURE  1000000
+#define ORD_KILLER0   900000
+#define ORD_KILLER1   800000
+#define ORD_COUNTER   700000
+#define ORD_BADCAP   (-900000)
+
+static void order_moves(const Board* b, uint32_t* mv, int n, int ply,
+                        uint32_t counter_key)
 {
-    /* insertion sort by victim PT (bits 18-20) descending -- n is small */
-    for (int i = 1; i < n; i++) {
-        uint32_t x = mv[i];
-        int xv = (x >> MV_SHIFT_VICTIM) & 7;
-        int j = i - 1;
-        while (j >= 0 && (((mv[j] >> MV_SHIFT_VICTIM) & 7) < xv)) {
-            mv[j + 1] = mv[j]; j--;
+    int color = b->turn, full = g_order_mode;
+    uint32_t k0 = g_killers[ply][0], k1 = g_killers[ply][1];
+    int sc[256];
+    for (int i = 0; i < n; i++) {
+        uint32_t m = mv[i];
+        int from = m & 63, to = (m >> 6) & 63;
+        int victim = (m >> MV_SHIFT_VICTIM) & 7;
+        int mover  = (m >> MV_SHIFT_MOVER) & 7;
+        int s;
+        if (victim) {
+            s = ORD_CAPTURE + victim * 100 - mover;   /* MVV-LVA */
+            if (full && mover > victim) {              /* maybe losing -> SEE */
+                int sv = see(b->pawns, b->knights, b->bishops, b->rooks,
+                             b->queens, b->kings, b->occ[WHITE], b->occ[BLACK],
+                             color, from, to, (m & MV_BIT_EP) ? 1 : 0);
+                if (sv < 0) s = ORD_BADCAP + sv;
+            }
+        } else if (!full) {
+            s = 0;                                     /* baseline: gen order */
+        } else {
+            uint32_t key = m & 0x7FFF;
+            if      (key == k0)          s = ORD_KILLER0;
+            else if (key == k1)          s = ORD_KILLER1;
+            else if (key == counter_key) s = ORD_COUNTER;
+            else                          s = g_history[color][(from << 6) | to];
         }
-        mv[j + 1] = x;
+        sc[i] = s;
+    }
+    for (int i = 1; i < n; i++) {   /* stable insertion sort, score desc */
+        uint32_t xm = mv[i]; int xs = sc[i], j = i - 1;
+        while (j >= 0 && sc[j] < xs) { mv[j+1]=mv[j]; sc[j+1]=sc[j]; j--; }
+        mv[j+1] = xm; sc[j+1] = xs;
     }
 }
 
-static int negamax(Board* b, int depth, int alpha, int beta)
+/* gravity update toward +-HIST_MAX (same shape as the Python history tables) */
+static inline void hist_update(int color, int fromto, int bonus)
+{
+    int *h = &g_history[color][fromto];
+    int ab = bonus < 0 ? -bonus : bonus;
+    *h += bonus - (*h) * ab / HIST_MAX;
+}
+
+static int negamax(Board* b, int depth, int alpha, int beta, int ply,
+                   uint32_t prev12)
 {
     g_nodes++;
     if (depth == 0) return eval_full_stm(b);
 
     uint32_t moves[256];
     int n = gen_legal(b, moves);
-    if (n == 0)                       /* mate or stalemate */
+    if (n == 0)
         return in_check(b) ? -CS_INF + (100 - depth) : 0;
 
-    order_moves(moves, n);
-    int best = -CS_INF;
+    uint32_t counter_key = (prev12 != 0xFFFFFFFF) ? g_counter[prev12] : 0;
+    order_moves(b, moves, n, ply, counter_key);
+
+    int color = b->turn, best = -CS_INF;
+    uint32_t quiets[256]; int nq = 0;   /* quiet from<<6|to searched, for malus */
     for (int i = 0; i < n; i++) {
+        uint32_t m = moves[i];
+        int victim = (m >> MV_SHIFT_VICTIM) & 7;
+        int fromto = (m & 63) << 6 | ((m >> 6) & 63);
+        if (!victim) quiets[nq++] = fromto;
         Board c = *b;
-        apply_move(&c, moves[i]);
-        int v = -negamax(&c, depth - 1, -beta, -alpha);
+        apply_move(&c, m);
+        int v = -negamax(&c, depth - 1, -beta, -alpha, ply + 1,
+                         (ply + 1 < CS_MAXPLY) ? (uint32_t)fromto : 0xFFFFFFFF);
         if (v > best) best = v;
         if (v > alpha) alpha = v;
-        if (alpha >= beta) break;     /* fail-hard cutoff */
+        if (alpha >= beta) {                /* fail-hard cutoff */
+            if (!victim && g_order_mode) {  /* quiet cutoff -> ordering updates */
+                int bonus = depth * depth;
+                hist_update(color, fromto, bonus);
+                for (int q = 0; q < nq - 1; q++)
+                    hist_update(color, quiets[q], -bonus);
+                uint32_t key = m & 0x7FFF;
+                if (ply < CS_MAXPLY && g_killers[ply][0] != key) {
+                    g_killers[ply][1] = g_killers[ply][0];
+                    g_killers[ply][0] = key;
+                }
+                if (prev12 != 0xFFFFFFFF) g_counter[prev12] = key;
+            }
+            break;
+        }
     }
     return best;
 }
 
-/* Exported: run a fixed-depth alpha-beta from the given position, return the
- * best root move in the low 16 bits and the node count via *out_nodes. */
+/* Exported: fixed-depth alpha-beta. Returns the best root move (low 16 bits);
+ * node count via *out_nodes, root score via *out_score (for verification). */
 uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                       uint64_t rooks, uint64_t queens, uint64_t kings,
                       uint64_t occ_w, uint64_t occ_b,
                       int turn, int ep, uint64_t castling,
-                      int depth, uint64_t* out_nodes)
+                      int depth, uint64_t* out_nodes, int* out_score)
 {
     Board b = make_board(pawns, knights, bishops, rooks, queens, kings,
                          occ_w, occ_b, turn, ep, castling);
     g_nodes = 0;
+    memset(g_history, 0, sizeof(g_history));
+    memset(g_killers, 0, sizeof(g_killers));
+    memset(g_counter, 0, sizeof(g_counter));
     uint32_t moves[256];
     int n = gen_legal(&b, moves);
-    order_moves(moves, n);
+    order_moves(&b, moves, n, 0, 0);
     int best = -CS_INF, alpha = -CS_INF, beta = CS_INF;
     uint32_t best_move = n ? moves[0] : 0;
     for (int i = 0; i < n; i++) {
+        uint32_t m = moves[i];
         Board c = b;
-        apply_move(&c, moves[i]);
-        int v = -negamax(&c, depth - 1, -beta, -alpha);
-        if (v > best) { best = v; best_move = moves[i]; }
+        apply_move(&c, m);
+        int v = -negamax(&c, depth - 1, -beta, -alpha, 1,
+                         (uint32_t)((m & 63) << 6 | ((m >> 6) & 63)));
+        if (v > best) { best = v; best_move = m; }
         if (v > alpha) alpha = v;
     }
     *out_nodes = g_nodes;
+    *out_score = best;
     return best_move & 0xFFFF;
 }
 
-int csearch_abi(void) { return 1; }
+int csearch_abi(void) { return 2; }
