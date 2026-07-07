@@ -147,11 +147,38 @@ Driven from Python at the root only; each sub-step verified before the next:
    Kiwipete −73, middlegame −42), qs-on gives sensible near-zero values
    (+1 / +7 / +22) and better moves (Nf3, captures) even under the impoverished
    eval. NPS 3.8M → 2.2M (~24× the Python engine).
-5. **Full static eval in C** — add material+PST+phase-taper+pawn-structure to
-   the mobility/king-safety already used here (differential vs the Python eval
-   as the oracle, millions of positions).
+5. **Full static eval in C — DONE (2026-07-08).** Complete port of
+   `_evaluate_static`: tapered material+PST base (trunc-toward-zero blend,
+   tempo), doubled/isolated/backward/passed pawn structure (V-06-style
+   precomputed passer-taper table), the lone-loser strong mop-up shortcut,
+   and eval_c.c's `mobility_king_safety` (linked in; csearch.so carries its
+   own copy of those globals). Tables/params are NOT hard-coded: they arrive
+   at init via `csearch_set_eval` + the same exported `set_*` calls
+   engine.py's `_sync_c_params` makes (the harness literally re-runs
+   `_sync_c_params` pointed at csearch.so), so engine.py stays the single
+   source of truth and a retune cannot desync the C copy. Verified
+   **bit-exact vs the Python `_evaluate_static` oracle over 3,000,000
+   random positions — 0 mismatches** (random playouts + lone-king strips
+   to force the mop-up path; 421,958 lone-loser positions hit).
+   Search-level: tactical suite
+   still PASS, and quiet-move quality is fixed — startpos now plays d2d4
+   (+20, tempo-sized) instead of material-only nonsense; a quiet K+P
+   endgame gets a sensible king move at ~6.8M nps. NPS **2.55M overall
+   (~28x the Python engine)** — UP from step 4's 2.2M despite the heavier
+   eval, because the step-4-review TT-move fix plus a real eval both
+   improve ordering (fewer PVS re-searches). Pre-step-5 review also fixed
+   two search bugs: the TT-move key was stored with a 16-bit mask (bit 15 =
+   mover PT low bit, so TT-move ordering silently never fired for
+   pawn/bishop/queen movers) and qsearch scored stalemate as static eval
+   instead of 0.
 6. **Root driver + time management** — Python owns the ID loop, the P-35/U-06
-   soft-stop, book/tablebase probe, and the UCI/GUI boundary.
+   soft-stop, book/tablebase probe, and the UCI/GUI boundary. Must also
+   close the known search gaps that need root/game state: repetition +
+   50-move detection (Board struct has no halfmove clock or history — pass
+   game-history keys from the root and track the in-search path), TT
+   persistence across ID iterations (currently a conservative full clear
+   per search), and root mate/stalemate handling (search_bench returns
+   move 0 / -CS_INF on n==0).
 
 **Verification:** phases 1-2 and step 5 are differential/perft node-exact
 against python-chess / the Python eval. The full core is a NEW engine (not
