@@ -413,6 +413,26 @@ default SMP override): 886W / 670D / 944L = 48.84% -> **-8.1 +/-13.6 Elo**
 Point estimate **≈2442**, CI ≈[2428, 2456] -- statistically level with
 Stockfish 2450; call the current single-thread strength **≈2440-2450**.
 
+**Caveat discovered 2026-07-07 -- Elo-LIMITED Stockfish compresses
+differences and is retired as a progress instrument.** A controlled pair on
+one server (identical conditions): v29 vs SF-2550 = -97.8 +/-14.7; v25 vs
+the same SF-2550 = -120.1 +/-15.3 -- only ~22 Elo of gap, where direct
+Pygin-vs-Pygin measurement at the same conditions puts v25 -> v29 at +119
+(chain-audit validated). The UCI_Elo limiter injects errors at a calibrated
+*rate*; exploiting them is nearly fixed-yield, so real strength differences
+read ~5x smaller against it. The ≈2442 bracket above remains a fair
+one-time class estimate, but version-over-version progress must be read
+from the internal ledger (chain-audit validated) and from the odds series
+below.
+
+**Odds series vs FULL-strength Stockfish 18 (no limiter, 45+0.15):**
+queen odds (Qd1) 100/100 (2026-07-06, saturated); **rook odds (Ra1) 48.00%
+over 100 games (2026-07-07) -- dead even with full Stockfish a rook down.**
+Full-strength SF plays real chess (no error scheduler), so this series
+actually moves with engine improvements; rook odds is the recurring
+external progress benchmark (~13 min per 100 games; the 100-game CI is
+±69, use ~400 games for ±35).
+
 Earlier SMP benchmark: Stockfish skill ≈2400, engine running
 ``SMP_WORKERS = 4``: 400 games, 188W / 131D / 81L (63.4%) -> +95 +/-37 Elo
 (4h25m, ≈40s/game), i.e. ≈2495 -- consistent with the single-thread figure
