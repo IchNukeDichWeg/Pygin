@@ -3271,6 +3271,9 @@ class Engine:
             best = pick_best(valid, board.turn == chess.WHITE)   # P-02: stm-relative tie-break
             self.last_depth, self.last_score = best[1], best[2]
             self.nodes = sum(r[3] for r in info)   # aggregate parallel work
+            self.nodes_searched = self.nodes       # V-02: keep the pool path's
+            #   reported count in sync (8 consumers read nodes_searched after a
+            #   move; the single-thread path sets it in _search, this one didn't)
             return move
         return self._search(board, max_depth=max_depth, time_limit=time_limit)
 
@@ -4190,6 +4193,15 @@ class Engine:
         in_check = board.is_check() if in_check_hint is None else in_check_hint
 
         if in_check:
+            # V-03: repetition draw guard. _negamax checks this before it
+            # descends (see the _path.get(key) guard there), but this qsearch
+            # recursion didn't -- so a perpetual-check line that revisits a
+            # position already on the search path / in game history could score
+            # as a win/loss. Mirror _negamax's contempt-scored draw. (Its 50-move
+            # guard is `... and not is_check()`, a no-op while in check, so only
+            # repetition can apply here; insufficient material was handled above.)
+            if self._path.get(board._transposition_key()):
+                return self._draw_score(board)
             # Must consider every evasion (else we could stand-pat out of mate).
             scored = self.order_moves(board, None, ply, in_check=True)  # V-09
             if not scored:
