@@ -31,10 +31,12 @@ Search features
 * **Extensions**: check extension (post-push, draws on its own ``chk_budget``
   so a line full of captures cannot starve it), single-reply / forced-move
   extension, passed-pawn push extension (5th rank or beyond), and **singular
-  extension** (``use_singular_ext``, A/B pending): at depth >= 8, when a deep
+  extension** (``use_singular_ext``, A/B pending): at depth >= 6, when a deep
   TT_LOWER/TT_EXACT entry backs the TT move, an exclusion search (same node,
   TT move excluded, half depth, null window at ``tt_value - 2*depth``) tests
   whether any other move comes close -- if none does, the TT move is extended.
+  (First A/B at min-depth 8 was null -- the gate barely engaged at 45+0.1
+  where average search depth is ~8; retuned to 6, re-A/B pending.)
   All non-check extensions share a single ``ext_budget`` cap. A recapture
   extension also exists (``recapture_ext`` toggle) but is **off by default** --
   the quiescence search already resolves exchanges at the leaves and extending
