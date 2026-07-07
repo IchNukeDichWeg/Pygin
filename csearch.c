@@ -624,6 +624,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
         if (n == 0) return -CS_INF + ply;            /* checkmate */
         best = -CS_INF;
     } else {
+        if (n == 0) return 0;                        /* stalemate: draw, not eval */
         stand = eval_full_stm(b);
         if (stand >= beta) return stand;             /* fail-soft stand-pat */
         if (stand > alpha) alpha = stand;
@@ -785,7 +786,11 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         int sv = best;
         if (sv >= MATE_THRESH) sv += ply;
         else if (sv <= -MATE_THRESH) sv -= ply;
-        tte->key = key; tte->value = sv; tte->move = best_move & 0xFFFF;
+        /* 0x7FFF, not 0xFFFF: bit 15 is the mover PT's low bit (MV_SHIFT_MOVER
+         * = 15). Storing it made the probe-side `(m & 0x7FFF) == tt_move`
+         * never match for odd mover PTs (pawn/bishop/queen) -- TT-move
+         * ordering was silently dead for those movers. */
+        tte->key = key; tte->value = sv; tte->move = best_move & 0x7FFF;
         tte->depth = (int16_t)depth; tte->flag = (int16_t)flag;
     }
     return best;
@@ -834,7 +839,7 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
     }
     *out_nodes = g_nodes;
     *out_score = best;
-    return best_move & 0xFFFF;
+    return best_move & 0x7FFF;   /* 15-bit move key: from|to<<6|promo<<12 */
 }
 
 int csearch_abi(void) { return 2; }
