@@ -391,6 +391,13 @@ pair ratio 1.16). The whole v21->v24 batch is net-positive; NPS moved only
 ≈+2%, so the gain is mostly the bug fixes (low-phase king safety,
 mate-at-clock-100, LAZY_MARGIN).
 
+**Chain-composition audit (2026-07-07): v28 vs v25 DIRECT, 5,000 games @
+45+0.1s -> +80.56 +/-10.2 Elo** (61.39%, ptnml 161/309/851/588/591, pair
+ratio 2.51, normalized +136.01). The chained adjacent A/Bs predicted +90.2
++/-11.3 (41.9 + 35.2 + 13.1); the 9.6-Elo gap is ~0.6 sigma of the combined
+error, so adjacent gains COMPOSE within noise (at most a mild ~10% haircut).
+The version-history Elo ledger can be read cumulatively.
+
 Strength (absolute, vs Stockfish)
 ----------------------------------
 Latest (measured on v25; v26 AND v27 are search-identical so the figure
