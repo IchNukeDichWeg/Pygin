@@ -114,7 +114,11 @@ def calculate_move_time(board, my_time_ms, opp_time_ms, increment_ms=0,
     #    applies when movestogo was actually given.
     max_fraction = MAX_FRACTION
     if movestogo is not None and movestogo > 0:
-        max_fraction = max(MAX_FRACTION, min(1.0, 1.2 / moves_to_go))
+        # U-11: clamp to 0.9, not 1.0 -- an off-by-one `movestogo` from an
+        # arbiter (final move signalled one early) would otherwise spend the
+        # ENTIRE remaining clock on a non-final move and flag on the next one.
+        # 0.9 still frees most of the clock when a reset really is imminent.
+        max_fraction = max(MAX_FRACTION, min(0.9, 1.2 / moves_to_go))
     cap = max(usable * max_fraction, min(usable, increment_ms * 0.9))
     budget = max(MIN_THINK_MS, min(base, cap, usable))
     return int(budget)
