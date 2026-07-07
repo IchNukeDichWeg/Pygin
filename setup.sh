@@ -140,16 +140,13 @@ if [ -d "Old Engine" ]; then
     done
 fi
 
-# --- 8. sanity check + next steps ------------------------------------- #
-echo "-> verifying the engine loads ..."
-python3 - <<'PY'
-import chess, engine, random
-e = engine.Engine(); e.use_book = False; random.seed(42)
-b = chess.Board('r3k2r/8/8/8/8/8/8/R2QK2R w KQkq - 0 1')
-m = e.get_best_move(b, 6)
-print(f"   engine OK -- test search returned {m} ({e.nodes_searched} nodes, "
-      f"C eval={'yes' if engine._USE_C_EVAL else 'PYTHON FALLBACK'})")
-PY
+# --- 8. full health check (selftest.py, also runnable standalone) ------ #
+echo "-> running selftest ..."
+if ! python3 selftest.py; then
+    echo ""
+    echo "== setup finished but the selftest FAILED -- see the FAIL lines above =="
+    exit 1
+fi
 
 echo ""
 echo "== setup complete =="
