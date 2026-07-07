@@ -1124,6 +1124,14 @@ class Engine:
         self.countermoves = [None] * 4096
         self.start_time = 0.0
         self.time_limit = None
+        # P-35: soft-stop. After COMPLETING a depth, if elapsed time already
+        # exceeds this fraction of the budget, don't start the next iteration
+        # -- it typically costs at least as much as all previous ones combined,
+        # so it would blow through the budget and get aborted mid-depth anyway.
+        # The unspent clock is banked and compounds via the time manager on
+        # later moves. None disables (always burn the full budget). The
+        # partial-iteration machinery still protects any depth that DID start.
+        self.soft_stop_frac = 0.55
         # Host-requested abort (uci.py `stop`). Set by the host thread, polled
         # in _check_time, and NEVER reset by the engine itself -- the host
         # clears it before starting the next search. That ownership rule is
@@ -1691,7 +1699,7 @@ class Engine:
         "use_capt_history", "use_see_prune_captures", "use_incremental_eval",
         "lazy_pv_eval", "use_history_malus", "use_see", "use_qsee_order",
         "use_tt_depth_replace", "use_tt_two_tier", "use_pin_eval",
-        "use_simplify", "recapture_ext", "lmr_aggressive",
+        "use_simplify", "recapture_ext", "lmr_aggressive", "soft_stop_frac",
     )
 
     def _smp_config(self):
@@ -3477,8 +3485,14 @@ class Engine:
 
             if abs(score) > self.MATE_THRESHOLD:
                 break       # forced mate found
-            if time_limit is not None and (time.perf_counter() - self.start_time) >= time_limit:
-                break
+            if time_limit is not None:
+                elapsed = time.perf_counter() - self.start_time
+                # P-35 soft-stop: the hard check (>= budget) is subsumed when a
+                # fraction is set; keep it as the fallback for soft_stop_frac=None.
+                soft = self.soft_stop_frac
+                if elapsed >= time_limit or (
+                        soft is not None and elapsed >= soft * time_limit):
+                    break
 
         # Disarm the accumulator: outside the search, evaluate_position() must
         # use the from-scratch scan (the live acc is only valid mid-search).
