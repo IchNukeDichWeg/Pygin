@@ -47,7 +47,7 @@ FEN_FILE = "UHO_4060_v4.epd"                 # positions (plain FEN or EPD, one 
 other_elo = 2451
 stockfish_elo = 2500
 
-NUM_GAMES = 5000            # number of starting POSITIONS to play (default when
+NUM_GAMES = 2500            # number of starting POSITIONS to play (default when
                             #   no arg passed). Each position is played twice --
                             #   once with each engine as White -- so the actual
                             #   TOTAL games played is NUM_GAMES * 2.
