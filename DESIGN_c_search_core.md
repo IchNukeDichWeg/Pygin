@@ -74,6 +74,27 @@ not byte-identical to v30 — verify by (a) same-or-better tactical suite,
 GIL-free, so real threads become possible), UCI/GUI. Snapshot as the first
 `v3x` of the C era.
 
+## Phase 1-2 prototype result (2026-07-08) — GO signal
+
+`csearch.c` (isolated `csearch.so`, board layer extracted verbatim from
+`movegen.c`, does not touch the shipped libraries): a **material-only**
+fixed-depth alpha-beta with MVV-LVA ordering.
+
+| | Nodes/sec |
+|---|---|
+| C material-only alpha-beta (startpos/Kiwipete/middlegame, d7) | **~20,000,000** |
+| Python engine (v30) full search | ~90,000 |
+| Ratio | **~224×** |
+
+Legal, sensible root moves in every position. Material-only is the optimistic
+ceiling (the real eval is heavier), but the headroom is so large that even a
+10× per-node slowdown from the full eval + ordering + TT still leaves ~20-50×.
+**The GO/NO-GO gate criterion (≥5-10×) is cleared with a wide margin at the
+prototype stage.** To make the gate *honest* rather than optimistic, the one
+remaining phase-2 step is to swap the material-only eval for the full static
+eval (mobility / king safety / pawns / PST / taper) and re-measure — expected
+to still clear the gate comfortably.
+
 ## Recommendation
 
 The upside is the single largest remaining lever (the only path to *multiples*
