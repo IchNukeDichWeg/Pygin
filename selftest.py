@@ -36,6 +36,15 @@ REF_DEPTH = 6
 REF_MOVE = "h1h8"
 REF_NODES = 3495          # update on confirmed search changes (see docstring)
 
+# The reference node count pins the CONFIRMED (latest vN) search. A default-ON
+# search feature that is still under A/B legitimately changes the tree, so a
+# strict reference would false-FAIL a routine install check mid-experiment.
+# Disable such toggles here so the reference tracks the confirmed baseline.
+# When a feature's A/B confirms it into a version: remove it from this tuple
+# AND re-measure REF_NODES with it on. (Time-policy toggles never appear here
+# -- they don't change fixed-depth node counts.)
+BASELINE_OFF = ("use_corr_hist",)   # P-42, A/B pending vs v30
+
 _failed = []
 
 
@@ -80,6 +89,8 @@ e = engine.Engine()
 e.use_book = False
 e.use_tb = False
 e.smp_workers = 1
+for _tog in BASELINE_OFF:          # pin the reference to the confirmed search
+    setattr(e, _tog, False)
 mv = e.get_best_move(chess.Board(REF_FEN), REF_DEPTH)
 check("reference search move", str(mv) == REF_MOVE, f"{mv} (expected {REF_MOVE})")
 check("reference search node-exact", e.nodes_searched == REF_NODES,
