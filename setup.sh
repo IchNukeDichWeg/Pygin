@@ -95,12 +95,22 @@ case "$ARCH" in
     arm64|aarch64) TUNE="-mcpu=native"  ;;    # Apple Silicon / ARM
     *)             TUNE=""              ;;    # unknown: portable, no tuning
 esac
-CFLAGS="-O3 $TUNE -shared -fPIC -I."
+# -w: the big generated tables in Constants.c trip thousands of harmless
+# constant-conversion warnings that spam the terminal; real errors still print.
+CFLAGS="-O3 $TUNE -shared -fPIC -I. -w"
 echo "-> compiler: $CC   arch: $ARCH   flags: $CFLAGS"
+
+up_to_date () {   # up_to_date <so> <src>  ->  0 if <so> is newer than BOTH
+    [ "$1" -nt "$2" ] && [ "$1" -nt Constants.c ]
+}
 
 build_so () {   # build_so <srcdir> <name>  ->  <srcdir>/<name>.so from <name>.c
     local dir="$1" name="$2"
     if [ -f "$dir/$name.c" ]; then
+        # incremental: skip when the .so already exists and is newer than
+        # its .c source and Constants.c (a fresh clone / new snapshot builds,
+        # everything else is silently left alone).
+        up_to_date "$dir/$name.so" "$dir/$name.c" && return
         # snapshots include Constants.h via -I. (main dir); their .c + the
         # main Constants.c compile into the snapshot's own .so.
         "$CC" $CFLAGS -o "$dir/$name.so" "$dir/$name.c" Constants.c \
@@ -111,9 +121,14 @@ build_so () {   # build_so <srcdir> <name>  ->  <srcdir>/<name>.so from <name>.c
 
 # --- 6. current engine (required) ------------------------------------- #
 echo "-> building the current engine's C libraries ..."
-"$CC" $CFLAGS -o eval_c.so   eval_c.c   Constants.c
-"$CC" $CFLAGS -o movegen.so  movegen.c  Constants.c
-echo "   built eval_c.so + movegen.so"
+for _name in eval_c movegen; do
+    if up_to_date "$_name.so" "$_name.c"; then
+        echo "   $_name.so up to date"
+    else
+        "$CC" $CFLAGS -o "$_name.so" "$_name.c" Constants.c
+        echo "   built $_name.so"
+    fi
+done
 
 # --- 7. Old Engine snapshots (best effort, for A/B matches) ----------- #
 if [ -d "Old Engine" ]; then
