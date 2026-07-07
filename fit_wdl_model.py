@@ -121,17 +121,9 @@ def board_phase(board):
 # 20 and older: 30-100+ Elo -- biased outcomes); if a future match pairs a
 # listed base against something much stronger, delist it first.
 NEAR_EQUAL_BASES = {
-    # engine.py itself + same-era toggle/tuning wrappers (within ~+-15)
-    "engine", "engine_tuned", "engine_noprobcut", "engine_lmp_aggr",
-    "engine_lmr_aggr", "engine_staged_off", "engine_nosimplify",
-    "engine_nopin", "engine_lmp_off",
-    "engine_outpost", "engine_space", "engine_phalanx", "engine_storm",
-    "engine_shelter", "engine_combined",
-    # near-current snapshots (v24-vs-v21 +11.75; v25-vs-v24 ~0)
-    "engine24", "engine25", "engine26", "engine27","engine28", "engine29", "engine30",
-    # v14-era near-equal cluster (engine-of-2026-06-23 vs v14 measured ~0;
-    # the param-sweep variants were within +-8 of v14)
-    "engine14", "sweep_lmr175", "sweep_lmr225", "sweep_pc150", "sweep_pc250",
+    "engine",
+    "engine24", "engine25", "engine26", "engine27",
+    "engine28", "engine29", "engine30",
 }
 
 # Specific Stockfish match logs where Stockfish was configured within a few
