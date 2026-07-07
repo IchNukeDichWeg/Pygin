@@ -1,8 +1,15 @@
 /* csearch.c -- ISOLATED C search-core prototype (roadmap #29/#30, phase 1-2).
  * Board layer extracted verbatim from movegen.c (static, perft-verified);
- * a material eval + fixed-depth alpha-beta appended below to measure the
- * real per-node NPS ceiling for the GO/NO-GO gate. Compiled into its own
- * csearch.so -- does NOT touch the shipped movegen.so/eval_c.so. */
+ * material + full mobility/king-safety eval + fixed-depth alpha-beta appended
+ * below to measure the real per-node NPS ceiling for the GO/NO-GO gate.
+ * Does NOT touch the shipped movegen.so/eval_c.so.
+ *
+ * Build (links eval_c.c for the mobility/king-safety term + Constants.c):
+ *   clang -O3 -march=native -shared -fPIC -w -I. \
+ *         -o csearch.so csearch.c eval_c.c Constants.c
+ *
+ * GATE RESULT (2026-07-08): full-eval C alpha-beta ~13.5M nodes/s vs the
+ * Python engine's ~90k = ~150x. GO for phase 3 (full C search core). */
 
 #include <stdint.h>
 #include "Constants.h"   /* #2.1/#2.2: magic tables + INBETWEEN_BITBOARDS */
@@ -419,6 +426,35 @@ static int eval_material_stm(const Board* b)
     return score;
 }
 
+/* Honest-gate eval: material + the expensive mobility/king-safety term --
+ * the SAME eval_c.c function the real engine calls per node, here linked
+ * directly (no ctypes crossing). Its O(pieces) attack-generation loops are
+ * where per-node eval cost concentrates, so including it makes the NPS
+ * number representative rather than optimistic. (Compiled-in default params;
+ * even a zero weight still runs the loops, so the COST the gate measures is
+ * real regardless of the returned value.) */
+extern int mobility_king_safety(uint64_t occ_w, uint64_t occ_b,
+    uint64_t knights, uint64_t bishops, uint64_t rooks, uint64_t queens,
+    uint64_t wp, uint64_t bp, uint64_t kings, int phase);
+
+static int game_phase(const Board* b)
+{
+    int ph = __builtin_popcountll(b->knights | b->bishops)
+           + 2 * __builtin_popcountll(b->rooks)
+           + 4 * __builtin_popcountll(b->queens);
+    return ph > 24 ? 24 : ph;
+}
+
+static int eval_full_stm(const Board* b)
+{
+    int mat = eval_material_stm(b);
+    uint64_t wp = b->pawns & b->occ[WHITE], bp = b->pawns & b->occ[BLACK];
+    int white_pos = mobility_king_safety(b->occ[WHITE], b->occ[BLACK],
+        b->knights, b->bishops, b->rooks, b->queens, wp, bp, b->kings,
+        game_phase(b));
+    return mat + ((b->turn == WHITE) ? white_pos : -white_pos);
+}
+
 static uint64_t g_nodes;
 #define CS_INF 30000
 
@@ -440,7 +476,7 @@ static void order_moves(uint32_t* mv, int n)
 static int negamax(Board* b, int depth, int alpha, int beta)
 {
     g_nodes++;
-    if (depth == 0) return eval_material_stm(b);
+    if (depth == 0) return eval_full_stm(b);
 
     uint32_t moves[256];
     int n = gen_legal(b, moves);

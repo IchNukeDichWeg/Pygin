@@ -87,13 +87,43 @@ fixed-depth alpha-beta with MVV-LVA ordering.
 | Ratio | **~224×** |
 
 Legal, sensible root moves in every position. Material-only is the optimistic
-ceiling (the real eval is heavier), but the headroom is so large that even a
-10× per-node slowdown from the full eval + ordering + TT still leaves ~20-50×.
-**The GO/NO-GO gate criterion (≥5-10×) is cleared with a wide margin at the
-prototype stage.** To make the gate *honest* rather than optimistic, the one
-remaining phase-2 step is to swap the material-only eval for the full static
-eval (mobility / king safety / pawns / PST / taper) and re-measure — expected
-to still clear the gate comfortably.
+ceiling, so the honest gate then linked `eval_c.c` and called the real
+`mobility_king_safety` per leaf (the term that dominates per-node eval cost):
+
+| | Nodes/sec | vs Python |
+|---|---|---|
+| C material-only alpha-beta | ~20,000,000 | ~224× |
+| **C + full mobility/king-safety eval (honest)** | **~13,500,000** | **~150×** |
+| Python engine (v30) | ~90,000 | 1× |
+
+The expensive eval term cost only ~33% of the NPS (20M → 13.5M), not a cliff.
+**GO/NO-GO gate CLEARED at ~150× with the honest eval.** Even after phase 3
+adds the rest (history/killers/SEE ordering, C-array TT, quiescence, and all
+the pruning — which adds per-node work but also *removes* nodes), a
+conservative 3-6× slowdown from here still leaves ~25-50× the current engine.
+**Decision: GO for phase 3.**
+
+## Phase 3 breakdown (the big multi-session port)
+
+Driven from Python at the root only; each sub-step verified before the next:
+1. **Move ordering in C** — history/killers/countermove/continuation tables as
+   C arrays; SEE (already in `eval_c.c`) for capture ordering + pruning.
+2. **C-array transposition table** — fixed-size, packed entries
+   (`shared_tt.py`'s 128-bit layout is the prototype); mate-score encoding.
+3. **Pruning** — null-move, RFP, razoring, futility, LMR/LMP, extensions,
+   aspiration windows, the singular-extension machinery (dormant is fine).
+4. **Quiescence** — stand-pat + delta pruning + SEE, matching the Python qsearch.
+5. **Full static eval in C** — add material+PST+phase-taper+pawn-structure to
+   the mobility/king-safety already used here (differential vs the Python eval
+   as the oracle, millions of positions).
+6. **Root driver + time management** — Python owns the ID loop, the P-35/U-06
+   soft-stop, book/tablebase probe, and the UCI/GUI boundary.
+
+**Verification:** phases 1-2 and step 5 are differential/perft node-exact
+against python-chess / the Python eval. The full core is a NEW engine (not
+byte-identical to v30) — gate it by tactical-suite solve rate + **A/B vs v30
+(must be strongly positive)** + perft still exact. Snapshot as the first C-era
+version only after that A/B confirms.
 
 ## Recommendation
 
