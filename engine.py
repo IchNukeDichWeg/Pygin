@@ -1013,6 +1013,12 @@ class Engine:
     SINGULAR_MIN_DEPTH = 8
     SINGULAR_MARGIN = 2                      # cp per ply of depth
     SINGULAR_TT_SLACK = 3
+    # U-06 best-move-stability time scaling (scales the P-35 soft-stop
+    # fraction; see use_stability_time). Stable best move -> stop earlier
+    # and bank clock; best move still flipping -> spend more of the budget.
+    SOFT_STOP_STABLE_FRAC = 0.40     # unchanged >= SOFT_STOP_STABLE_ITERS iters
+    SOFT_STOP_UNSTABLE_FRAC = 0.80   # flipped on the last completed iteration
+    SOFT_STOP_STABLE_ITERS = 2
     # Check extensions get their OWN budget so a line full of recaptures can't
     # starve them -- that was why long checking/mating sequences (especially in
     # the endgame) stopped being extended. Generous, but still capped (and
@@ -1201,6 +1207,10 @@ class Engine:
         # later moves. None disables (always burn the full budget). The
         # partial-iteration machinery still protects any depth that DID start.
         self.soft_stop_frac = 0.55
+        # U-06: scale the soft-stop by best-move stability across completed
+        # ID iterations (see the SOFT_STOP_* constants). False = the flat
+        # P-35 fraction above, i.e. exactly v29's behaviour.
+        self.use_stability_time = True
         # Host-requested abort (uci.py `stop`). Set by the host thread, polled
         # in _check_time, and NEVER reset by the engine itself -- the host
         # clears it before starting the next search. That ownership rule is
@@ -1778,7 +1788,7 @@ class Engine:
         "lazy_pv_eval", "use_history_malus", "use_see", "use_qsee_order",
         "use_tt_depth_replace", "use_tt_two_tier", "use_pin_eval",
         "use_simplify", "recapture_ext", "lmr_aggressive", "soft_stop_frac",
-        "use_singular_ext",
+        "use_singular_ext", "use_stability_time",
     )
 
     def _smp_config(self):
@@ -3525,6 +3535,12 @@ class Engine:
             self._unmake = (self._unmake_nozob if inc
                             else self._unmake_nozob_noacc)
 
+        # U-06: best-move stability across completed ID iterations, used to
+        # scale the P-35 soft-stop fraction at the bottom of this loop.
+        _stab_prev = None        # previous completed iteration's best move
+        _stab_iters = 0          # consecutive iterations keeping the same best
+        _stab_changed = False    # did the LAST completed iteration flip it?
+
         for depth in range(1, max_depth + 1):
             self._partial_root_move = None   # clear partial result for this depth
             try:
@@ -3542,6 +3558,17 @@ class Engine:
                 break
 
             if move is not None:
+                # U-06: update stability before pv_move is overwritten. The
+                # first completed iteration only seeds the tracker (a "change"
+                # needs two completed iterations to compare).
+                if _stab_prev is not None:
+                    if move == _stab_prev:
+                        _stab_iters += 1
+                        _stab_changed = False
+                    else:
+                        _stab_iters = 0
+                        _stab_changed = True
+                _stab_prev = move
                 best_move = move
                 pv_move = move
                 reached_depth = depth
@@ -3569,6 +3596,14 @@ class Engine:
                 # P-35 soft-stop: the hard check (>= budget) is subsumed when a
                 # fraction is set; keep it as the fallback for soft_stop_frac=None.
                 soft = self.soft_stop_frac
+                if soft is not None and self.use_stability_time:
+                    # U-06: a stable best move needs less confirmation (stop
+                    # earlier, bank the clock); a flipping one deserves more
+                    # of the budget. The hard >= time_limit cap still rules.
+                    if _stab_changed:
+                        soft = self.SOFT_STOP_UNSTABLE_FRAC
+                    elif _stab_iters >= self.SOFT_STOP_STABLE_ITERS:
+                        soft = self.SOFT_STOP_STABLE_FRAC
                 if elapsed >= time_limit or (
                         soft is not None and elapsed >= soft * time_limit):
                     break
