@@ -70,7 +70,7 @@ TC_INCREMENT = 0.10         # used when MODE == "clock": seconds added per move
 # threshold is the cp at which the fitted WDL model says P(win) >= ADJ_WIN_P
 # at the current phase. A draw is adjudicated late in level games. Needs
 # wdl_model.json (written by fit_wdl_model.py); silently stays off without it.
-ADJUDICATE = False          # turn on/off adjudication (requires wdl_model.json)
+ADJUDICATE = True          # turn on/off adjudication (requires wdl_model.json)
 ADJ_WIN_P = 0.99            # per-phase cp threshold = model's P(win) 99% point
 ADJ_WIN_COUNT = 7           # consecutive own moves (each side) for a win call
 ADJ_DRAW_CP = 10            # |cp| <= this from both sides...
