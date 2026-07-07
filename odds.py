@@ -61,8 +61,8 @@ ODDS_GIVEN_BY = "engine_2"
 # So ``["d1"]`` means "queen odds" regardless of which colour gives them.
 #
 # Presets (uncomment ONE):
-ODDS_SQUARES = ["d1"]                   # Queen odds       (Q on d1)
-# ODDS_SQUARES = ["a1"]                 # Rook odds        (Ra1)
+# ODDS_SQUARES = ["d1"]                 # Queen odds       (Q on d1)
+ODDS_SQUARES = ["a1"]                   # Rook odds        (Ra1)
 # ODDS_SQUARES = ["b1"]                 # Knight odds      (Nb1)
 # ODDS_SQUARES = ["f1"]                 # Bishop odds      (Bf1)
 # ODDS_SQUARES = ["f2"]                 # Pawn odds        (f-pawn)
