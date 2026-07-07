@@ -30,11 +30,15 @@ Search features
   enough quiet moves have been searched without a cutoff).
 * **Extensions**: check extension (post-push, draws on its own ``chk_budget``
   so a line full of captures cannot starve it), single-reply / forced-move
-  extension, and passed-pawn push extension (5th rank or beyond). All three
-  non-check extensions share a single ``ext_budget`` cap. A recapture extension
-  also exists (``recapture_ext`` toggle) but is **off by default** -- the
-  quiescence search already resolves exchanges at the leaves and extending again
-  costs ≈35% more nodes for no measured gain.
+  extension, passed-pawn push extension (5th rank or beyond), and **singular
+  extension** (``use_singular_ext``, A/B pending): at depth >= 8, when a deep
+  TT_LOWER/TT_EXACT entry backs the TT move, an exclusion search (same node,
+  TT move excluded, half depth, null window at ``tt_value - 2*depth``) tests
+  whether any other move comes close -- if none does, the TT move is extended.
+  All non-check extensions share a single ``ext_budget`` cap. A recapture
+  extension also exists (``recapture_ext`` toggle) but is **off by default** --
+  the quiescence search already resolves exchanges at the leaves and extending
+  again costs ≈35% more nodes for no measured gain.
 * **Move ordering**: TT move, MVV-LVA + **capture history** (learned per
   ``(mover_pt, to_sq, victim_pt)`` triple, same gravity rule as quiet history,
   blended directly into the capture score so equal-MVV-LVA captures are ranked
@@ -467,11 +471,8 @@ Elo or NPS gains. (Note: Outposts, Space, Phalanx, Pawn Storm, and King Shelter
 were all tested and kept OFF -- see "Rejected / shelved experiments" above.)
 
 1. Search Enhancements
-   - Singular Extensions: Extending search depths when a single move is vastly
-     better than all alternatives (not the same as the existing single-reply /
-     forced-move extension, which only fires when there is literally one legal
-     move; singular extension fires whenever one move's score is significantly
-     above all siblings).  Expected +15-30 Elo; medium complexity.
+   - Singular Extensions: IMPLEMENTED 2026-07-07 (P-33, ``use_singular_ext``
+     -- see "Search features" above); Elo A/B vs v29 pending.
    - Null Move Verification: A shallow verification search before returning a
      null-move cutoff at high depths (depth >= 10–12) to avoid incorrect prunes
      in zugzwang positions.  Low code cost; prevents rare but decisive errors
