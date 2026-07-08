@@ -85,7 +85,16 @@ POSITIONS = [
 ]
 
 
+# v99 = cengine.py (the C search core, phase 3) -- not an Old Engine snapshot,
+# so it gets a sentinel version well clear of the real lineage. It satisfies
+# the same Engine API (nodes_searched/last_depth, guarded use_book/use_tb/
+# smp_workers), so every cell/table mechanism below works unchanged.
+CENGINE_VERSION = 99
+
+
 def engine_path(v):
+    if v == CENGINE_VERSION:
+        return os.path.join(BASE_DIR, "cengine.py")
     return os.path.join("Old Engine", str(v), f"engine{v}.py")
 
 
@@ -326,6 +335,11 @@ def discover_versions():
         v = int(entry)
         if os.path.isfile(os.path.join(root, entry, f"engine{v}.py")):
             found.append(v)
+    # C search core (v99): included when both its driver and its .so exist
+    # (setup.sh builds csearch.so; without it the cell would just FAIL).
+    if (os.path.isfile(os.path.join(BASE_DIR, "cengine.py"))
+            and os.path.isfile(os.path.join(BASE_DIR, "csearch.so"))):
+        found.append(CENGINE_VERSION)
     return sorted(found)
 
 
@@ -341,6 +355,9 @@ def run_all(versions, positions, runs_per_position, seconds_per_run, max_depth,
             todo.append((v, name, fen))
 
     done_cells = total_cells - len(todo)
+    if CENGINE_VERSION in versions:
+        print(f"note: v{CENGINE_VERSION} = cengine.py (C search core), "
+              "not an Old Engine snapshot")
     print(f"Results file: {results_path}")
     print(f"{done_cells}/{total_cells} cells already done. "
           f"{len(todo)} to run with {workers} parallel workers "
