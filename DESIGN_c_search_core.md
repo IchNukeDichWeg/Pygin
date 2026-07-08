@@ -206,6 +206,25 @@ byte-identical to v30) — gate it by tactical-suite solve rate + **A/B vs v30
 (must be strongly positive)** + perft still exact. Snapshot as the first C-era
 version only after that A/B confirms.
 
+## Final gate — A/B vs v30 (2026-07-08)
+
+30-game smoke through the real match.py plumbing (45+0.1 clock, book off,
+WDL adjudication, UHO openings):
+
+| | W | D | L | Score | Elo (raw) |
+|---|---|---|---|---|---|
+| **cengine vs v30 (engine.py)** | **29** | 1 | **0** | **98.33%** | **+708 ±1677** |
+
+Pentanomial 14 WW + 1 WD, zero lost/drawn pairs; 23/30 games ended by
+adjudication (both engines' score reports agreeing — the driver's White-POV
+cp convention verified in anger); zero errors in the log; ~8 s/game.
+**Gate: strongly positive beyond any statistical doubt** (a 29-0-1 start
+puts the 95% lower bound far above +300). At a 98% score this pairing is
+outside Elo's measuring range — the meaningful next measurements are
+external: the rook-odds-vs-full-Stockfish line (v30: dead even at 50.50%)
+and stronger reference opponents. Perft: movegen unchanged, selftest exact.
+Tactical suite: PASS (step 5).
+
 ## Recommendation
 
 The upside is the single largest remaining lever (the only path to *multiples*
