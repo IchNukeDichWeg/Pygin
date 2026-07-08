@@ -30,6 +30,8 @@ UHO_*.epd
 # ...except the default match.py book, which is kept in the repo:
 !UHO_4060_v4.epd
 *.bin
+# ...except the default opening book (Perfect 2023, freeware, 50 KB):
+!Perfect2023.bin
 Elo2400.bin
 
 # --- NEVER publish: private / credential-bearing helper (chess.com cookies) ---
