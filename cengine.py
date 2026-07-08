@@ -68,6 +68,17 @@ class Engine:
 
     def __init__(self):
         self._pymod = _load_pyengine()
+        # The param sync below re-runs _sync_c_params, which early-returns
+        # when engine.py fell back to pure-Python eval -- csearch.so would
+        # then silently keep eval_c.c's COMPILED-IN defaults (which differ
+        # from the engine's tuned values). Refuse to construct instead.
+        if not self._pymod._USE_C_EVAL:
+            raise RuntimeError(
+                "engine.py loaded without eval_c.so (pure-Python fallback) "
+                "-- cengine's eval-param sync would be skipped. Rebuild via "
+                "./setup.sh; if this happens inside a benchmark/match worker "
+                "that mixes engine versions in one process, isolate versions "
+                "per process (fresh worker per cell).")
         self._py = self._pymod.Engine()      # book + the eval-param oracle
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
