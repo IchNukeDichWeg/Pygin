@@ -162,6 +162,11 @@ class Engine:
         self.last_score = 0                  # White POV, v30 mate convention
         self.last_depth = 0
         self.last_pv = ""
+        # v30 live-stats surface (experiment.py's heartbeat reads BOTH of
+        # these mid-search): .nodes updates per completed ID depth, and
+        # .start_time is the search's perf_counter start.
+        self.nodes = 0
+        self.start_time = 0.0
         # GUI contract (experiment.py / WebChess): per-completed-depth and
         # final info callbacks, same record dicts v30 emits.
         self.on_depth = None
@@ -235,6 +240,8 @@ class Engine:
         t0 = time.perf_counter()
         prev_verdict = self.last_score       # previous MOVE's score (TB gate)
         self.nodes_searched = 0
+        self.nodes = 0
+        self.start_time = t0                 # heartbeat NPS reads this live
         self.last_score = 0
         self.last_depth = 0
         self.last_pv = ""
@@ -329,6 +336,7 @@ class Engine:
             best_key = key
             prev_score = score
             reached_depth = depth
+            self.nodes = nodes               # live-stats heartbeat surface
 
             # live search info (GUI contract), v30's record shape
             if self.on_depth is not None or self.on_final is not None:
@@ -363,6 +371,7 @@ class Engine:
 
         # --- stats in v30 conventions (battle_worker reads these) -------- #
         self.nodes_searched = nodes
+        self.nodes = nodes
         self.last_depth = reached_depth
         self.last_score = self._white_v30(
             prev_score if prev_score is not None else 0, board.turn)
