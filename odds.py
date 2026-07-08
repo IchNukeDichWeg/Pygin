@@ -28,14 +28,15 @@ once and plays its share of the games; results stream back to one log/PGN.
 # ====================================================================== #
 
 # --- Engines ---------------------------------------------------------- #
-ENGINE_1_PATH = "engine.py"
+ENGINE_1_PATH = "cengine.py"            # the C core (v31); "engine.py" = v30
 ENGINE_2_PATH = "stockfish_engine.py"
 
 # Engine 1 plays this color in GAME 1; colors alternate every game after.
 ENGINE_1_PLAYS_FIRST = "white"          # "white" | "black"
 
 # --- Match length & parallelism --------------------------------------- #
-NUM_GAMES = 100       # TOTAL games for the whole match
+NUM_GAMES = 400       # TOTAL games (400 -> ~±35 Elo CI: enough to SEE a
+                      # step on the rook-odds line, per the v30-era runs)
 N_WORKERS = 10        # parallel games (worker processes); 1 = sequential.
                       # Keep N_WORKERS * ENGINE_SMP <= CPU cores.
 
