@@ -243,6 +243,13 @@ external: the rook-odds-vs-full-Stockfish line (v30: dead even at 50.50%)
 and stronger reference opponents. Perft: movegen unchanged, selftest exact.
 Tactical suite: PASS (step 5).
 
+**External re-date (2026-07-08): rook odds vs FULL Stockfish, 400 games @
+45+0.15 — cengine 364W/18D/18L = 93.25%, +456 ±169 Elo** (345 wins by
+checkmate; ~6.5 s/game). The line that v25→v30's +139 internal Elo could
+not budge (48.00% → 50.50%, dead even twice) moved ~450 Elo in one step.
+Rook odds is now saturated as a yardstick, like queen odds before it —
+knight odds (Nb1) is the next external progress benchmark.
+
 ## Recommendation
 
 The upside is the single largest remaining lever (the only path to *multiples*

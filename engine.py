@@ -408,8 +408,9 @@ benchmark" below.
   source of truth for evaluation. ~2.5M NPS vs ~90k (bench sweep, trimmed
   means: NPS 84.5k -> 3.84M, depth-reached 10.5 -> 17.75 at 2s/move).
   **Gate A/B vs v30 (30 games @ 45+0.1, match.py, adjudicated): 29W/1D/0L
-  = 98.33%** -- outside Elo's measuring range; external re-measurement
-  (rook-odds series) pending. Design + phase log: DESIGN_c_search_core.md.
+  = 98.33%** -- outside Elo's measuring range. External re-date: **rook
+  odds vs full Stockfish 50.50% -> 93.25%** (400 games, +456 +/-169; see
+  Strength below). Design + phase log: DESIGN_c_search_core.md.
   This file stays the shipped Python engine (v30) and the eval oracle;
   v31 is not yet snapshotted under Old Engine/.
 
@@ -461,14 +462,16 @@ from the internal ledger (chain-audit validated) and from the odds series
 below.
 
 **Odds series vs FULL-strength Stockfish 18 (no limiter, 45+0.15):**
-queen odds (Qd1) 100/100 (2026-07-06, saturated); **rook odds (Ra1): 48.00%
-(v29 era) -> 50.50% (v30, 2026-07-07) over 100 games each -- dead even with
-full Stockfish a rook down.** The +2.5-point move matches the +49 internal
-Elo banked between the runs in direction, but a 100-game sample (CI ±69)
-cannot resolve it. Full-strength SF plays real chess (no error scheduler),
-so this series actually moves with engine improvements; rook odds is the
-recurring external progress benchmark (~13 min per 100 games; use ~400
-games / ±35 when the point is to SEE a ~+50 Elo step).
+queen odds (Qd1) 100/100 (2026-07-06, saturated); rook odds (Ra1): 48.00%
+(v29 era) -> 50.50% (v30, 2026-07-07) over 100 games each -- dead even --
+**-> 93.25% (v31 C core, 2026-07-08: 400 games, 364W/18D/18L, +456 +/-169
+Elo, 345 wins by checkmate).** The line the +139 Elo of v25->v30 could not
+budge moved ~450 Elo in one step, confirming the C core externally (its
+internal 30-game gate vs v30 was 29W/1D/0L). Rook odds is now SATURATED
+as a yardstick, like queen odds before it -- **knight odds (Nb1) is the
+next external progress benchmark.** Full-strength SF plays real chess (no
+error scheduler), so this series actually moves with engine improvements
+(~400 games / ±35-ish when the point is to SEE a step; ~6.5 s/game).
 
 Earlier SMP benchmark: Stockfish skill ≈2400, engine running
 ``SMP_WORKERS = 4``: 400 games, 188W / 131D / 81L (63.4%) -> +95 +/-37 Elo
