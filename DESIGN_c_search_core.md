@@ -250,6 +250,12 @@ not budge (48.00% → 50.50%, dead even twice) moved ~450 Elo in one step.
 Rook odds is now saturated as a yardstick, like queen odds before it —
 knight odds (Nb1) is the next external progress benchmark.
 
+## C-era feature ledger (post-phase-4; adjacent A/Bs vs the previous snapshot)
+
+| Version | Feature | A/B result | Verdict |
+|---|---|---|---|
+| v32 | P-03 Internal Iterative Reduction (`set_iir`) | **+7.30 ±6.8** (10k @ 45+0.1, 51.05%, ptnml 347/1155/1864/1209/425, norm +13.99) vs v31 | **CONFIRMED** 2026-07-08 |
+
 ## Recommendation
 
 The upside is the single largest remaining lever (the only path to *multiples*

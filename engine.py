@@ -410,9 +410,19 @@ benchmark" below.
   **Gate A/B vs v30 (30 games @ 45+0.1, match.py, adjudicated): 29W/1D/0L
   = 98.33%** -- outside Elo's measuring range. External re-date: **rook
   odds vs full Stockfish 50.50% -> 93.25%** (400 games, +456 +/-169; see
-  Strength below). Design + phase log: DESIGN_c_search_core.md.
-  This file stays the shipped Python engine (v30) and the eval oracle;
-  v31 is not yet snapshotted under Old Engine/.
+  Strength below); knight odds baseline 76.75% (400 games, +207 +/-48).
+  Design + phase log: DESIGN_c_search_core.md. This file stays the
+  shipped Python engine (v30) and the eval oracle. Snapshotted as
+  Old Engine/31 (engine31.py + frozen engine_eval.py oracle).
+
+* **v32 (2026-07-08, lives in ``cengine.py`` + ``csearch.c``): P-03
+  Internal Iterative Reduction.** No TT move at a depth>=4 non-check node
+  -> search one ply shallower (the TT-fed revisit gets full depth).
+  ``set_iir(0)`` restores v31's search node-exactly. **A/B vs v31
+  (2026-07-08): 10,000 games @ 45+0.1, 3174W/3862D/2964L = 51.05% ->
+  +7.30 +/-6.8 Elo** (ptnml 347/1155/1864/1209/425, pair ratio 1.09,
+  normalized +13.99) -- first confirmed feature of the C era, right in
+  IIR's classic +5-10 band. C-era backlog: improvements_v30+.md (local).
 
 Cross-version benchmark
 -----------------------
