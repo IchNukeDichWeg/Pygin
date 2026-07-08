@@ -424,6 +424,20 @@ benchmark" below.
   normalized +13.99) -- first confirmed feature of the C era, right in
   IIR's classic +5-10 band. C-era backlog: improvements_v30+.md (local).
 
+* **v33 (2026-07-09, lives in ``cengine.py`` + ``csearch.c``): P-14 keep
+  the TT warm across irreversible moves.** v30's wipe-on-capture/pawn-move
+  rule existed for its unbounded dict TT; the C table is fixed-size with
+  generation-aware replacement and full-key-checked probes, so the wipe
+  only discarded the still-reachable subtree's entries on a very frequent
+  event. ``TT_KEEP_WARM=False`` reproduces v32 move-for-move. **A/B vs v32
+  (2026-07-09): 10,000 games @ 45+0.1, 3572W/3532D/2896L = 53.38% ->
+  +23.52 +/-6.8 Elo** (ptnml 319/1002/1898/1246/535, pair ratio 1.35,
+  normalized +44.49) -- ~5x the +2-5 estimate; the warm table is worth
+  far more at depth 14+ than the old dict-TT hygiene assumed. Also in
+  this rev: Lazy-SMP TT-poison fix (stopped helpers no longer store
+  garbage; single-thread unaffected) and a process-wide search lock
+  (multi-instance hosts can no longer corrupt the shared C state).
+
 Cross-version benchmark
 -----------------------
 Sweep (2026-07-02): 24 versions x 8 positions x 6 timed 5s runs (1152 searches).

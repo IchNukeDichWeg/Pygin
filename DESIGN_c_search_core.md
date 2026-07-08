@@ -255,6 +255,8 @@ knight odds (Nb1) is the next external progress benchmark.
 | Version | Feature | A/B result | Verdict |
 |---|---|---|---|
 | v32 | P-03 Internal Iterative Reduction (`set_iir`) | **+7.30 ±6.8** (10k @ 45+0.1, 51.05%, ptnml 347/1155/1864/1209/425, norm +13.99) vs v31 | **CONFIRMED** 2026-07-08 |
+| — | P-20a king shelter eval toggle | −4.27 ±6.8 (10k @ 45+0.1, 49.38%) vs v32 | REJECTED 2026-07-08, reverted (depth-8 signal subsumed by deep search) |
+| v33 | P-14 TT kept warm across irreversible moves (`TT_KEEP_WARM`) | **+23.52 ±6.8** (10k @ 45+0.1, 53.38%, ptnml 319/1002/1898/1246/535, norm +44.49) vs v32 | **CONFIRMED** 2026-07-09 |
 
 ## Recommendation
 
