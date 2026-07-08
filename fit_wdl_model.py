@@ -121,19 +121,29 @@ def board_phase(board):
 # 20 and older: 30-100+ Elo -- biased outcomes); if a future match pairs a
 # listed base against something much stronger, delist it first.
 NEAR_EQUAL_BASES = {
-    "engine",
-    "engine24", "engine25", "engine26", "engine27",
-    "engine28", "engine29", "engine30",
+    # v31 / C-core era (2026-07-08 ->): cengine vs its frozen Old Engine/31
+    # snapshot are IDENTICAL engines -- near-equal by construction. The
+    # v24-v30 Python-era bases are deliberately DELISTED for the v31 refit:
+    # (a) a depth-~8 engine's cp -> outcome conversion is exactly what the
+    # refit must stop modeling (the C core converts +300 far more reliably),
+    # and (b) delisting "engine" also auto-excludes the lopsided
+    # cengine-vs-engine 29-1-0 gate log (a ~700-Elo-gap pairing that would
+    # otherwise qualify once "cengine" is listed).
+    "cengine", "engine31",
+    # Python era (kept for reference; re-add ONLY for a deliberate
+    # mixed-era fit): "engine", "engine24" ... "engine30".
 }
 
 # Specific Stockfish match logs where Stockfish was configured within a few
-# Elo of engine.py, making engine.py's own samples from them unbiased. Only
-# engine-family sides are ever extracted (Stockfish's scores are on a
+# Elo of the engine, making the engine's own samples from them unbiased.
+# Only engine-family sides are ever extracted (Stockfish's scores are on a
 # different eval scale regardless); the generic stockfish exclusion still
-# applies to every other SF log (unknown / large strength gaps).
+# applies to every other SF log (unknown / large strength gaps). EMPTY in
+# the v31 era: the one qualifying log (SF-2450 vs v25-era engine, -8 +/-14)
+# paired the OLD engine -- no near-equal SF pairing exists for the C core
+# (limited-SF is retired as an instrument anyway).
 NEAR_EQUAL_STOCKFISH_LOGS = {
-    # SF Elo 2450 vs engine at ~2442 (-8.06 +/- 13.6 over 2,500 games)
-    "engine_vs_stockfish_engine_2026-07-04_02-26-12_31615",
+    # "engine_vs_stockfish_engine_2026-07-04_02-26-12_31615",  # v25 era
 }
 
 
