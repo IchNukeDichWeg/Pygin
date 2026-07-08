@@ -6,7 +6,7 @@
  *
  * Build (links eval_c.c for the mobility/king-safety term + Constants.c):
  *   clang -O3 -march=native -shared -fPIC -w -I. \
- *         -o csearch.so csearch.c eval_c.c Constants.c
+ *         -o csearch.so csearch.c eval_c.c Constants.c -lm -lpthread
  *
  * GATE RESULT (2026-07-08): full-eval C alpha-beta ~13.5M nodes/s vs the
  * Python engine's ~90k = ~150x. GO for phase 3 (full C search core). */
@@ -660,7 +660,7 @@ int csearch_eval_white(uint64_t pawns, uint64_t knights, uint64_t bishops,
 
 #include <string.h>
 
-static uint64_t g_nodes;
+static __thread uint64_t g_nodes;   /* per-thread; helpers aggregate on exit */
 #define CS_INF    30000
 #define CS_MAXPLY 64
 #define HIST_MAX  16384
@@ -673,10 +673,13 @@ extern int see(uint64_t pawns, uint64_t knights, uint64_t bishops, uint64_t rook
 /* Phase-3 step 1: move-ordering state (reset per search). history is
  * [color][from<<6|to]; killers[ply] and counter[prev_from<<6|prev_to] hold a
  * move's 15-bit key (from|to<<6|promo<<12). A real move key is never 0
- * (from==to is illegal), so 0 doubles as the "empty" sentinel. */
-static int      g_history[2][4096];
-static uint32_t g_killers[CS_MAXPLY][2];
-static uint32_t g_counter[4096];
+ * (from==to is illegal), so 0 doubles as the "empty" sentinel.
+ * __thread (Lazy SMP): each search thread keeps its OWN ordering state --
+ * only the TT is shared between threads. Zero-initialised per new thread;
+ * the main thread's copy is reset by cs_search_begin exactly as before. */
+static __thread int      g_history[2][4096];
+static __thread uint32_t g_killers[CS_MAXPLY][2];
+static __thread uint32_t g_counter[4096];
 
 /* 0 = plain MVV-LVA baseline (for value-identity verification), 1 = full. */
 static int g_order_mode = 1;
@@ -704,14 +707,23 @@ void set_order_mode(int m) { g_order_mode = m; }
 #define TT_UPPER 2
 #define MATE_THRESH (CS_INF - 1000)
 
+/* Lockless-SMP entry format (24 bytes): the stored key is XOR-folded with
+ * both data words, so a TORN write from a racing thread (Lazy SMP shares
+ * this table with no locks) fails the probe's key reconstruction and reads
+ * as a miss instead of corrupt data -- the classic Stockfish scheme. In
+ * single-thread use the encoding is transparent (same semantics as the
+ * plain struct it replaced). */
 typedef struct {
-    uint64_t key;
-    int32_t  value;
-    uint32_t move;      /* 15-bit move key in low bits */
-    int16_t  depth;
-    int16_t  flag;
-    int16_t  gen;       /* step 6: search generation (was struct padding) */
+    uint64_t key_x;     /* key ^ d1 ^ d2 */
+    uint64_t d1;        /* value (low 32, signed) | move15 << 32 */
+    uint64_t d2;        /* depth (low 16, signed) | flag << 16 | gen << 32 */
 } TTEntry;
+
+#define TT_VALUE(e)  ((int)(int32_t)(uint32_t)((e).d1))
+#define TT_MOVE(e)   ((uint32_t)((e).d1 >> 32))
+#define TT_DEPTH(e)  ((int)(int16_t)(uint16_t)((e).d2))
+#define TT_FLAG(e)   ((int)(uint16_t)((e).d2 >> 16))
+#define TT_GEN(e)    ((int)(uint16_t)((e).d2 >> 32))
 
 static TTEntry* g_tt = NULL;
 static int g_use_tt = 1;
@@ -724,6 +736,25 @@ void cs_tt_reset(void)
 {
     if (g_tt) memset(g_tt, 0, TT_SIZE * sizeof(TTEntry));
     g_gen = 0;
+}
+
+static inline void tt_store_raw(TTEntry* t, uint64_t key, int value,
+                                uint32_t move, int depth, int flag)
+{
+    uint64_t d1 = (uint64_t)(uint32_t)value | ((uint64_t)move << 32);
+    uint64_t d2 = (uint64_t)(uint16_t)depth
+                | ((uint64_t)(uint16_t)flag << 16)
+                | ((uint64_t)(uint16_t)g_gen << 32);
+    t->d1 = d1; t->d2 = d2; t->key_x = key ^ d1 ^ d2;
+}
+
+/* Snapshot the slot and reconstruct its key; 0 = miss (or torn write). */
+static inline int tt_load(const TTEntry* t, uint64_t key, TTEntry* out)
+{
+    TTEntry e = *t;
+    if ((e.key_x ^ e.d1 ^ e.d2) != key) return 0;
+    *out = e;
+    return 1;
 }
 
 static inline uint64_t board_key(const Board* b)
@@ -799,25 +830,36 @@ static inline uint64_t now_ns(void)
     return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
 }
 
-static uint64_t g_deadline = 0;     /* absolute ns; 0 = no time limit */
-static int g_abort = 0;             /* set on deadline; unwinds the search */
+static uint64_t g_deadline = 0;         /* absolute ns; 0 = no time limit */
+static volatile int g_abort = 0;        /* deadline / cs_stop: unwinds ALL threads */
+static volatile int g_hstop = 0;        /* main root finished: helpers unwind */
+static __thread int g_is_helper = 0;    /* set at helper-thread entry */
 
 /* Node-entry poll (negamax + qsearch): every 4096 nodes check the clock.
- * At ~2.5M nps that is ~1.6 ms granularity -- finer than v30's poll. */
+ * At ~2.5M nps that is ~1.6 ms granularity -- finer than v30's poll.
+ * Helpers additionally unwind when the main thread's iteration is done. */
 #define CS_TIME_CHECK() do { \
         if ((g_nodes & 4095) == 0 && g_deadline && now_ns() >= g_deadline) \
             g_abort = 1; \
-        if (g_abort) return 0; \
+        if (g_abort || (g_is_helper && g_hstop)) return 0; \
     } while (0)
+
+/* Host-requested abort (UCI `stop`): same unwind path as the deadline. */
+void cs_stop(void) { g_abort = 1; }
+
+static uint64_t g_helper_nodes = 0;     /* Lazy-SMP helper node aggregate
+                                         * (atomic adds on helper exit) */
 
 /* Repetition state. g_path[ply] holds the board key of every negamax node on
  * the current line (g_path[0] = root); g_hist holds keys of game positions
  * BEFORE the root, most recent first, as far back as the root's halfmove
  * clock reaches (older positions can never recur). A position repeats if its
  * key appears an even number of plies back within the reversible window --
- * the first repetition scores as a contempt draw (v30's _path semantics). */
+ * the first repetition scores as a contempt draw (v30's _path semantics).
+ * g_path is per-thread (each SMP thread walks its own line); g_hist is
+ * written once per move in cs_search_begin and read-only during search. */
 #define CS_HIST_MAX 128
-static uint64_t g_path[CS_MAXPLY + 8];
+static __thread uint64_t g_path[CS_MAXPLY + 8];
 static uint64_t g_hist[CS_HIST_MAX];
 static int g_nhist = 0;
 
@@ -999,15 +1041,16 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     TTEntry* tte = NULL;
     if (g_use_tt) {
         tte = &g_tt[key & TT_MASK];
-        if (tte->key == key) {
-            tt_move = tte->move;
-            if (tte->depth >= depth) {
-                int v = tte->value;                 /* ply-relative -> node */
+        TTEntry e;
+        if (tt_load(tte, key, &e)) {
+            tt_move = TT_MOVE(e);
+            if (TT_DEPTH(e) >= depth) {
+                int v = TT_VALUE(e);                /* ply-relative -> node */
                 if (v >= MATE_THRESH) v -= ply;
                 else if (v <= -MATE_THRESH) v += ply;
-                if (tte->flag == TT_EXACT) return v;
-                if (tte->flag == TT_LOWER && v > alpha) alpha = v;
-                else if (tte->flag == TT_UPPER && v < beta) beta = v;
+                if (TT_FLAG(e) == TT_EXACT) return v;
+                if (TT_FLAG(e) == TT_LOWER && v > alpha) alpha = v;
+                else if (TT_FLAG(e) == TT_UPPER && v < beta) beta = v;
                 if (alpha >= beta) return v;
             }
         }
@@ -1114,9 +1157,12 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
      * search generation is freely replaceable, a current-gen one only for
      * deeper-or-equal depth (the TT persists across ID iterations/moves). */
     if (g_use_tt) {
-        int replace = (tte->key == key)
-                    ? (tte->depth <= depth)
-                    : (tte->gen != (int16_t)g_gen || tte->depth <= depth);
+        TTEntry cur = *tte;
+        uint64_t cur_key = cur.key_x ^ cur.d1 ^ cur.d2;
+        int replace = (cur_key == key)
+                    ? (TT_DEPTH(cur) <= depth)
+                    : (TT_GEN(cur) != (int)(uint16_t)g_gen
+                       || TT_DEPTH(cur) <= depth);
         if (replace) {
             int flag = (best <= alpha_orig) ? TT_UPPER
                      : (best >= beta)       ? TT_LOWER : TT_EXACT;
@@ -1128,9 +1174,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
              * `(m & 0x7FFF) == tt_move` never match for odd mover PTs
              * (pawn/bishop/queen) -- TT-move ordering was silently dead
              * for those movers. */
-            tte->key = key; tte->value = sv; tte->move = best_move & 0x7FFF;
-            tte->depth = (int16_t)depth; tte->flag = (int16_t)flag;
-            tte->gen = (int16_t)g_gen;
+            tt_store_raw(tte, key, sv, best_move & 0x7FFF, depth, flag);
         }
     }
     return best;
@@ -1159,31 +1203,21 @@ void cs_search_begin(const uint64_t* hist, int nhist, double budget_sec)
     memset(g_history, 0, sizeof(g_history));
     memset(g_killers, 0, sizeof(g_killers));
     memset(g_counter, 0, sizeof(g_counter));
+    g_helper_nodes = 0;                  /* Lazy-SMP helper node aggregate */
     if (g_tt == NULL) g_tt = (TTEntry*)calloc(TT_SIZE, sizeof(TTEntry));
     if (!g_lmr_ready) init_lmr();
     g_gen = (g_gen + 1) & 0x7FFF;        /* old entries become replaceable */
 }
 
-/* One ID iteration: full-width root PVS inside [alpha, beta) (no reductions
- * or pruning at the root -- root moves are few and important). Returns the
- * best move's 15-bit key. Outputs: *out_score = fail-soft root score,
- * *out_nodes = nodes since cs_search_begin, *out_done = root moves fully
- * searched this iteration, *out_aborted = deadline hit (if so, the returned
- * move/score cover only the *out_done completed moves -- the PV move is
- * searched first, so *out_done >= 1 makes the result usable: v30's
- * partial-iteration rule). `prev_key` = previous iteration's best move (or
- * 0), ordered first. `hmc` = the root's halfmove clock. */
-uint32_t cs_search_root(uint64_t pawns, uint64_t knights, uint64_t bishops,
-                        uint64_t rooks, uint64_t queens, uint64_t kings,
-                        uint64_t occ_w, uint64_t occ_b,
-                        int turn, int ep, uint64_t castling,
-                        int depth, int alpha, int beta,
-                        uint32_t prev_key, int hmc,
-                        uint64_t* out_nodes, int* out_score,
-                        int* out_done, int* out_aborted)
+/* Root PVS body, shared by the main thread and the Lazy-SMP helpers: full
+ * width inside [alpha, beta), no reductions or pruning (root moves are few
+ * and important). Returns the best move's 15-bit key; *out_done counts
+ * root moves fully searched (a stop mid-move leaves it short). */
+static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
+                            uint32_t prev_key, int hmc,
+                            int* out_score, int* out_done)
 {
-    Board b = make_board(pawns, knights, bishops, rooks, queens, kings,
-                         occ_w, occ_b, turn, ep, castling);
+    Board b = *rb;
     uint64_t key = board_key(&b);
     g_path[0] = key;
     int alpha_orig = alpha;
@@ -1191,9 +1225,7 @@ uint32_t cs_search_root(uint64_t pawns, uint64_t knights, uint64_t bishops,
     uint32_t moves[256];
     int n = gen_legal(&b, moves);
     *out_done = 0;
-    *out_aborted = 0;
     if (n == 0) {                        /* mate/stalemate at the root */
-        *out_nodes = g_nodes;
         *out_score = in_check(&b) ? -CS_INF : 0;
         return 0;
     }
@@ -1218,7 +1250,8 @@ uint32_t cs_search_root(uint64_t pawns, uint64_t knights, uint64_t bishops,
             if (v > alpha && v < beta)
                 v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc);
         }
-        if (g_abort) { *out_aborted = 1; break; }    /* v is garbage */
+        if (g_abort || (g_is_helper && g_hstop))
+            break;                                   /* v is garbage */
         (*out_done)++;
         if (v > best) { best = v; best_move = m; }
         if (v > alpha) alpha = v;
@@ -1226,17 +1259,91 @@ uint32_t cs_search_root(uint64_t pawns, uint64_t knights, uint64_t bishops,
     }
 
     /* Root TT store (feeds the next iteration's ordering + the PV walk). */
-    if (g_use_tt && !g_abort && *out_done > 0) {
-        TTEntry* tte = &g_tt[key & TT_MASK];
+    if (g_use_tt && !g_abort && !(g_is_helper && g_hstop) && *out_done > 0) {
         int flag = (best <= alpha_orig) ? TT_UPPER
                  : (best >= beta)       ? TT_LOWER : TT_EXACT;
-        tte->key = key; tte->value = best; tte->move = best_move & 0x7FFF;
-        tte->depth = (int16_t)depth; tte->flag = (int16_t)flag;
-        tte->gen = (int16_t)g_gen;
+        tt_store_raw(&g_tt[key & TT_MASK], key, best,
+                     best_move & 0x7FFF, depth, flag);
     }
-    *out_nodes = g_nodes;
     *out_score = best;
     return best_move & 0x7FFF;   /* 15-bit move key: from|to<<6|promo<<12 */
+}
+
+/* --- Lazy SMP ----------------------------------------------------------- *
+ * set_threads(N): each cs_search_root spawns N-1 helper pthreads running
+ * the SAME root search (alternating depth / depth+1, full window), stopped
+ * when the main thread's iteration completes. The only communication is
+ * the shared lockless TT; every other piece of search state is __thread.
+ * Helper results are discarded -- their value is the TT fill. */
+#include <pthread.h>
+static int g_threads = 1;
+void set_threads(int n) { g_threads = (n < 1) ? 1 : (n > 64 ? 64 : n); }
+
+typedef struct { Board b; int depth, hmc; uint32_t prev; } HelperArg;
+
+static void* helper_entry(void* p)
+{
+    HelperArg* a = (HelperArg*)p;
+    g_is_helper = 1;
+    g_nodes = 0;
+    int score, done;
+    root_search(&a->b, a->depth, -CS_INF, CS_INF, a->prev, a->hmc,
+                &score, &done);
+    __atomic_fetch_add(&g_helper_nodes, g_nodes, __ATOMIC_RELAXED);
+    return NULL;
+}
+
+/* One ID iteration: root PVS inside [alpha, beta), plus Lazy-SMP helpers
+ * when set_threads(N>1). Returns the best move's 15-bit key. Outputs:
+ * *out_score = fail-soft root score, *out_nodes = nodes since
+ * cs_search_begin (all threads), *out_done = root moves fully searched,
+ * *out_aborted = deadline/stop hit (if so, the returned move/score cover
+ * only the *out_done completed moves -- the PV move is searched first, so
+ * *out_done >= 1 makes the result usable: v30's partial-iteration rule).
+ * `prev_key` = previous iteration's best move (or 0), ordered first.
+ * `hmc` = the root's halfmove clock. */
+uint32_t cs_search_root(uint64_t pawns, uint64_t knights, uint64_t bishops,
+                        uint64_t rooks, uint64_t queens, uint64_t kings,
+                        uint64_t occ_w, uint64_t occ_b,
+                        int turn, int ep, uint64_t castling,
+                        int depth, int alpha, int beta,
+                        uint32_t prev_key, int hmc,
+                        uint64_t* out_nodes, int* out_score,
+                        int* out_done, int* out_aborted)
+{
+    Board b = make_board(pawns, knights, bishops, rooks, queens, kings,
+                         occ_w, occ_b, turn, ep, castling);
+
+    /* Helpers only pay off once the tree is non-trivial. */
+    pthread_t tids[64];
+    HelperArg args[64];
+    int nh = (g_threads > 1 && depth >= 4) ? g_threads - 1 : 0;
+    g_hstop = 0;
+    for (int i = 0; i < nh; i++) {
+        args[i].b = b;
+        args[i].depth = depth + (i & 1);   /* half at depth, half deeper */
+        args[i].hmc = hmc;
+        args[i].prev = prev_key;
+        if (pthread_create(&tids[i], NULL, helper_entry, &args[i]) != 0) {
+            nh = i;                        /* spawn failed: run what we got */
+            break;
+        }
+    }
+
+    int score, done;
+    uint32_t mv = root_search(&b, depth, alpha, beta, prev_key, hmc,
+                              &score, &done);
+
+    if (nh) {
+        g_hstop = 1;
+        for (int i = 0; i < nh; i++) pthread_join(tids[i], NULL);
+        g_hstop = 0;
+    }
+    *out_done = done;
+    *out_aborted = g_abort ? 1 : 0;
+    *out_nodes = g_nodes + __atomic_load_n(&g_helper_nodes, __ATOMIC_RELAXED);
+    *out_score = score;
+    return mv;
 }
 
 /* Board key export: the Python driver computes game-history keys with the
@@ -1261,8 +1368,8 @@ uint32_t cs_tt_probe_move(uint64_t pawns, uint64_t knights, uint64_t bishops,
     Board b = make_board(pawns, knights, bishops, rooks, queens, kings,
                          occ_w, occ_b, turn, ep, castling);
     uint64_t key = board_key(&b);
-    TTEntry* tte = &g_tt[key & TT_MASK];
-    return (tte->key == key) ? (tte->move & 0x7FFF) : 0;
+    TTEntry e;
+    return tt_load(&g_tt[key & TT_MASK], key, &e) ? (TT_MOVE(e) & 0x7FFF) : 0;
 }
 
 /* Exported: fixed-depth alpha-beta (compat wrapper kept for the NPS/verify
@@ -1283,4 +1390,4 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted);
 }
 
-int csearch_abi(void) { return 4; }   /* 4 = step-6 root driver entry points */
+int csearch_abi(void) { return 5; }   /* 5 = Lazy SMP (set_threads) + cs_stop */

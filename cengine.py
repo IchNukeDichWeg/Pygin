@@ -130,8 +130,20 @@ class Engine:
 
         # --- host-visible state (battle_worker contract) ------------------ #
         self.use_book = True
-        self.use_tb = False                  # no TB probe in the C driver (v1)
+        # Tablebase probe (delegated to the embedded engine, root-only), OFF
+        # by default like v30. When on, it is additionally gated to
+        # *difficult* positions: at ~2.5M nps the search converts clearly
+        # won endings on its own faster than the network round-trip, so the
+        # probe only fires when the previous search's verdict was NOT
+        # already decisive (see TB_DIFFICULT_CP).
+        self.use_tb = False
+        self.TB_DIFFICULT_CP = 500           # |last score| >= this: skip probe
         self.pv_uci = True
+        # Lazy SMP: helper search threads inside csearch.so (shared lockless
+        # TT, per-thread everything else). Same env contract as engine.py --
+        # match.py exports CLAUDECHESS_SMP=1 so A/B matches stay
+        # single-threaded; GUI/analysis hosts get the file default.
+        self.smp_workers = max(1, int(os.environ.get("CLAUDECHESS_SMP", "4")))
         self.nodes_searched = 0
         self.last_score = 0                  # White POV, v30 mate convention
         self.last_depth = 0
@@ -197,11 +209,17 @@ class Engine:
     def get_best_move_timed(self, board, time_limit, max_depth=10):
         return self._search(board, time_limit, max_depth)
 
+    def stop(self):
+        """Host-requested abort (UCI `stop`): the search unwinds and the
+        driver returns the best move found so far."""
+        self._lib.cs_stop()
+
     # ------------------------------------------------------------------ #
     # Iterative deepening driver (port of v30's get_best_move_timed loop)
     # ------------------------------------------------------------------ #
     def _search(self, board, time_limit, max_depth):
         t0 = time.perf_counter()
+        prev_verdict = self.last_score       # previous MOVE's score (TB gate)
         self.nodes_searched = 0
         self.last_score = 0
         self.last_depth = 0
@@ -223,6 +241,29 @@ class Engine:
                 self._emit(dict(record, final=True), final=True)
                 return book
 
+        # Tablebase probe (root-only, delegated to the embedded engine which
+        # already skips trivial wins / insufficient material / too many
+        # pieces). cengine adds the DIFFICULTY gate: if the previous move's
+        # search verdict was already decisive, the search converts on its
+        # own faster than the network round-trip -- skip the probe.
+        if self.use_tb and abs(prev_verdict) < self.TB_DIFFICULT_CP:
+            self._py.use_tb = True
+            tb_to = self._py.tb_timeout
+            if time_limit is not None:
+                tb_to = min(tb_to, max(0.0, time_limit * 0.5))
+            tb = self._py._tb_probe(board, tb_to)
+            if tb is not None:
+                wdl, tb_move = tb            # move already verified legal
+                score_white = ((wdl if board.turn == chess.WHITE else -wdl)
+                               * self._py.TB_SCORE_UNIT)
+                self.last_score = score_white
+                record = {"depth": 0, "move": tb_move.uci(),
+                          "score": score_white, "nodes": 0, "time_ms": 0,
+                          "tb": True, "wdl": wdl}
+                self._emit(record)
+                self._emit(dict(record, final=True), final=True)
+                return tb_move
+
         # TT retention (v30's rule): an irreversible root move means no
         # earlier position can recur, so all old entries are dead.
         if board.halfmove_clock == 0:
@@ -236,6 +277,7 @@ class Engine:
             h.pop()
             hist.append(self._lib.cs_board_key(*self._bargs(h)))
         arr = (ctypes.c_uint64 * max(1, len(hist)))(*hist)
+        self._lib.set_threads(int(self.smp_workers))     # Lazy SMP
         self._lib.cs_search_begin(arr, len(hist),
                                   float(time_limit) if time_limit else 0.0)
 
