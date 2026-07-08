@@ -398,6 +398,21 @@ benchmark" below.
   +10.9) while depth-8-regime tree surgery went 0-for-2 (P-41, P-33):
   at thin effective clocks, clock intelligence is where the Elo is.
 
+* **v31 (2026-07-08, lives in ``cengine.py`` + ``csearch.c`` -- NOT this
+  file): the C search core.** The entire per-node loop moved to C (board,
+  ordering, array TT, pruning, quiescence, and a bit-exact port of THIS
+  file's static eval, verified over 3M positions); Python keeps only the
+  root layer -- this file's ID loop, aspiration windows, P-35/U-06
+  soft-stop, book probe -- and syncs every eval table/param from this
+  file's Engine class at construction, so engine.py remains the single
+  source of truth for evaluation. ~2.5M NPS vs ~90k (bench sweep, trimmed
+  means: NPS 84.5k -> 3.84M, depth-reached 10.5 -> 17.75 at 2s/move).
+  **Gate A/B vs v30 (30 games @ 45+0.1, match.py, adjudicated): 29W/1D/0L
+  = 98.33%** -- outside Elo's measuring range; external re-measurement
+  (rook-odds series) pending. Design + phase log: DESIGN_c_search_core.md.
+  This file stays the shipped Python engine (v30) and the eval oracle;
+  v31 is not yet snapshotted under Old Engine/.
+
 Cross-version benchmark
 -----------------------
 Sweep (2026-07-02): 24 versions x 8 positions x 6 timed 5s runs (1152 searches).
