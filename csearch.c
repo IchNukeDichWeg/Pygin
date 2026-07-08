@@ -1020,6 +1020,13 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     CS_TIME_CHECK();
     if (in_chk < 0) in_chk = in_check(b);
 
+    /* Hard ply bound (BUG-03): memory safety must not depend on the
+     * Python-side depth cap -- search_bench takes an uncapped depth, and
+     * future extensions may push ply past the root depth. g_killers is
+     * sized [CS_MAXPLY] and g_path [CS_MAXPLY+8]; stop strictly below. */
+    if (ply >= CS_MAXPLY)
+        return in_chk ? 0 : eval_full_stm(b);
+
     /* --- step 6: game-state draws (v30 order: before the TT probe) --- */
     if (!(b->pawns | b->rooks | b->queens) && insufficient_material(b))
         return draw_score(b);
@@ -1319,16 +1326,24 @@ uint32_t cs_search_root(uint64_t pawns, uint64_t knights, uint64_t bishops,
     HelperArg args[64];
     int nh = (g_threads > 1 && depth >= 4) ? g_threads - 1 : 0;
     g_hstop = 0;
+    /* BUG-05: darwin gives secondary threads a 512 KB stack (the main
+     * thread gets 8 MB); a deep line's negamax+qsearch frames (~2-3 KB
+     * each, moves[256]/quiets[256] buffers) get thin there. Match the
+     * main thread. */
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, 8u << 20);
     for (int i = 0; i < nh; i++) {
         args[i].b = b;
         args[i].depth = depth + (i & 1);   /* half at depth, half deeper */
         args[i].hmc = hmc;
         args[i].prev = prev_key;
-        if (pthread_create(&tids[i], NULL, helper_entry, &args[i]) != 0) {
+        if (pthread_create(&tids[i], &attr, helper_entry, &args[i]) != 0) {
             nh = i;                        /* spawn failed: run what we got */
             break;
         }
     }
+    pthread_attr_destroy(&attr);
 
     int score, done;
     uint32_t mv = root_search(&b, depth, alpha, beta, prev_key, hmc,
@@ -1344,6 +1359,22 @@ uint32_t cs_search_root(uint64_t pawns, uint64_t knights, uint64_t bishops,
     *out_nodes = g_nodes + __atomic_load_n(&g_helper_nodes, __ATOMIC_RELAXED);
     *out_score = score;
     return mv;
+}
+
+/* Test export (BUG-06): the insufficient-material port decides DRAWS but
+ * was outside the 3M eval oracle's coverage -- this exposes the exact
+ * check negamax runs (pre-filter + port) for a differential vs
+ * python-chess's is_insufficient_material. Not called by cengine (no abi
+ * bump needed). */
+int cs_insufficient_material(uint64_t pawns, uint64_t knights, uint64_t bishops,
+                             uint64_t rooks, uint64_t queens, uint64_t kings,
+                             uint64_t occ_w, uint64_t occ_b,
+                             int turn, int ep, uint64_t castling)
+{
+    Board b = make_board(pawns, knights, bishops, rooks, queens, kings,
+                         occ_w, occ_b, turn, ep, castling);
+    if (b.pawns | b.rooks | b.queens) return 0;    /* negamax pre-filter */
+    return insufficient_material(&b);
 }
 
 /* Board key export: the Python driver computes game-history keys with the
