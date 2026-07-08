@@ -793,6 +793,10 @@ def main():
     # `--workers N` (or `--workers auto`) plays N games in parallel inside ONE
     # match run -- each worker owns its own engine pair, so N workers means
     # N pairs of engine subprocesses running concurrently.
+    # Flag overrides for the CONFIG constants above (used by the AllIn1 web
+    # dashboard, harmless from a terminal). Anything not passed keeps CONFIG.
+    global MODE, TIME_PER_MOVE_MS, FIXED_DEPTH, TC_SECONDS, TC_INCREMENT, \
+        ADJUDICATE, FEN_FILE
     argv = sys.argv[1:]
     workers_str = None
     positional = []
@@ -804,6 +808,32 @@ def main():
         elif argv[i].startswith("--workers="):
             workers_str = argv[i].split("=", 1)[1]
             i += 1
+        elif argv[i] == "--mode" and i + 1 < len(argv):
+            MODE = argv[i + 1]
+            i += 2
+        elif argv[i] == "--tc-seconds" and i + 1 < len(argv):
+            TC_SECONDS = int(argv[i + 1])
+            i += 2
+        elif argv[i] == "--tc-increment" and i + 1 < len(argv):
+            TC_INCREMENT = float(argv[i + 1])
+            i += 2
+        elif argv[i] == "--time-per-move" and i + 1 < len(argv):
+            TIME_PER_MOVE_MS = int(argv[i + 1])
+            i += 2
+        elif argv[i] == "--fixed-depth" and i + 1 < len(argv):
+            FIXED_DEPTH = int(argv[i + 1])
+            i += 2
+        elif argv[i] == "--adjudicate" and i + 1 < len(argv):
+            # Via env, not just the global: `spawn` workers re-import this
+            # module and re-read MATCH_ADJUDICATE at line ~78, so the env is
+            # the only channel that reaches play_game() in the children.
+            os.environ["MATCH_ADJUDICATE"] = \
+                "1" if argv[i + 1].lower() == "true" else "0"
+            ADJUDICATE = argv[i + 1].lower() == "true"
+            i += 2
+        elif argv[i] == "--fen-file" and i + 1 < len(argv):
+            FEN_FILE = argv[i + 1]
+            i += 2
         else:
             positional.append(argv[i])
             i += 1
