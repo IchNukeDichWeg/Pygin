@@ -948,6 +948,16 @@ static int g_iir = 1;
 void set_iir(int v) { g_iir = v; }
 #define IIR_MIN_DEPTH 4
 
+/* P-01: check extensions -- a move that gives check gets +1 ply, drawn from
+ * a per-line budget so a perpetual-check line can't explode the tree (v30's
+ * MAX_CHECK_EXT recipe; the budget flows down the line, spent only when an
+ * extension fires). LMR never touches these moves (it requires
+ * !gives_check), so extension and reduction are mutually exclusive.
+ * set_check_ext(0) restores v33's search node-exactly. */
+static int g_check_ext = 1;
+void set_check_ext(int v) { g_check_ext = v; }
+#define CHECK_EXT_MAX 5
+
 #define RFP_MARGIN   80                 /* per ply, reverse-futility */
 #define FUT_MARGIN  150                 /* frontier futility */
 static const int LMP_COUNT[4] = {0, 6, 10, 14};   /* by depth 1..3 */
@@ -1031,7 +1041,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
 }
 
 static int negamax(Board* b, int depth, int alpha, int beta, int ply,
-                   uint32_t prev12, int in_chk, int hmc)
+                   uint32_t prev12, int in_chk, int hmc, int chk)
 {
     g_nodes++;
     CS_TIME_CHECK();
@@ -1101,7 +1111,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             int R = 2 + depth / 6;
             Board c = *b; make_null(&c);
             int ns = -negamax(&c, depth - 1 - R, -beta, -beta + 1, ply + 1,
-                              0xFFFFFFFF, 0, 0);
+                              0xFFFFFFFF, 0, 0, chk);
             if (CS_UNWINDING()) return 0;            /* ns is garbage */
             if (ns >= beta) return beta;
         }
@@ -1140,6 +1150,11 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
 
         if (quiet) quiets[nq++] = fromto;
 
+        /* P-01: check extension (never combines with LMR: R needs !gives_check) */
+        int ext = (g_check_ext && gives_check && chk > 0) ? 1 : 0;
+        int nd = depth - 1 + ext;
+        int child_chk = chk - ext;
+
         /* late-move reduction on quiet, late, non-checking moves */
         int R = 0;
         if (g_prune && depth >= 3 && i >= 3 && quiet && !in_chk && !gives_check) {
@@ -1152,13 +1167,13 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         uint32_t cp = (ply + 1 < CS_MAXPLY) ? (uint32_t)fromto : 0xFFFFFFFF;
         int v;
         if (i == 0) {
-            v = -negamax(&c, depth - 1, -beta, -alpha, ply + 1, cp, gives_check, child_hmc);
+            v = -negamax(&c, nd, -beta, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk);
         } else {                                     /* PVS scout (reduced) */
-            v = -negamax(&c, depth - 1 - R, -alpha - 1, -alpha, ply + 1, cp, gives_check, child_hmc);
+            v = -negamax(&c, nd - R, -alpha - 1, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk);
             if (R && v > alpha)                      /* reduced scout beat alpha */
-                v = -negamax(&c, depth - 1, -alpha - 1, -alpha, ply + 1, cp, gives_check, child_hmc);
+                v = -negamax(&c, nd, -alpha - 1, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk);
             if (v > alpha && v < beta)               /* full-window PV re-search */
-                v = -negamax(&c, depth - 1, -beta, -alpha, ply + 1, cp, gives_check, child_hmc);
+                v = -negamax(&c, nd, -beta, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk);
         }
         if (CS_UNWINDING()) return 0;                /* v is garbage: unwind */
 
@@ -1276,11 +1291,11 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
         uint32_t cp = (uint32_t)((m & 63) << 6 | ((m >> 6) & 63));
         int v;
         if (i == 0) {
-            v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc);
+            v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, CHECK_EXT_MAX);
         } else {
-            v = -negamax(&c, depth - 1, -alpha - 1, -alpha, 1, cp, gc, child_hmc);
+            v = -negamax(&c, depth - 1, -alpha - 1, -alpha, 1, cp, gc, child_hmc, CHECK_EXT_MAX);
             if (v > alpha && v < beta)
-                v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc);
+                v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, CHECK_EXT_MAX);
         }
         if (g_abort || (g_is_helper && g_hstop))
             break;                                   /* v is garbage */
