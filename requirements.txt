@@ -1,6 +1,15 @@
-# Pygin chess engine -- runtime dependencies.
+# Pygin chess engine -- runtime dependencies (installed by ./setup.sh).
 # The engine itself needs only python-chess (board representation + move
 # generation/legality); everything else it uses is the Python standard library
-# (ctypes, multiprocessing, json, ...). The C evaluator/movegen are built from
-# source by setup.sh, not pip-installed.
+# (ctypes, multiprocessing, json, ...). The C evaluator/movegen/search core are
+# built from source by setup.sh, not pip-installed.
 python-chess>=1.11,<2.0
+
+# WDL model fitting (fit_wdl_model.py -- match.py adjudication thresholds).
+# Only that script needs these; the engine and match runner never import them.
+numpy>=1.24
+scipy>=1.10
+
+# NOT required by anything tracked in this repo: the desktop GUI
+# (experiment.py: PySide6, stockfish) and the browser GUI (WebChess: flask)
+# are local-only files; install their deps yourself if you copy them over.
