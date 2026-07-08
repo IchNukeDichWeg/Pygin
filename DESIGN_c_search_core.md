@@ -171,14 +171,34 @@ Driven from Python at the root only; each sub-step verified before the next:
    mover PT low bit, so TT-move ordering silently never fired for
    pawn/bishop/queen movers) and qsearch scored stalemate as static eval
    instead of 0.
-6. **Root driver + time management** — Python owns the ID loop, the P-35/U-06
-   soft-stop, book/tablebase probe, and the UCI/GUI boundary. Must also
-   close the known search gaps that need root/game state: repetition +
-   50-move detection (Board struct has no halfmove clock or history — pass
-   game-history keys from the root and track the in-search path), TT
-   persistence across ID iterations (currently a conservative full clear
-   per search), and root mate/stalemate handling (search_bench returns
-   move 0 / -CS_INF on n==0).
+6. **Root driver + time management — DONE (2026-07-08).** `cengine.py`: a
+   drop-in `Engine` for match.py/battle_worker with the whole per-node loop
+   in C. Python keeps exactly the root/game-state layer: v30's ID loop with
+   aspiration windows (min-depth 4, delta 30, geometric widening), the
+   P-35/U-06 stability-scaled soft-stop (same constants), v30's
+   partial-iteration rule (aborted depth used iff >= 1 root move completed —
+   the C root reports `out_done`/`out_aborted`), the book probe (delegated
+   to an embedded engine.Engine, which is also the eval-param source), and
+   v30's TT retention rule (C TT persists; `cs_tt_reset()` after an
+   irreversible root move). C-side gaps closed: **TT persistence** via a
+   generation field in the (still 24-byte) entry with gen-aware
+   depth-preferred replacement; **time abort** via a monotonic deadline
+   checked every 4096 nodes (~1.6 ms at 2.5M nps), aborts unwind without
+   storing garbage; **repetition detection** via a path-key stack + game
+   history keys fed from the root (`cs_board_key` export -- Python computes
+   history keys with the search's own hash), scan step 2 within the
+   halfmove-clock window; **50-move** via a halfmove clock threaded through
+   the search (in-check at 100 plays on, v30's rule); **insufficient
+   material** with v30's cheap `pawns|rooks|queens` pre-filter; all three
+   contempt-scored via a `_draw_score` port (`csearch_set_draw`).
+   Deliberate v1 deviations (documented in cengine.py): no root random
+   tiebreak, no repetition check at quiescence nodes, no SMP/TB.
+   Verified: KQK mate in 8 moves at 0.2s/move; winning side steps around
+   threefold; 125-ply clean self-play game; budget honored (338 ms of a
+   600 ms budget -- soft-stop banking); mate-score conventions map to v30's
+   (MATE_SCORE 1M). **Depth 14 in 0.34 s on a middlegame position — v30
+   reaches ~8 at the same TC.** selftest.py gained a C-core check;
+   setup.sh builds csearch.so.
 
 **Verification:** phases 1-2 and step 5 are differential/perft node-exact
 against python-chess / the Python eval. The full core is a NEW engine (not

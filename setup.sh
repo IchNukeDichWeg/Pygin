@@ -130,6 +130,18 @@ for _name in eval_c movegen; do
     fi
 done
 
+# csearch.so (C search core, phase 3 -- cengine.py's engine): multi-source
+# build (links eval_c.c) with -lm, so it gets its own rule here.
+if [ -f csearch.c ]; then
+    if [ csearch.so -nt csearch.c ] && [ csearch.so -nt eval_c.c ] \
+        && [ csearch.so -nt Constants.c ]; then
+        echo "   csearch.so up to date"
+    else
+        "$CC" $CFLAGS -o csearch.so csearch.c eval_c.c Constants.c -lm
+        echo "   built csearch.so"
+    fi
+fi
+
 # --- 7. Old Engine snapshots (best effort, for A/B matches) ----------- #
 if [ -d "Old Engine" ]; then
     echo "-> building Old Engine snapshot libraries (for A/B; best effort) ..."

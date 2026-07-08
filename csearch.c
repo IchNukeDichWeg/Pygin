@@ -707,14 +707,24 @@ void set_order_mode(int m) { g_order_mode = m; }
 typedef struct {
     uint64_t key;
     int32_t  value;
-    uint32_t move;      /* 16-bit move key in low bits */
+    uint32_t move;      /* 15-bit move key in low bits */
     int16_t  depth;
     int16_t  flag;
+    int16_t  gen;       /* step 6: search generation (was struct padding) */
 } TTEntry;
 
 static TTEntry* g_tt = NULL;
 static int g_use_tt = 1;
+static int g_gen = 0;       /* step 6: bumped per root search; old-gen entries
+                             * are freely replaceable (TT now PERSISTS across
+                             * ID iterations and moves; see cs_tt_reset). */
 void set_use_tt(int v) { g_use_tt = v; }
+
+void cs_tt_reset(void)
+{
+    if (g_tt) memset(g_tt, 0, TT_SIZE * sizeof(TTEntry));
+    g_gen = 0;
+}
 
 static inline uint64_t board_key(const Board* b)
 {
@@ -776,6 +786,104 @@ static inline void hist_update(int color, int fromto, int bonus)
     *h += bonus - (*h) * ab / HIST_MAX;
 }
 
+/* --- Phase-3 step 6: root-driver support -------------------------------- *
+ * Time abort, game-history repetition, 50-move clock, insufficient material
+ * and contempt draws -- everything the search needs from ROOT/GAME state,
+ * fed per move by the Python driver (cengine.py) via cs_search_begin. */
+#include <time.h>
+
+static inline uint64_t now_ns(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+}
+
+static uint64_t g_deadline = 0;     /* absolute ns; 0 = no time limit */
+static int g_abort = 0;             /* set on deadline; unwinds the search */
+
+/* Node-entry poll (negamax + qsearch): every 4096 nodes check the clock.
+ * At ~2.5M nps that is ~1.6 ms granularity -- finer than v30's poll. */
+#define CS_TIME_CHECK() do { \
+        if ((g_nodes & 4095) == 0 && g_deadline && now_ns() >= g_deadline) \
+            g_abort = 1; \
+        if (g_abort) return 0; \
+    } while (0)
+
+/* Repetition state. g_path[ply] holds the board key of every negamax node on
+ * the current line (g_path[0] = root); g_hist holds keys of game positions
+ * BEFORE the root, most recent first, as far back as the root's halfmove
+ * clock reaches (older positions can never recur). A position repeats if its
+ * key appears an even number of plies back within the reversible window --
+ * the first repetition scores as a contempt draw (v30's _path semantics). */
+#define CS_HIST_MAX 128
+static uint64_t g_path[CS_MAXPLY + 8];
+static uint64_t g_hist[CS_HIST_MAX];
+static int g_nhist = 0;
+
+static int g_contempt = 50, g_draw_margin = 200;
+void csearch_set_draw(int contempt, int margin)
+{
+    g_contempt = contempt; g_draw_margin = margin;
+}
+
+/* Contempt-adjusted draw value, side-to-move view (port of _draw_score):
+ * negative when stm is clearly ahead on material (avoid the draw), positive
+ * when clearly behind (seek it). */
+static int draw_score(const Board* b)
+{
+    int us = b->turn, them = us ^ 1;
+    uint64_t mine = b->occ[us], theirs = b->occ[them];
+    int diff = 0;
+    diff += 100 * (__builtin_popcountll(b->pawns & mine)
+                 - __builtin_popcountll(b->pawns & theirs));
+    diff += 320 * (__builtin_popcountll(b->knights & mine)
+                 - __builtin_popcountll(b->knights & theirs));
+    diff += 330 * (__builtin_popcountll(b->bishops & mine)
+                 - __builtin_popcountll(b->bishops & theirs));
+    diff += 500 * (__builtin_popcountll(b->rooks & mine)
+                 - __builtin_popcountll(b->rooks & theirs));
+    diff += 900 * (__builtin_popcountll(b->queens & mine)
+                 - __builtin_popcountll(b->queens & theirs));
+    if (diff >= g_draw_margin)  return -g_contempt;
+    if (diff <= -g_draw_margin) return g_contempt;
+    return 0;
+}
+
+/* Insufficient material; caller guarantees no pawns/rooks/queens anywhere
+ * (v30's cheap pre-filter). Port of python-chess's per-colour rule under
+ * that pre-filter. */
+static int insufficient_material(const Board* b)
+{
+    const uint64_t DARK = 0xAA55AA55AA55AA55ULL;
+    for (int c = 0; c < 2; c++) {
+        uint64_t occ = b->occ[c];
+        if (b->knights & occ) {              /* K+N max, vs bare king only */
+            if (__builtin_popcountll(occ) > 2) return 0;
+            if (b->occ[c ^ 1] & ~b->kings)     return 0;
+        } else if (b->bishops & occ) {       /* all bishops one colour, no N */
+            if (b->knights)                    return 0;
+            if ((b->bishops & DARK) && (b->bishops & ~DARK)) return 0;
+        }
+    }
+    return 1;
+}
+
+/* Repetition scan for the node at `ply` with key `key` and halfmove clock
+ * `hmc`: same-side positions 4, 6, ... plies back, first through the search
+ * path, then on into the game history. */
+static inline int is_repetition(uint64_t key, int ply, int hmc)
+{
+    for (int k = 4; k <= hmc; k += 2) {
+        uint64_t past;
+        if (k <= ply)                        past = g_path[ply - k];
+        else if (k - ply - 1 < g_nhist)      past = g_hist[k - ply - 1];
+        else                                 break;
+        if (past == key) return 1;
+    }
+    return 0;
+}
+
 /* --- Phase-3 step 3: pruning ------------------------------------------ */
 #include <math.h>
 static int g_prune = 1;                 /* 0 = no pruning (verification) */
@@ -816,6 +924,7 @@ void set_qsearch(int v) { g_qsearch = v; }
 static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
 {
     g_nodes++;
+    CS_TIME_CHECK();
     if (in_chk < 0) in_chk = in_check(b);
     if (ply >= CS_MAXPLY + 60)                       /* hard recursion guard */
         return in_chk ? 0 : eval_full_stm(b);
@@ -854,6 +963,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
         Board c = *b;
         apply_move(&c, m);
         int v = -qsearch(&c, -beta, -alpha, ply + 1, in_check(&c));
+        if (g_abort) return 0;                       /* v is garbage: unwind */
         if (v > best) best = v;
         if (v > alpha) alpha = v;
         if (alpha >= beta) break;
@@ -862,20 +972,32 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
 }
 
 static int negamax(Board* b, int depth, int alpha, int beta, int ply,
-                   uint32_t prev12, int in_chk)
+                   uint32_t prev12, int in_chk, int hmc)
 {
     g_nodes++;
+    CS_TIME_CHECK();
     if (in_chk < 0) in_chk = in_check(b);
+
+    /* --- step 6: game-state draws (v30 order: before the TT probe) --- */
+    if (!(b->pawns | b->rooks | b->queens) && insufficient_material(b))
+        return draw_score(b);
+    if (hmc >= 100 && !in_chk)               /* 50-move (in check: play on --
+                                              * the mate/stalemate result of
+                                              * the position takes priority) */
+        return draw_score(b);
+    uint64_t key = board_key(b);
+    g_path[ply] = key;
+    if (hmc >= 4 && is_repetition(key, ply, hmc))
+        return draw_score(b);
+
     if (depth <= 0)
         return g_qsearch ? qsearch(b, alpha, beta, ply, in_chk)
                          : eval_full_stm(b);
 
     /* --- TT probe -------------------------------------------------- */
-    uint64_t key = 0;
     uint32_t tt_move = 0;
     TTEntry* tte = NULL;
     if (g_use_tt) {
-        key = board_key(b);
         tte = &g_tt[key & TT_MASK];
         if (tte->key == key) {
             tt_move = tte->move;
@@ -901,12 +1023,14 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         /* reverse futility / static null-move */
         if (depth <= 6 && static_eval - RFP_MARGIN * depth >= beta)
             return static_eval;
-        /* null-move pruning */
+        /* null-move pruning (hmc 0 below the null: repetition/50-move
+         * cannot be tracked across a non-move, so disable them there) */
         if (depth >= 3 && static_eval >= beta && has_non_pawn(b, b->turn)) {
             int R = 2 + depth / 6;
             Board c = *b; make_null(&c);
             int ns = -negamax(&c, depth - 1 - R, -beta, -beta + 1, ply + 1,
-                              0xFFFFFFFF, 0);
+                              0xFFFFFFFF, 0, 0);
+            if (g_abort) return 0;
             if (ns >= beta) return beta;
         }
     }
@@ -926,8 +1050,10 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     for (int i = 0; i < n; i++) {
         uint32_t m = moves[i];
         int victim = (m >> MV_SHIFT_VICTIM) & 7;
+        int mover  = (m >> MV_SHIFT_MOVER) & 7;
         int fromto = (m & 63) << 6 | ((m >> 6) & 63);
         int quiet  = !victim && !((m >> 12) & 7);    /* not capture/promo */
+        int child_hmc = (victim || mover == PT_PAWN) ? 0 : hmc + 1;
 
         if (quiet && best > -MATE_THRESH && nq >= lmp_lim)
             continue;                                /* late-move pruning */
@@ -954,14 +1080,15 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         uint32_t cp = (ply + 1 < CS_MAXPLY) ? (uint32_t)fromto : 0xFFFFFFFF;
         int v;
         if (i == 0) {
-            v = -negamax(&c, depth - 1, -beta, -alpha, ply + 1, cp, gives_check);
+            v = -negamax(&c, depth - 1, -beta, -alpha, ply + 1, cp, gives_check, child_hmc);
         } else {                                     /* PVS scout (reduced) */
-            v = -negamax(&c, depth - 1 - R, -alpha - 1, -alpha, ply + 1, cp, gives_check);
+            v = -negamax(&c, depth - 1 - R, -alpha - 1, -alpha, ply + 1, cp, gives_check, child_hmc);
             if (R && v > alpha)                      /* reduced scout beat alpha */
-                v = -negamax(&c, depth - 1, -alpha - 1, -alpha, ply + 1, cp, gives_check);
+                v = -negamax(&c, depth - 1, -alpha - 1, -alpha, ply + 1, cp, gives_check, child_hmc);
             if (v > alpha && v < beta)               /* full-window PV re-search */
-                v = -negamax(&c, depth - 1, -beta, -alpha, ply + 1, cp, gives_check);
+                v = -negamax(&c, depth - 1, -beta, -alpha, ply + 1, cp, gives_check, child_hmc);
         }
+        if (g_abort) return 0;                       /* v is garbage: unwind */
 
         if (v > best) { best = v; best_move = m; }
         if (v > alpha) alpha = v;
@@ -982,67 +1109,178 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         }
     }
 
-    /* --- TT store: depth-preferred, ply-relative mate encoding ----- */
-    if (g_use_tt && (tte->key != key || tte->depth <= depth)) {
-        int flag = (best <= alpha_orig) ? TT_UPPER
-                 : (best >= beta)       ? TT_LOWER : TT_EXACT;
-        int sv = best;
-        if (sv >= MATE_THRESH) sv += ply;
-        else if (sv <= -MATE_THRESH) sv -= ply;
-        /* 0x7FFF, not 0xFFFF: bit 15 is the mover PT's low bit (MV_SHIFT_MOVER
-         * = 15). Storing it made the probe-side `(m & 0x7FFF) == tt_move`
-         * never match for odd mover PTs (pawn/bishop/queen) -- TT-move
-         * ordering was silently dead for those movers. */
-        tte->key = key; tte->value = sv; tte->move = best_move & 0x7FFF;
-        tte->depth = (int16_t)depth; tte->flag = (int16_t)flag;
+    /* --- TT store: gen-aware depth-preferred, ply-relative mates ---- *
+     * Same key: deeper-or-equal wins. Different key: an entry from an older
+     * search generation is freely replaceable, a current-gen one only for
+     * deeper-or-equal depth (the TT persists across ID iterations/moves). */
+    if (g_use_tt) {
+        int replace = (tte->key == key)
+                    ? (tte->depth <= depth)
+                    : (tte->gen != (int16_t)g_gen || tte->depth <= depth);
+        if (replace) {
+            int flag = (best <= alpha_orig) ? TT_UPPER
+                     : (best >= beta)       ? TT_LOWER : TT_EXACT;
+            int sv = best;
+            if (sv >= MATE_THRESH) sv += ply;
+            else if (sv <= -MATE_THRESH) sv -= ply;
+            /* 0x7FFF, not 0xFFFF: bit 15 is the mover PT's low bit
+             * (MV_SHIFT_MOVER = 15). Storing it made the probe-side
+             * `(m & 0x7FFF) == tt_move` never match for odd mover PTs
+             * (pawn/bishop/queen) -- TT-move ordering was silently dead
+             * for those movers. */
+            tte->key = key; tte->value = sv; tte->move = best_move & 0x7FFF;
+            tte->depth = (int16_t)depth; tte->flag = (int16_t)flag;
+            tte->gen = (int16_t)g_gen;
+        }
     }
     return best;
 }
 
-/* Exported: fixed-depth alpha-beta. Returns the best root move (low 16 bits);
- * node count via *out_nodes, root score via *out_score (for verification). */
-uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
-                      uint64_t rooks, uint64_t queens, uint64_t kings,
-                      uint64_t occ_w, uint64_t occ_b,
-                      int turn, int ep, uint64_t castling,
-                      int depth, uint64_t* out_nodes, int* out_score)
+/* --- Phase-3 step 6: per-move / per-iteration entry points ------------- *
+ * The Python driver (cengine.py) calls, per game move:
+ *     cs_search_begin(history_keys, n, budget_seconds)     once
+ *     cs_search_root(board..., depth, window, ...)         per ID iteration
+ * cs_search_begin resets the per-move state exactly like v30 does (killers/
+ * history/countermoves per move; TT persists -- the driver calls
+ * cs_tt_reset() only after an irreversible root move), arms the deadline
+ * and stores the game-history keys for repetition detection. */
+void cs_search_begin(const uint64_t* hist, int nhist, double budget_sec)
 {
-    Board b = make_board(pawns, knights, bishops, rooks, queens, kings,
-                         occ_w, occ_b, turn, ep, castling);
     g_nodes = 0;
+    g_abort = 0;
+    g_deadline = (budget_sec > 0.0)
+               ? now_ns() + (uint64_t)(budget_sec * 1e9) : 0;
+    g_nhist = 0;
+    if (hist) {
+        if (nhist > CS_HIST_MAX) nhist = CS_HIST_MAX;
+        for (int i = 0; i < nhist; i++) g_hist[i] = hist[i];
+        g_nhist = nhist;
+    }
     memset(g_history, 0, sizeof(g_history));
     memset(g_killers, 0, sizeof(g_killers));
     memset(g_counter, 0, sizeof(g_counter));
     if (g_tt == NULL) g_tt = (TTEntry*)calloc(TT_SIZE, sizeof(TTEntry));
-    memset(g_tt, 0, TT_SIZE * sizeof(TTEntry));   /* fresh TT per search */
     if (!g_lmr_ready) init_lmr();
+    g_gen = (g_gen + 1) & 0x7FFF;        /* old entries become replaceable */
+}
+
+/* One ID iteration: full-width root PVS inside [alpha, beta) (no reductions
+ * or pruning at the root -- root moves are few and important). Returns the
+ * best move's 15-bit key. Outputs: *out_score = fail-soft root score,
+ * *out_nodes = nodes since cs_search_begin, *out_done = root moves fully
+ * searched this iteration, *out_aborted = deadline hit (if so, the returned
+ * move/score cover only the *out_done completed moves -- the PV move is
+ * searched first, so *out_done >= 1 makes the result usable: v30's
+ * partial-iteration rule). `prev_key` = previous iteration's best move (or
+ * 0), ordered first. `hmc` = the root's halfmove clock. */
+uint32_t cs_search_root(uint64_t pawns, uint64_t knights, uint64_t bishops,
+                        uint64_t rooks, uint64_t queens, uint64_t kings,
+                        uint64_t occ_w, uint64_t occ_b,
+                        int turn, int ep, uint64_t castling,
+                        int depth, int alpha, int beta,
+                        uint32_t prev_key, int hmc,
+                        uint64_t* out_nodes, int* out_score,
+                        int* out_done, int* out_aborted)
+{
+    Board b = make_board(pawns, knights, bishops, rooks, queens, kings,
+                         occ_w, occ_b, turn, ep, castling);
+    uint64_t key = board_key(&b);
+    g_path[0] = key;
+    int alpha_orig = alpha;
+
     uint32_t moves[256];
     int n = gen_legal(&b, moves);
-    order_moves(&b, moves, n, 0, 0, 0);
-    /* Root: full-width PVS, no reductions/pruning (root moves are few and
-     * important). First move full window; rest scout + re-search. */
-    int best = -CS_INF, alpha = -CS_INF, beta = CS_INF;
-    uint32_t best_move = n ? moves[0] : 0;
+    *out_done = 0;
+    *out_aborted = 0;
+    if (n == 0) {                        /* mate/stalemate at the root */
+        *out_nodes = g_nodes;
+        *out_score = in_check(&b) ? -CS_INF : 0;
+        return 0;
+    }
+    order_moves(&b, moves, n, 0, 0, prev_key);
+
+    int best = -CS_INF;
+    uint32_t best_move = moves[0];
     for (int i = 0; i < n; i++) {
         uint32_t m = moves[i];
+        int victim = (m >> MV_SHIFT_VICTIM) & 7;
+        int mover  = (m >> MV_SHIFT_MOVER) & 7;
+        int child_hmc = (victim || mover == PT_PAWN) ? 0 : hmc + 1;
         Board c = b;
         apply_move(&c, m);
         int gc = in_check(&c);
         uint32_t cp = (uint32_t)((m & 63) << 6 | ((m >> 6) & 63));
         int v;
         if (i == 0) {
-            v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc);
+            v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc);
         } else {
-            v = -negamax(&c, depth - 1, -alpha - 1, -alpha, 1, cp, gc);
-            if (v > alpha)
-                v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc);
+            v = -negamax(&c, depth - 1, -alpha - 1, -alpha, 1, cp, gc, child_hmc);
+            if (v > alpha && v < beta)
+                v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc);
         }
+        if (g_abort) { *out_aborted = 1; break; }    /* v is garbage */
+        (*out_done)++;
         if (v > best) { best = v; best_move = m; }
         if (v > alpha) alpha = v;
+        if (alpha >= beta) break;                    /* aspiration fail-high */
+    }
+
+    /* Root TT store (feeds the next iteration's ordering + the PV walk). */
+    if (g_use_tt && !g_abort && *out_done > 0) {
+        TTEntry* tte = &g_tt[key & TT_MASK];
+        int flag = (best <= alpha_orig) ? TT_UPPER
+                 : (best >= beta)       ? TT_LOWER : TT_EXACT;
+        tte->key = key; tte->value = best; tte->move = best_move & 0x7FFF;
+        tte->depth = (int16_t)depth; tte->flag = (int16_t)flag;
+        tte->gen = (int16_t)g_gen;
     }
     *out_nodes = g_nodes;
     *out_score = best;
     return best_move & 0x7FFF;   /* 15-bit move key: from|to<<6|promo<<12 */
 }
 
-int csearch_abi(void) { return 3; }   /* 3 = csearch_set_eval / full eval */
+/* Board key export: the Python driver computes game-history keys with the
+ * SAME hash the search uses (it cannot reproduce board_key itself). */
+uint64_t cs_board_key(uint64_t pawns, uint64_t knights, uint64_t bishops,
+                      uint64_t rooks, uint64_t queens, uint64_t kings,
+                      uint64_t occ_w, uint64_t occ_b,
+                      int turn, int ep, uint64_t castling)
+{
+    Board b = make_board(pawns, knights, bishops, rooks, queens, kings,
+                         occ_w, occ_b, turn, ep, castling);
+    return board_key(&b);
+}
+
+/* TT best-move probe (15-bit key, or 0): the driver's PV extraction. */
+uint32_t cs_tt_probe_move(uint64_t pawns, uint64_t knights, uint64_t bishops,
+                          uint64_t rooks, uint64_t queens, uint64_t kings,
+                          uint64_t occ_w, uint64_t occ_b,
+                          int turn, int ep, uint64_t castling)
+{
+    if (g_tt == NULL) return 0;
+    Board b = make_board(pawns, knights, bishops, rooks, queens, kings,
+                         occ_w, occ_b, turn, ep, castling);
+    uint64_t key = board_key(&b);
+    TTEntry* tte = &g_tt[key & TT_MASK];
+    return (tte->key == key) ? (tte->move & 0x7FFF) : 0;
+}
+
+/* Exported: fixed-depth alpha-beta (compat wrapper kept for the NPS/verify
+ * harnesses: fresh TT + per-move state, full window, no deadline). Returns
+ * the best root move's 15-bit key; nodes/score via out-params. */
+uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
+                      uint64_t rooks, uint64_t queens, uint64_t kings,
+                      uint64_t occ_w, uint64_t occ_b,
+                      int turn, int ep, uint64_t castling,
+                      int depth, uint64_t* out_nodes, int* out_score)
+{
+    cs_search_begin(NULL, 0, 0.0);
+    if (g_tt) memset(g_tt, 0, TT_SIZE * sizeof(TTEntry));  /* fresh TT */
+    int done, aborted;
+    return cs_search_root(pawns, knights, bishops, rooks, queens, kings,
+                          occ_w, occ_b, turn, ep, castling,
+                          depth, -CS_INF, CS_INF, 0, 0,
+                          out_nodes, out_score, &done, &aborted);
+}
+
+int csearch_abi(void) { return 4; }   /* 4 = step-6 root driver entry points */
