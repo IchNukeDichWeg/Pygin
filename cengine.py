@@ -27,8 +27,9 @@ API (battle_worker.py contract):
 
 Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
   * no root random tiebreak (deterministic best move),
-  * no singular extensions / check extensions / razoring (dormant or absent
-    in v30 at match depths anyway),
+  * no singular extensions / razoring (dormant or absent in v30 at match
+    depths anyway); check extensions added back as P-01 (csearch.c
+    set_check_ext, A/B vs v33 pending),
   * repetition detection covers negamax nodes, not quiescence nodes,
   * no SMP, no tablebase probe (v30 default use_tb=False matches).
 """
@@ -83,7 +84,9 @@ class Engine:
     SOFT_STOP_STABLE_FRAC = 0.40
     SOFT_STOP_UNSTABLE_FRAC = 0.80
     SOFT_STOP_STABLE_ITERS = 2
-    MAX_DEPTH_CAP = 60                       # C side: CS_MAXPLY 64, no exts
+    MAX_DEPTH_CAP = 60                       # C side: CS_MAXPLY 64; P-01 check
+                                             # exts (+<=5 ply) may graze the
+                                             # ply guard there, safe (eval cut)
 
     def __init__(self):
         self._pymod = _load_pyengine()
