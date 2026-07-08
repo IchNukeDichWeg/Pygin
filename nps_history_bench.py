@@ -85,13 +85,14 @@ POSITIONS = [
 ]
 
 
-# v31 = cengine.py (the C search core, phase 3), keeping the version naming
-# scheme: it is the next engine in the lineage, just not snapshotted yet. It
-# satisfies the same Engine API (nodes_searched/last_depth, guarded
-# use_book/use_tb/smp_workers), so every cell/table mechanism below works
-# unchanged. Once an Old Engine/31 snapshot exists, engine_path prefers the
-# snapshot (stable) over the live repo-root cengine.py.
-CENGINE_VERSION = 31
+# The LIVE repo-root cengine.py benches as the next version in the lineage
+# (naming scheme): bump this when a new Old Engine/N snapshot freezes the
+# previous one. cengine satisfies the same Engine API (nodes_searched/
+# last_depth, guarded use_book/use_tb/smp_workers), so every cell/table
+# mechanism below works unchanged. Once an Old Engine/<CENGINE_VERSION>
+# snapshot exists, engine_path prefers the snapshot (stable) over the live
+# file. History: 31 frozen 2026-07-08; 32 (P-03 IIR) frozen 2026-07-08.
+CENGINE_VERSION = 33
 
 
 def engine_path(v):
