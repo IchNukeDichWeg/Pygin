@@ -79,8 +79,9 @@ step 6; the rest:
   (XOR-folded keys, torn racy writes read as misses); everything else is
   `__thread`. Single-thread verified node-identical to the pre-SMP build;
   4 threads: **depth 18 vs 15 in the same 1 s budget** (10.9M aggregate
-  nps). `cengine.smp_workers` (default 4) honours `CLAUDECHESS_SMP`, so
-  match.py's override keeps A/B matches single-threaded.
+  nps). `cengine.smp_workers` defaults to **1** (the SMP Elo gain is not
+  yet A/B-measured, so multi-threading is opt-in) and honours
+  `CLAUDECHESS_SMP`.
 * **UCI:** `cuci.py` — Threads/OwnBook/UseTB options, repetition-aware
   `position ... moves`, clock budgets via time_manager, streamed `info`
   lines, `stop`→`bestmove` via the C core's `cs_stop()` abort.
