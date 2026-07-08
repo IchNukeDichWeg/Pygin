@@ -931,6 +931,14 @@ static inline int is_repetition(uint64_t key, int ply, int hmc)
 static int g_prune = 1;                 /* 0 = no pruning (verification) */
 void set_prune(int v) { g_prune = v; }
 
+/* P-03: Internal Iterative Reduction. A node with meaningful depth but NO
+ * TT move has poor ordering ahead of it -- search it one ply shallower;
+ * the TT-fed revisit (same key, now with a move) gets the full depth.
+ * Toggle for the A/B vs the frozen Old Engine/31 baseline. */
+static int g_iir = 1;
+void set_iir(int v) { g_iir = v; }
+#define IIR_MIN_DEPTH 4
+
 #define RFP_MARGIN   80                 /* per ply, reverse-futility */
 #define FUT_MARGIN  150                 /* frontier futility */
 static const int LMP_COUNT[4] = {0, 6, 10, 14};   /* by depth 1..3 */
@@ -1064,6 +1072,11 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     }
     int alpha_orig = alpha;                          /* AFTER the TT narrowing */
     int is_pv = (beta - alpha) > 1;
+
+    /* P-03: IIR -- no TT move here, so ordering is blind; go shallower.
+     * (Not in check: reduced-depth evasion search is a tactical risk.) */
+    if (g_iir && depth >= IIR_MIN_DEPTH && !tt_move && !in_chk)
+        depth--;
 
     /* static eval (for pruning); meaningless in check, unused at PV nodes. */
     int static_eval = (!in_chk && !is_pv) ? eval_full_stm(b) : 0;
