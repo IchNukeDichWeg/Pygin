@@ -9,6 +9,7 @@ crucially, under PyPy:
 Usage::
 
     python3 match.py [engine1.py] [engine2.py] [num_positions] [offset] [--workers N] [--engine-smp N]
+                     [--book1 book.bin] [--book2 book.bin]   (per-engine opening books; book testing)
 
 Arguments (all optional, fall back to CONFIG section below):
   engine1.py      path to engine 1 (default: ENGINE_1)
@@ -83,6 +84,14 @@ ADJ_DRAW_COUNT = 16          # ...for this many consecutive plies...
 ADJ_DRAW_MIN_PLY = 100       # ...never before this game ply
 
 ENGINE_USE_BOOK = False     # opening books off -> a fair, search-only test
+# Per-engine book override (BOOK TESTING): a Polyglot .bin path per side,
+# e.g. "Perfect2023.bin". Setting one turns the book ON for that engine
+# only, regardless of ENGINE_USE_BOOK -- so two books can be A/B'd against
+# each other, or one side plays booked vs the other bookless. None = that
+# engine follows ENGINE_USE_BOOK (and the default candidate scan). CLI:
+# --book1 PATH / --book2 PATH.
+BOOK_ENGINE1 = None
+BOOK_ENGINE2 = None
 SUBSET_SEED = 42            # FIXED so parallel windows shuffle identically
 MAX_PLIES = 200             # games longer than this are adjudicated a draw
 VERBOSE_MOVES = False       # also print every move to the terminal
@@ -145,9 +154,10 @@ class EngineTimeout(Exception):
 class EngineProcess:
     """Owns one engine subprocess and talks to it over a pipe."""
 
-    def __init__(self, ctx, path):
+    def __init__(self, ctx, path, book_path=None):
         self.ctx = ctx
         self.path = path
+        self.book_path = book_path           # per-engine book (--book1/--book2)
         self.name = os.path.splitext(os.path.basename(path))[0]
         self.proc = None
         self.conn = None
@@ -160,7 +170,8 @@ class EngineProcess:
         self.conn = parent_conn
         self.proc = self.ctx.Process(
             target=engine_worker,
-            args=(child_conn, self.path, ENGINE_USE_BOOK, PV_UCI),
+            args=(child_conn, self.path, ENGINE_USE_BOOK, PV_UCI,
+                  self.book_path),
             # NOT daemon: an engine using Lazy SMP (CLAUDECHESS_SMP/SMP_WORKERS)
             # spawns its own worker pool, and daemonic processes are forbidden
             # from having children. The engine process is shut down explicitly
@@ -721,7 +732,7 @@ def _unpack_result(r, e1, e2):
 
 
 def _worker_loop(in_q, out_q, engine1_path, engine2_path, mode_cfg,
-                 use_book, pv_uci):
+                 use_book, pv_uci, book1=None, book2=None):
     """Worker entry point: hold one engine pair, pull (rno, fen, white_is_e1)
     jobs off `in_q`, push packed results onto `out_q`. Engine startup is paid
     ONCE per worker, not per game -- crucial since loading an engine .py file
@@ -734,8 +745,8 @@ def _worker_loop(in_q, out_q, engine1_path, engine2_path, mode_cfg,
     PV_UCI = pv_uci
 
     ctx = wmp.get_context("spawn")
-    e1 = EngineProcess(ctx, engine1_path)
-    e2 = EngineProcess(ctx, engine2_path)
+    e1 = EngineProcess(ctx, engine1_path, book1)
+    e2 = EngineProcess(ctx, engine2_path, book2)
     try:
         e1.start()
         e2.start()
@@ -796,7 +807,7 @@ def main():
     # Flag overrides for the CONFIG constants above (used by the AllIn1 web
     # dashboard, harmless from a terminal). Anything not passed keeps CONFIG.
     global MODE, TIME_PER_MOVE_MS, FIXED_DEPTH, TC_SECONDS, TC_INCREMENT, \
-        ADJUDICATE, FEN_FILE
+        ADJUDICATE, FEN_FILE, BOOK_ENGINE1, BOOK_ENGINE2
     argv = sys.argv[1:]
     workers_str = None
     positional = []
@@ -819,6 +830,12 @@ def main():
             i += 2
         elif argv[i] == "--time-per-move" and i + 1 < len(argv):
             TIME_PER_MOVE_MS = int(argv[i + 1])
+            i += 2
+        elif argv[i] == "--book1" and i + 1 < len(argv):
+            BOOK_ENGINE1 = argv[i + 1]       # book testing: engine 1's .bin
+            i += 2
+        elif argv[i] == "--book2" and i + 1 < len(argv):
+            BOOK_ENGINE2 = argv[i + 1]       # book testing: engine 2's .bin
             i += 2
         elif argv[i] == "--fixed-depth" and i + 1 < len(argv):
             FIXED_DEPTH = int(argv[i + 1])
@@ -885,8 +902,8 @@ def main():
         e1 = _EngineStub(engine1)
         e2 = _EngineStub(engine2)
     else:
-        e1 = EngineProcess(ctx, engine1)
-        e2 = EngineProcess(ctx, engine2)
+        e1 = EngineProcess(ctx, engine1, BOOK_ENGINE1)
+        e2 = EngineProcess(ctx, engine2, BOOK_ENGINE2)
 
     stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     log_path = f"{e1.name}_vs_{e2.name}_{stamp}_{os.getpid()}.txt"
@@ -1094,7 +1111,8 @@ def main():
                 w = ctx.Process(
                     target=_worker_loop,
                     args=(in_q, out_q, engine1, engine2, mode_cfg,
-                          ENGINE_USE_BOOK, PV_UCI),
+                          ENGINE_USE_BOOK, PV_UCI,
+                          BOOK_ENGINE1, BOOK_ENGINE2),
                 )
                 w.start()
                 workers.append(w)

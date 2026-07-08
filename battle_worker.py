@@ -68,7 +68,7 @@ def _format_info(depth, score_cp, mate, nodes, nps, time_ms):
             f"nps {nps} time {time_ms}")
 
 
-def engine_worker(conn, engine_path, use_book, pv_uci=False):
+def engine_worker(conn, engine_path, use_book, pv_uci=False, book_path=None):
     """Process entry point: load the engine, then serve move requests forever."""
     import chess  # imported only in the child process
 
@@ -78,6 +78,16 @@ def engine_worker(conn, engine_path, use_book, pv_uci=False):
             engine.use_book = use_book
         except Exception:
             pass            # engine may not expose a book; that is fine
+        if book_path:
+            # Per-engine book override (match.py --book1/--book2): naming a
+            # book implies wanting it, so it also turns use_book on. Must be
+            # set BEFORE the first probe -- the reader resolves lazily and
+            # honours engine.book_path first.
+            try:
+                engine.book_path = book_path
+                engine.use_book = True
+            except Exception:
+                pass        # engine without a book attribute: ignore
         try:
             engine.pv_uci = pv_uci      # PV log format (SAN vs UCI)
         except Exception:
