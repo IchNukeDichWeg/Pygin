@@ -66,6 +66,16 @@ class Engine:
     # at this TC; the mechanism stays for future eval-toggle A/Bs.
     USE_KING_SHELTER = False
 
+    # P-14 (A/B pending): KEEP the C TT across irreversible root moves.
+    # v30's wipe-on-capture/pawn-move rule existed because its dict TT grew
+    # unbounded and dead entries wasted memory; the C table is fixed-size
+    # with generation-aware replacement and full-key-checked probes, and
+    # repetition/50-move draws are decided BEFORE the TT probe -- so the
+    # wipe only discards still-reachable entries (the whole subtree behind
+    # the irreversible move) on a very frequent event. False = v32's exact
+    # behavior.
+    TT_KEEP_WARM = True
+
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
     ASPIRATION_DELTA = 30                    # centipawns; C scores are cp too
@@ -285,9 +295,10 @@ class Engine:
                 self._emit(dict(record, final=True), final=True)
                 return tb_move
 
-        # TT retention (v30's rule): an irreversible root move means no
-        # earlier position can recur, so all old entries are dead.
-        if board.halfmove_clock == 0:
+        # TT retention: v30's rule wiped on every irreversible root move
+        # (halfmove_clock == 0); P-14 keeps the table warm instead (see the
+        # class attr). With the toggle off this is v32's exact behavior.
+        if board.halfmove_clock == 0 and not self.TT_KEEP_WARM:
             self._lib.cs_tt_reset()
 
         # Game-history keys for repetition detection: positions BEFORE the
