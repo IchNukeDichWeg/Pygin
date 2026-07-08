@@ -119,14 +119,44 @@ class Engine:
 
         # --- host-visible state (battle_worker contract) ------------------ #
         self.use_book = True
+        self.use_tb = False                  # no TB probe in the C driver (v1)
         self.pv_uci = True
         self.nodes_searched = 0
         self.last_score = 0                  # White POV, v30 mate convention
         self.last_depth = 0
         self.last_pv = ""
+        # GUI contract (experiment.py / WebChess): per-completed-depth and
+        # final info callbacks, same record dicts v30 emits.
+        self.on_depth = None
+        self.on_final = None
+        self.search_log = []
         # P-35/U-06 knobs, same semantics as engine.py
         self.soft_stop_frac = 0.55
         self.use_stability_time = True
+
+    # ------------------------------------------------------------------ #
+    # GUI helpers (experiment.py / WebChess use these beyond battle API)
+    # ------------------------------------------------------------------ #
+    def evaluate_position(self, board):
+        """Terminal-aware static eval, White's perspective -- delegated to
+        the embedded Python engine (bit-exact the same evaluation)."""
+        return self._py.evaluate_position(board)
+
+    @property
+    def book_path(self):
+        """Book probing is delegated to the embedded engine, so the book
+        override (WebChess 'book file' picker) must reach IT, not us."""
+        return self._py.book_path
+
+    @book_path.setter
+    def book_path(self, value):
+        self._py.book_path = value
+
+    def _emit(self, record, final=False):
+        self.search_log.append(record)
+        cb = self.on_final if final else self.on_depth
+        if cb is not None:
+            cb(record)
 
     # ------------------------------------------------------------------ #
     # ctypes marshaling helpers
@@ -165,6 +195,7 @@ class Engine:
         self.last_score = 0
         self.last_depth = 0
         self.last_pv = ""
+        self.search_log = []
 
         legal = list(board.legal_moves)
         if not legal:
@@ -175,6 +206,10 @@ class Engine:
             self._py.use_book = True
             book = self._py._book_move(board)
             if book is not None:
+                record = {"depth": 0, "move": book.uci(), "score": 0,
+                          "nodes": 0, "time_ms": 0, "book": True}
+                self._emit(record)
+                self._emit(dict(record, final=True), final=True)
                 return book
 
         # TT retention (v30's rule): an irreversible root move means no
@@ -228,6 +263,19 @@ class Engine:
             prev_score = score
             reached_depth = depth
 
+            # live search info (GUI contract), v30's record shape
+            if self.on_depth is not None or self.on_final is not None:
+                dmv = self._key_to_move(key)
+                self.last_pv = self._extract_pv(board, dmv, depth)
+                self._emit({
+                    "depth": depth,
+                    "move": dmv.uci() if dmv else "----",
+                    "score": self._white_v30(score, board.turn),
+                    "nodes": nodes,
+                    "time_ms": int((time.perf_counter() - t0) * 1000),
+                    "pv": self.last_pv,
+                })
+
             if abs(score) > CS_MATE_THRESH:
                 break                        # forced mate found
             if time_limit is not None:
@@ -249,13 +297,28 @@ class Engine:
         # --- stats in v30 conventions (battle_worker reads these) -------- #
         self.nodes_searched = nodes
         self.last_depth = reached_depth
-        stm_score = prev_score if prev_score is not None else 0
-        if abs(stm_score) > CS_MATE_THRESH:  # CS_INF-relative -> MATE_SCORE
-            plies = CS_INF - abs(stm_score)
-            stm_score = (1 if stm_score > 0 else -1) * (self.MATE_SCORE - plies)
-        self.last_score = stm_score if board.turn == chess.WHITE else -stm_score
+        self.last_score = self._white_v30(
+            prev_score if prev_score is not None else 0, board.turn)
         self.last_pv = self._extract_pv(board, move, max(reached_depth, 1))
+        self._emit({
+            "depth": reached_depth,
+            "move": move.uci() if move is not None else "----",
+            "score": self.last_score,
+            "nodes": nodes,
+            "time_ms": int((time.perf_counter() - t0) * 1000),
+            "pv": self.last_pv,
+            "final": True,
+        }, final=True)
         return move
+
+    def _white_v30(self, score_c, turn):
+        """CS_INF-relative stm score -> White-POV score in v30's MATE_SCORE
+        convention (what battle_worker/GUIs expect)."""
+        s = score_c
+        if abs(s) > CS_MATE_THRESH:
+            plies = CS_INF - abs(s)
+            s = (1 if s > 0 else -1) * (self.MATE_SCORE - plies)
+        return s if turn == chess.WHITE else -s
 
     def _root_aspiration(self, bargs, depth, prev_key, prev_score, hmc):
         """v30's aspiration wrapper: narrow window around the previous score,
