@@ -36,6 +36,7 @@ Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
 import ctypes
 import os
 import sys
+import threading
 import time
 
 import chess
@@ -185,6 +186,10 @@ class Engine:
         # P-35/U-06 knobs, same semantics as engine.py
         self.soft_stop_frac = 0.55
         self.use_stability_time = True
+        # cengine is NOT reentrant: a search owns process-global C state
+        # (deadline, abort flag, game-history keys, TT generation). This
+        # lock makes overlapping _search calls impossible; see _search.
+        self._search_lock = threading.Lock()
 
     # ------------------------------------------------------------------ #
     # GUI helpers (experiment.py / WebChess use these beyond battle API)
@@ -247,6 +252,21 @@ class Engine:
     # Iterative deepening driver (port of v30's get_best_move_timed loop)
     # ------------------------------------------------------------------ #
     def _search(self, board, time_limit, max_depth):
+        """Serialized search entry: LAST CALLER WINS. If a host starts a
+        second search while one is running (observed: experiment.py's
+        new-game/undo paths cleared their thinking flag without stopping
+        the old search thread, and the two searches then corrupted each
+        other's process-global C state and interleaved their log records),
+        abort the in-flight search and take over once it unwinds."""
+        if not self._search_lock.acquire(blocking=False):
+            self._lib.cs_stop()              # old search unwinds within ms
+            self._search_lock.acquire()      # serialized takeover
+        try:
+            return self._search_impl(board, time_limit, max_depth)
+        finally:
+            self._search_lock.release()
+
+    def _search_impl(self, board, time_limit, max_depth):
         t0 = time.perf_counter()
         prev_verdict = self.last_score       # previous MOVE's score (TB gate)
         self.nodes_searched = 0
