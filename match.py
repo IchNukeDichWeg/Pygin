@@ -10,6 +10,7 @@ Usage::
 
     python3 match.py [engine1.py] [engine2.py] [num_positions] [offset] [--workers N] [--engine-smp N]
                      [--book1 book.bin] [--book2 book.bin]   (per-engine opening books; book testing)
+                     [--start-pos True]                       (all games from startpos, ignore the FEN file)
 
 Arguments (all optional, fall back to CONFIG section below):
   engine1.py      path to engine 1 (default: ENGINE_1)
@@ -92,6 +93,13 @@ ENGINE_USE_BOOK = False     # opening books off -> a fair, search-only test
 # --book1 PATH / --book2 PATH.
 BOOK_ENGINE1 = None
 BOOK_ENGINE2 = None
+# Start every game from the standard STARTING POSITION instead of FEN_FILE
+# (CLI: --start-pos True). Meant for book testing (--book1/--book2): the
+# UHO/EPD openings are deliberately ~8-12 plies deep, PAST book, so books
+# never fire from them. Game variety then comes from the books' weighted-
+# random move choice -- two bookless deterministic engines from startpos
+# would repeat the same game, so leave this False for normal A/Bs.
+START_POS = False
 SUBSET_SEED = 42            # FIXED so parallel windows shuffle identically
 MAX_PLIES = 200             # games longer than this are adjudicated a draw
 VERBOSE_MOVES = False       # also print every move to the terminal
@@ -807,7 +815,7 @@ def main():
     # Flag overrides for the CONFIG constants above (used by the AllIn1 web
     # dashboard, harmless from a terminal). Anything not passed keeps CONFIG.
     global MODE, TIME_PER_MOVE_MS, FIXED_DEPTH, TC_SECONDS, TC_INCREMENT, \
-        ADJUDICATE, FEN_FILE, BOOK_ENGINE1, BOOK_ENGINE2
+        ADJUDICATE, FEN_FILE, BOOK_ENGINE1, BOOK_ENGINE2, START_POS
     argv = sys.argv[1:]
     workers_str = None
     positional = []
@@ -836,6 +844,9 @@ def main():
             i += 2
         elif argv[i] == "--book2" and i + 1 < len(argv):
             BOOK_ENGINE2 = argv[i + 1]       # book testing: engine 2's .bin
+            i += 2
+        elif argv[i] == "--start-pos" and i + 1 < len(argv):
+            START_POS = argv[i + 1].strip().lower() in ("true", "1", "yes")
             i += 2
         elif argv[i] == "--fixed-depth" and i + 1 < len(argv):
             FIXED_DEPTH = int(argv[i + 1])
@@ -881,9 +892,15 @@ def main():
     # Positions -> seeded shuffle, then take the slice [offset : offset+n].
     # With a FIXED SUBSET_SEED every window shuffles identically, so distinct
     # offsets give DISJOINT shards (no overlap across parallel windows).
-    all_fens = load_fens(FEN_FILE)
-    pool = list(all_fens)
-    print(f'Loaded {FEN_FILE}\nTotal Positions Loaded: {len(pool):,}')
+    if START_POS:
+        # --start-pos True: every game from the standard starting position
+        # (book testing). One repeated "position" per scheduled pair; the
+        # offset/shuffle machinery below degenerates harmlessly.
+        pool = [chess.STARTING_FEN] * max(1, num_positions + offset)
+        print("--start-pos: every game starts from the standard starting position")
+    else:
+        pool = list(load_fens(FEN_FILE))
+        print(f'Loaded {FEN_FILE}\nTotal Positions Loaded: {len(pool):,}')
     import random as _r
     (_r.Random(SUBSET_SEED) if SUBSET_SEED is not None else _r).shuffle(pool)
     n = max(1, min(num_positions, len(pool)))
