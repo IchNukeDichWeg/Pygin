@@ -140,10 +140,11 @@ class Engine:
         self.TB_DIFFICULT_CP = 500           # |last score| >= this: skip probe
         self.pv_uci = True
         # Lazy SMP: helper search threads inside csearch.so (shared lockless
-        # TT, per-thread everything else). Same env contract as engine.py --
-        # match.py exports CLAUDECHESS_SMP=1 so A/B matches stay
-        # single-threaded; GUI/analysis hosts get the file default.
-        self.smp_workers = max(1, int(os.environ.get("CLAUDECHESS_SMP", "4")))
+        # TT, per-thread everything else). Default 1 -- the SMP Elo gain is
+        # not yet A/B-measured, so multi-threading is strictly opt-in (set
+        # this attr, or the Threads option in cuci.py). CLAUDECHESS_SMP env
+        # honored like engine.py.
+        self.smp_workers = max(1, int(os.environ.get("CLAUDECHESS_SMP", "1")))
         self.nodes_searched = 0
         self.last_score = 0                  # White POV, v30 mate convention
         self.last_depth = 0
