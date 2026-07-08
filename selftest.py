@@ -7,9 +7,11 @@ selftest.py -- one-command install health check.
 Verifies the things that silently go wrong on a fresh clone / new machine:
 python-chess present, both C libraries compiled and ABI-matched (a missing
 or stale .so would otherwise drop the engine into a ~2x-slower pure-Python
-fallback), move generation correct (perft spot check), the search
-reproducing the canonical reference position node-for-node, and the timed
-path working. Also reports which Old Engine snapshots are ready for A/B
+fallback), move generation correct (perft spot check), the Python search
+reproducing the canonical reference position node-for-node, the timed path
+working, and the C search core (cengine) running a fixed-depth ladder to
+depth 12 with pinned per-depth node+score values plus a 2s throughput
+(NPS) probe. Also reports which Old Engine snapshots are ready for A/B
 matches (missing snapshot .so files are built by ./setup.sh, not an error).
 
 Exit code 0 = all checks pass, 1 = something failed (chainable:
@@ -108,19 +110,67 @@ dt = time.perf_counter() - t0
 check("timed search returns in budget", mv2 is not None and dt < 2.0,
       f"depth {e2.last_depth} in {dt:.2f}s")
 
-# --- 5b. C search core (csearch.so + cengine.py driver) ------------------ #
-# The whole chain in one probe: csearch.so present + ABI, eval params synced
-# from engine.py, a short timed search returning a legal move. Skipped (not
-# failed) if csearch.c is absent (pre-phase-3 checkouts).
+# --- 5b. C search core: fixed-depth ladder to depth 12 ------------------- #
+# The whole cengine chain (csearch.so + ABI + eval params synced from
+# engine.py) exercised as a real search, one iterative-deepening run per
+# depth from a quiet middlegame position. The TT is reset COLD before each
+# depth so the fixed-depth node count is reproducible (the process-global C
+# TT is kept warm in normal play, which makes counts history-dependent).
+#
+# CE_LADDER pins (nodes, score) per depth for the CONFIRMED C search. Both
+# are deterministic (integer eval, single thread, no root randomness) and
+# machine-independent. Re-measure the whole table on any confirmed
+# C-SEARCH change (same contract as REF_NODES) -- print it and paste back.
+# The best move is printed and legality-checked but NOT pinned: near-equal
+# quiet developing moves flip between depths without being a regression.
+# Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
+CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3"
+CE_LADDER = {                     # depth -> (nodes, score)  [v34, P-01 on]
+    1: (102, 126), 2: (190, 126), 3: (750, 126), 4: (1023, 122),
+    5: (4732, 70), 6: (14622, 72), 7: (35893, 72), 8: (92625, 68),
+    9: (208139, 49), 10: (374070, 52), 11: (526846, 69), 12: (949973, 66),
+}
 if os.path.exists("csearch.c"):
     try:
-        import cengine
+        import cengine  # noqa: E402
         ce = cengine.Engine()
         ce.use_book = False
-        b = chess.Board()
-        mvc = ce.get_best_move_timed(b, 0.3, max_depth=30)
-        check("C core (cengine) searches", mvc in b.legal_moves,
-              f"depth {ce.last_depth}, {ce.nodes_searched:,} nodes")
+        ce.use_tb = False
+        ce.smp_workers = 1
+        print("\nC core ladder (cold TT per depth):")
+        ok_all, mv_final = True, None
+        for d in range(1, 13):
+            ce._lib.cs_tt_reset()          # cold TT => reproducible count
+            mv_final = ce.get_best_move(chess.Board(CE_LADDER_FEN), d)
+            n, sc = ce.nodes_searched, ce.last_score
+            exp = CE_LADDER.get(d)
+            match = exp is not None and (n, sc) == exp
+            ok_all = ok_all and match and mv_final in chess.Board(CE_LADDER_FEN).legal_moves
+            flag = "  " if match else "!!"
+            exp_s = "" if match else f"  != expected {exp}"
+            print(f"  {flag} d{d:2d}  {str(mv_final):6s} score={sc:6d} "
+                  f"nodes={n:>7,}{exp_s}")
+        check("C core ladder to depth 12 (nodes+score pinned)", ok_all,
+              "search reached d12, all values match CE_LADDER"
+              if ok_all else "a value changed -- confirmed C-search change? "
+              "re-measure CE_LADDER; else regression")
+
+        # --- 5c. NPS: 2s timed search, print throughput ------------------ #
+        # Catches the two disasters a fixed-depth ladder can't: a slow/
+        # unoptimized build and the pure-Python eval fallback. Absolute NPS
+        # is machine-dependent, so the printed number is for eyeballing
+        # "dramatically up or down"; the hard check is only the disaster
+        # floor (this machine ~2.9M; a healthy build is well over 1M).
+        ce.use_book = False
+        t0 = time.perf_counter()
+        ce.get_best_move_timed(chess.Board(), 2.0, max_depth=99)
+        dt = time.perf_counter() - t0
+        nps = ce.nodes_searched / dt if dt > 0 else 0
+        print(f"\nC core 2s search (startpos): depth {ce.last_depth}, "
+              f"{ce.nodes_searched:,} nodes in {dt:.2f}s = {nps:,.0f} nps")
+        check("C core NPS above disaster floor", nps > 300_000,
+              f"{nps:,.0f} nps (floor 300k; expected ~1M+; "
+              "below floor = unoptimized build or Python eval fallback)")
     except Exception as ex:
         check("C core (cengine) searches", False,
               f"{type(ex).__name__}: {ex} -- rebuild csearch.so via ./setup.sh")
