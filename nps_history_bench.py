@@ -91,8 +91,9 @@ POSITIONS = [
 # last_depth, guarded use_book/use_tb/smp_workers), so every cell/table
 # mechanism below works unchanged. Once an Old Engine/<CENGINE_VERSION>
 # snapshot exists, engine_path prefers the snapshot (stable) over the live
-# file. History: 31 frozen 2026-07-08; 32 (P-03 IIR) frozen 2026-07-08.
-CENGINE_VERSION = 33
+# file. History: 31 frozen 2026-07-08; 32 (P-03 IIR) 2026-07-08;
+# 33 (P-14 TT-warm + SMP fixes) 2026-07-09.
+CENGINE_VERSION = 34
 
 
 def engine_path(v):
