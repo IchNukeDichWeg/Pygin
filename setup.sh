@@ -137,7 +137,7 @@ if [ -f csearch.c ]; then
         && [ csearch.so -nt Constants.c ]; then
         echo "   csearch.so up to date"
     else
-        "$CC" $CFLAGS -o csearch.so csearch.c eval_c.c Constants.c -lm
+        "$CC" $CFLAGS -o csearch.so csearch.c eval_c.c Constants.c -lm -lpthread
         echo "   built csearch.so"
     fi
 fi
