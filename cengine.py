@@ -68,14 +68,14 @@ class Engine:
     # at this TC; the mechanism stays for future eval-toggle A/Bs.
     USE_KING_SHELTER = False
 
-    # P-14 (A/B pending): KEEP the C TT across irreversible root moves.
-    # v30's wipe-on-capture/pawn-move rule existed because its dict TT grew
-    # unbounded and dead entries wasted memory; the C table is fixed-size
-    # with generation-aware replacement and full-key-checked probes, and
-    # repetition/50-move draws are decided BEFORE the TT probe -- so the
-    # wipe only discards still-reachable entries (the whole subtree behind
-    # the irreversible move) on a very frequent event. False = v32's exact
-    # behavior.
+    # P-14 (CONFIRMED v33, +23.52 +/-6.8 vs v32): KEEP the C TT across
+    # irreversible root moves. v30's wipe-on-capture/pawn-move rule existed
+    # because its dict TT grew unbounded and dead entries wasted memory; the
+    # C table is fixed-size with generation-aware replacement and
+    # full-key-checked probes, and repetition/50-move draws are decided
+    # BEFORE the TT probe -- so the wipe only discarded still-reachable
+    # entries (the whole subtree behind the irreversible move) on a very
+    # frequent event. False = v32's exact behavior.
     TT_KEEP_WARM = True
 
     # v30 time-management / aspiration constants (ports, same values)
