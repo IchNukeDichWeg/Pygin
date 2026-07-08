@@ -835,13 +835,22 @@ static volatile int g_abort = 0;        /* deadline / cs_stop: unwinds ALL threa
 static volatile int g_hstop = 0;        /* main root finished: helpers unwind */
 static __thread int g_is_helper = 0;    /* set at helper-thread entry */
 
+/* True while THIS thread must abandon its search: global abort (deadline /
+ * cs_stop), or a Lazy-SMP helper whose main iteration finished. While
+ * unwinding, every child value is garbage -- callers must discard it AND
+ * must not store into the shared TT (a stopped helper that kept accepting
+ * its children's 0s used to flood the TT with garbage entries at real
+ * depths, poisoning every later search: 4-thread play missed forced mates
+ * that 1-thread found instantly). */
+#define CS_UNWINDING() (g_abort || (g_is_helper && g_hstop))
+
 /* Node-entry poll (negamax + qsearch): every 4096 nodes check the clock.
  * At ~2.5M nps that is ~1.6 ms granularity -- finer than v30's poll.
  * Helpers additionally unwind when the main thread's iteration is done. */
 #define CS_TIME_CHECK() do { \
         if ((g_nodes & 4095) == 0 && g_deadline && now_ns() >= g_deadline) \
             g_abort = 1; \
-        if (g_abort || (g_is_helper && g_hstop)) return 0; \
+        if (CS_UNWINDING()) return 0; \
     } while (0)
 
 /* Host-requested abort (UCI `stop`): same unwind path as the deadline. */
@@ -1013,7 +1022,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
         Board c = *b;
         apply_move(&c, m);
         int v = -qsearch(&c, -beta, -alpha, ply + 1, in_check(&c));
-        if (g_abort) return 0;                       /* v is garbage: unwind */
+        if (CS_UNWINDING()) return 0;                /* v is garbage: unwind */
         if (v > best) best = v;
         if (v > alpha) alpha = v;
         if (alpha >= beta) break;
@@ -1093,7 +1102,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             Board c = *b; make_null(&c);
             int ns = -negamax(&c, depth - 1 - R, -beta, -beta + 1, ply + 1,
                               0xFFFFFFFF, 0, 0);
-            if (g_abort) return 0;
+            if (CS_UNWINDING()) return 0;            /* ns is garbage */
             if (ns >= beta) return beta;
         }
     }
@@ -1151,7 +1160,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             if (v > alpha && v < beta)               /* full-window PV re-search */
                 v = -negamax(&c, depth - 1, -beta, -alpha, ply + 1, cp, gives_check, child_hmc);
         }
-        if (g_abort) return 0;                       /* v is garbage: unwind */
+        if (CS_UNWINDING()) return 0;                /* v is garbage: unwind */
 
         if (v > best) { best = v; best_move = m; }
         if (v > alpha) alpha = v;
@@ -1175,8 +1184,11 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     /* --- TT store: gen-aware depth-preferred, ply-relative mates ---- *
      * Same key: deeper-or-equal wins. Different key: an entry from an older
      * search generation is freely replaceable, a current-gen one only for
-     * deeper-or-equal depth (the TT persists across ID iterations/moves). */
-    if (g_use_tt) {
+     * deeper-or-equal depth (the TT persists across ID iterations/moves).
+     * Never store while unwinding (belt-and-braces: the loop returns before
+     * reaching here, but a garbage store would poison EVERY later search
+     * through the shared, persistent table). */
+    if (g_use_tt && !CS_UNWINDING()) {
         TTEntry cur = *tte;
         uint64_t cur_key = cur.key_x ^ cur.d1 ^ cur.d2;
         int replace = (cur_key == key)
