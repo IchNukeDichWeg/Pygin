@@ -1,6 +1,19 @@
 """
-cengine.py -- Python root driver for the C search core (phase-3 step 6).
-=========================================================================
+engine34.py -- FROZEN SNAPSHOT of v34 (2026-07-09).
+===========================================================================
+
+Snapshot of the repo-root ``cengine.py`` at the v34 milestone (v33 + P-01
+check extensions: a checking move gets +1 ply, drawn from a per-line budget
+of 5; A/B'd +6.81 +/-6.8 over 10k games vs v33 -- the weakest confirmed gain
+yet, but every secondary signal agrees: norm +12.74, pair ratio 1.09, ptnml
+consistently in engine1's favor), made self-contained: the eval oracle /
+book provider is the sibling ``engine_eval.py`` (the same-day engine.py
+frozen), loaded by explicit path -- a later retune of the live engine.py can
+never desync this snapshot. C sources frozen alongside; ./setup.sh builds
+this directory's .so files (gitignored, once per machine).
+
+Original driver documentation follows.
+===========================================================================
 
 A drop-in ``Engine`` for the project's battle/match harness, with the ENTIRE
 per-node search loop in C (csearch.so): board, move ordering, transposition
@@ -27,8 +40,7 @@ API (battle_worker.py contract):
 
 Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
   * no root random tiebreak (deterministic best move),
-  * check extensions ARE on (P-01, csearch.c set_check_ext, A/B'd +6.81
-    +/-6.8 vs v33 -> snapshotted Old Engine/34); no singular extensions /
+  * check extensions ARE on (P-01, +6.81 vs v33); no singular extensions /
     razoring (dormant or absent in v30 at match depths anyway),
   * repetition detection covers negamax nodes, not quiescence nodes,
   * no SMP, no tablebase probe (v30 default use_tb=False matches).
@@ -49,11 +61,19 @@ CS_MATE_THRESH = CS_INF - 1000
 
 
 def _load_pyengine():
-    """Import the sibling engine.py (param source + book probe)."""
-    if _DIR not in sys.path:
-        sys.path.insert(0, _DIR)
-    import engine as pyengine
-    return pyengine
+    """Load the FROZEN sibling engine_eval.py (param source + book probe)
+    by explicit path under a unique module name -- never the live repo-root
+    engine.py, and immune to sys.modules collisions with it."""
+    import importlib.util
+    name = "_v34_engine_eval"
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(
+        name, os.path.join(_DIR, "engine_eval.py"))
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
 
 
 class Engine:
