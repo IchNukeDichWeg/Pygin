@@ -186,10 +186,7 @@ class Engine:
         # P-35/U-06 knobs, same semantics as engine.py
         self.soft_stop_frac = 0.55
         self.use_stability_time = True
-        # cengine is NOT reentrant: a search owns process-global C state
-        # (deadline, abort flag, game-history keys, TT generation). This
-        # lock makes overlapping _search calls impossible; see _search.
-        self._search_lock = threading.Lock()
+        # (reentrancy lock is CLASS-level -- see _SEARCH_LOCK below)
 
     # ------------------------------------------------------------------ #
     # GUI helpers (experiment.py / WebChess use these beyond battle API)
@@ -251,20 +248,28 @@ class Engine:
     # ------------------------------------------------------------------ #
     # Iterative deepening driver (port of v30's get_best_move_timed loop)
     # ------------------------------------------------------------------ #
+    # PROCESS-wide, not per-instance: csearch.so's search state (deadline,
+    # abort flag, game-history keys, TT generation) is per-PROCESS, so the
+    # serialization must be too. A per-instance lock let gui.py's
+    # Engine-vs-Engine mode (TWO Engine instances, one csearch.so) race:
+    # instance B's cs_search_begin cleared the shared abort flag while
+    # instance A was still unwinding its deadline abort, so A's root loop
+    # accepted a garbage-scored move as best and PLAYED it (the observed
+    # "[19] c6d8 ... [Final] h6e6" queen blunder).
+    _SEARCH_LOCK = threading.Lock()
+
     def _search(self, board, time_limit, max_depth):
-        """Serialized search entry: LAST CALLER WINS. If a host starts a
-        second search while one is running (observed: experiment.py's
-        new-game/undo paths cleared their thinking flag without stopping
-        the old search thread, and the two searches then corrupted each
-        other's process-global C state and interleaved their log records),
-        abort the in-flight search and take over once it unwinds."""
-        if not self._search_lock.acquire(blocking=False):
+        """Serialized search entry: LAST CALLER WINS. If any Engine in this
+        process starts a search while one is running (host bugs observed in
+        both experiment.py and gui.py EvE), abort the in-flight search and
+        take over once it fully unwinds."""
+        if not Engine._SEARCH_LOCK.acquire(blocking=False):
             self._lib.cs_stop()              # old search unwinds within ms
-            self._search_lock.acquire()      # serialized takeover
+            Engine._SEARCH_LOCK.acquire()    # serialized takeover
         try:
             return self._search_impl(board, time_limit, max_depth)
         finally:
-            self._search_lock.release()
+            Engine._SEARCH_LOCK.release()
 
     def _search_impl(self, board, time_limit, max_depth):
         t0 = time.perf_counter()
