@@ -22,6 +22,7 @@ bestmove found so far (UCI-required). `go infinite` relies on that path.
 
 import sys
 import threading
+import traceback
 
 import chess
 
@@ -104,61 +105,77 @@ def main():
         return threading.Thread(target=run, daemon=True)
 
     for raw in sys.stdin:
-        line = raw.strip()
-        if not line:
-            continue
-        tokens = line.split()
-        cmd = tokens[0]
+        # BUG-01: malformed input must never kill the process mid-game --
+        # that's an instant forfeit (uci.py's Z-02 rule). Log + continue.
+        try:
+            line = raw.strip()
+            if not line:
+                continue
+            tokens = line.split()
+            cmd = tokens[0]
 
-        if cmd == "uci":
-            out(f"id name {NAME}")
-            out(f"id author {AUTHOR}")
-            out("option name Threads type spin default 1 min 1 max 64")
-            out("option name OwnBook type check default true")
-            out("option name UseTB type check default false")
-            out("uciok")
-        elif cmd == "isready":
-            out("readyok")
-        elif cmd == "setoption" and len(tokens) >= 5 and tokens[1] == "name":
-            name = tokens[2].lower()
-            value = tokens[4]
-            if name == "threads":
-                engine.smp_workers = max(1, min(64, int(value)))
-            elif name == "ownbook":
-                engine.use_book = value.lower() == "true"
-            elif name == "usetb":
-                engine.use_tb = value.lower() == "true"
-        elif cmd == "ucinewgame":
-            if searching():
-                engine.stop()
-                search_thread.join()
-            engine._lib.cs_tt_reset()
-            engine.last_score = 0            # reset the TB difficulty gate
-            board = chess.Board()
-        elif cmd == "position":
-            if "fen" in tokens:
-                i = tokens.index("fen")
-                j = tokens.index("moves") if "moves" in tokens else len(tokens)
-                board = chess.Board(" ".join(tokens[i + 1:j]))
-            else:                            # startpos
+            if cmd == "uci":
+                out(f"id name {NAME}")
+                out(f"id author {AUTHOR}")
+                out("option name Threads type spin default 1 min 1 max 64")
+                out("option name OwnBook type check default true")
+                out("option name UseTB type check default false")
+                out("uciok")
+            elif cmd == "isready":
+                out("readyok")
+            elif cmd == "setoption" and len(tokens) >= 5 and tokens[1] == "name":
+                name = tokens[2].lower()
+                value = tokens[4]
+                if name == "threads":
+                    engine.smp_workers = max(1, min(64, int(value)))
+                elif name == "ownbook":
+                    engine.use_book = value.lower() == "true"
+                elif name == "usetb":
+                    engine.use_tb = value.lower() == "true"
+            elif cmd == "ucinewgame":
+                if searching():
+                    engine.stop()
+                    search_thread.join()
+                engine._lib.cs_tt_reset()
+                engine.last_score = 0        # reset the TB difficulty gate
                 board = chess.Board()
-            if "moves" in tokens:
-                for u in tokens[tokens.index("moves") + 1:]:
-                    board.push(chess.Move.from_uci(u))
-        elif cmd == "go":
-            if searching():
-                continue                     # already searching; ignore
-            search_thread = go(tokens[1:])
-            search_thread.start()
-        elif cmd == "stop":
-            if searching():
-                engine.stop()
-                search_thread.join()
-        elif cmd == "quit":
-            if searching():
-                engine.stop()
-                search_thread.join()
-            break
+            elif cmd == "position":
+                if "fen" in tokens:
+                    i = tokens.index("fen")
+                    j = tokens.index("moves") if "moves" in tokens else len(tokens)
+                    board = chess.Board(" ".join(tokens[i + 1:j]))
+                else:                        # startpos
+                    board = chess.Board()
+                if "moves" in tokens:
+                    # BUG-02: guard every push -- an unparseable/illegal
+                    # token must stop cleanly HERE, never leave a
+                    # half-applied board that the next `go` silently
+                    # searches (uci.py's rule).
+                    for u in tokens[tokens.index("moves") + 1:]:
+                        try:
+                            mv = chess.Move.from_uci(u)
+                        except ValueError:
+                            break
+                        if mv not in board.legal_moves:
+                            break
+                        board.push(mv)
+            elif cmd == "go":
+                if searching():
+                    continue                 # already searching; ignore
+                search_thread = go(tokens[1:])
+                search_thread.start()
+            elif cmd == "stop":
+                if searching():
+                    engine.stop()
+                    search_thread.join()
+            elif cmd == "quit":
+                if searching():
+                    engine.stop()
+                    search_thread.join()
+                break
+        except Exception:
+            err = traceback.format_exc().splitlines()[-1]
+            out(f"info string error: {err}")
 
 
 if __name__ == "__main__":

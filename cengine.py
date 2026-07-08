@@ -82,8 +82,10 @@ class Engine:
         self._py = self._pymod.Engine()      # book + the eval-param oracle
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
-        if lib.csearch_abi() < 4:
-            raise RuntimeError("csearch.so too old -- rebuild (see setup.sh)")
+        # BUG-04: must match the NEWEST abi whose exports this file calls
+        # (set_threads / cs_stop are abi 5) -- bump together with csearch_abi.
+        if lib.csearch_abi() < 5:
+            raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         B = ctypes.c_uint64
         BOARD_ARGS = [B] * 8 + [ctypes.c_int] * 2 + [B]
         lib.cs_search_begin.argtypes = [ctypes.POINTER(B), ctypes.c_int,
