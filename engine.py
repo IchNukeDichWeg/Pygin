@@ -468,10 +468,12 @@ queen odds (Qd1) 100/100 (2026-07-06, saturated); rook odds (Ra1): 48.00%
 Elo, 345 wins by checkmate).** The line the +139 Elo of v25->v30 could not
 budge moved ~450 Elo in one step, confirming the C core externally (its
 internal 30-game gate vs v30 was 29W/1D/0L). Rook odds is now SATURATED
-as a yardstick, like queen odds before it -- **knight odds (Nb1) is the
-next external progress benchmark.** Full-strength SF plays real chess (no
-error scheduler), so this series actually moves with engine improvements
-(~400 games / ±35-ish when the point is to SEE a step; ~6.5 s/game).
+as a yardstick, like queen odds before it. **Knight odds (Nb1) is the
+current external progress benchmark -- v31 baseline (2026-07-08): 76.75%
+(400 games, 287W/40D/73L, +207 +/-48 Elo)** -- decisive but far from
+ceiling, with a CI tight enough to resolve future ~+50 Elo steps.
+Full-strength SF plays real chess (no error scheduler), so this series
+actually moves with engine improvements (~400 games, ~7 s/game).
 
 Earlier SMP benchmark: Stockfish skill ≈2400, engine running
 ``SMP_WORKERS = 4``: 400 games, 188W / 131D / 81L (63.4%) -> +95 +/-37 Elo
