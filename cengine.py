@@ -58,6 +58,14 @@ class Engine:
     MATE_SCORE = 1_000_000
     MATE_THRESHOLD = MATE_SCORE - 1_000
 
+    # P-20 (A/B pending): king-shelter eval term, the best of the five
+    # v21-era toggles (+10 +/-10 solo at depth 8, old engine) -- re-tested
+    # at C-core depth. Set on the EMBEDDED engine before the param sync, so
+    # engine.py's own default (False) stays untouched: engine.py remains
+    # byte-exact v30 and selftest's node pin holds. False here reproduces
+    # the v32 eval exactly.
+    USE_KING_SHELTER = True
+
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
     ASPIRATION_DELTA = 30                    # centipawns; C scores are cp too
@@ -80,6 +88,9 @@ class Engine:
                 "that mixes engine versions in one process, isolate versions "
                 "per process (fresh worker per cell).")
         self._py = self._pymod.Engine()      # book + the eval-param oracle
+        # Eval toggles under A/B (see class attrs above): applied to the
+        # embedded engine BEFORE _sync_c_params pushes them into csearch.so.
+        self._py.use_king_shelter = bool(self.USE_KING_SHELTER)
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
