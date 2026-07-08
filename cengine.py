@@ -58,13 +58,13 @@ class Engine:
     MATE_SCORE = 1_000_000
     MATE_THRESHOLD = MATE_SCORE - 1_000
 
-    # P-20 (A/B pending): king-shelter eval term, the best of the five
-    # v21-era toggles (+10 +/-10 solo at depth 8, old engine) -- re-tested
-    # at C-core depth. Set on the EMBEDDED engine before the param sync, so
-    # engine.py's own default (False) stays untouched: engine.py remains
-    # byte-exact v30 and selftest's node pin holds. False here reproduces
-    # the v32 eval exactly.
-    USE_KING_SHELTER = True
+    # P-20a king shelter: REJECTED at C-core depth (A/B vs v32, 2026-07-08:
+    # 10k games @ 45+0.1, 49.38% = -4.27 +/-6.8, norm -7.98). The depth-8
+    # signal (+10 +/-10 on the old engine) did not survive depth 14 --
+    # deep search sees king attacks concretely, subsuming the static term.
+    # False reproduces the v32 eval exactly (node-verified). Do not re-try
+    # at this TC; the mechanism stays for future eval-toggle A/Bs.
+    USE_KING_SHELTER = False
 
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4

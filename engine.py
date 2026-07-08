@@ -503,6 +503,13 @@ couldn't beat it by much.
 
 Rejected / shelved experiments
 -------------------------------
+* **King shelter at C-core depth** (P-20a, 2026-07-08): the strongest
+  v21-era eval toggle (+10 +/-10 solo at depth 8) re-tested on v32 at
+  depth ~14: **-4.27 +/-6.8 over 10,000 games** (49.38%, norm -7.98).
+  The depth-8 signal did not survive: deep search sees king attacks
+  concretely and subsumes the static term. ``use_king_shelter`` stays
+  False everywhere; expect the same fate for the weaker toggles
+  (phalanx +3, outpost +0) -- re-test only with a strong new reason.
 * **Probcut** (v15): +4 +/-12 Elo at 1s/move, ≈0 at 500ms -- null at both
   tested TCs. Removed; design and bug history are in git.
 * **Cython search core** (``engine_cy_build.py`` compiles engine.py
