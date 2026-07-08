@@ -25,22 +25,32 @@ _DIR = os.path.dirname(os.path.abspath(__file__))
 _MODEL_PATH = os.path.join(_DIR, "wdl_model.json")
 _MATE_THRESHOLD = 999_000
 
-_model = ["unloaded"]
+_model = ["unloaded", None]          # [model dict | None, file mtime]
 
 
 def _load():
-    if _model[0] == "unloaded":
+    """Cached model, revalidated against the file's mtime on every call --
+    a refit (fit_wdl_model.py rewriting wdl_model.json) is picked up by
+    live hosts automatically, no restart or reload() needed."""
+    try:
+        mtime = os.stat(_MODEL_PATH).st_mtime
+    except OSError:
+        _model[0], _model[1] = None, None
+        return None
+    if _model[0] == "unloaded" or _model[1] != mtime:
         try:
             with open(_MODEL_PATH, encoding="utf-8") as fh:
                 _model[0] = json.load(fh)
-        except OSError:
-            _model[0] = None
+            _model[1] = mtime
+        except (OSError, ValueError):
+            _model[0], _model[1] = None, None
     return _model[0]
 
 
 def reload():
-    """Forget the cached model (e.g. after fit_wdl_model.py rewrote it)."""
-    _model[0] = "unloaded"
+    """Forget the cached model (kept for API compat; the mtime check in
+    _load makes this automatic now)."""
+    _model[0], _model[1] = "unloaded", None
 
 
 def _phase(board):
