@@ -149,6 +149,20 @@ if [ -d "Old Engine" ]; then
         d="${d%/}"
         build_so "$d" eval_c
         build_so "$d" movegen
+        # C-era snapshots (31+): csearch.so links the SNAPSHOT's eval_c.c
+        # (multi-source + -lm -lpthread, so it can't reuse build_so).
+        if [ -f "$d/csearch.c" ]; then
+            if [ "$d/csearch.so" -nt "$d/csearch.c" ] \
+                && [ "$d/csearch.so" -nt "$d/eval_c.c" ] \
+                && [ "$d/csearch.so" -nt Constants.c ]; then
+                :
+            else
+                "$CC" $CFLAGS -o "$d/csearch.so" "$d/csearch.c" "$d/eval_c.c" \
+                    Constants.c -lm -lpthread 2>/dev/null \
+                    && echo "   built $d/csearch.so" \
+                    || echo "   (skip $d/csearch.c -- did not compile against current Constants.c)"
+            fi
+        fi
     done
 fi
 
