@@ -70,9 +70,26 @@ book/tablebase probe, and the UCI/GUI boundary. **Gate:** this is a NEW engine,
 not byte-identical to v30 — verify by (a) same-or-better tactical suite,
 (b) A/B vs v30 (must be strongly positive), (c) perft still exact.
 
-**Phase 4 — integration.** Time management hooks, SMP (the C core is
-GIL-free, so real threads become possible), UCI/GUI. Snapshot as the first
-`v3x` of the C era.
+**Phase 4 — integration. DONE (2026-07-08).** Time management landed with
+step 6; the rest:
+* **Lazy SMP (real pthreads — the GIL-free payoff):** `set_threads(N)` makes
+  each `cs_search_root` spawn N-1 helper threads running the same root
+  search (alternating depth/depth+1, full window), stopped when the main
+  iteration completes. Shared state is the TT only — now lockless
+  (XOR-folded keys, torn racy writes read as misses); everything else is
+  `__thread`. Single-thread verified node-identical to the pre-SMP build;
+  4 threads: **depth 18 vs 15 in the same 1 s budget** (10.9M aggregate
+  nps). `cengine.smp_workers` (default 4) honours `CLAUDECHESS_SMP`, so
+  match.py's override keeps A/B matches single-threaded.
+* **UCI:** `cuci.py` — Threads/OwnBook/UseTB options, repetition-aware
+  `position ... moves`, clock budgets via time_manager, streamed `info`
+  lines, `stop`→`bestmove` via the C core's `cs_stop()` abort.
+* **Tablebase probe:** delegated to the embedded engine.py (root-only,
+  skips trivial wins), plus a cengine difficulty gate — no probe when the
+  previous move's verdict was already decisive (±500 cp): at 2.5M nps the
+  search converts clear wins faster than the network round-trip.
+Remaining from the original phase-4 list: snapshot as the first C-era
+version (`Old Engine/31`) — user's call, after the formal A/B/odds runs.
 
 ## Phase 1-2 prototype result (2026-07-08) — GO signal
 
