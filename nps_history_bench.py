@@ -374,7 +374,15 @@ def run_all(versions, positions, runs_per_position, seconds_per_run, max_depth,
     if not todo:
         return results
 
-    with cf.ProcessPoolExecutor(max_workers=workers) as ex:
+    # max_tasks_per_child=1 (needs Python 3.11+): a FRESH process per cell.
+    # A reused worker that has already dlopened one version's eval_c.so /
+    # movegen.so can hand a LATER version's ctypes.CDLL an already-loaded
+    # older image (same library name) -- the newer engine then misses newer
+    # symbols (e.g. set_positional_params), warns, and silently falls back
+    # to the ~2x-slower pure-Python eval, corrupting that cell's NPS/depth.
+    # Same bug class as the U-04 in-process bench contamination; process
+    # isolation removes it for every version at ~1s spawn cost per cell.
+    with cf.ProcessPoolExecutor(max_workers=workers, max_tasks_per_child=1) as ex:
         futures = {ex.submit(run_cell_worker, v, name, fen, runs_per_position,
                               seconds_per_run, max_depth): (v, name)
                    for v, name, fen in todo}
