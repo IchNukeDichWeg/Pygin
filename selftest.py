@@ -108,6 +108,23 @@ dt = time.perf_counter() - t0
 check("timed search returns in budget", mv2 is not None and dt < 2.0,
       f"depth {e2.last_depth} in {dt:.2f}s")
 
+# --- 5b. C search core (csearch.so + cengine.py driver) ------------------ #
+# The whole chain in one probe: csearch.so present + ABI, eval params synced
+# from engine.py, a short timed search returning a legal move. Skipped (not
+# failed) if csearch.c is absent (pre-phase-3 checkouts).
+if os.path.exists("csearch.c"):
+    try:
+        import cengine
+        ce = cengine.Engine()
+        ce.use_book = False
+        b = chess.Board()
+        mvc = ce.get_best_move_timed(b, 0.3, max_depth=30)
+        check("C core (cengine) searches", mvc in b.legal_moves,
+              f"depth {ce.last_depth}, {ce.nodes_searched:,} nodes")
+    except Exception as ex:
+        check("C core (cengine) searches", False,
+              f"{type(ex).__name__}: {ex} -- rebuild csearch.so via ./setup.sh")
+
 # --- 6. optional pieces: report, don't fail ------------------------------ #
 print("\noptional:")
 print(f"  {'ok  ' if os.path.exists('wdl_model.json') else 'none'}  wdl_model.json "
