@@ -1660,6 +1660,11 @@ class Engine:
         self._book_resolved = False
         self.book_path = None
         self._book_candidates = [
+            # Perfect 2023 (Sedat Canbaz, freeware) first: THE default book.
+            # Hand-tuned for engine matches over 1M+ SCCT book-tournament
+            # games -- balanced (~52/48) but playable lines. Every book
+            # consumer (cengine, GUIs, cuci) delegates to this list.
+            "Perfect2023.bin",
             "Elo2400.bin", "Performance.bin", "Titans.bin", "book.bin",
             "gm2600.bin", "baron30.bin", "komodo.bin",
         ]
@@ -1905,6 +1910,16 @@ class Engine:
         if self._book_resolved:
             return self._book_reader
         self._book_resolved = True
+        # Host-set override wins over the candidate scan: a host that assigns
+        # engine.book_path BEFORE the first probe (match.py --book1/--book2,
+        # battle_worker book_path, WebChess book picker) gets exactly that
+        # book. On open failure, fall through to the candidates.
+        if self.book_path:
+            try:
+                self._book_reader = chess.polyglot.open_reader(self.book_path)
+                return self._book_reader
+            except Exception:
+                self._book_reader = None
         search_dirs = [os.getcwd()]
         try:
             search_dirs.append(os.path.dirname(os.path.abspath(__file__)))
