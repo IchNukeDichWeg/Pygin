@@ -11,7 +11,7 @@ time_manager.calculate_move_time, so `go wtime/btime/winc/binc` gets the
 same budgets the internal harnesses use.
 
 Options:
-    Threads  (spin 1..64, default 4)  -- Lazy-SMP helper threads in C
+    Threads  (spin 1..64, default 1)  -- Lazy-SMP helper threads in C
     OwnBook  (check, default true)    -- engine's own Polyglot book
     UseTB    (check, default false)   -- root Lichess-Syzygy probe
                                          (difficulty-gated; needs network)
@@ -113,7 +113,7 @@ def main():
         if cmd == "uci":
             out(f"id name {NAME}")
             out(f"id author {AUTHOR}")
-            out("option name Threads type spin default 4 min 1 max 64")
+            out("option name Threads type spin default 1 min 1 max 64")
             out("option name OwnBook type check default true")
             out("option name UseTB type check default false")
             out("uciok")
