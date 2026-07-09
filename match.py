@@ -140,6 +140,7 @@ import os
 import sys
 import threading
 import time
+from queue import Empty
 
 import chess
 import chess.pgn
@@ -1150,7 +1151,23 @@ def main():
             )
             feeder.start()
             for _ in range(len(schedule)):
-                r = out_q.get()
+                # Bounded wait (smp.py's P-03 rule): a worker killed by the
+                # OS (OOM / kill -9) puts nothing on the queue -- a bare
+                # get() then hangs the match forever. Python-level failures
+                # are unaffected (workers catch them and post an error row).
+                # Ceiling: this only detects TOTAL worker loss; one dead
+                # worker among live ones still stalls the tail of the run
+                # (its in-flight game's result never arrives) -- per-job
+                # acks if that ever bites in practice.
+                while True:
+                    try:
+                        r = out_q.get(timeout=10.0)
+                        break
+                    except Empty:
+                        if not any(w.is_alive() for w in workers):
+                            raise EngineError(
+                                "all match workers died -- aborting result "
+                                "collection (summary so far still written)")
                 g = _unpack_result(r, e1, e2)
                 handle_result(g, g["round"])
             feeder.join()
