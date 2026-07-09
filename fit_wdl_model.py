@@ -129,7 +129,8 @@ NEAR_EQUAL_BASES = {
     # and (b) delisting "engine" also auto-excludes the lopsided
     # cengine-vs-engine 29-1-0 gate log (a ~700-Elo-gap pairing that would
     # otherwise qualify once "cengine" is listed).
-    "cengine", "engine31", "engine32",  "engine33", "engine34", "engine35", "engine36", "engine37", "engine38", "engine39",
+    "cengine", "engine31", "engine32",  "engine33", "engine34", "engine35",
+    "engine36", "engine37", "engine38", "engine39",
     # Python era (kept for reference; re-add ONLY for a deliberate
     # mixed-era fit): "engine", "engine24" ... "engine30".
 }
