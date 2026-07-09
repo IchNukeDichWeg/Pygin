@@ -732,23 +732,6 @@ static int g_gen = 0;       /* step 6: bumped per root search; old-gen entries
                              * ID iterations and moves; see cs_tt_reset). */
 void set_use_tt(int v) { g_use_tt = v; }
 
-/* P-17: N-way set-associative buckets. The persistent, always-warm table
- * (P-14) runs effectively full, so a direct-mapped slot must evict a useful
- * deep entry on EVERY colliding position; an N-way bucket keeps the deep
- * entry and evicts a shallow/old neighbour instead -- same 50 MB, far fewer
- * destructive collisions. ``ways`` rounds down to a power of two in [1,8];
- * set_tt_ways(1) restores v34's direct-mapped table byte-for-byte (the
- * node-exact A/B baseline). Default 4. */
-static int g_tt_ways = 4;
-static uint32_t g_tt_bmask = (TT_SIZE / 4u) - 1u;   /* (num_buckets - 1) */
-void set_tt_ways(int v)
-{
-    int w = 1;
-    while (w * 2 <= v && w < 8) w *= 2;             /* floor to pow2, cap 8 */
-    g_tt_ways  = w;
-    g_tt_bmask = (TT_SIZE / (uint32_t)w) - 1u;
-}
-
 void cs_tt_reset(void)
 {
     if (g_tt) memset(g_tt, 0, TT_SIZE * sizeof(TTEntry));
@@ -772,55 +755,6 @@ static inline int tt_load(const TTEntry* t, uint64_t key, TTEntry* out)
     if ((e.key_x ^ e.d1 ^ e.d2) != key) return 0;
     *out = e;
     return 1;
-}
-
-/* P-17 probe: scan the key's bucket for an exact-key slot (ways==1 is the
- * v34 direct-mapped load). 1 = hit (filled *out), 0 = miss/torn write. */
-static inline int tt_probe(uint64_t key, TTEntry* out)
-{
-    if (g_tt_ways <= 1) return tt_load(&g_tt[key & TT_MASK], key, out);
-    TTEntry* base = &g_tt[(key & g_tt_bmask) * (uint32_t)g_tt_ways];
-    for (int k = 0; k < g_tt_ways; k++)
-        if (tt_load(&base[k], key, out)) return 1;
-    return 0;
-}
-
-/* P-17 store: ways==1 is v34's gen-aware depth-preferred rule on the single
- * slot, byte-for-byte. ways>1: an exact-key slot wins (depth-preferred, so a
- * deeper entry survives a shallower re-store); otherwise evict the most
- * replaceable neighbour -- an empty slot first, else the lowest
- * (depth - 8*generations_old). ``sv`` is already ply-adjusted; the caller
- * holds the g_use_tt / unwinding gate. */
-static inline void tt_store(uint64_t key, int sv, uint32_t move,
-                            int depth, int flag)
-{
-    if (g_tt_ways <= 1) {
-        TTEntry* t = &g_tt[key & TT_MASK];
-        TTEntry cur = *t;
-        uint64_t ck = cur.key_x ^ cur.d1 ^ cur.d2;
-        int replace = (ck == key)
-                    ? (TT_DEPTH(cur) <= depth)
-                    : (TT_GEN(cur) != (int)(uint16_t)g_gen
-                       || TT_DEPTH(cur) <= depth);
-        if (replace) tt_store_raw(t, key, sv, move, depth, flag);
-        return;
-    }
-    TTEntry* base = &g_tt[(key & g_tt_bmask) * (uint32_t)g_tt_ways];
-    int vi = 0, vscore = 0x7fffffff;
-    for (int k = 0; k < g_tt_ways; k++) {
-        TTEntry e = base[k];
-        uint64_t ek = e.key_x ^ e.d1 ^ e.d2;
-        if (ek == key) {                            /* same position */
-            if (TT_DEPTH(e) <= depth)
-                tt_store_raw(&base[k], key, sv, move, depth, flag);
-            return;                                 /* keep the deeper entry */
-        }
-        int empty = (e.key_x == 0 && e.d1 == 0 && e.d2 == 0);
-        int score = empty ? -0x40000000
-                  : TT_DEPTH(e) - 8 * (int)((g_gen - TT_GEN(e)) & 0x7FFF);
-        if (score < vscore) { vscore = score; vi = k; }
-    }
-    tt_store_raw(&base[vi], key, sv, move, depth, flag);
 }
 
 static inline uint64_t board_key(const Board* b)
@@ -1138,9 +1072,11 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
 
     /* --- TT probe -------------------------------------------------- */
     uint32_t tt_move = 0;
+    TTEntry* tte = NULL;
     if (g_use_tt) {
+        tte = &g_tt[key & TT_MASK];
         TTEntry e;
-        if (tt_probe(key, &e)) {                     /* P-17: bucket scan */
+        if (tt_load(tte, key, &e)) {
             tt_move = TT_MOVE(e);
             if (TT_DEPTH(e) >= depth) {
                 int v = TT_VALUE(e);                /* ply-relative -> node */
@@ -1268,18 +1204,25 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
      * reaching here, but a garbage store would poison EVERY later search
      * through the shared, persistent table). */
     if (g_use_tt && !CS_UNWINDING()) {
-        int flag = (best <= alpha_orig) ? TT_UPPER
-                 : (best >= beta)       ? TT_LOWER : TT_EXACT;
-        int sv = best;
-        if (sv >= MATE_THRESH) sv += ply;            /* node -> ply-relative */
-        else if (sv <= -MATE_THRESH) sv -= ply;
-        /* 0x7FFF, not 0xFFFF: bit 15 is the mover PT's low bit
-         * (MV_SHIFT_MOVER = 15). Storing it made the probe-side
-         * `(m & 0x7FFF) == tt_move` never match for odd mover PTs
-         * (pawn/bishop/queen) -- TT-move ordering was silently dead
-         * for those movers. tt_store applies the gen-aware / bucket
-         * replacement (ways==1 == v34's rule byte-for-byte). */
-        tt_store(key, sv, best_move & 0x7FFF, depth, flag);
+        TTEntry cur = *tte;
+        uint64_t cur_key = cur.key_x ^ cur.d1 ^ cur.d2;
+        int replace = (cur_key == key)
+                    ? (TT_DEPTH(cur) <= depth)
+                    : (TT_GEN(cur) != (int)(uint16_t)g_gen
+                       || TT_DEPTH(cur) <= depth);
+        if (replace) {
+            int flag = (best <= alpha_orig) ? TT_UPPER
+                     : (best >= beta)       ? TT_LOWER : TT_EXACT;
+            int sv = best;
+            if (sv >= MATE_THRESH) sv += ply;
+            else if (sv <= -MATE_THRESH) sv -= ply;
+            /* 0x7FFF, not 0xFFFF: bit 15 is the mover PT's low bit
+             * (MV_SHIFT_MOVER = 15). Storing it made the probe-side
+             * `(m & 0x7FFF) == tt_move` never match for odd mover PTs
+             * (pawn/bishop/queen) -- TT-move ordering was silently dead
+             * for those movers. */
+            tt_store_raw(tte, key, sv, best_move & 0x7FFF, depth, flag);
+        }
     }
     return best;
 }
@@ -1366,11 +1309,8 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
     if (g_use_tt && !g_abort && !(g_is_helper && g_hstop) && *out_done > 0) {
         int flag = (best <= alpha_orig) ? TT_UPPER
                  : (best >= beta)       ? TT_LOWER : TT_EXACT;
-        if (g_tt_ways <= 1)              /* v34: unconditional single-slot store */
-            tt_store_raw(&g_tt[key & TT_MASK], key, best,
-                         best_move & 0x7FFF, depth, flag);
-        else                            /* P-17: place into the key's bucket */
-            tt_store(key, best, best_move & 0x7FFF, depth, flag);
+        tt_store_raw(&g_tt[key & TT_MASK], key, best,
+                     best_move & 0x7FFF, depth, flag);
     }
     *out_score = best;
     return best_move & 0x7FFF;   /* 15-bit move key: from|to<<6|promo<<12 */
@@ -1500,7 +1440,7 @@ uint32_t cs_tt_probe_move(uint64_t pawns, uint64_t knights, uint64_t bishops,
                          occ_w, occ_b, turn, ep, castling);
     uint64_t key = board_key(&b);
     TTEntry e;
-    return tt_probe(key, &e) ? (TT_MOVE(e) & 0x7FFF) : 0;  /* P-17: bucket scan */
+    return tt_load(&g_tt[key & TT_MASK], key, &e) ? (TT_MOVE(e) & 0x7FFF) : 0;
 }
 
 /* Exported: fixed-depth alpha-beta (compat wrapper kept for the NPS/verify

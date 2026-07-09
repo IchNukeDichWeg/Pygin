@@ -17,9 +17,6 @@ Python keeps only what needs game/host state -- exactly the phase-3 plan:
     into the C core at construction),
   * TT retention policy (the C TT persists; cleared after irreversible root
     moves, v30's rule) and the game-history keys for repetition detection.
-    (The C TT itself is 4-way set-associative as of P-17 -- csearch.c
-    set_tt_ways, default on, A/B vs v34 pending; set_tt_ways(1) restores
-    v34's direct-mapped table node-exactly.)
 
 API (battle_worker.py contract):
     Engine().get_best_move(board, depth)                     -> Move | None
