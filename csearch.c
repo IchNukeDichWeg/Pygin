@@ -964,8 +964,12 @@ void set_check_ext(int v) { g_check_ext = v; }
  * these budgets apart too). A forced node has width 1, so the extension
  * deepens a single line without widening the tree -- inherently cheap; it can
  * stack with a check extension on the same move (still just one line).
- * set_single_reply(0) restores v34's search node-exactly. */
-static int g_single_reply = 1;
+ * set_single_reply(0) restores v34's search node-exactly.
+ * A/B vs v34 (2026-07-09, 20k games pooled @45+0.1): +3.5 +/-4.8 -- positive
+ * on every secondary signal but sub-significant even at 20k. KEPT-MARGINAL,
+ * DORMANT (default OFF, user call): the mechanism is monotone-safe and may be
+ * re-enabled/re-tested at a longer TC, but it does not earn default-on now. */
+static int g_single_reply = 0;
 void set_single_reply(int v) { g_single_reply = v; }
 #define SR_EXT_MAX 5
 
