@@ -973,6 +973,25 @@ static int g_single_reply = 0;
 void set_single_reply(int v) { g_single_reply = v; }
 #define SR_EXT_MAX 5
 
+/* P-04: "improving" heuristic (v30's exact recipe, engine.py ~3986-4310).
+ * A per-thread eval stack records each ply's static eval on the way down;
+ * `improving` = the side to move's static eval beat their own eval two plies
+ * ago. Three uses, all gated so set_improving(0) restores v34 node-exactly:
+ *   - RFP margin becomes RFP_MARGIN * (depth - improving): an improving node
+ *     prunes one ply deeper for the same eval (not-improving == v34),
+ *   - frontier futility margin widens by RFP_MARGIN/2 when NOT improving
+ *     (a declining node cuts more frontier quiets; improving == v34),
+ *   - LMR adds +1 to the reduction on quiets when NOT improving
+ *     (improving == v34).
+ * In-check plies record SEVAL_NONE; a missing ply-2 reference reads as
+ * not-improving (v30's conservative default; its check-eval-proxy refinement
+ * is NOT ported in v1 -- separate toggle if this pays). PV nodes compute the
+ * static eval only while the toggle is on (v34 skips it there). */
+static int g_improving = 1;
+void set_improving(int v) { g_improving = v; }
+#define SEVAL_NONE INT32_MIN
+static __thread int g_seval[CS_MAXPLY];
+
 #define RFP_MARGIN   80                 /* per ply, reverse-futility */
 #define FUT_MARGIN  150                 /* frontier futility */
 static const int LMP_COUNT[4] = {0, 6, 10, 14};   /* by depth 1..3 */
@@ -1112,13 +1131,25 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     if (g_iir && depth >= IIR_MIN_DEPTH && !tt_move && !in_chk)
         depth--;
 
-    /* static eval (for pruning); meaningless in check, unused at PV nodes. */
-    int static_eval = (!in_chk && !is_pv) ? eval_full_stm(b) : 0;
+    /* static eval (for pruning); meaningless in check, unused at PV nodes
+     * (P-04 additionally computes it at PV nodes to feed the eval stack). */
+    int static_eval = (!in_chk && (!is_pv || g_improving)) ? eval_full_stm(b) : 0;
+
+    /* P-04: record this ply's eval and compare to our own two plies ago.
+     * Every ancestor on the current path wrote its slot on the way down, so
+     * ply-2 is always fresh; the root loop writes g_seval[0]. */
+    int improving = 0;
+    if (g_improving) {
+        g_seval[ply] = in_chk ? SEVAL_NONE : static_eval;
+        if (!in_chk && ply >= 2 && g_seval[ply - 2] != SEVAL_NONE)
+            improving = static_eval > g_seval[ply - 2];
+    }
 
     /* --- pre-move pruning (non-PV, not in check) ------------------- */
     if (g_prune && !is_pv && !in_chk && abs(beta) < MATE_THRESH) {
-        /* reverse futility / static null-move */
-        if (depth <= 6 && static_eval - RFP_MARGIN * depth >= beta)
+        /* reverse futility / static null-move (P-04: an improving node
+         * prunes one ply deeper for the same eval; off/not-improving = v34) */
+        if (depth <= 6 && static_eval - RFP_MARGIN * (depth - improving) >= beta)
             return static_eval;
         /* null-move pruning (hmc 0 below the null: repetition/50-move
          * cannot be tracked across a non-move, so disable them there) */
@@ -1164,8 +1195,10 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         int gives_check = in_check(&c);
 
         if (g_prune && quiet && !is_pv && !in_chk && !gives_check && depth == 1
-                && best > -MATE_THRESH && static_eval + FUT_MARGIN <= alpha)
-            continue;                                /* frontier futility */
+                && best > -MATE_THRESH
+                && static_eval + FUT_MARGIN
+                   + ((g_improving && !improving) ? RFP_MARGIN / 2 : 0) <= alpha)
+            continue;    /* frontier futility (P-04: declining node cuts more) */
 
         if (quiet) quiets[nq++] = fromto;
 
@@ -1181,6 +1214,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         if (g_prune && depth >= 3 && i >= 3 && quiet && !in_chk && !gives_check) {
             R = g_lmr[depth < 64 ? depth : 63][i < 64 ? i : 63];
             if (is_pv && R) R--;
+            if (g_improving && !improving) R++;      /* P-04: sharpen declining lines */
             if (R > depth - 2) R = depth - 2;
             if (R < 0) R = 0;
         }
@@ -1288,6 +1322,11 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
     Board b = *rb;
     uint64_t key = board_key(&b);
     g_path[0] = key;
+    /* P-04: seed the eval stack -- the ply-2 reference for ply-2 nodes.
+     * Per-thread (__thread), and root_search is the shared entry for the
+     * main thread and every SMP helper, so each thread seeds its own. */
+    if (g_improving)
+        g_seval[0] = in_check(&b) ? SEVAL_NONE : eval_full_stm(&b);
     int alpha_orig = alpha;
 
     uint32_t moves[256];
