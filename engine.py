@@ -3434,7 +3434,7 @@ class Engine:
         """Best move via iterative deepening to a fixed ``depth`` (no clock)."""
         return self._search(board, max_depth=max(1, depth), time_limit=None)
 
-    def get_best_move_timed(self, board, time_limit, max_depth=60):
+    def get_best_move_timed(self, board, time_limit, max_depth=245):
         """Best move via iterative deepening bounded by ``time_limit`` seconds.
 
         ``max_depth`` defaults high enough that the CLOCK, not the cap, is
