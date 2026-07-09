@@ -1,0 +1,38 @@
+{
+    "engines": [
+        {
+            "command": "./pygin-uci.sh",
+            "fixed_parameters": {
+                "OwnBook": "false",
+                "Threads": 1,
+                "UseTB": "false"
+            }
+        },
+        {
+            "command": "./pygin-uci.sh",
+            "fixed_parameters": {
+                "OwnBook": "false",
+                "Threads": 1,
+                "UseTB": "false"
+            }
+        }
+    ],
+    "parameter_ranges": {
+        "RFPMargin": "Integer(20, 300)",
+        "LMRDiv": "Integer(120, 350)"
+    },
+    "engine1_tc": "2+0.05",
+    "engine2_tc": "2+0.05",
+    "rounds": 4,
+    "opening_file": "UHO_4060_v4.epd",
+    "adjudicate_draws": true,
+    "draw_movenumber": 40,
+    "draw_movecount": 8,
+    "draw_score": 10,
+    "adjudicate_resign": true,
+    "resign_movecount": 5,
+    "resign_score": 700,
+    "concurrency": 4,
+    "timemargin": 300,
+    "resign_twosided": true
+}
