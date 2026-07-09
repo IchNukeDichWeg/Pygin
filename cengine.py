@@ -105,9 +105,23 @@ class Engine:
     SOFT_STOP_STABLE_FRAC = 0.40
     SOFT_STOP_UNSTABLE_FRAC = 0.80
     SOFT_STOP_STABLE_ITERS = 2
-    MAX_DEPTH_CAP = 245                       # C side: CS_MAXPLY 64; P-01 check
-                                             # exts (+<=5 ply) may graze the
-                                             # ply guard there, safe (eval cut)
+    MAX_DEPTH_CAP = 245                       # ID-loop ceiling only. The REAL
+                                             # depth limit is the C core's
+                                             # CS_MAXPLY=64: negamax returns the
+                                             # eval once ply>=64 (arrays g_killers
+                                             # /g_seval[64], g_path[64+8]), so the
+                                             # engine cannot search past ~64 ply
+                                             # no matter this value. At 45+0.1 the
+                                             # soft-stop ends near depth ~22, so
+                                             # this cap is never reached in play;
+                                             # a fixed-depth call >64 just repeats
+                                             # identical iterations (safe, the ply
+                                             # guard prevents overflow -- P-01
+                                             # check exts +<=5 ply graze it, eval
+                                             # cut). To truly search deeper, raise
+                                             # CS_MAXPLY in csearch.c + resize the
+                                             # arrays; this Python constant alone
+                                             # does nothing for depth.
 
     def __init__(self):
         self._pymod = _load_pyengine()
