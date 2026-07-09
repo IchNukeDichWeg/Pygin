@@ -503,7 +503,7 @@ int mobility_king_safety(
          * patk_w/patk_b already computed above unconditionally. */
         if (SPACE_ON && PHASE_MAX > 0) {
             static const uint64_t CENTER_FILES = 0x3C3C3C3C3C3C3C3CULL;
-            static const uint64_t SPACE_W = 0x0000000FFFFFF00ULL; /* ranks 2-4 (bits 8-31) */
+            static const uint64_t SPACE_W = 0x00000000FFFFFF00ULL; /* ranks 2-4 (bits 8-31) */
             static const uint64_t SPACE_B = 0x00FFFFFF00000000ULL; /* ranks 5-7 (bits 32-55) */
             int space_val = (SPACE_MG * phase) / PHASE_MAX;
             int w_sp = __builtin_popcountll(CENTER_FILES & SPACE_W & ~patk_b & ~wp);
