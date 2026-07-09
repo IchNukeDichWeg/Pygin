@@ -375,6 +375,126 @@ static int gen_legal(const Board* b, uint32_t* out)
     return cnt;
 }
 
+/* P-22: noisy-only generation for quiescence -- exactly gen_legal's subset
+ * of moves qsearch searches when NOT in check (victim || promotion), in the
+ * same relative order, so the search tree is node-identical: section 1
+ * restricted to `att & enemy`, castling skipped (never noisy), section 3
+ * (pawn captures + capture-promos) unchanged, section 4 restricted to
+ * promotion pushes, double pushes skipped, en passant unchanged. Only valid
+ * when not in check (same caveat as gen_legal's ordering). */
+static int gen_noisy(const Board* b, uint32_t* out)
+{
+    int us = b->turn, them = us ^ 1, cnt = 0;
+    uint64_t own = b->occ[us], enemy = b->occ[them], occ = own | enemy;
+    uint64_t empty = ~occ;
+    uint64_t t, a;
+    int from, to;
+
+    uint64_t nonpawns = (b->knights | b->bishops | b->rooks | b->queens | b->kings) & own;
+    for (t = nonpawns; t; t &= ~(1ULL << from)) {
+        from = 63 - __builtin_clzll(t);
+        uint64_t fb = 1ULL << from, att;
+        int mover_pt;
+        if      (b->knights & fb) { att = KNIGHT_ATT[from];               mover_pt = PT_KNIGHT; }
+        else if (b->kings   & fb) { att = KING_ATT[from];                 mover_pt = PT_KING;   }
+        else if (b->bishops & fb) { att = bishop_attacks(from, occ);      mover_pt = PT_BISHOP; }
+        else if (b->rooks   & fb) { att = rook_attacks(from, occ);        mover_pt = PT_ROOK;   }
+        else                      { att = rook_attacks(from, occ) |
+                                          bishop_attacks(from, occ);      mover_pt = PT_QUEEN;  }
+        for (a = att & enemy; a; a &= ~(1ULL << to)) {      /* captures only */
+            to = 63 - __builtin_clzll(a);
+            if (legal(b, from, to, 0))
+                out[cnt++] = MOVE_TAG(from, to, 0, mover_pt,
+                                      board_piece_type_at(b, to), 0);
+        }
+    }
+
+    uint64_t pawns = b->pawns & own;
+
+    for (t = pawns; t; t &= ~(1ULL << from)) {              /* pawn captures */
+        from = 63 - __builtin_clzll(t);
+        for (a = PAWN_ATT[us][from] & enemy; a; a &= ~(1ULL << to)) {
+            to = 63 - __builtin_clzll(a);
+            int promo = (us == WHITE) ? (to >= 56) : (to < 8);
+            if (promo) {
+                if (legal(b, from, to, 0)) {
+                    int victim_pt = board_piece_type_at(b, to);
+                    out[cnt++] = MOVE_TAG(from, to, 5, PT_PAWN, victim_pt, 0);
+                    out[cnt++] = MOVE_TAG(from, to, 4, PT_PAWN, victim_pt, 0);
+                    out[cnt++] = MOVE_TAG(from, to, 3, PT_PAWN, victim_pt, 0);
+                    out[cnt++] = MOVE_TAG(from, to, 2, PT_PAWN, victim_pt, 0);
+                }
+            } else if (legal(b, from, to, 0)) {
+                out[cnt++] = MOVE_TAG(from, to, 0, PT_PAWN,
+                                      board_piece_type_at(b, to), 0);
+            }
+        }
+    }
+
+    /* promotion pushes only: single pushes landing on the last rank */
+    uint64_t last = (us == WHITE) ? 0xFF00000000000000ULL : 0xFFULL;
+    uint64_t single = ((us == WHITE) ? ((pawns << 8) & empty)
+                                     : ((pawns >> 8) & empty)) & last;
+    for (a = single; a; a &= ~(1ULL << to)) {
+        to = 63 - __builtin_clzll(a);
+        from = (us == WHITE) ? to - 8 : to + 8;
+        if (legal(b, from, to, 0)) {
+            out[cnt++] = MOVE_TAG(from, to, 5, PT_PAWN, 0, 0);
+            out[cnt++] = MOVE_TAG(from, to, 4, PT_PAWN, 0, 0);
+            out[cnt++] = MOVE_TAG(from, to, 3, PT_PAWN, 0, 0);
+            out[cnt++] = MOVE_TAG(from, to, 2, PT_PAWN, 0, 0);
+        }
+    }
+
+    if (b->ep >= 0 && !((1ULL << b->ep) & occ)) {           /* en passant */
+        for (t = pawns & PAWN_ATT[them][b->ep]; t; t &= ~(1ULL << from)) {
+            from = 63 - __builtin_clzll(t);
+            if (legal(b, from, b->ep, 1))
+                out[cnt++] = MOVE_TAG(from, b->ep, 0, PT_PAWN, PT_PAWN, 1);
+        }
+    }
+    return cnt;
+}
+
+/* P-22: does the side to move have ANY legal quiet move? Early-exit; called
+ * only when gen_noisy found nothing, to preserve qsearch's exact stalemate
+ * semantics (full-gen n==0 -> draw score BEFORE stand-pat). Castling and
+ * double pushes are deliberately skipped: castling legal implies the K->f
+ * king step is legal (f empty + not attacked), and a legal double push
+ * implies the single push is legal (same file, same pin ray, intermediate
+ * square empty by definition) -- both are subsumed by the scans below. */
+static int has_legal_quiet(const Board* b)
+{
+    int us = b->turn, cnt_from, to;
+    uint64_t own = b->occ[us], occ = own | b->occ[us ^ 1];
+    uint64_t empty = ~occ;
+    uint64_t t, a;
+
+    uint64_t nonpawns = (b->knights | b->bishops | b->rooks | b->queens | b->kings) & own;
+    for (t = nonpawns; t; t &= ~(1ULL << cnt_from)) {
+        cnt_from = 63 - __builtin_clzll(t);
+        uint64_t fb = 1ULL << cnt_from, att;
+        if      (b->knights & fb) att = KNIGHT_ATT[cnt_from];
+        else if (b->kings   & fb) att = KING_ATT[cnt_from];
+        else if (b->bishops & fb) att = bishop_attacks(cnt_from, occ);
+        else if (b->rooks   & fb) att = rook_attacks(cnt_from, occ);
+        else                      att = rook_attacks(cnt_from, occ)
+                                      | bishop_attacks(cnt_from, occ);
+        for (a = att & empty; a; a &= ~(1ULL << to)) {
+            to = 63 - __builtin_clzll(a);
+            if (legal(b, cnt_from, to, 0)) return 1;
+        }
+    }
+    uint64_t pawns = b->pawns & own;
+    uint64_t single = (us == WHITE) ? ((pawns << 8) & empty) : ((pawns >> 8) & empty);
+    for (a = single; a; a &= ~(1ULL << to)) {
+        to = 63 - __builtin_clzll(a);
+        int from = (us == WHITE) ? to - 8 : to + 8;
+        if (legal(b, from, to, 0)) return 1;
+    }
+    return 0;
+}
+
 /* ---------- exported: generate_legal ------------------------------------- */
 /* Returns move count, or -1 if the side to move is in check (caller should
  * fall back to python-chess to preserve the evasion move order). */
@@ -1058,6 +1178,14 @@ static int g_qsearch = 1;
 void set_qsearch(int v) { g_qsearch = v; }
 #define DELTA_MARGIN 200
 
+/* P-22: qsearch generates noisy moves only (gen_noisy) instead of all legal
+ * moves and skipping the quiets -- the hottest loop in the engine stops
+ * paying for moves it never searches. NODE-IDENTICAL by construction (same
+ * noisy subset, same relative order, stalemate semantics preserved via
+ * has_legal_quiet); set_qgen(0) restores the full-gen code path. */
+static int g_qgen = 1;
+void set_qgen(int v) { g_qgen = v; }
+
 static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
 {
     g_nodes++;
@@ -1068,12 +1196,18 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
 
     int color = b->turn, best, stand = 0;
     uint32_t moves[256];
-    int n = gen_legal(b, moves);
+    int n;
     if (in_chk) {
+        n = gen_legal(b, moves);                     /* full evasions */
         if (n == 0) return -CS_INF + ply;            /* checkmate */
         best = -CS_INF;
     } else {
-        if (n == 0) return 0;                        /* stalemate: draw, not eval */
+        /* P-22: noisy-only generation; stalemate still detected BEFORE the
+         * stand-pat return (empty noisy list + no legal quiet = stalemate),
+         * exactly like the full-gen n==0 test it replaces. */
+        n = g_qgen ? gen_noisy(b, moves) : gen_legal(b, moves);
+        if (n == 0 && (!g_qgen || !has_legal_quiet(b)))
+            return 0;                                /* stalemate: draw, not eval */
         stand = eval_full_stm(b);
         if (stand >= beta) return stand;             /* fail-soft stand-pat */
         if (stand > alpha) alpha = stand;
