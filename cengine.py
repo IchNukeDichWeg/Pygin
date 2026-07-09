@@ -28,8 +28,10 @@ API (battle_worker.py contract):
 Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
   * no root random tiebreak (deterministic best move),
   * check extensions ARE on (P-01, csearch.c set_check_ext, A/B'd +6.81
-    +/-6.8 vs v33 -> snapshotted Old Engine/34); no singular extensions /
-    razoring (dormant or absent in v30 at match depths anyway),
+    +/-6.8 vs v33 -> snapshotted Old Engine/34); single-reply / forced-move
+    extension is on (P-43, csearch.c set_single_reply, default on, A/B vs v34
+    pending; set_single_reply(0) restores v34 node-exactly); no singular
+    extensions / razoring (dormant or absent in v30 at match depths anyway),
   * repetition detection covers negamax nodes, not quiescence nodes,
   * no SMP, no tablebase probe (v30 default use_tb=False matches).
 """
