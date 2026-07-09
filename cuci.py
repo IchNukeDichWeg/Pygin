@@ -33,8 +33,8 @@ import chess
 import cengine
 from time_manager import calculate_move_time
 
-NAME = "Pygin C31"
-AUTHOR = "Sam"
+NAME = "Pygin C-core"   # version-neutral: the old "Pygin C31" went stale
+AUTHOR = "Sam"          # the moment v32 landed; snapshots carry the number
 
 
 def out(line):
