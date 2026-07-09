@@ -144,6 +144,13 @@ if os.path.exists("csearch.c"):
             ce._lib.set_single_reply(0)
         except AttributeError:
             pass                       # pre-P-43 csearch.so: no such toggle
+        # P-04 improving-flag defaults ON (A/B vs v34 pending) and changes the
+        # tree; pin it OFF so the ladder tracks the CONFIRMED v34 search.
+        # Remove this and re-measure CE_LADDER when P-04 confirms into v35.
+        try:
+            ce._lib.set_improving(0)
+        except AttributeError:
+            pass                       # pre-P-04 csearch.so: no such toggle
         print("\nC core ladder (cold TT per depth):")
         ok_all, mv_final = True, None
         for d in range(1, 13):

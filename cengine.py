@@ -32,7 +32,11 @@ Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
     extension exists but is DORMANT (P-43, csearch.c set_single_reply,
     default OFF: A/B'd +3.5 +/-4.8 over 20k pooled games vs v34 --
     positive-leaning on every signal but sub-significant, kept-marginal by
-    user call; default reproduces v34 node-exactly); no singular
+    user call; default reproduces v34 node-exactly); the "improving"
+    heuristic is ON (P-04, csearch.c set_improving, default on, A/B vs v34
+    pending -- v30's exact recipe: eval stack vs ply-2, feeds RFP depth /
+    frontier-futility margin / LMR+1; set_improving(0) restores v34
+    node-exactly); no singular
     extensions / razoring (dormant or absent in v30 at match depths anyway),
   * repetition detection covers negamax nodes, not quiescence nodes,
   * no SMP, no tablebase probe (v30 default use_tb=False matches).
