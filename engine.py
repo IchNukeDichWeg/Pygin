@@ -3429,8 +3429,13 @@ class Engine:
         """Best move via iterative deepening to a fixed ``depth`` (no clock)."""
         return self._search(board, max_depth=max(1, depth), time_limit=None)
 
-    def get_best_move_timed(self, board, time_limit, max_depth=10):
+    def get_best_move_timed(self, board, time_limit, max_depth=60):
         """Best move via iterative deepening bounded by ``time_limit`` seconds.
+
+        ``max_depth`` defaults high enough that the CLOCK, not the cap, is
+        the limit (every harness passes its own cap anyway). The old default
+        of 10 silently capped ad-hoc timed searches: a >1s budget reaches
+        depth 10+ and then wasted the rest of its time.
 
         # #13 Lazy SMP: when ``smp_workers > 1`` (or a pool was attached via
         ``_smp_pool``), the search runs across a PERSISTENT pool of worker
@@ -4449,7 +4454,11 @@ class Engine:
             return False
         color = board.turn
         rank = chess.square_rank(move.to_square)
-        if rank < 4 if color == chess.WHITE else rank > 3:
+        # 5th rank or beyond, from the mover's side. (Behavior-identical
+        # rewrite of the old `if rank < 4 if color == ... else rank > 3:` --
+        # a conditional expression AS the if-condition read like a bug.)
+        too_early = rank < 4 if color == chess.WHITE else rank > 3
+        if too_early:
             return False
         return self._is_passed_pawn(board, move.to_square, color)
 
