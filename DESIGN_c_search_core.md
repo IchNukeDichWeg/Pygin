@@ -258,6 +258,7 @@ knight odds (Nb1) is the next external progress benchmark.
 | — | P-20a king shelter eval toggle | −4.27 ±6.8 (10k @ 45+0.1, 49.38%) vs v32 | REJECTED 2026-07-08, reverted (depth-8 signal subsumed by deep search) |
 | v33 | P-14 TT kept warm across irreversible moves (`TT_KEEP_WARM`) | **+23.52 ±6.8** (10k @ 45+0.1, 53.38%, ptnml 319/1002/1898/1246/535, norm +44.49) vs v32 | **CONFIRMED** 2026-07-09 |
 | v34 | P-01 check extensions (`set_check_ext`, +1 ply on checking moves, per-line budget 5 = v30's recipe) | **+6.81 ±6.8** (10k @ 45+0.1, 50.98%, ptnml 404/1087/1880/1167/462, norm +12.74, pair ratio 1.09) vs v33 — weakest confirmed gain, all secondary signals agree | **CONFIRMED** 2026-07-09, snapshotted Old Engine/34 |
+| v35-dev | P-17 4-way set-associative TT (`set_tt_ways`, default 4; buckets at the same 50 MB so a deep entry survives a colliding neighbour on the now-always-warm P-14 table) | A/B vs v34 pending; `set_tt_ways(1)` node-exact vs v34 (12-depth ladder); buckets-on cuts deep-depth nodes ~13–23% at d9–d12 (cold-TT ladder, more expected warm) | PENDING 2026-07-09 |
 
 ## Recommendation
 
