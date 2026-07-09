@@ -13,7 +13,7 @@ capped at a target Elo and see where it crosses 50%.
     ...bracket until ~50%; that's roughly your engine's rating.
 
 Config (env vars or edit the defaults):
-    STOCKFISH_ELO    target Elo, clamped to Stockfish's 1320..3190  (default 1500)
+    STOCKFISH_ELO    target Elo, clamped to Stockfish's 1320..3190  (default 2500)
                      0 (or negative) = FULL STRENGTH, no limit (for odds matches)
     STOCKFISH_SKILL  skill level 0..20 INSTEAD of Elo, if set (weaker than 1320)
     STOCKFISH_PATH   path to the binary (else auto-detected)

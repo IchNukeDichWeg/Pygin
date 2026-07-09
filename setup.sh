@@ -100,8 +100,9 @@ esac
 CFLAGS="-O3 $TUNE -shared -fPIC -I. -w"
 echo "-> compiler: $CC   arch: $ARCH   flags: $CFLAGS"
 
-up_to_date () {   # up_to_date <so> <src>  ->  0 if <so> is newer than BOTH
-    [ "$1" -nt "$2" ] && [ "$1" -nt Constants.c ]
+up_to_date () {   # up_to_date <so> <src>  ->  0 if <so> is newer than src,
+                  # Constants.c AND Constants.h (a header edit must rebuild too)
+    [ "$1" -nt "$2" ] && [ "$1" -nt Constants.c ] && [ "$1" -nt Constants.h ]
 }
 
 build_so () {   # build_so <srcdir> <name>  ->  <srcdir>/<name>.so from <name>.c
@@ -134,7 +135,7 @@ done
 # build (links eval_c.c) with -lm, so it gets its own rule here.
 if [ -f csearch.c ]; then
     if [ csearch.so -nt csearch.c ] && [ csearch.so -nt eval_c.c ] \
-        && [ csearch.so -nt Constants.c ]; then
+        && [ csearch.so -nt Constants.c ] && [ csearch.so -nt Constants.h ]; then
         echo "   csearch.so up to date"
     else
         "$CC" $CFLAGS -o csearch.so csearch.c eval_c.c Constants.c -lm -lpthread
@@ -154,7 +155,8 @@ if [ -d "Old Engine" ]; then
         if [ -f "$d/csearch.c" ]; then
             if [ "$d/csearch.so" -nt "$d/csearch.c" ] \
                 && [ "$d/csearch.so" -nt "$d/eval_c.c" ] \
-                && [ "$d/csearch.so" -nt Constants.c ]; then
+                && [ "$d/csearch.so" -nt Constants.c ] \
+                && [ "$d/csearch.so" -nt Constants.h ]; then
                 :
             else
                 "$CC" $CFLAGS -o "$d/csearch.so" "$d/csearch.c" "$d/eval_c.c" \
