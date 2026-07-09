@@ -137,10 +137,9 @@ if os.path.exists("csearch.c"):
         ce.use_book = False
         ce.use_tb = False
         ce.smp_workers = 1
-        # P-43 single-reply extension defaults ON (A/B pending) and shifts the
-        # deep-depth node counts; pin it OFF so this ladder tracks the CONFIRMED
-        # v34 search (same contract as REF_NODES / BASELINE_OFF). Remove this
-        # and re-measure CE_LADDER when P-43 confirms into v35.
+        # P-43 single-reply extension is DORMANT (default OFF after the 20k
+        # A/B read kept-marginal +3.5); the default already reproduces v34,
+        # so this pin is belt-and-braces against a future default flip.
         try:
             ce._lib.set_single_reply(0)
         except AttributeError:
