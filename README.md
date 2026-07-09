@@ -3,13 +3,25 @@
 A from-scratch chess engine written in **Python + C**. The search and
 evaluation are hand-written (no NNUE, no external engine); the
 [`python-chess`](https://pypi.org/project/chess/) library is used **only** for
-board representation, move generation and legality checking. The
-performance-critical evaluation and move generation are ported to C and loaded
-via `ctypes`, so the engine plays at a strong level despite a Python core.
+board representation, move generation and legality checking.
 
-**Strength:** roughly **2440–2450 Elo** single-threaded (measured level with
-Stockfish 18 capped at UCI_Elo 2450 over 2,500 games). With a queen removed it
-still beats full-strength Stockfish 18 convincingly.
+The engine exists in two forms. `engine.py` is the reference implementation —
+a full Python engine whose evaluation and move generation are ported to C
+(`eval_c.c`, `movegen.c`). The current strongest engine is the **C search
+core** (`cengine.py` + `csearch.c`): the *entire* per-node search loop — board,
+ordering, transposition table, pruning, quiescence and a bit-exact port of the
+evaluation — runs in C, with Python keeping only the root layer (iterative
+deepening, time management, opening book). It reaches ~2.5M nodes/s, roughly
+28× the Python core, and searches several plies deeper at the same time
+control. `engine.py` remains the single source of truth for evaluation: the C
+core syncs every eval parameter from it at startup.
+
+**Strength:** the Python engine (`engine.py`) measures around **2440–2450 Elo**
+single-threaded (level with Stockfish 18 capped at UCI_Elo 2450 over 2,500
+games). The **C search core** is materially stronger — it wins **29–1–0**
+head-to-head against the Python engine, and against **full-strength**
+Stockfish 18 (no Elo limiter) it scores **~93%** at rook odds and **~77%** at
+knight odds.
 
 ---
 
@@ -27,9 +39,15 @@ still beats full-strength Stockfish 18 convincingly.
   threats, endgame mop-up), ported to C (`eval_c.c`).
 - **C move generator** (`movegen.c`) with magic bitboards, reproducing
   python-chess's move order so the search stays byte-identical.
-- **Lazy SMP** multi-process search with a lock-free shared transposition
-  table (`smp.py`, `shared_tt.py`).
-- **Optional** Polyglot opening book and online Syzygy tablebase probing.
+- **C search core** (`csearch.c`, driven by `cengine.py`): the whole per-node
+  loop in C — board, ordering, array TT, pruning, quiescence and a bit-exact
+  port of the evaluation (verified over 3M positions) — at ~2.5M nodes/s.
+  `cuci.py` exposes it as a UCI engine.
+- **Lazy SMP:** the C core uses pthreads with a lock-free shared TT (opt-in
+  via the UCI `Threads` option); the Python engine has a multi-process
+  variant (`smp.py`, `shared_tt.py`).
+- **Optional** Polyglot opening book (`Perfect2023.bin` bundled) and online
+  Syzygy tablebase probing.
 
 ---
 
@@ -60,11 +78,12 @@ for your platform, best-effort builds the C libraries for the `Old Engine/`
 snapshots (so you can play them head-to-head), and runs a quick self-test.
 
 To check the installation health at any time (C libraries loaded with the
-right ABI, move generation exact, search reproducing the reference position
-node-for-node, snapshots ready for A/B matches):
+right ABI, move generation exact, the Python search reproducing the reference
+position node-for-node, the C search core running a fixed-depth ladder to
+depth 12 with a throughput/NPS probe, snapshots ready for A/B matches):
 
 ```bash
-python3 selftest.py        # ~5 s; exit 0 = everything OK, chainable
+python3 selftest.py        # a few seconds; exit 0 = everything OK, chainable
 ```
 
 > If you prefer to keep things isolated, create a virtualenv first
@@ -82,6 +101,9 @@ python3 eval_build.py
 python3 movegen_build.py
 ```
 
+The C search core's library (`csearch.so`) has no separate build script —
+re-run `./setup.sh` to rebuild it (it recompiles only what changed).
+
 ---
 
 ## Running a headless match
@@ -90,19 +112,23 @@ python3 movegen_build.py
 Elo estimate, writing a full per-game log and a PGN file.
 
 ```bash
-# current engine vs a saved snapshot: 100 games, 4 parallel workers
-python3 match.py engine.py "Old Engine/26/engine26.py" 100 0 --workers 4
+# C search core vs a saved snapshot: 100 games, 4 parallel workers
+python3 match.py cengine.py "Old Engine/34/engine34.py" 100 0 --workers 4
 ```
 
-Positional arguments are `engine1 engine2 NUM_GAMES OFFSET`. Match settings
-(time control, adjudication, opening file, etc.) are edited at the top of
-`match.py`.
+Positional arguments are `engine1 engine2 NUM_GAMES OFFSET`. `NUM_GAMES` is a
+count of *positions*; each is played twice (once per colour), so the total is
+`NUM_GAMES × 2`. Match settings (time control, adjudication, etc.) are edited
+at the top of `match.py`. Useful flags: `--book1 / --book2 PATH` give each
+engine its own Polyglot book (for book testing), and `--start-pos True` plays
+every game from the standard start position instead of the opening file.
 
-**Opening book:** `match.py` defaults to `UHO_4060_v4.epd`, a set of balanced
-openings included in the repo. A smaller `fen.txt` is also bundled as a
-fallback. For a larger book (e.g. `UHO_Lichess_4852_v1.epd`, 174 MB) see the
+**Starting positions:** `match.py` defaults to `UHO_4060_v4.epd`, a set of
+balanced openings included in the repo (`fen.txt` is a smaller bundled
+fallback). For a larger set (e.g. `UHO_Lichess_4852_v1.epd`, 174 MB) see the
 [official Stockfish books repo](https://github.com/official-stockfish/books)
-and point `FEN_FILE` at it in `match.py`.
+and point `FEN_FILE` at it in `match.py`. These seed the games; an engine's own
+in-play opening book (`Perfect2023.bin`, bundled) is separate.
 
 ### Play against Stockfish (optional)
 
@@ -131,18 +157,24 @@ python3 odds.py
 | `perft.py` | Move-generator correctness gate vs the published Perft results (`--deep` for the full 1.5 B-node suite). |
 | `profile_bench.py` | Real NPS + a per-function bottleneck breakdown in one pass (`--graph` for an HTML report). |
 | `nps_history_bench.py` | NPS / depth benchmark across the `Old Engine/` snapshots. |
-| `fit_wdl_model.py` | Fit the win/draw/loss model from match logs (`wdl_model.json`). |
+| `cbench.py` | NPS benchmark for the C search core. |
+| `cuci.py` | UCI host for the C search core (`Threads` / `OwnBook` / `UseTB` options). |
+| `fit_wdl_model.py` | Fit the win/draw/loss model from match logs (`wdl_model.json`; `wdl.py` reads it). |
 
 ---
 
 ## Project layout
 
 ```
-engine.py              the engine (search + evaluation orchestration)
+engine.py              the reference Python engine (search + eval orchestration)
+cengine.py             root driver for the C search core (the strongest engine)
+csearch.c              the whole per-node search loop in C (built to .so)
 eval_c.c / movegen.c   C evaluation and move generation (built to .so)
-Constants.c/.h         magic-bitboard + attack tables (linked into both .so)
-smp.py / shared_tt.py  Lazy-SMP multi-process search + lock-free shared TT
+Constants.c/.h         magic-bitboard + attack tables (linked into the .so files)
+cuci.py                UCI host for the C search core
+smp.py / shared_tt.py  Lazy-SMP multi-process search + lock-free shared TT (Python engine)
 time_manager.py        time-control budget calculation
+wdl.py                 win/draw/loss model reader (adjudication, GUI eval bars)
 match.py               headless engine-vs-engine match runner
 battle_worker.py       per-game worker process used by match.py
 stockfish_engine.py    UCI adapter exposing Stockfish through the same API
