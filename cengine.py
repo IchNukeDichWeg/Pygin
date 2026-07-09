@@ -105,7 +105,7 @@ class Engine:
     SOFT_STOP_STABLE_FRAC = 0.40
     SOFT_STOP_UNSTABLE_FRAC = 0.80
     SOFT_STOP_STABLE_ITERS = 2
-    MAX_DEPTH_CAP = 60                       # C side: CS_MAXPLY 64; P-01 check
+    MAX_DEPTH_CAP = 245                       # C side: CS_MAXPLY 64; P-01 check
                                              # exts (+<=5 ply) may graze the
                                              # ply guard there, safe (eval cut)
 
@@ -270,7 +270,7 @@ class Engine:
     def get_best_move(self, board, depth):
         return self._search(board, None, depth)
 
-    def get_best_move_timed(self, board, time_limit, max_depth=60):
+    def get_best_move_timed(self, board, time_limit, max_depth=245):
         # Default = MAX_DEPTH_CAP so the clock, not the cap, is the limit --
         # the old default of 10 silently capped ad-hoc timed searches (the C
         # core passes depth 10 in well under a second).
