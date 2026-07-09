@@ -144,13 +144,21 @@ if os.path.exists("csearch.c"):
             ce._lib.set_single_reply(0)
         except AttributeError:
             pass                       # pre-P-43 csearch.so: no such toggle
-        # P-04 improving-flag defaults ON (A/B vs v34 pending) and changes the
-        # tree; pin it OFF so the ladder tracks the CONFIRMED v34 search.
-        # Remove this and re-measure CE_LADDER when P-04 confirms into v35.
+        # P-04 improving-flag is DORMANT (default OFF after a dead-null 10k
+        # A/B: +0.38); the default already reproduces v34, so this pin is
+        # belt-and-braces against a future default flip.
         try:
             ce._lib.set_improving(0)
         except AttributeError:
             pass                       # pre-P-04 csearch.so: no such toggle
+        # EP-01 FIDE-exact ep hashing is DORMANT (default OFF: correctness
+        # fix, but tree-changing -- queued for its own A/B behind P-04).
+        # Belt-and-braces pin so the ladder tracks the confirmed search even
+        # if the default flips later.
+        try:
+            ce._lib.set_ep_filter(0)
+        except AttributeError:
+            pass                       # pre-EP-01 csearch.so: no such toggle
         print("\nC core ladder (cold TT per depth):")
         ok_all, mv_final = True, None
         for d in range(1, 13):
