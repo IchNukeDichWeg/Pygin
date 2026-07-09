@@ -109,3 +109,6 @@ wdl_training_data.csv
 elo.md
 audit_engine_*.md
 improvements_*.md
+
+# attic/: dead code archived out of the root (was individually gitignored before the move)
+attic/
