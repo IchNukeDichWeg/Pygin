@@ -958,6 +958,17 @@ static int g_check_ext = 1;
 void set_check_ext(int v) { g_check_ext = v; }
 #define CHECK_EXT_MAX 5
 
+/* P-43: single-reply / forced-move extension -- a node with exactly one legal
+ * move is forced, so search that move one ply deeper. Own per-line budget,
+ * separate from the check budget so neither starves the other (v30 keeps
+ * these budgets apart too). A forced node has width 1, so the extension
+ * deepens a single line without widening the tree -- inherently cheap; it can
+ * stack with a check extension on the same move (still just one line).
+ * set_single_reply(0) restores v34's search node-exactly. */
+static int g_single_reply = 1;
+void set_single_reply(int v) { g_single_reply = v; }
+#define SR_EXT_MAX 5
+
 #define RFP_MARGIN   80                 /* per ply, reverse-futility */
 #define FUT_MARGIN  150                 /* frontier futility */
 static const int LMP_COUNT[4] = {0, 6, 10, 14};   /* by depth 1..3 */
@@ -1041,7 +1052,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
 }
 
 static int negamax(Board* b, int depth, int alpha, int beta, int ply,
-                   uint32_t prev12, int in_chk, int hmc, int chk)
+                   uint32_t prev12, int in_chk, int hmc, int chk, int srb)
 {
     g_nodes++;
     CS_TIME_CHECK();
@@ -1111,7 +1122,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             int R = 2 + depth / 6;
             Board c = *b; make_null(&c);
             int ns = -negamax(&c, depth - 1 - R, -beta, -beta + 1, ply + 1,
-                              0xFFFFFFFF, 0, 0, chk);
+                              0xFFFFFFFF, 0, 0, chk, srb);
             if (CS_UNWINDING()) return 0;            /* ns is garbage */
             if (ns >= beta) return beta;
         }
@@ -1121,6 +1132,10 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     int n = gen_legal(b, moves);
     if (n == 0)
         return in_chk ? -CS_INF + ply : 0;           /* ply-relative mate */
+
+    /* P-43: single-reply extension -- node-level, fires when this node has
+     * exactly one legal move (spends from the srb budget). */
+    int sr_ext = (g_single_reply && n == 1 && srb > 0) ? 1 : 0;
 
     uint32_t counter_key = (prev12 != 0xFFFFFFFF) ? g_counter[prev12] : 0;
     order_moves(b, moves, n, ply, counter_key, tt_move);
@@ -1150,10 +1165,12 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
 
         if (quiet) quiets[nq++] = fromto;
 
-        /* P-01: check extension (never combines with LMR: R needs !gives_check) */
+        /* P-01 check extension (never combines with LMR: R needs !gives_check)
+         * + P-43 single-reply (node-level; can stack, but n==1 => one line). */
         int ext = (g_check_ext && gives_check && chk > 0) ? 1 : 0;
-        int nd = depth - 1 + ext;
+        int nd = depth - 1 + ext + sr_ext;
         int child_chk = chk - ext;
+        int child_srb = srb - sr_ext;
 
         /* late-move reduction on quiet, late, non-checking moves */
         int R = 0;
@@ -1167,13 +1184,13 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         uint32_t cp = (ply + 1 < CS_MAXPLY) ? (uint32_t)fromto : 0xFFFFFFFF;
         int v;
         if (i == 0) {
-            v = -negamax(&c, nd, -beta, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk);
+            v = -negamax(&c, nd, -beta, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb);
         } else {                                     /* PVS scout (reduced) */
-            v = -negamax(&c, nd - R, -alpha - 1, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk);
+            v = -negamax(&c, nd - R, -alpha - 1, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb);
             if (R && v > alpha)                      /* reduced scout beat alpha */
-                v = -negamax(&c, nd, -alpha - 1, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk);
+                v = -negamax(&c, nd, -alpha - 1, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb);
             if (v > alpha && v < beta)               /* full-window PV re-search */
-                v = -negamax(&c, nd, -beta, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk);
+                v = -negamax(&c, nd, -beta, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb);
         }
         if (CS_UNWINDING()) return 0;                /* v is garbage: unwind */
 
@@ -1291,11 +1308,11 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
         uint32_t cp = (uint32_t)((m & 63) << 6 | ((m >> 6) & 63));
         int v;
         if (i == 0) {
-            v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, CHECK_EXT_MAX);
+            v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, CHECK_EXT_MAX, SR_EXT_MAX);
         } else {
-            v = -negamax(&c, depth - 1, -alpha - 1, -alpha, 1, cp, gc, child_hmc, CHECK_EXT_MAX);
+            v = -negamax(&c, depth - 1, -alpha - 1, -alpha, 1, cp, gc, child_hmc, CHECK_EXT_MAX, SR_EXT_MAX);
             if (v > alpha && v < beta)
-                v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, CHECK_EXT_MAX);
+                v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, CHECK_EXT_MAX, SR_EXT_MAX);
         }
         if (g_abort || (g_is_helper && g_hstop))
             break;                                   /* v is garbage */
