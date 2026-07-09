@@ -1050,11 +1050,13 @@ class Engine:
     ]
 
     # Material values -- Texel-tuned on lichess-big3-resolved.book (7.15M WDL
-    # positions), jointly with the PSTs/positional terms below (so they are a
-    # co-fit SET -- do NOT swap in external values like AlphaZero's piece-wise,
-    # the tables assume these bases). The classic tapered pattern: pawns
-    # (89->108) and rooks (489->570) gain in the endgame while minors
-    # (N 353->335, B 356->328) and the queen (1148->1020) ease off.
+    # positions) with the stock PeSTO piece-square tables below held FIXED, so
+    # the fit is conditioned on those exact PSTs (they replace PeSTO's own
+    # piece values). Do NOT swap in external values (AlphaZero's, PeSTO's
+    # originals, ...) without re-tuning: the numbers only mean anything on top
+    # of these tables. The classic tapered pattern: pawns (89->108) and rooks
+    # (489->570) gain in the endgame while minors (N 353->335, B 356->328)
+    # and the queen (1148->1020) ease off.
     MG_VALUES = {
         chess.PAWN: 89, chess.KNIGHT: 353, chess.BISHOP: 356,
         chess.ROOK: 489, chess.QUEEN: 1148, chess.KING: 0,
