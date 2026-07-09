@@ -1146,9 +1146,23 @@ void set_improving(int v) { g_improving = v; }
 #define SEVAL_NONE INT32_MIN
 static __thread int g_seval[CS_MAXPLY];
 
-#define RFP_MARGIN   80                 /* per ply, reverse-futility */
-#define FUT_MARGIN  150                 /* frontier futility */
-static const int LMP_COUNT[4] = {0, 6, 10, 14};   /* by depth 1..3 */
+/* P-26: runtime-tunable selectivity constants. Defaults are the shipped v34
+ * values (formerly #defines, verified node-exact after the conversion);
+ * chess-tuning-tools drives them through cuci.py's UCI options. The setters
+ * are meant for engine startup / setoption time, not mid-search. */
+static int g_rfp_margin   = 80;         /* per ply, reverse-futility */
+static int g_rfp_depth    = 6;          /* RFP fires at depth <= this */
+static int g_fut_margin   = 150;        /* frontier futility */
+static int g_delta_margin = 200;        /* qsearch delta pruning */
+static int g_lmp[4]       = {0, 6, 10, 14};       /* by depth 1..3 */
+static int g_null_base    = 2;          /* null-move R = base + depth/div */
+static int g_null_div     = 6;
+static double g_lmr_div   = 2.0;        /* LMR = 0.75 + ln(d)*ln(m)/div */
+void set_rfp(int margin, int depth)  { g_rfp_margin = margin; g_rfp_depth = depth; }
+void set_fut_margin(int v)           { g_fut_margin = v; }
+void set_delta_margin(int v)         { g_delta_margin = v; }
+void set_lmp(int d1, int d2, int d3) { g_lmp[1] = d1; g_lmp[2] = d2; g_lmp[3] = d3; }
+void set_null_move(int base, int divi) { g_null_base = base; g_null_div = divi > 0 ? divi : 6; }
 
 static int g_lmr[64][64];
 static int g_lmr_ready = 0;
@@ -1156,9 +1170,10 @@ static void init_lmr(void)
 {
     for (int d = 1; d < 64; d++)
         for (int m = 1; m < 64; m++)
-            g_lmr[d][m] = (int)(0.75 + log((double)d) * log((double)m) / 2.0);
+            g_lmr[d][m] = (int)(0.75 + log((double)d) * log((double)m) / g_lmr_div);
     g_lmr_ready = 1;
 }
+void set_lmr_div(int x100) { g_lmr_div = x100 / 100.0; init_lmr(); }
 
 /* null move: pass the turn, clear the (single-move) ep right. */
 static inline void make_null(Board* b) { b->turn ^= 1; b->ep = -1; }
@@ -1176,7 +1191,6 @@ static inline int has_non_pawn(const Board* b, int side)
  * stand-pat out of a mate). Fail-soft. */
 static int g_qsearch = 1;
 void set_qsearch(int v) { g_qsearch = v; }
-#define DELTA_MARGIN 200
 
 /* P-22: qsearch generates noisy moves only (gen_noisy) instead of all legal
  * moves and skipping the quiets -- the hottest loop in the engine stops
@@ -1227,7 +1241,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
                              b->queens, b->kings, b->occ[WHITE], b->occ[BLACK],
                              color, from, to, (m & MV_BIT_EP) ? 1 : 0);
                 if (sv < 0) continue;                /* skip losing captures */
-                if (stand + PIECE_VAL[victim] + DELTA_MARGIN <= alpha)
+                if (stand + PIECE_VAL[victim] + g_delta_margin <= alpha)
                     continue;                        /* delta pruning */
             }
         }
@@ -1317,12 +1331,12 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     if (g_prune && !is_pv && !in_chk && abs(beta) < MATE_THRESH) {
         /* reverse futility / static null-move (P-04: an improving node
          * prunes one ply deeper for the same eval; off/not-improving = v34) */
-        if (depth <= 6 && static_eval - RFP_MARGIN * (depth - improving) >= beta)
+        if (depth <= g_rfp_depth && static_eval - g_rfp_margin * (depth - improving) >= beta)
             return static_eval;
         /* null-move pruning (hmc 0 below the null: repetition/50-move
          * cannot be tracked across a non-move, so disable them there) */
         if (depth >= 3 && static_eval >= beta && has_non_pawn(b, b->turn)) {
-            int R = 2 + depth / 6;
+            int R = g_null_base + depth / g_null_div;
             Board c = *b; make_null(&c);
             int ns = -negamax(&c, depth - 1 - R, -beta, -beta + 1, ply + 1,
                               0xFFFFFFFF, 0, 0, chk, srb);
@@ -1346,7 +1360,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     int color = b->turn, best = -CS_INF;
     uint32_t best_move = moves[0];
     uint32_t quiets[256]; int nq = 0;
-    int lmp_lim = (g_prune && !is_pv && !in_chk && depth <= 3) ? LMP_COUNT[depth] : 999;
+    int lmp_lim = (g_prune && !is_pv && !in_chk && depth <= 3) ? g_lmp[depth] : 999;
     for (int i = 0; i < n; i++) {
         uint32_t m = moves[i];
         int victim = (m >> MV_SHIFT_VICTIM) & 7;
@@ -1364,8 +1378,8 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
 
         if (g_prune && quiet && !is_pv && !in_chk && !gives_check && depth == 1
                 && best > -MATE_THRESH
-                && static_eval + FUT_MARGIN
-                   + ((g_improving && !improving) ? RFP_MARGIN / 2 : 0) <= alpha)
+                && static_eval + g_fut_margin
+                   + ((g_improving && !improving) ? g_rfp_margin / 2 : 0) <= alpha)
             continue;    /* frontier futility (P-04: declining node cuts more) */
 
         if (quiet) quiets[nq++] = fromto;
