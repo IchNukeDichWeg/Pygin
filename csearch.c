@@ -757,14 +757,44 @@ static inline int tt_load(const TTEntry* t, uint64_t key, TTEntry* out)
     return 1;
 }
 
+/* EP-01: FIDE-exact ep in the position hash -- DORMANT, default OFF.
+ * board_key mixes the RAW ep square, which is set after EVERY double push;
+ * but per FIDE (and python-chess's _transposition_key, which the match
+ * arbiter's threefold claims use) the ep right is part of the position only
+ * if an ep capture is actually LEGAL. A phantom ep therefore splits one
+ * real position across two keys: repetitions can be MISSED (g_path/g_hist
+ * compare keys) and TT sharing is needlessly split. With the filter on, ep
+ * hashes only when some own pawn can legally play the ep capture -- exactly
+ * has_legal_en_passant. cs_board_key shares this path, so the driver's
+ * game-history keys stay consistent with the search either way.
+ * DEFAULT OFF: set_ep_filter(0) is node-exact with v34, and P-04's A/B vs
+ * v34 is still in flight -- flipping this changes every tree, so it queues
+ * for its own A/B at the next boundary (correctness-positive: strictly more
+ * accurate repetition detection, strictly more TT sharing). */
+static int g_ep_filter = 0;
+void set_ep_filter(int v) { g_ep_filter = v; }
+
+/* Does the ep right grant at least one LEGAL move? Mirrors gen_legal's ep
+ * block exactly (same occupancy guard, same capturer set, same legal()). */
+static int ep_grants_move(const Board* b)
+{
+    if (b->ep < 0 || ((1ULL << b->ep) & (b->occ[0] | b->occ[1]))) return 0;
+    int us = b->turn, them = us ^ 1;
+    for (uint64_t t = b->pawns & b->occ[us] & PAWN_ATT[them][b->ep];
+         t; t &= t - 1)
+        if (legal(b, __builtin_ctzll(t), b->ep, 1)) return 1;
+    return 0;
+}
+
 static inline uint64_t board_key(const Board* b)
 {
+    int ep = (g_ep_filter && b->ep >= 0 && !ep_grants_move(b)) ? -1 : b->ep;
     uint64_t h = 0x9E3779B97F4A7C15ULL, x;
     #define MIX(v) x = (v); h ^= x; h *= 0xFF51AFD7ED558CCDULL; h ^= h >> 29;
     MIX(b->pawns) MIX(b->knights) MIX(b->bishops)
     MIX(b->rooks) MIX(b->queens) MIX(b->kings)
     MIX(b->occ[WHITE]) MIX(b->castling)
-    MIX((uint64_t)b->turn | ((uint64_t)(b->ep + 1) << 8))
+    MIX((uint64_t)b->turn | ((uint64_t)(ep + 1) << 8))
     #undef MIX
     return h;
 }
@@ -986,8 +1016,12 @@ void set_single_reply(int v) { g_single_reply = v; }
  * In-check plies record SEVAL_NONE; a missing ply-2 reference reads as
  * not-improving (v30's conservative default; its check-eval-proxy refinement
  * is NOT ported in v1 -- separate toggle if this pays). PV nodes compute the
- * static eval only while the toggle is on (v34 skips it there). */
-static int g_improving = 1;
+ * static eval only while the toggle is on (v34 skips it there).
+ * A/B vs v34 (2026-07-09, 10k @45+0.1): +0.38 +/-6.8, ptnml symmetric -- a
+ * dead NULL despite -56% nodes / +1 ply of depth: at this TC the deeper
+ * search saw nothing the shallower one didn't (the edge is the clock, not
+ * the tree). DORMANT (default OFF); re-test only at a longer TC. */
+static int g_improving = 0;
 void set_improving(int v) { g_improving = v; }
 #define SEVAL_NONE INT32_MIN
 static __thread int g_seval[CS_MAXPLY];

@@ -33,12 +33,20 @@ Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
     default OFF: A/B'd +3.5 +/-4.8 over 20k pooled games vs v34 --
     positive-leaning on every signal but sub-significant, kept-marginal by
     user call; default reproduces v34 node-exactly); the "improving"
-    heuristic is ON (P-04, csearch.c set_improving, default on, A/B vs v34
-    pending -- v30's exact recipe: eval stack vs ply-2, feeds RFP depth /
-    frontier-futility margin / LMR+1; set_improving(0) restores v34
-    node-exactly); no singular
+    heuristic exists but is DORMANT (P-04, csearch.c set_improving, default
+    OFF: A/B'd +0.38 +/-6.8 @10k vs v34 -- a dead null despite -56% nodes
+    and +1 ply, the deeper tree saw nothing new at this TC; v30's recipe:
+    eval stack vs ply-2 feeding RFP depth / frontier-futility margin /
+    LMR+1; default reproduces v34 node-exactly); no singular
     extensions / razoring (dormant or absent in v30 at match depths anyway),
   * repetition detection covers negamax nodes, not quiescence nodes,
+  * the position hash mixes the RAW ep square (set after every double push),
+    so a phantom ep splits one FIDE-identical position across two keys and
+    repetition detection can MISS repetitions the arbiter would count. A
+    FIDE-exact filter exists (EP-01, csearch.c set_ep_filter: hash ep only
+    when a legal ep capture exists, = python-chess's _transposition_key) but
+    is DORMANT (default OFF): it changes every tree, so it queues for its
+    own A/B once P-04's is resolved,
   * no SMP, no tablebase probe (v30 default use_tb=False matches).
 """
 
@@ -257,7 +265,10 @@ class Engine:
     def get_best_move(self, board, depth):
         return self._search(board, None, depth)
 
-    def get_best_move_timed(self, board, time_limit, max_depth=10):
+    def get_best_move_timed(self, board, time_limit, max_depth=60):
+        # Default = MAX_DEPTH_CAP so the clock, not the cap, is the limit --
+        # the old default of 10 silently capped ad-hoc timed searches (the C
+        # core passes depth 10 in well under a second).
         return self._search(board, time_limit, max_depth)
 
     def stop(self):
