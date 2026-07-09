@@ -16,8 +16,12 @@ Options:
     UseTB    (check, default false)   -- root Lichess-Syzygy probe
                                          (difficulty-gated; needs network)
 
-`stop` aborts the C search via cs_stop(); the search thread then prints the
-bestmove found so far (UCI-required). `go infinite` relies on that path.
+`stop` aborts the search via engine.stop() -- the host-owned `_abort` flag
+plus cs_stop(); the search thread then prints the bestmove found so far
+(UCI-required). `go infinite` relies on that path. The flag (cleared only
+here, at each `go`) is what makes a stop that races the search thread's
+startup stick: cs_stop() alone was erased by cs_search_begin, leaving
+`go infinite` running to the depth cap with the host hung in join().
 """
 
 import sys
@@ -67,6 +71,11 @@ def main():
         return search_thread is not None and search_thread.is_alive()
 
     def go(tokens):
+        # Host-clears rule (engine.py P-05, now mirrored by cengine): _abort
+        # is set by engine.stop() and only ever cleared HERE, before the next
+        # search starts -- so a stop that raced the previous search thread's
+        # startup can never leak into (or get erased by) this one.
+        engine._abort = False
         params = {}
         it = iter(tokens)
         for tok in it:
