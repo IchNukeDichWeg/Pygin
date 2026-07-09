@@ -37,7 +37,12 @@ Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
     OFF: A/B'd +0.38 +/-6.8 @10k vs v34 -- a dead null despite -56% nodes
     and +1 ply, the deeper tree saw nothing new at this TC; v30's recipe:
     eval stack vs ply-2 feeding RFP depth / frontier-futility margin /
-    LMR+1; default reproduces v34 node-exactly); no singular
+    LMR+1; default reproduces v34 node-exactly); P-22 noisy-only qsearch
+    generation is ON (csearch.c set_qgen, default on: NODE-IDENTICAL by
+    construction -- same noisy subset, same order, stalemate semantics
+    preserved -- verified over 8 FENs x 2 depths, +32% NPS on a mixed bench
+    / +55% on startpos; being node-identical it needs no ladder pin); no
+    singular
     extensions / razoring (dormant or absent in v30 at match depths anyway),
   * repetition detection covers negamax nodes, not quiescence nodes,
   * the position hash mixes the RAW ep square (set after every double push),
