@@ -184,6 +184,15 @@ class Engine:
         self.last_score = 0                  # White POV, v30 mate convention
         self.last_depth = 0
         self.last_pv = ""
+        # Host-owned abort flag (engine.py's P-05 ownership rule): set by
+        # stop(), NEVER cleared by the engine itself -- the host clears it
+        # before starting the next search (cuci.py's `go`, experiment.py's
+        # _maybe_start_engine). This closes the stop-vs-go race that
+        # cs_stop() alone cannot: a stop landing before the search thread
+        # reaches cs_search_begin was ERASED there (begin resets the C
+        # g_abort), so a `go infinite` + quick `stop` searched to the depth
+        # cap and hung the UCI host in search_thread.join().
+        self._abort = False
         # v30 live-stats surface (experiment.py's heartbeat reads BOTH of
         # these mid-search): .nodes updates per completed ID depth, and
         # .start_time is the search's perf_counter start.
@@ -253,7 +262,14 @@ class Engine:
 
     def stop(self):
         """Host-requested abort (UCI `stop`): the search unwinds and the
-        driver returns the best move found so far."""
+        driver returns the best move found so far.
+
+        Two signals, covering both sides of the race with the search start:
+        `_abort` survives cs_search_begin (which clears the C-side g_abort),
+        so a stop that lands BEFORE the search thread arms the C search still
+        aborts at the ID loop's next depth check instead of being lost. The
+        host clears `_abort` before its next search (see __init__)."""
+        self._abort = True
         self._lib.cs_stop()
 
     # ------------------------------------------------------------------ #
@@ -361,6 +377,10 @@ class Engine:
         stab_changed = False
 
         for depth in range(1, min(max_depth, self.MAX_DEPTH_CAP) + 1):
+            if self._abort:
+                break        # host stop() landed before/between C calls; the
+                             # C-side g_abort covers stops DURING a cs_search_
+                             # root call -- this covers the gaps around them
             key, score, nodes, done, aborted = self._root_aspiration(
                 bargs, depth, best_key, prev_score, hmc)
             if aborted:
