@@ -41,6 +41,23 @@ from shared_tt import SharedTT, DEFAULT_SLOTS
 COLLECT_SLACK_S = 10.0
 
 
+def _wire_board(board):
+    """(root_fen, [ucis]) -- the whole game line, picklable, so a worker can
+    rebuild the board WITH its move stack. Workers used to get a bare
+    board.fen(): no stack means the engine's _path repetition tracking never
+    sees game history, so every SMP search was threefold-blind (the exact
+    bug battle_worker.py's protocol note describes -- won positions can
+    shuffle into arbiter draws the engine can't see coming)."""
+    return board.root().fen(), [m.uci() for m in board.move_stack]
+
+
+def _unwire_board(fen, ucis):
+    board = chess.Board(fen)
+    for u in ucis:
+        board.push(chess.Move.from_uci(u))
+    return board
+
+
 def pick_best(rows, stm_white):
     """Deepest-completed iteration wins; ties broken by the score best for the
     SIDE TO MOVE. Worker scores (row[2]) are White-POV, so they are negated
@@ -83,14 +100,14 @@ def _apply_cfg(e, cfg, applied=None):
     return dict(cfg)
 
 
-def _worker(wid, fen, time_limit, max_depth, tt_name, n_slots, seed, q, cfg):
+def _worker(wid, fen, ucis, time_limit, max_depth, tt_name, n_slots, seed, q, cfg):
     random.seed(seed)                        # diversify the equal-score tiebreaks
     tt = SharedTT(n_slots=n_slots, name=tt_name)
     try:
         e = engine.Engine()
         e._shared_tt = tt
         _apply_cfg(e, cfg)
-        board = chess.Board(fen)
+        board = _unwire_board(fen, ucis)     # WITH the stack: repetition-aware
         move = e.get_best_move_timed(board, time_limit, max_depth)
         q.put((wid, e.last_depth, e.last_score, e.nodes,
                move.uci() if move is not None else None))
@@ -133,15 +150,15 @@ def search_smp(board, time_limit, n_workers=4, max_depth=64,
 
     tt = SharedTT(n_slots=n_slots, create=True)
     tt.clear()
-    fen = board.fen()
+    fen, ucis = _wire_board(board)
     q = Queue()
     procs = []
     os.environ["CLAUDECHESS_SMP_CHILD"] = "1"   # children inherit -> can't re-spawn
     try:
         for i in range(n_workers):
             p = Process(target=_worker,
-                        args=(i, fen, time_limit, max_depth, tt.name, n_slots,
-                              base_seed + i, q, config))
+                        args=(i, fen, ucis, time_limit, max_depth, tt.name,
+                              n_slots, base_seed + i, q, config))
             p.start()
             procs.append(p)
     finally:
@@ -229,11 +246,12 @@ def _pool_worker(wid, in_q, out_q, tt_name, n_slots, seed, stop_name):
             job = in_q.get()
             if job is None:                  # shutdown sentinel
                 break
-            seq, fen, time_limit, max_depth, cfg = job
+            seq, fen, ucis, time_limit, max_depth, cfg = job
             e._abort = False                 # host cleared the stop flag before broadcast
             try:
                 applied = _apply_cfg(e, cfg, applied)
-                move = e.get_best_move_timed(chess.Board(fen), time_limit, max_depth)
+                move = e.get_best_move_timed(_unwire_board(fen, ucis),
+                                             time_limit, max_depth)
                 out_q.put((seq, wid, e.last_depth, e.last_score, e.nodes,
                            move.uci() if move is not None else None))
             except Exception:
@@ -308,9 +326,9 @@ class SMPPool:
             # any worker starts; zeroing is idempotent).
             self.tt.clear()
             self._last_cfg = config
-        fen = board.fen()
+        fen, ucis = _wire_board(board)
         for q in self._in_qs:
-            q.put((seq, fen, time_limit, max_depth, config))
+            q.put((seq, fen, ucis, time_limit, max_depth, config))
         deadline = time.monotonic() + (time_limit or 0.0) + COLLECT_SLACK_S
         results = []
         while len(results) < self.n_workers:
