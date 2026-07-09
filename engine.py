@@ -316,6 +316,7 @@ benchmark" below.
   - C group: ``-O3 -mcpu=native``, constructor table init, directional ring
     popcounts, ``attacked()`` slider guards, mopup folded into the C eval
     (=> eval ABI 2).
+
 * **v27 (2026-07-06): the risk-free Python NPS batch
   from improvements_v24.md merge #6.** Search is NODE-IDENTICAL to v26
   (every item gated on the 10-position suite = 148,775 nodes + the
@@ -348,6 +349,7 @@ benchmark" below.
   3495): V-05 (predecessor key computed once in `_negamax`), V-07 (`_capture_moves`
   carries `victim_value` on the row so quiescence doesn't re-decode it), V-08
   (`see_attackers` skips the slider magic lookup when no such slider exists).
+
 * **v28 (2026-07-06): another node-identical NPS batch.**
   Search is NODE-IDENTICAL to v27 (every item gated on the 148,775-node
   depth-6 suite + the h1h8/3495 reference). Items: U-04 (king squares derived
@@ -364,6 +366,7 @@ benchmark" below.
   Elo** (ptnml 709/1188/2375/1359/869, pair ratio 1.17, normalized +22.53) --
   spot on the ~+13 predicted from +4.38% NPS, and the node-identical-speed ->
   Elo ratio (~3 Elo per 1% NPS) now holds steady across v26/v27/v28.
+
 * **v29 (2026-07-07): P-35 soft-stop + two bug fixes.**
   ``soft_stop_frac = 0.55``: after completing a depth, don't start the next
   ID iteration once 55% of the move budget is spent -- it typically costs at
@@ -437,6 +440,18 @@ benchmark" below.
   this rev: Lazy-SMP TT-poison fix (stopped helpers no longer store
   garbage; single-thread unaffected) and a process-wide search lock
   (multi-instance hosts can no longer corrupt the shared C state).
+
+* **v34 (2026-07-09, lives in ``cengine.py`` + ``csearch.c``): P-01 check
+  extensions.** A move that gives check gets +1 ply, drawn from a per-line
+  budget of 5 (v30's MAX_CHECK_EXT recipe; the budget flows down the line,
+  spent only when an extension fires, and LMR requires !gives_check so
+  extension and reduction are mutually exclusive). ``set_check_ext(0)``
+  restores v33's search node-exactly. **A/B vs v33 (2026-07-09): 10,000
+  games @ 45+0.1, 3321W/3554D/3125L = 50.98% -> +6.81 +/-6.8 Elo** (ptnml
+  404/1087/1880/1167/462, pair ratio 1.09, normalized +12.74) -- the
+  weakest confirmed gain yet (95% CI lower bound ~+0.01, same tier as
+  P-03's +7.30), but every secondary signal agrees, so kept. Snapshotted
+  as Old Engine/34.
 
 Cross-version benchmark
 -----------------------
