@@ -64,6 +64,10 @@ def info_line(rec, white_to_move, engine):
 def main():
     engine = cengine.Engine()
     engine.pv_uci = True                     # UCI pv format
+    # P-26: shadow copies of the paired C-side tuning values (set_rfp and
+    # set_null_move each set two values; UCI options arrive one at a time).
+    engine._rfp_margin, engine._rfp_depth = 80, 6
+    engine._null_base, engine._null_div = 2, 6
     board = chess.Board()
     search_thread = None
 
@@ -129,6 +133,20 @@ def main():
                 out("option name Threads type spin default 1 min 1 max 64")
                 out("option name OwnBook type check default true")
                 out("option name UseTB type check default false")
+                # P-26 tuning knobs (chess-tuning-tools): defaults = shipped
+                # v34 values; percent-scaled where the native value is
+                # fractional. Ranges are the tuner's search space.
+                out("option name RFPMargin type spin default 80 min 20 max 300")
+                out("option name RFPDepth type spin default 6 min 2 max 12")
+                out("option name FutMargin type spin default 150 min 40 max 400")
+                out("option name DeltaMargin type spin default 200 min 50 max 500")
+                out("option name LMPScale type spin default 100 min 40 max 250")
+                out("option name LMRDiv type spin default 200 min 120 max 350")
+                out("option name NullBase type spin default 2 min 1 max 4")
+                out("option name NullDiv type spin default 6 min 3 max 12")
+                out("option name AspDelta type spin default 30 min 10 max 120")
+                out("option name SoftStable type spin default 40 min 20 max 70")
+                out("option name SoftUnstable type spin default 80 min 50 max 130")
                 out("uciok")
             elif cmd == "isready":
                 out("readyok")
@@ -141,6 +159,36 @@ def main():
                     engine.use_book = value.lower() == "true"
                 elif name == "usetb":
                     engine.use_tb = value.lower() == "true"
+                # P-26 tuning knobs. C-side setters take effect on the next
+                # search; Python-side ones are plain instance attributes.
+                elif name == "rfpmargin":
+                    engine._lib.set_rfp(int(value), engine._rfp_depth)
+                    engine._rfp_margin = int(value)
+                elif name == "rfpdepth":
+                    engine._lib.set_rfp(engine._rfp_margin, int(value))
+                    engine._rfp_depth = int(value)
+                elif name == "futmargin":
+                    engine._lib.set_fut_margin(int(value))
+                elif name == "deltamargin":
+                    engine._lib.set_delta_margin(int(value))
+                elif name == "lmpscale":
+                    s = int(value)
+                    engine._lib.set_lmp(round(6 * s / 100), round(10 * s / 100),
+                                        round(14 * s / 100))
+                elif name == "lmrdiv":
+                    engine._lib.set_lmr_div(int(value))
+                elif name == "nullbase":
+                    engine._lib.set_null_move(int(value), engine._null_div)
+                    engine._null_base = int(value)
+                elif name == "nulldiv":
+                    engine._lib.set_null_move(engine._null_base, int(value))
+                    engine._null_div = int(value)
+                elif name == "aspdelta":
+                    engine.ASPIRATION_DELTA = int(value)
+                elif name == "softstable":
+                    engine.SOFT_STOP_STABLE_FRAC = int(value) / 100.0
+                elif name == "softunstable":
+                    engine.SOFT_STOP_UNSTABLE_FRAC = int(value) / 100.0
             elif cmd == "ucinewgame":
                 if searching():
                     engine.stop()
