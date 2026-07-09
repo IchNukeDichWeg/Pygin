@@ -137,14 +137,6 @@ if os.path.exists("csearch.c"):
         ce.use_book = False
         ce.use_tb = False
         ce.smp_workers = 1
-        # P-17 bucketed TT defaults ON (default-on, A/B pending) and changes
-        # the deep-depth node counts; pin it OFF so this ladder tracks the
-        # CONFIRMED v34 search (same contract as REF_NODES / BASELINE_OFF).
-        # Remove this and re-measure CE_LADDER when P-17 confirms into v35.
-        try:
-            ce._lib.set_tt_ways(1)
-        except AttributeError:
-            pass                       # pre-P-17 csearch.so: already direct-mapped
         print("\nC core ladder (cold TT per depth):")
         ok_all, mv_final = True, None
         for d in range(1, 13):
