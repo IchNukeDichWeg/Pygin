@@ -58,7 +58,13 @@ Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
     ~+10-20% NPS AND a deliberate tree change: later stages score quiets
     with FRESHER history than v35's node-entry snapshot; stream equality
     under identical state proven by verify mode over ~1M nodes;
-    set_staged(0) restores v35 node-exactly); no singular
+    set_staged(0) restores v35 node-exactly); Q-01 continuation history is
+    ON (csearch.c set_cont_hist, default on, A/B vs v36 PENDING -- the
+    first 50+0.30-era campaign: quiet ordering adds 1-ply and 2-ply
+    continuation scores (v30's #1.6, piece-to keyed int16 tables, same
+    gravity + malus at cutoffs; root context empty and qsearch reads none
+    -- documented deviations); set_cont_hist(0) restores v36 node-exactly);
+    no singular
     extensions / razoring (dormant or absent in v30 at match depths anyway),
   * repetition detection covers negamax nodes, not quiescence nodes,
   * the position hash mixes the RAW ep square (set after every double push),

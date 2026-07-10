@@ -1025,6 +1025,35 @@ static __thread int      g_history[2][4096];
 static __thread uint32_t g_killers[CS_MAXPLY][2];
 static __thread uint32_t g_counter[4096];
 
+/* Q-01: continuation history (v30 #1.6, deferred at phase-3 step 1 and
+ * never landed). Quiet ordering adds two context scores on top of butterfly
+ * history: g_cont1 keyed by the PREVIOUS move (the opponent move that led
+ * here), g_cont2 by the move TWO back (our own previous move); both indexed
+ * by (mover_pt<<6 | to) of predecessor and candidate -- the compact
+ * piece-to form (448x448 int16 per table, ~800KB __thread each) instead of
+ * v30's sparse from-to dicts. g_ctx[ply] holds the (pt<<6|to) of the move
+ * that ENTERED ply (0 = none: root, null-move children). Same gravity rule
+ * and HIST_MAX as butterfly history; updated at quiet beta cutoffs with the
+ * same malus sweep. Band check: |history + cont1 + cont2| <= 3*16384 --
+ * still far inside the quiet band (< ORD_COUNTER 700k, > ORD_BADCAP).
+ * Deviations from v30 (documented): root context starts empty (v30 seeds
+ * the real previous game move); qsearch ordering reads no cont scores
+ * (g_ctx is only maintained by negamax, and captures dominate there).
+ * set_cont_hist(0) restores v36's search node-exactly. */
+static int g_cont_hist = 1;
+void set_cont_hist(int v) { g_cont_hist = v; }
+#define CTX_N 448                       /* (pt 1..6)<<6 | to; 0 = none */
+static __thread int16_t g_cont1[CTX_N][CTX_N];
+static __thread int16_t g_cont2[CTX_N][CTX_N];
+static __thread uint16_t g_ctx[CS_MAXPLY + 8];
+
+static inline void cont_update(int16_t* row, int key, int bonus)
+{
+    int h = row[key];
+    int ab = bonus < 0 ? -bonus : bonus;
+    row[key] = (int16_t)(h + bonus - h * ab / HIST_MAX);
+}
+
 /* 0 = plain MVV-LVA baseline (for value-identity verification), 1 = full. */
 static int g_order_mode = 1;
 void set_order_mode(int m) { g_order_mode = m; }
@@ -1144,7 +1173,7 @@ static inline uint64_t board_key(const Board* b)
 }
 
 static void order_moves(const Board* b, uint32_t* mv, int n, int ply,
-                        uint32_t counter_key, uint32_t tt_move)
+                        uint32_t counter_key, uint32_t tt_move, int use_cont)
 {
     int color = b->turn, full = g_order_mode;
     uint32_t k0 = g_killers[ply][0], k1 = g_killers[ply][1];
@@ -1172,7 +1201,18 @@ static void order_moves(const Board* b, uint32_t* mv, int n, int ply,
             if      (key == k0)          s = ORD_KILLER0;
             else if (key == k1)          s = ORD_KILLER1;
             else if (key == counter_key) s = ORD_COUNTER;
-            else                          s = g_history[color][(from << 6) | to];
+            else {
+                s = g_history[color][(from << 6) | to];
+                if (use_cont && g_cont_hist) {       /* Q-01 */
+                    int ck = (mover << 6) | to;
+                    int p1 = g_ctx[ply];
+                    if (p1) s += g_cont1[p1][ck];
+                    if (ply >= 1) {
+                        int p2 = g_ctx[ply - 1];
+                        if (p2) s += g_cont2[p2][ck];
+                    }
+                }
+            }
         }
         sc[i] = s;
     }
@@ -1337,8 +1377,18 @@ static uint32_t stager_next(Stager* st)
                             || key == st->k1 || key == st->counter_key)
                         continue;                    /* already emitted */
                     int from = m & 63, to = (m >> 6) & 63;
+                    int s = g_history[color][(from << 6) | to];
+                    if (g_cont_hist) {               /* Q-01 (negamax-only) */
+                        int ck = ((int)((m >> MV_SHIFT_MOVER) & 7) << 6) | to;
+                        int p1 = g_ctx[st->ply];
+                        if (p1) s += g_cont1[p1][ck];
+                        if (st->ply >= 1) {
+                            int p2 = g_ctx[st->ply - 1];
+                            if (p2) s += g_cont2[p2][ck];
+                        }
+                    }
                     st->qt[st->nqt] = m;
-                    st->qsc[st->nqt++] = g_history[color][(from << 6) | to];
+                    st->qsc[st->nqt++] = s;
                 }
                 stager_sort(st->qt, st->qsc, st->nqt);
             }
@@ -1708,7 +1758,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
     }
 
     uint32_t bm = 0;                                 /* P-44: best move found */
-    order_moves(b, moves, n, ply < CS_MAXPLY ? ply : 0, 0, tt_move);
+    order_moves(b, moves, n, ply < CS_MAXPLY ? ply : 0, 0, tt_move, 0);
     for (int i = 0; i < n; i++) {
         uint32_t m = moves[i];
         int victim   = (m >> MV_SHIFT_VICTIM) & 7;
@@ -1832,6 +1882,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         if (depth >= 3 && static_eval >= beta && has_non_pawn(b, b->turn)) {
             int R = g_null_base + depth / g_null_div;
             Board c = *b; make_null(&c);
+            g_ctx[ply + 1] = 0;              /* Q-01: null = no context */
             int ns = -negamax(&c, depth - 1 - R, -beta, -beta + 1, ply + 1,
                               0xFFFFFFFF, 0, 0, chk, srb);
             if (CS_UNWINDING()) return 0;            /* ns is garbage */
@@ -1864,7 +1915,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
              * array move-for-move at every eligible node. */
             uint32_t ref[256];
             for (int i = 0; i < n; i++) ref[i] = moves[i];
-            order_moves(b, ref, n, ply, counter_key, tt_move);
+            order_moves(b, ref, n, ply, counter_key, tt_move, 1);
             Stager vs;
             stager_init(&vs, b, ply, counter_key, tt_move);
             for (int i = 0; i < n; i++) {
@@ -1881,12 +1932,12 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                 abort();
             }
         }
-        order_moves(b, moves, n, ply, counter_key, tt_move);
+        order_moves(b, moves, n, ply, counter_key, tt_move, 1);
     }
 
     int color = b->turn, best = -CS_INF;
     uint32_t best_move = 0;
-    uint32_t quiets[256]; int nq = 0;
+    uint32_t quiets[256]; uint16_t quiets_ck[256]; int nq = 0;
     int lmp_lim = (g_prune && !is_pv && !in_chk && depth <= 3) ? g_lmp[depth] : 999;
     for (int i = 0; ; i++) {
         uint32_t m;
@@ -1909,6 +1960,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
 
         Board c = *b;
         apply_move(&c, m);
+        g_ctx[ply + 1] = (uint16_t)((mover << 6) | ((m >> 6) & 63));  /* Q-01 */
         int gives_check = in_check(&c);
 
         if (g_prune && quiet && !is_pv && !in_chk && !gives_check && depth == 1
@@ -1917,7 +1969,10 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                    + ((g_improving && !improving) ? g_rfp_margin / 2 : 0) <= alpha)
             continue;    /* frontier futility (P-04: declining node cuts more) */
 
-        if (quiet) quiets[nq++] = fromto;
+        if (quiet) {
+            quiets_ck[nq] = (uint16_t)((mover << 6) | ((m >> 6) & 63));
+            quiets[nq++] = fromto;
+        }
 
         /* P-01 check extension (never combines with LMR: R needs !gives_check)
          * + P-43 single-reply (node-level; can stack, but n==1 => one line). */
@@ -1957,6 +2012,17 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                 hist_update(color, fromto, bonus);
                 for (int q = 0; q < nq - 1; q++)
                     hist_update(color, quiets[q], -bonus);
+                if (g_cont_hist) {                   /* Q-01: same rule */
+                    int ck = (mover << 6) | ((m >> 6) & 63);
+                    int p1 = g_ctx[ply];
+                    int p2 = (ply >= 1) ? g_ctx[ply - 1] : 0;
+                    if (p1) cont_update(g_cont1[p1], ck, bonus);
+                    if (p2) cont_update(g_cont2[p2], ck, bonus);
+                    for (int q = 0; q < nq - 1; q++) {
+                        if (p1) cont_update(g_cont1[p1], quiets_ck[q], -bonus);
+                        if (p2) cont_update(g_cont2[p2], quiets_ck[q], -bonus);
+                    }
+                }
                 uint32_t kk = m & 0x7FFF;
                 if (ply < CS_MAXPLY && g_killers[ply][0] != kk) {
                     g_killers[ply][1] = g_killers[ply][0];
@@ -2030,6 +2096,9 @@ void cs_search_begin(const uint64_t* hist, int nhist, double budget_sec)
     memset(g_history, 0, sizeof(g_history));
     memset(g_killers, 0, sizeof(g_killers));
     memset(g_counter, 0, sizeof(g_counter));
+    memset(g_cont1, 0, sizeof(g_cont1));     /* Q-01: same per-move lifecycle */
+    memset(g_cont2, 0, sizeof(g_cont2));
+    memset(g_ctx, 0, sizeof(g_ctx));
     g_helper_nodes = 0;                  /* Lazy-SMP helper node aggregate */
     if (g_tt == NULL) {
         g_tt = (TTEntry*)calloc(TT_SIZE, sizeof(TTEntry));
@@ -2055,6 +2124,8 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
     Board b = *rb;
     uint64_t key = board_key(&b);
     g_path[0] = key;
+    g_ctx[0] = 0;              /* Q-01: no game-prev context at root (v30
+                                * seeds the real previous move; deviation) */
     /* P-04: seed the eval stack -- the ply-2 reference for ply-2 nodes.
      * Per-thread (__thread), and root_search is the shared entry for the
      * main thread and every SMP helper, so each thread seeds its own. */
@@ -2069,7 +2140,7 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
         *out_score = in_check(&b) ? -CS_INF : 0;
         return 0;
     }
-    order_moves(&b, moves, n, 0, 0, prev_key);
+    order_moves(&b, moves, n, 0, 0, prev_key, 1);
 
     int best = -CS_INF;
     uint32_t best_move = moves[0];
@@ -2081,6 +2152,8 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
         Board c = b;
         apply_move(&c, m);
         int gc = in_check(&c);
+        g_ctx[1] = (uint16_t)((((m >> MV_SHIFT_MOVER) & 7) << 6)
+                              | ((m >> 6) & 63));    /* Q-01 child context */
         uint32_t cp = (uint32_t)((m & 63) << 6 | ((m >> 6) & 63));
         int v;
         if (i == 0) {
