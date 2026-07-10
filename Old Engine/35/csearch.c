@@ -1209,11 +1209,7 @@ void set_qgen(int v) { g_qgen = v; }
  * never displace a same-key negamax entry (depth-preferred) -- it fills
  * empty/stale slots. The TT move also seeds qsearch ordering. Same
  * ply-relative mate encoding as negamax. set_qs_tt(0) restores v34's
- * search node-exactly.
- * CONFIRMED into v35 (2026-07-10): isolation A/B vs the P-22 base (both
- * sides equally fast) +8.06 +/-6.8 over 10k @45+0.1, CI clear of zero --
- * the persistent warm table across a game delivered what the flat
- * cold-ladder time-to-depth bench could not show. */
+ * search node-exactly. */
 static int g_qs_tt = 1;
 void set_qs_tt(int v) { g_qs_tt = v; }
 
