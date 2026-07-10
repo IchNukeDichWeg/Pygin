@@ -8,8 +8,8 @@ transposition table, pruning, quiescence and the full static eval
 (bit-exact port of engine.py's ``_evaluate_static``, verified over 3M
 positions). Born as phase-3 step 6 of the C-core plan; the shipped engine
 since Old Engine/31. Defaults reproduce v37 (Old Engine/37) plus whatever
-candidate is armed below (none pending after CB-01 confirmed into v38;
-next up per final_improvements.md is the Phase-2 NPS train).
+candidate is armed: the Phase-2 NPS train (FI-02/FI-03/FI-01, ~+9% NPS,
+A/B vs Old Engine/38 PENDING -- the sixth 50+0.20-era campaign).
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -86,6 +86,20 @@ ON by default (A/B-confirmed, or free by construction):
     Paired alternating bench vs v38: +3.94% median, 9/9 pairs positive.
     Elo rides the Phase-2 batch A/B per the P-22 lesson. (-flto was probed
     and read null on Apple Silicon -- not adopted.)
+  * FI-01 incremental Zobrist (2026-07-11, Phase-2 train part 2): the
+    position key lives ON the Board and is XOR-maintained through
+    apply_move/make_null (splitmix64 randoms, fixed seed) instead of the
+    old 9-MIX full-state hash recomputed at every node; make_board computes
+    it once per Python entry (key_from_scratch = the oracle). EP-01's FIDE
+    filter became an O(1) fixup in board_key (phantom ep XORed back out),
+    so set_ep_filter stays a runtime toggle at zero steady-state cost.
+    ZKEY differential clean over 52.4M nodes (castling/ep/promo trees);
+    d1-5 ladder bit-exact vs v38, deeper counts drift (different key
+    values -> different TT index-collision patterns -- NOT a logic change);
+    matetrack 896/767, zero Bad PVs. Paired bench: full Phase-2 train
+    +8.92% NPS median vs v38, 9/9 pairs positive (Zobrist's own share
+    ~+4.8% on top of part 1's +3.94%). A/B vs Old Engine/38 = the Phase-2
+    batch campaign, PENDING.
   * PV-02 exact PV (set_pv_exact; CONFIRMED into v37 2026-07-10,
     snapshotted Old Engine/37; set_pv_exact(0) = v36's search): skip TT
     cutoffs/narrowing at PV nodes so the collected PV is complete

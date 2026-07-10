@@ -48,6 +48,23 @@ static const uint64_t RANK_8 = 0xFF00000000000000ULL;
 static uint64_t PAWN_ATT[2][64];   /* [WHITE]/[BLACK] */
 static int tables_ready = 0;
 
+/* FI-01: Zobrist randoms -- the position key is maintained INCREMENTALLY on
+ * the Board through apply_move/make_null (O(1) XORs) instead of the old
+ * 9-MIX full-state hash recomputed at every node. Seeded once (splitmix64,
+ * fixed seed => reproducible keys across runs/machines). */
+static uint64_t Z_PSQ[2][7][64];   /* [color][pt 1..6][sq] */
+static uint64_t Z_EP[65];          /* [ep+1]; Z_EP[0] (no ep) = 0 */
+static uint64_t Z_CR[64];          /* per castling-rights rook-home square */
+static uint64_t Z_TURN;
+
+static uint64_t splitmix64(uint64_t* x)
+{
+    uint64_t z = (*x += 0x9E3779B97F4A7C15ULL);
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+    return z ^ (z >> 31);
+}
+
 /* --- step-5 eval masks (built once alongside PAWN_ATT; ports of
  * engine.py's _build_pawn_masks) ------------------------------------------ */
 static uint64_t FILE_BB8[8], ADJ_FILES[8];
@@ -102,6 +119,15 @@ static void init_tables(void)
             STOPATK_MASK[color][sq] = stop;
         }
     }
+    uint64_t seed = 0x50594749/*PYGI*/ + 0x4E;
+    for (int c = 0; c < 2; c++)
+        for (int pt = 1; pt <= 6; pt++)
+            for (int sq = 0; sq < 64; sq++)
+                Z_PSQ[c][pt][sq] = splitmix64(&seed);
+    Z_EP[0] = 0;                        /* no-ep contributes nothing */
+    for (int i = 1; i < 65; i++) Z_EP[i] = splitmix64(&seed);
+    for (int i = 0; i < 64; i++) Z_CR[i] = splitmix64(&seed);
+    Z_TURN = splitmix64(&seed);
     tables_ready = 1;
 }
 
@@ -167,7 +193,27 @@ typedef struct {
     int turn;                 /* WHITE / BLACK */
     int ep;                   /* en-passant target square, or -1 */
     uint64_t castling;        /* bitboard of rook home squares with rights */
+    uint64_t key;             /* FI-01: Zobrist, maintained by apply_move */
 } Board;
+
+/* FI-01: full-state key computation -- the ORACLE for the incremental
+ * update (make_board entry points + the ZKEY differential); the search
+ * itself never calls this per node. Raw ep convention (EP-01's FIDE
+ * filter is applied as an O(1) fixup in board_key). */
+static uint64_t key_from_scratch(const Board* b)
+{
+    uint64_t k = (b->turn == WHITE) ? Z_TURN : 0;
+    const uint64_t* bbs[7] = {0, &b->pawns, &b->knights, &b->bishops,
+                              &b->rooks, &b->queens, &b->kings};
+    for (int c = 0; c < 2; c++)
+        for (int pt = 1; pt <= 6; pt++)
+            for (uint64_t t = *bbs[pt] & b->occ[c]; t; t &= t - 1)
+                k ^= Z_PSQ[c][pt][__builtin_ctzll(t)];
+    for (uint64_t t = b->castling; t; t &= t - 1)
+        k ^= Z_CR[__builtin_ctzll(t)];
+    k ^= Z_EP[b->ep + 1];
+    return k;
+}
 
 static Board make_board(uint64_t pawns, uint64_t knights, uint64_t bishops,
                         uint64_t rooks, uint64_t queens, uint64_t kings,
@@ -179,6 +225,7 @@ static Board make_board(uint64_t pawns, uint64_t knights, uint64_t bishops,
     b.rooks = rooks; b.queens = queens; b.kings = kings;
     b.occ[BLACK] = occ_b; b.occ[WHITE] = occ_w;
     b.turn = turn; b.ep = ep; b.castling = castling;
+    b.key = key_from_scratch(&b);      /* FI-01: once per entry from Python */
     return b;
 }
 
@@ -748,6 +795,15 @@ static void apply_move(Board* b, uint32_t mv)
     if (movpt == 1 && to == b->ep && !(b->occ[them] & tb))
         capmask = 1ULL << ((us == WHITE) ? to - 8 : to + 8);
 
+    /* FI-01: incremental Zobrist -- mirror every state mutation below with
+     * its XOR. The victim PT rides in the move word (bits 18-20, packed by
+     * every generator); the ZKEY differential is the correctness gate. */
+    uint64_t zkey = b->key ^ Z_TURN;
+    int victim = (mv >> MV_SHIFT_VICTIM) & 7;
+    if (victim)
+        zkey ^= Z_PSQ[them][victim][(capmask == tb)
+                                    ? to : __builtin_ctzll(capmask)];
+
     uint64_t ncap = ~capmask;
     b->pawns &= ncap; b->knights &= ncap; b->bishops &= ncap;
     b->rooks &= ncap; b->queens &= ncap;
@@ -758,6 +814,7 @@ static void apply_move(Board* b, uint32_t mv)
     b->rooks &= nfrom; b->queens &= nfrom; b->kings &= nfrom;
 
     int finalpt = promo ? promo : movpt;
+    zkey ^= Z_PSQ[us][movpt][from] ^ Z_PSQ[us][finalpt][to];   /* FI-01 */
     switch (finalpt) {
         case 2:  b->knights |= tb; break;
         case 3:  b->bishops |= tb; break;
@@ -775,6 +832,7 @@ static void apply_move(Board* b, uint32_t mv)
         uint64_t rfb = 1ULL << rf, rtb = 1ULL << rt;
         b->rooks   = (b->rooks   & ~rfb) | rtb;
         b->occ[us] = (b->occ[us] & ~rfb) | rtb;
+        zkey ^= Z_PSQ[us][4][rf] ^ Z_PSQ[us][4][rt];           /* FI-01 */
     }
 
     uint64_t cr = b->castling;
@@ -783,10 +841,16 @@ static void apply_move(Board* b, uint32_t mv)
                             : ~((1ULL << 56) | (1ULL << 63));
     cr &= ~fb;
     cr &= ~capmask;
+    for (uint64_t crx = b->castling ^ cr; crx; crx &= crx - 1)
+        zkey ^= Z_CR[__builtin_ctzll(crx)];                    /* FI-01 */
     b->castling = cr;
 
-    b->ep = (movpt == 1 && (to - from == 16 || from - to == 16)) ? (from + to) / 2 : -1;
+    int new_ep = (movpt == 1 && (to - from == 16 || from - to == 16))
+               ? (from + to) / 2 : -1;
+    zkey ^= Z_EP[b->ep + 1] ^ Z_EP[new_ep + 1];                /* FI-01 */
+    b->ep = new_ep;
     b->turn = them;
+    b->key = zkey;
 }
 
 
@@ -1251,15 +1315,13 @@ static int ep_grants_move(const Board* b)
 
 static inline uint64_t board_key(const Board* b)
 {
-    int ep = (g_ep_filter && b->ep >= 0 && !ep_grants_move(b)) ? -1 : b->ep;
-    uint64_t h = 0x9E3779B97F4A7C15ULL, x;
-    #define MIX(v) x = (v); h ^= x; h *= 0xFF51AFD7ED558CCDULL; h ^= h >> 29;
-    MIX(b->pawns) MIX(b->knights) MIX(b->bishops)
-    MIX(b->rooks) MIX(b->queens) MIX(b->kings)
-    MIX(b->occ[WHITE]) MIX(b->castling)
-    MIX((uint64_t)b->turn | ((uint64_t)(ep + 1) << 8))
-    #undef MIX
-    return h;
+    /* FI-01: O(1) -- the key lives on the Board (apply_move maintains it).
+     * EP-01's FIDE filter is a fixup, not a re-hash: a phantom ep square
+     * (no legal ep capture) is XORed back out, so set_ep_filter stays a
+     * runtime toggle at zero steady-state cost (ep squares are rare). */
+    if (g_ep_filter && b->ep >= 0 && !ep_grants_move(b))
+        return b->key ^ Z_EP[b->ep + 1];     /* == swap to Z_EP[0] == 0 */
+    return b->key;
 }
 
 /* FI-02.4: sc_out != NULL defers the sort -- scores are written there and
@@ -1840,7 +1902,11 @@ static void init_lmr(void)
 void set_lmr_div(int x100) { g_lmr_div = x100 / 100.0; init_lmr(); }
 
 /* null move: pass the turn, clear the (single-move) ep right. */
-static inline void make_null(Board* b) { b->turn ^= 1; b->ep = -1; }
+static inline void make_null(Board* b)
+{
+    b->key ^= Z_TURN ^ Z_EP[b->ep + 1];      /* FI-01: Z_EP[0] == 0 */
+    b->turn ^= 1; b->ep = -1;
+}
 
 /* side has a knight/bishop/rook/queen (null-move zugzwang guard). */
 static inline int has_non_pawn(const Board* b, int side)
