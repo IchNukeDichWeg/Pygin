@@ -30,42 +30,42 @@ dependent — compare only runs from the same machine).
 ### Version progression
 
 Speed (nodes/s) and search depth reached from the **starting position** in a
-fixed single-threaded budget, for every version, plus the A/B Elo gain over
-the immediately preceding version where one was measured. Regenerate with
-`python3 bench_progress.py`.
+uniform **5 s single-threaded** budget (book off, best of N), for every
+version, plus the A/B Elo gain over the immediately preceding version where
+one was measured. Regenerate with `python3 bench_progress.py`.
 
 | Ver | NPS (startpos) | Depth | Elo Δ vs prev | Milestone |
 |----:|---------------:|------:|:--------------|:----------|
-| 1  | 16 k | 4  | — | first working engine |
-| 2  | 31 k | 7  | — | |
-| 3  | 30 k | 7  | — | |
-| 4  | 32 k | 7  | — | |
+| 1  | 17 k | 4  | — | first working engine |
+| 2  | 31 k | 7  | — | search + eval build-out (PVS, aspiration) |
+| 3  | 31 k | 7  | — | |
+| 4  | 33 k | 8  | — | SEE move ordering |
 | 5  | 31 k | 8  | — | |
-| 6  | 31 k | 8  | — | |
+| 6  | 31 k | 9  | — | |
 | 7  | 32 k | 8  | — | |
-| 8  | 35 k | 8  | — | |
-| 9  | 26 k | 9  | — | late-move pruning |
-| 10 | 10 k | 8  | — | |
-| 11 |  8 k | 8  | — | |
-| 12 |  8 k | 8  | — | |
-| 13 |  7 k | 7  | — | |
-| 14 | 32 k | 9  | — | |
-| 15 | 32 k | 10 | — | |
-| 16 | 41 k | 10 | — | C evaluation (`eval_c.c`) |
-| 17 | 55 k | 11 | — | C move generator (`movegen.c`) |
-| 18 | 57 k | 10 | — | |
-| 19 | 55 k | 11 | — | Zobrist / shared TT |
-| 20 | 60 k | 12 | — | |
-| 21 | 60 k | 12 | — | |
-| 22 | 59 k | 12 | — | |
-| 23 | 63 k | 12 | — | |
-| 24 | 59 k | 12 | +11.75 ±6.8 ² | (measured over the v21→v24 span) |
-| 25 | 60 k | 12 | — | |
-| 26 | 68 k | 12 | — | |
-| 27 | 84 k | 12 | — | |
-| 28 | 86 k | 13 | — | NPS-optimisation era |
-| 29 | 85 k | 12 | — | soft-stop time management |
-| 30 | 84 k | 12 | — | last pure-Python version |
+| 8  | 35 k | 9  | — | quiescence stand-pat |
+| 9  | 27 k | 10 | — | late-move pruning (heavier per node) |
+| 10 | 28 k | 10 | — | TT probe/store refactor |
+| 11 | 30 k | 10 | — | incremental base eval |
+| 12 | 30 k | 10 | — | |
+| 13 | 31 k | 10 | — | eval-weight retune |
+| 14 | 35 k | 10 | — | Syzygy TB probe + IIR |
+| 15 | 35 k | 10 | — | pre-C baseline |
+| 16 | 44 k | 11 | — | **evaluation ported to C** (`eval_c.c`) |
+| 17 | 58 k | 10 | — | **move generation ported to C** (`movegen.c`) |
+| 18 | 57 k | 10 | — | Zobrist hashing |
+| 19 | 57 k | 12 | — | lock-free shared TT |
+| 20 | 61 k | 12 | — | |
+| 21 | 62 k | 13 | — | |
+| 22 | 61 k | 12 | — | |
+| 23 | 59 k | 13 | — | |
+| 24 | 59 k | 13 | +11.75 ±6.8 ² | (measured over the v21→v24 span) |
+| 25 | 60 k | 13 | — | |
+| 26 | 72 k | 13 | — | node-identical speed batch |
+| 27 | 85 k | 13 | — | node-identical speed batch (+12 %) |
+| 28 | 88 k | 13 | — | node-identical speed batch (+4 %) |
+| 29 | 89 k | 13 | — | soft-stop time management |
+| 30 | 88 k | 12 | — | last pure-Python version |
 | 31 | 2.7 M | 17 | ≈ +215 ¹ | **C search core** (whole per-node loop in C) |
 | 32 | 2.7 M | 18 | +7.30 ±6.8 | internal iterative reduction |
 | 33 | 2.6 M | 21 | +23.52 ±6.8 | transposition table kept warm across moves |
@@ -80,6 +80,31 @@ the immediately preceding version where one was measured. Regenerate with
 is an external / odds-derived estimate, **not** a same-time-control A/B.
 ² The Python era has no per-version A/B; the one measured span is
 v21 → v24 = **+11.75 ±6.8** over 10,000 games.
+
+**What moves the NPS** (the load-bearing jumps, up and down):
+
+- **v8 → v9, ↓ 35k → 27k:** late-move pruning added — more work per node, but
+  it skips near-leaf quiets so the search still reaches *deeper* per second (a
+  deliberate speed-for-depth trade, not a regression).
+- **v15 → v16, ↑ 35k → 44k:** the evaluation moved from Python into C
+  (`eval_c.c`), byte-identical play.
+- **v16 → v17, ↑ 44k → 58k:** move generation moved into C (`movegen.c`),
+  reproducing python-chess's move order exactly.
+- **v25 → v28, ↑ 60k → 88k:** three node-identical speed batches — hoisting
+  invariants out of the hot loop, `Move` interning, fewer allocations,
+  reused capture tags in quiescence. Same tree, less overhead per node.
+- **v30 → v31, ↑↑ 88k → 2.7M (~30×):** the entire per-node search loop —
+  board, move ordering, transposition table, pruning, quiescence and the
+  eval — now runs in C, so there is no Python-interpreter cost and no ctypes
+  crossing per node. The single largest jump in the project.
+- **v34 → v35, ↑ 2.7M → 3.6M:** quiescence generates only noisy moves
+  (captures/promotions) directly instead of generating all legal moves and
+  filtering.
+- **v35 → v36, ↑ 3.6M → 3.9M:** staged (lazy) move ordering — each move class
+  is generated only when the search actually reaches it.
+- **v38 → v39-dev, ↑ 4.1M → 4.5M:** incremental Zobrist hashing (the position
+  key is XOR-updated per move instead of recomputed per node), the static eval
+  cached in spare TT bits, and a batch of micro-optimisations.
 
 The C-era Elo figures are 10,000-game A/B matches vs the immediately previous
 version (cumulative **≈ +135** over v31). **Time control differs by era**
