@@ -125,10 +125,10 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # quiet developing moves flip between depths without being a regression.
 # Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
 CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3"
-CE_LADDER = {                     # depth -> (nodes, score)  [v36: P-23 staged on]
-    1: (95, 126), 2: (181, 126), 3: (741, 126), 4: (1012, 122),
-    5: (10840, 65), 6: (22253, 64), 7: (47702, 74), 8: (78847, 60),
-    9: (140812, 75), 10: (321418, 59), 11: (565618, 54), 12: (956723, 67),
+CE_LADDER = {                     # depth -> (nodes, score)  [v37: PV-02 exact PV on]
+    1: (102, 126), 2: (189, 126), 3: (749, 126), 4: (1020, 122),
+    5: (6097, 67), 6: (19407, 64), 7: (33844, 79), 8: (89878, 58),
+    9: (176360, 67), 10: (314265, 67), 11: (443853, 67), 12: (733220, 72),
 }
 if os.path.exists("csearch.c"):
     try:
@@ -171,14 +171,14 @@ if os.path.exists("csearch.c"):
             ce._lib.set_ep_filter(0)
         except AttributeError:
             pass                       # pre-EP-01 csearch.so: no such toggle
-        # P-47 check-ext budget (5 = confirmed recipe) and PV-02 exact-PV
-        # (skip TT cutoffs at PV nodes) are DORMANT tree changers; pin both
-        # to the confirmed values, belt-and-braces like the toggles above.
+        # P-47 check-ext budget: raise-to-8 REJECTED (-4.59 +/-6.8 @10k);
+        # 5 is the confirmed recipe and the default -- belt-and-braces pin.
+        # PV-02 exact PV: CONFIRMED into v37 (+0.17 null = free correctness),
+        # default ON -- part of the pinned reference search above.
         try:
             ce._lib.set_check_ext_budget(5)
-            ce._lib.set_pv_exact(0)
         except AttributeError:
-            pass                       # pre-P-47/PV-02 csearch.so
+            pass                       # pre-P-47 csearch.so
         print("\nC core ladder (cold TT per depth):")
         ok_all, mv_final = True, None
         for d in range(1, 13):
