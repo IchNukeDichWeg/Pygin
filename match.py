@@ -62,8 +62,12 @@ MODE = "clock"             # "time"  -> fixed milliseconds per move (TIME_PER_MO
                             #            per-move budget via time_manager.calculate_move_time
 TIME_PER_MOVE_MS = 1000      # used when MODE == "time"
 FIXED_DEPTH = 10             # used when MODE == "depth"
-TC_SECONDS = 45             # used when MODE == "clock": starting clock per side, in seconds
-TC_INCREMENT = 0.10         # used when MODE == "clock": seconds added per move
+TC_SECONDS = 50             # used when MODE == "clock": starting clock per side, in seconds
+TC_INCREMENT = 0.30         # used when MODE == "clock": seconds added per move
+                            # ERA NOTE: 45+0.10 through v36 (the whole ledger
+                            # v21..v36); 50+0.30 from v37-era A/Bs on -- the
+                            # engine got ~2x faster and outgrew the old TC.
+                            # Cross-era Elo numbers are NOT the same currency.
 
 # --- WDL-based adjudication (OFF until wdl_model.json is calibrated) ------- #
 # Shortens decided games: a win is adjudicated when BOTH engines' own
