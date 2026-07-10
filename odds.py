@@ -582,6 +582,7 @@ def write_summary(fh, p1_name, desc1, p2_name, desc2, tally,
              f"Engine 1: {p1_name}  [{desc1}]",
              f"Engine 2: {p2_name}  [{desc2}]",
              f"Games scored: {tally['completed']:,}  (of {total_games:,} scheduled)",
+             f"Workers: {N_WORKERS}",
              f"Engine 1 Wins: {tally['e1']:,}",
              f"Engine 2 Wins: {tally['e2']:,}",
              f"Draws: {tally['draws']:,}"]

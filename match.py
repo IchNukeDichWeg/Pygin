@@ -644,10 +644,11 @@ def write_game_block(fh, pgn_fh, g, e1, mode_cfg, tc_label, tpm):
             pass
 
 
-def write_summary(fh, e1, e2, tally, total_games, start_t, stopped):
+def write_summary(fh, e1, e2, tally, total_games, start_t, stopped, n_workers=None):
     lines = ["", "=== BATTLE SUMMARY ===",
              f"Engine 1: {e1.name}", f"Engine 2: {e2.name}",
              f"Games scored: {tally['completed']:,}  (of {total_games:,} scheduled)",
+             f"Workers: {n_workers}",
              f"Engine 1 Wins: {tally['e1']:,}", f"Engine 2 Wins: {tally['e2']:,}",
              f"Draws: {tally['draws']:,}"]
     if int(tally['errors']) > 0:
@@ -1197,7 +1198,8 @@ def main():
     finally:
         _clear_status()        # drop the pinned ETA line before the summary
         _flush_log_remainder()  # emit any games still held by the reorder buffer
-        write_summary(fh, e1, e2, tally, total_games, start_t, stopped)
+        write_summary(fh, e1, e2, tally, total_games, start_t, stopped,
+                      n_workers=n_workers)
         if parallel:
             # Tell each worker to shut down, then join.
             if in_q is not None:

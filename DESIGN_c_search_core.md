@@ -1,6 +1,6 @@
 # Design: C search core (roadmap #29/#30)
 
-**Status:** planning / phase 0. **Date:** 2026-07-08. **Baseline:** v30 (~90k NPS, ~2560 internal Elo).
+**Status:** SHIPPED and iterating — all 4 phases done; live = v37-dev, last snapshot Old Engine/36 (C-era ledger ≈ +135 over v31; see the version table below). **Started:** 2026-07-08 (baseline v30, ~90k NPS). **A/B TC:** 45+0.10 through v36, 50+0.20 from v37 campaigns.
 
 ## The finding that reframes the project
 
