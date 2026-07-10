@@ -839,7 +839,10 @@ def main():
             MODE = argv[i + 1]
             i += 2
         elif argv[i] == "--tc-seconds" and i + 1 < len(argv):
-            TC_SECONDS = int(argv[i + 1])
+            # float, not int: a fractional base clock (e.g. 7.5s hyper-TC)
+            # was silently impossible from the CLI while --tc-increment
+            # already took floats.
+            TC_SECONDS = float(argv[i + 1])
             i += 2
         elif argv[i] == "--tc-increment" and i + 1 < len(argv):
             TC_INCREMENT = float(argv[i + 1])
