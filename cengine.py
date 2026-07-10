@@ -60,11 +60,21 @@ Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
     under identical state proven by verify mode over ~1M nodes;
     set_staged(0) restores v35 node-exactly); Q-01 continuation history is
     ON (csearch.c set_cont_hist, default on, A/B vs v36 PENDING -- the
-    first 50+0.30-era campaign: quiet ordering adds 1-ply and 2-ply
+    first 50+0.20-era campaign: quiet ordering adds 1-ply and 2-ply
     continuation scores (v30's #1.6, piece-to keyed int16 tables, same
     gravity + malus at cutoffs; root context empty and qsearch reads none
     -- documented deviations); set_cont_hist(0) restores v36 node-exactly);
-    no singular
+    PV-01 triangular PV is ON (csearch.c cs_get_pv: the PV is collected
+    during the search instead of TT-walked afterwards -- NODE-EXACT, pure
+    bookkeeping; _extract_pv emits the exact prefix in full, splicing the
+    old TT walk only past any truncation; mate-in-4/5 spot check went 5/6
+    full mate PVs vs the old walk's ~40-48%); PV-02 exact-PV is DORMANT
+    (csearch.c set_pv_exact, default OFF: skips TT cutoffs/narrowing at PV
+    nodes so the collected PV is complete end-to-end, 6/6 on the same spot
+    check -- tree-changing, queued for its own A/B); the check-extension
+    BUDGET is runtime-settable (P-47, csearch.c set_check_ext_budget,
+    default 5 = v36 node-exact; the raise-to-8 candidate queues for its own
+    A/B); no singular
     extensions / razoring (dormant or absent in v30 at match depths anyway),
   * repetition detection covers negamax nodes, not quiescence nodes,
   * the position hash mixes the RAW ep square (set after every double push),
@@ -137,6 +147,18 @@ class Engine:
     # frequent event. False = v32's exact behavior.
     TT_KEEP_WARM = True
 
+    # P-47: per-line check-extension budget (v30's MAX_CHECK_EXT recipe).
+    # 5 = v36 node-exact; the raise-to-8 candidate is a tree change (deeper
+    # perpetual/mating check lines) queued for its own A/B after Q-01.
+    CHECK_EXT_BUDGET = 5
+
+    # PV-02: skip TT cutoffs/narrowing at PV nodes so the triangular PV
+    # (PV-01, always on) is complete end-to-end -- the standard strong-engine
+    # rule; the TT move still orders. Tree-changing (PV nodes re-search
+    # instead of cutting), DORMANT until its own A/B; False = v36 node-exact.
+    # matetrack Bad-PV rate is the functional acceptance test.
+    PV_EXACT = False
+
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
     ASPIRATION_DELTA = 30                    # centipawns; C scores are cp too
@@ -182,8 +204,9 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (set_threads / cs_stop are abi 5) -- bump together with csearch_abi.
-        if lib.csearch_abi() < 5:
+        # (cs_get_pv / set_pv_exact / set_check_ext_budget are abi 6) --
+        # bump together with csearch_abi.
+        if lib.csearch_abi() < 6:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         B = ctypes.c_uint64
         BOARD_ARGS = [B] * 8 + [ctypes.c_int] * 2 + [B]
@@ -198,7 +221,12 @@ class Engine:
         lib.cs_board_key.restype = B
         lib.cs_tt_probe_move.argtypes = BOARD_ARGS
         lib.cs_tt_probe_move.restype = ctypes.c_uint32
+        lib.cs_get_pv.argtypes = [ctypes.POINTER(ctypes.c_uint32),
+                                  ctypes.c_int]
+        lib.cs_get_pv.restype = ctypes.c_int
         self._lib = lib
+        lib.set_check_ext_budget(int(self.CHECK_EXT_BUDGET))   # P-47
+        lib.set_pv_exact(1 if self.PV_EXACT else 0)            # PV-02
 
         # --- sync every eval parameter from the live engine.py instance --- #
         # 1. mobility/king-safety & friends: csearch.so links its OWN copy of
@@ -572,15 +600,27 @@ class Engine:
         return key, score.value, nodes.value, done.value, aborted.value
 
     def _extract_pv(self, board, first_move, max_len):
-        """Walk best moves out of the C TT (legality-checked, stops on
-        repetition) -- v30's _extract_pv against the C table."""
+        """PV-01: the exact line the search actually proved (the C triangular
+        table, cs_get_pv), extended past any truncation by the old TT walk
+        (legality-checked, stops on repetition). The exact prefix is emitted
+        in full even beyond max_len (a mate PV must reach the mate); only the
+        speculative TT tail respects the cap. Falls back to the pure TT walk
+        (v30's _extract_pv) when the C PV is empty or disagrees with the
+        chosen move (fail-low final iteration, partial abort)."""
         if first_move is None:
             return ""
+        buf = (ctypes.c_uint32 * 128)()
+        n = self._lib.cs_get_pv(buf, 128)
+        if n == 0 or self._key_to_move(buf[0]) != first_move:
+            n = 0                            # fallback: pure TT walk
         b = board.copy(stack=False)
         out = []
         seen = set()
-        mv = first_move
-        while mv is not None and len(out) < max_len:
+        i = 0
+        mv = self._key_to_move(buf[0]) if n else first_move
+        while mv is not None:
+            if i >= n and len(out) >= max_len:
+                break                        # cap applies to the TT tail only
             if mv not in b.legal_moves:
                 break
             try:
@@ -589,8 +629,13 @@ class Engine:
                 break
             b.push(mv)
             k = b._transposition_key()
-            if k in seen:
-                break
-            seen.add(k)
-            mv = self._key_to_move(self._lib.cs_tt_probe_move(*self._bargs(b)))
+            if i >= n and k in seen:
+                break                        # TT walk may cycle; the exact
+            seen.add(k)                      # prefix is finite by construction
+            i += 1
+            if i < n:
+                mv = self._key_to_move(buf[i])
+            else:
+                mv = self._key_to_move(
+                    self._lib.cs_tt_probe_move(*self._bargs(b)))
         return " ".join(out)

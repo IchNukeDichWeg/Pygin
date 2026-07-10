@@ -1584,6 +1584,52 @@ void set_iir(int v) { g_iir = v; }
 static int g_check_ext = 1;
 void set_check_ext(int v) { g_check_ext = v; }
 #define CHECK_EXT_MAX 5
+/* P-47: the budget itself is runtime-settable. 5 (the v30/CHECK_EXT_MAX
+ * recipe) reproduces v36 node-exactly; the raise-to-8 candidate queues for
+ * its own A/B (tree-changing: deeper check lines). */
+static int g_check_ext_budget = CHECK_EXT_MAX;
+void set_check_ext_budget(int v)
+{
+    g_check_ext_budget = v < 0 ? 0 : (v > 32 ? 32 : v);
+}
+
+/* PV-01: triangular PV table -- the PV is collected DURING the search (each
+ * PV node prepends its best move to its child's line when the score lands
+ * inside the window) instead of being reconstructed from the TT afterwards,
+ * so the emitted PV can no longer be truncated/spliced by TT eviction.
+ * Node-exact: pure bookkeeping at is_pv alpha-raises, zero search decisions
+ * read it. Sized for qsearch's recursion guard (CS_MAXPLY + 60).
+ *
+ * PV-02 (set_pv_exact, default OFF, tree-changing -- own A/B): the remaining
+ * truncation source is the TT itself, which cuts PV nodes off via EXACT hits
+ * and bound-narrowing before their line is walked. pv_exact skips the whole
+ * TT-cutoff block at PV nodes (the standard strong-engine rule; the TT move
+ * is still used for ordering), making the collected PV complete end-to-end. */
+#define PV_MAX (CS_MAXPLY + 62)
+static __thread uint32_t g_pv[PV_MAX][PV_MAX];
+static __thread uint8_t  g_pv_len[PV_MAX];
+static __thread uint32_t g_root_pv[PV_MAX];
+static __thread int      g_root_pv_len = 0;
+static int g_pv_exact = 0;
+void set_pv_exact(int v) { g_pv_exact = v ? 1 : 0; }
+
+static inline void pv_store(int ply, uint32_t m)
+{
+    int cl = (ply + 1 < PV_MAX) ? g_pv_len[ply + 1] : 0;
+    if (cl > PV_MAX - 1) cl = PV_MAX - 1;
+    g_pv[ply][0] = m;
+    memcpy(&g_pv[ply][1], g_pv[ply + 1], (size_t)cl * sizeof(uint32_t));
+    g_pv_len[ply] = (uint8_t)(cl + 1);
+}
+
+/* Driver-side PV fetch: the last completed in-window root search's line,
+ * as 15-bit move keys. Returns the number of moves written. */
+int cs_get_pv(uint32_t* out, int maxn)
+{
+    int n = g_root_pv_len < maxn ? g_root_pv_len : maxn;
+    for (int i = 0; i < n; i++) out[i] = g_root_pv[i] & 0x7FFF;
+    return n;
+}
 
 /* P-43: single-reply / forced-move extension -- a node with exactly one legal
  * move is forced, so search that move one ply deeper. Own per-line budget,
@@ -1721,10 +1767,15 @@ static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
 static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
 {
     g_nodes++;
+    g_pv_len[ply] = 0;     /* PV-01: every exit path leaves a valid (empty)
+                            * line -- a stale slot would splice wrong moves
+                            * into the parent's PV. ply < PV_MAX: the guard
+                            * below caps recursion at CS_MAXPLY + 60. */
     CS_TIME_CHECK();
     if (in_chk < 0) in_chk = in_check(b);
     if (ply >= CS_MAXPLY + 60)                       /* hard recursion guard */
         return in_chk ? 0 : eval_full_stm(b);
+    int is_pv = (beta - alpha) > 1;
 
     /* P-44: TT probe -- before movegen AND eval, so a hit costs nothing. */
     int alpha_orig = alpha;
@@ -1739,9 +1790,11 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
             if (v >= MATE_THRESH) v -= ply;
             else if (v <= -MATE_THRESH) v += ply;
             int fl = TT_FLAG(e);
-            if (fl == TT_EXACT) return v;
-            if (fl == TT_LOWER && v >= beta) return v;
-            if (fl == TT_UPPER && v <= alpha) return v;
+            if (!(g_pv_exact && is_pv)) {            /* PV-02: PV nodes walk on */
+                if (fl == TT_EXACT) return v;
+                if (fl == TT_LOWER && v >= beta) return v;
+                if (fl == TT_UPPER && v <= alpha) return v;
+            }
             tt_move = TT_MOVE(e);
         }
     }
@@ -1822,6 +1875,8 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
         apply_move(&c, m);
         int v = -qsearch(&c, -beta, -alpha, ply + 1, in_check(&c));
         if (CS_UNWINDING()) return 0;                /* v is garbage: unwind */
+        if (is_pv && v > alpha && v < beta)          /* PV-01: in-window best */
+            pv_store(ply, m);
         if (v > best) { best = v; bm = m; }
         if (v > alpha) alpha = v;
         if (alpha >= beta) break;
@@ -1839,6 +1894,9 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                    uint32_t prev12, int in_chk, int hmc, int chk, int srb)
 {
     g_nodes++;
+    g_pv_len[ply] = 0;     /* PV-01: see qsearch -- every exit path must
+                            * leave a valid (empty) line. ply <= CS_MAXPLY
+                            * here, well inside PV_MAX. */
     CS_TIME_CHECK();
     if (in_chk < 0) in_chk = in_check(b);
 
@@ -1873,7 +1931,11 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         TTEntry e;
         if (tt_load(tte, key, &e)) {
             tt_move = TT_MOVE(e);
-            if (TT_DEPTH(e) >= depth) {
+            /* PV-02: at PV nodes skip the whole cutoff/narrowing block (the
+             * EXACT return AND the bound-narrowing both truncate the
+             * collected PV); the TT move above still orders. */
+            if (TT_DEPTH(e) >= depth
+                    && !(g_pv_exact && (beta - alpha) > 1)) {
                 int v = TT_VALUE(e);                /* ply-relative -> node */
                 if (v >= MATE_THRESH) v -= ply;
                 else if (v <= -MATE_THRESH) v += ply;
@@ -2038,6 +2100,11 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                 v = -negamax(&c, nd, -beta, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb);
         }
         if (CS_UNWINDING()) return 0;                /* v is garbage: unwind */
+        if (is_pv && v > alpha && v < beta)          /* PV-01: in-window best;
+                                                      * the last (re)search was
+                                                      * full-window, so the
+                                                      * child line is fresh */
+            pv_store(ply, m);
 
         if (v > best) { best = v; best_move = m; }
         if (v > alpha) alpha = v;
@@ -2159,6 +2226,8 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
     Board b = *rb;
     uint64_t key = board_key(&b);
     g_path[0] = key;
+    g_root_pv_len = 0;     /* PV-01: a fail-low iteration leaves it empty --
+                            * the driver falls back to the TT walk then */
     g_ctx[0] = 0;              /* Q-01: no game-prev context at root (v30
                                 * seeds the real previous move; deviation) */
     /* P-04: seed the eval stack -- the ply-2 reference for ply-2 nodes.
@@ -2192,15 +2261,21 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
         uint32_t cp = (uint32_t)((m & 63) << 6 | ((m >> 6) & 63));
         int v;
         if (i == 0) {
-            v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, CHECK_EXT_MAX, SR_EXT_MAX);
+            v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX);
         } else {
-            v = -negamax(&c, depth - 1, -alpha - 1, -alpha, 1, cp, gc, child_hmc, CHECK_EXT_MAX, SR_EXT_MAX);
+            v = -negamax(&c, depth - 1, -alpha - 1, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX);
             if (v > alpha && v < beta)
-                v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, CHECK_EXT_MAX, SR_EXT_MAX);
+                v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX);
         }
         if (g_abort || (g_is_helper && g_hstop))
             break;                                   /* v is garbage */
         (*out_done)++;
+        if (v > alpha && v < beta) {                 /* PV-01: root prepend */
+            int cl = g_pv_len[1];
+            g_root_pv[0] = m;
+            memcpy(&g_root_pv[1], g_pv[1], (size_t)cl * sizeof(uint32_t));
+            g_root_pv_len = cl + 1;
+        }
         if (v > best) { best = v; best_move = m; }
         if (v > alpha) alpha = v;
         if (alpha >= beta) break;                    /* aspiration fail-high */
@@ -2362,4 +2437,6 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted);
 }
 
-int csearch_abi(void) { return 5; }   /* 5 = Lazy SMP (set_threads) + cs_stop */
+int csearch_abi(void) { return 6; }   /* 6 = cs_get_pv (PV-01) + set_pv_exact
+                                       * + set_check_ext_budget; 5 = Lazy SMP
+                                       * (set_threads) + cs_stop */
