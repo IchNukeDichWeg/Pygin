@@ -92,7 +92,10 @@ Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
     when a legal ep capture exists, = python-chess's _transposition_key) but
     is DORMANT (default OFF): it changes every tree, so it queues for its
     own A/B once P-04's is resolved,
-  * no SMP, no tablebase probe (v30 default use_tb=False matches).
+  * Lazy SMP exists in-process (csearch pthreads + lockless shared TT) but
+    is strictly OPT-IN (smp_workers / UCI Threads; default 1, Elo
+    unmeasured); tablebase probe exists but defaults off (use_tb=False,
+    v30 match).
 """
 
 import ctypes
