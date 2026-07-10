@@ -453,23 +453,6 @@ benchmark" below.
   P-03's +7.30), but every secondary signal agrees, so kept. Snapshotted
   as Old Engine/34.
 
-* **v35 (2026-07-10, lives in ``cengine.py`` + ``csearch.c``): P-22
-  noisy-only qsearch generation + P-44 qsearch TT probe/store -- the
-  biggest version step of the C era, ~+72 Elo.** P-22: quiescence
-  generates only the noisy moves it searches (captures/promos/ep, same
-  order as the full generator's subset; stalemate semantics preserved) --
-  NODE-IDENTICAL at fixed depth, +32% NPS. P-44: the node-majority
-  qsearch probes the warm TT before movegen+eval and stores depth-0
-  entries that can never displace negamax entries. **Measured: the bundle
-  DIRECTLY vs v34 ~+71.8 +/-8.5 @ 7,061 games (stopped as decisive);
-  P-44 isolated vs the P-22 base (engine_qtt_off) +8.06 +/-6.8 @ 10k
-  (3202W/3828D/2970L = 51.16%, ptnml 359/1123/1891/1181/446, norm
-  +15.35) -- so ~+64 speed + ~+8 qsearch-TT, and the parts compose.**
-  Process lesson recorded: "node-identical" exempts only the fixed-depth
-  gate -- P-22's timed-play Elo went unmeasured until it confounded
-  P-44's first A/B; speed changes get their own timed A/B from now on.
-  Snapshotted as Old Engine/35.
-
 Cross-version benchmark
 -----------------------
 Sweep (2026-07-02): 24 versions x 8 positions x 6 timed 5s runs (1152 searches).

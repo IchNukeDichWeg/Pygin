@@ -125,10 +125,10 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # quiet developing moves flip between depths without being a regression.
 # Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
 CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3"
-CE_LADDER = {                     # depth -> (nodes, score)  [v34, P-01 on]
-    1: (102, 126), 2: (190, 126), 3: (750, 126), 4: (1023, 122),
-    5: (4732, 70), 6: (14622, 72), 7: (35893, 72), 8: (92625, 68),
-    9: (208139, 49), 10: (374070, 52), 11: (526846, 69), 12: (949973, 66),
+CE_LADDER = {                     # depth -> (nodes, score)  [v35: P-22 + P-44 on]
+    1: (95, 126), 2: (181, 126), 3: (741, 126), 4: (1012, 122),
+    5: (7091, 50), 6: (18875, 64), 7: (47308, 74), 8: (93164, 58),
+    9: (163784, 58), 10: (342349, 67), 11: (627228, 71), 12: (1164742, 71),
 }
 if os.path.exists("csearch.c"):
     try:
@@ -151,13 +151,8 @@ if os.path.exists("csearch.c"):
             ce._lib.set_improving(0)
         except AttributeError:
             pass                       # pre-P-04 csearch.so: no such toggle
-        # P-44 qsearch TT probe defaults ON (A/B vs v34 pending) and changes
-        # the tree; pin it OFF so the ladder tracks the CONFIRMED v34 search.
-        # Remove this and re-measure CE_LADDER when P-44 confirms into v35.
-        try:
-            ce._lib.set_qs_tt(0)
-        except AttributeError:
-            pass                       # pre-P-44 csearch.so: no such toggle
+        # P-44 qsearch TT probe: CONFIRMED into v35 (+8.06 isolation A/B),
+        # default ON -- part of the pinned reference search above.
         # EP-01 FIDE-exact ep hashing is DORMANT (default OFF: correctness
         # fix, but tree-changing -- queued for its own A/B behind P-04).
         # Belt-and-braces pin so the ladder tracks the confirmed search even
