@@ -8,8 +8,8 @@ transposition table, pruning, quiescence and the full static eval
 (bit-exact port of engine.py's ``_evaluate_static``, verified over 3M
 positions). Born as phase-3 step 6 of the C-core plan; the shipped engine
 since Old Engine/31. Defaults reproduce v37 (Old Engine/37) plus whatever
-candidate is armed below (currently SCORE_HYGIENE, the correctness batch,
-A/B PENDING -- the fifth 50+0.20-era campaign).
+candidate is armed below (none pending after CB-01 confirmed into v38;
+next up per final_improvements.md is the Phase-2 NPS train).
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -81,21 +81,20 @@ ON by default (A/B-confirmed, or free by construction):
     clean null (+0.17 +/-6.8 @10k 50+0.20, pair ratio 1.02): for a
     correctness feature, a null means FREE.
 
-LIVE CANDIDATE (A/B vs Old Engine/37 PENDING -- fifth 50+0.20 campaign):
-  * CB-01 correctness batch (set_score_hygiene; OFF = v37 node-exact,
-    ladder-pinned): seven sub-resolution "score draws as draws, keep proven
+  * CB-01 correctness batch (set_score_hygiene; CONFIRMED into v38
+    2026-07-10, snapshotted Old Engine/38; set_score_hygiene(0) = v37
+    node-exact): seven sub-resolution "score draws as draws, keep proven
     bounds" fixes -- Texel-consistent delta-pruning values, qsearch
     in-check repetition + insufficient-material detection (both draws
-    decided BEFORE the qsearch TT probe, and repetition now sees qsearch
-    plies via g_path logging), null-move fail-soft return + TT LOWER store
-    (unproven mates clamped to beta), qsearch TT lower-bound alpha
-    narrowing, mate-distance pruning (NON-PV nodes only: the fastest-mate
-    score lands exactly on the clamped beta, so a PV-node clamp starves
-    PV-01's in-window store -- first matetrack run proved it, 470 Bad PVs),
-    and deep-qsearch killers reading slot 63 instead of the root's.
-    matetrack @0.5s: 868 found / 751 best, ZERO Bad PVs (v37 baseline:
-    692/600/0) -- mate-distance pruning alone is worth ~+25% found mates.
-    KEEP-ON-NULL (PV-02 precedent: correctness nulls are free).
+    decided BEFORE the qsearch TT probe, repetition sees qsearch plies via
+    g_path logging), null-move fail-soft return + TT LOWER store (unproven
+    mates clamped to beta), qsearch TT lower-bound alpha narrowing,
+    mate-distance pruning (NON-PV nodes only: at a PV node the fastest-mate
+    score lands exactly on the clamped beta and starves PV-01's in-window
+    store -- matetrack caught it, 470 Bad PVs), deep-qsearch killers read
+    slot 63 not the root's. A/B vs v37: +1.36 +/-6.8 @10k 50+0.20 (pair
+    ratio 1.02) -- a clean null KEPT as correctness (PV-02 precedent);
+    matetrack @0.5s 692/600 -> 868/751, ZERO Bad PVs (MDP ~+25% found).
 
 DORMANT (default OFF, mechanism kept for longer-TC re-tests):
   * P-43 single-reply / forced-move extension (set_single_reply; +3.5
