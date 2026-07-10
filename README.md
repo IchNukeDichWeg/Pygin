@@ -20,8 +20,9 @@ core syncs every eval parameter from it at startup.
 single-threaded (level with Stockfish 18 capped at UCI_Elo 2450 over 2,500
 games). The **C search core** is far stronger and still climbing: it beat the
 Python engine **29–1–0** on arrival, and the C-era ledger has since added
-**≈ +135 Elo** of A/B-confirmed gains (v31 → v36: IIR, TT persistence, check
-extensions, qsearch-TT, noisy-only + staged move generation). Against
+**≈ +135 Elo** of A/B-confirmed gains (v31 → v37: IIR, TT persistence, check
+extensions, qsearch-TT, noisy-only + staged move generation, plus an exact-PV
+correctness release). Against
 **full-strength** Stockfish 18 it scores **~93%** at rook odds and roughly
 **~70%** at knight odds (knight-odds percentages are hardware/environment-
 dependent — compare only runs from the same machine).

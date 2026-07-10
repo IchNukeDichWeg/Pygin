@@ -76,9 +76,10 @@ Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
     DORMANT (csearch.c set_pv_exact, default OFF: skips TT cutoffs/
     narrowing at PV nodes so the collected PV is complete end-to-end --
     verified: the same matetrack FEN goes 1-move -> full 13-ply mate PV;
-    tree-changing (d12 probe: -20% nodes, sign unknown); LIVE CANDIDATE:
-    cengine.PV_EXACT = True, A/B vs v36 PENDING -- the third 50+0.20-era
-    campaign; matetrack Bad-PVs only drop when this confirms); the check-extension
+    tree-changing, d12 ~-23% nodes; A/B vs v36 2026-07-10, 10k @ 50+0.20:
+    +0.17 +/-6.8, pair ratio 1.02 -- a clean NULL, which for a correctness
+    feature means FREE: kept ON, CONFIRMED into v37 and snapshotted Old
+    Engine/37; set_pv_exact(0) restores v36's search); the check-extension
     BUDGET is runtime-settable (P-47, csearch.c set_check_ext_budget, 5 =
     v36 node-exact; LIVE CANDIDATE: cengine.CHECK_EXT_BUDGET = 8, A/B vs
     v36 PENDING -- the second 50+0.20-era campaign); no singular
@@ -161,14 +162,13 @@ class Engine:
     # (P-01 +6.8, P-43 +3.5 marginal, P-47 -4.6). Do not re-try at this TC.
     CHECK_EXT_BUDGET = 5
 
-    # PV-02: skip TT cutoffs/narrowing at PV nodes so the triangular PV
-    # (PV-01, always on) is complete end-to-end -- the standard strong-engine
-    # rule; the TT move still orders. Tree-changing (PV nodes re-search
-    # instead of cutting; d12 probe -20% nodes). LIVE CANDIDATE = True, A/B
-    # vs Old Engine/36 PENDING (third 50+0.20-era campaign) -- selftest pins
-    # the ladder to 0 meanwhile. False = v36 node-exact. matetrack Bad-PV
-    # rate is the functional acceptance test (verified: 1-move -> full
-    # 13-ply mate PV on a failing FEN).
+    # PV-02 (CONFIRMED into v37, 2026-07-10): skip TT cutoffs/narrowing at
+    # PV nodes so the triangular PV (PV-01, always on) is complete
+    # end-to-end -- the standard strong-engine rule; the TT move still
+    # orders. A/B vs Old Engine/36 @ 50+0.20 10k: +0.17 +/-6.8 (pair ratio
+    # 1.02) -- a clean null, i.e. the exact PV is FREE; kept ON as a
+    # correctness feature (it fixed matetrack's ~60% Bad-PV rate).
+    # False restores v36's search.
     PV_EXACT = True
 
     # v30 time-management / aspiration constants (ports, same values)
