@@ -176,7 +176,13 @@ def main():
         holding = threading.Event()          # FB-14: search DONE, only holding
 
         white_to_move = board.turn == chess.WHITE
-        engine.on_depth = lambda rec: out(info_line(rec, white_to_move, engine))
+        def on_depth(rec):
+            if rec.get("book"):
+                out(f"info string book move {rec['move']}")
+            elif rec.get("tb"):
+                out(f"info string tablebase move {rec['move']} wdl {rec['wdl']}")
+            out(info_line(rec, white_to_move, engine))
+        engine.on_depth = on_depth
         engine.on_final = None               # final info == last depth line
         # FB-13d: snapshot the position NOW -- a `position` command racing
         # the thread's startup must not change what gets searched.
