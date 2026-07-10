@@ -43,14 +43,14 @@ Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
     preserved -- verified over 8 FENs x 2 depths, +32% NPS on a mixed bench
     / +55% on startpos; being node-identical it needs no ladder pin. Timed
     Elo measured 2026-07-10 as the P-22+P-44 bundle vs v34: ~+71.8 +/-8.5
-    @7k games -- the NPS converts at the classic ~2-3 Elo/1%; P-44's share
-    pending the engine_qtt_off isolation A/B); P-44
-    qsearch TT probe/store is ON (csearch.c set_qs_tt, default on, A/B vs
-    v34 pending -- the node-majority qsearch now probes the warm TT before
-    movegen/eval and stores depth-0 entries that never displace negamax
-    entries; -15% fixed-depth nodes but ~-18% NPS from the per-node probe's
-    DRAM latency, so time-to-depth is ~flat and the A/B decides;
-    set_qs_tt(0) restores v34 node-exactly); no singular
+    @7k games -- the NPS converts at the classic ~2-3 Elo/1%); P-44
+    qsearch TT probe/store is ON (csearch.c set_qs_tt, CONFIRMED into v35:
+    isolation A/B vs the P-22 base +8.06 +/-6.8 @10k, CI clear of zero --
+    the node-majority qsearch probes the warm TT before movegen/eval and
+    stores depth-0 entries that never displace negamax entries; the warm
+    table across a game bought what the flat cold-ladder time-to-depth
+    could not show. v35 = v34 + P-22 + P-44 ~ +72, snapshotted Old
+    Engine/35); no singular
     extensions / razoring (dormant or absent in v30 at match depths anyway),
   * repetition detection covers negamax nodes, not quiescence nodes,
   * the position hash mixes the RAW ep square (set after every double push),
