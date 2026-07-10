@@ -1,6 +1,22 @@
 """
-cengine.py -- Python root driver for the C search core (phase-3 step 6).
-=========================================================================
+engine37.py -- FROZEN SNAPSHOT of v37 (2026-07-10).
+===========================================================================
+
+Snapshot of the repo-root ``cengine.py`` at the v37 milestone: v36 + PV-01
+triangular PV (node-exact reporting) + PV-02 exact PV (PV nodes skip TT
+cutoffs/bound-narrowing so the collected PV is complete end-to-end -- the
+standard strong-engine rule). A/B vs Old Engine/36: **+0.17 +/-6.8 over
+10,000 games @ 50+0.20** (50.02%, ptnml 347/1177/1922/1232/322, pair ratio
+1.02) -- a clean null, kept ON as a correctness feature: the exact PV is
+free (it fixed matetrack's ~60% Bad-PV rate). Same-era rejects on the way:
+Q-01 continuation history (-0.87), P-47 check-ext budget 8 (-4.59).
+Self-contained: the eval oracle / book provider is the sibling
+``engine_eval.py`` (the same-day engine.py frozen), loaded by explicit
+path. C sources frozen alongside; ./setup.sh builds this directory's .so
+files.
+
+Original driver documentation follows.
+===========================================================================
 
 A drop-in ``Engine`` for the project's battle/match harness, with the ENTIRE
 per-node search loop in C (csearch.so): board, move ordering, transposition
@@ -110,11 +126,19 @@ CS_MATE_THRESH = CS_INF - 1000
 
 
 def _load_pyengine():
-    """Import the sibling engine.py (param source + book probe)."""
-    if _DIR not in sys.path:
-        sys.path.insert(0, _DIR)
-    import engine as pyengine
-    return pyengine
+    """Load the FROZEN sibling engine_eval.py (param source + book probe)
+    by explicit path under a unique module name -- never the live repo-root
+    engine.py, and immune to sys.modules collisions with it."""
+    import importlib.util
+    name = "_v37_engine_eval"
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(
+        name, os.path.join(_DIR, "engine_eval.py"))
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
 
 
 class Engine:

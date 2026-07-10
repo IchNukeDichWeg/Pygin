@@ -486,20 +486,6 @@ benchmark" below.
   50+0.20 from the next campaign on (cross-era Elo is not the same
   currency).**
 
-* **v37 (2026-07-10, lives in ``cengine.py`` + ``csearch.c``): PV-01
-  triangular PV + PV-02 exact PV -- a correctness release, ~0 Elo by
-  design.** The PV is collected during the search (triangular table,
-  node-exact) instead of TT-walked afterwards, and PV nodes skip TT
-  cutoffs/bound-narrowing so the line survives end-to-end (the standard
-  strong-engine rule; the TT move still orders). **A/B vs v36: +0.17
-  +/-6.8 over 10,000 games @ 50+0.20 (50.02%%, ptnml 347/1177/1922/1232/
-  322, pair ratio 1.02) -- a clean null, i.e. the exact PV is free**; it
-  fixed matetrack's ~60%% Bad-PV rate (truncated/spliced mate PVs).
-  Same-era rejects on the way: Q-01 continuation history (-0.87 +/-6.8),
-  P-47 check-extension budget 8 (-4.59 +/-6.8; the extensions vein is
-  closed at this TC: P-01 +6.8, P-43 +3.5 marginal, P-47 -4.6).
-  Snapshotted as Old Engine/37.
-
 Cross-version benchmark
 -----------------------
 Sweep (2026-07-02): 24 versions x 8 positions x 6 timed 5s runs (1152 searches).

@@ -94,8 +94,9 @@ POSITIONS = [
 # file. History: 31 frozen 2026-07-08; 32 (P-03 IIR) 2026-07-08;
 # 33 (P-14 TT-warm + SMP fixes) 2026-07-09; 34 (P-01 check exts) 2026-07-09;
 # 35 (P-22 noisy-gen +32% NPS + P-44 qsearch TT, ~+72) 2026-07-10;
-# 36 (P-23 staged ordering +24.67, last 45+0.10-era version) 2026-07-10.
-CENGINE_VERSION = 37
+# 36 (P-23 staged ordering +24.67, last 45+0.10-era version) 2026-07-10;
+# 37 (PV-01+PV-02 exact PV, +0.17 null = free correctness) 2026-07-10.
+CENGINE_VERSION = 38
 
 
 def engine_path(v):
