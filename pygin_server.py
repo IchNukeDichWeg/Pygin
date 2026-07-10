@@ -10,8 +10,11 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 ENGINE = "/Users/sam/Desktop/bot/NeuerOrdner/ClaudeChess/dist/pygin"
 
+# cwd = repo root so the engine finds Perfect2023.bin (book lookup searches
+# the working directory) no matter where the server is launched from.
 eng = subprocess.Popen([ENGINE], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                       text=True, bufsize=1)
+                       text=True, bufsize=1,
+                       cwd="/Users/sam/Desktop/bot/NeuerOrdner/ClaudeChess")
 
 
 def send(cmd):
@@ -55,6 +58,7 @@ def full_fen(fen):
 
 send("uci")
 wait_for("uciok")
+send("setoption name OwnBook value true")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -74,5 +78,5 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print("pygin bridge on http://127.0.0.1:8181")
-    HTTPServer(("127.0.0.1", 8181), Handler).serve_forever()
+    print("pygin bridge on http://127.0.0.1:8118")
+    HTTPServer(("127.0.0.1", 8118), Handler).serve_forever()
