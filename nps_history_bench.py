@@ -64,8 +64,8 @@ from datetime import datetime
 
 import chess
 
-RUNS_PER_POSITION = 8
-SECONDS_PER_RUN = 4.0
+RUNS_PER_POSITION = 6
+SECONDS_PER_RUN = 3.0
 MAX_DEPTH = 100         # high enough that time, not depth, is always the limit
 WORKERS = 8
 
