@@ -1200,6 +1200,35 @@ void set_qsearch(int v) { g_qsearch = v; }
 static int g_qgen = 1;
 void set_qgen(int v) { g_qgen = v; }
 
+/* P-44: quiescence TT probe/store. The node majority lives in qsearch, and
+ * until now it never touched the transposition table: every qsearch node
+ * recomputed the full static eval and re-resolved exchanges the warm P-14
+ * table had already seen. Probe BEFORE movegen/eval (a hit skips the whole
+ * node); any stored depth cuts here (negamax stores depth>=1, qsearch 0).
+ * Stores go in at depth 0 with the gen-aware rule, so a qsearch entry can
+ * never displace a same-key negamax entry (depth-preferred) -- it fills
+ * empty/stale slots. The TT move also seeds qsearch ordering. Same
+ * ply-relative mate encoding as negamax. set_qs_tt(0) restores v34's
+ * search node-exactly. */
+static int g_qs_tt = 1;
+void set_qs_tt(int v) { g_qs_tt = v; }
+
+static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
+                               int flag)
+{
+    TTEntry* t = &g_tt[key & TT_MASK];
+    TTEntry cur = *t;
+    uint64_t ck = cur.key_x ^ cur.d1 ^ cur.d2;
+    int replace = (ck == key)
+                ? (TT_DEPTH(cur) <= 0)
+                : (TT_GEN(cur) != (int)(uint16_t)g_gen || TT_DEPTH(cur) <= 0);
+    if (!replace) return;
+    int sv = val;
+    if (sv >= MATE_THRESH) sv += ply;                /* node -> ply-relative */
+    else if (sv <= -MATE_THRESH) sv -= ply;
+    tt_store_raw(t, key, sv, move & 0x7FFF, 0, flag);
+}
+
 static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
 {
     g_nodes++;
@@ -1207,6 +1236,26 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
     if (in_chk < 0) in_chk = in_check(b);
     if (ply >= CS_MAXPLY + 60)                       /* hard recursion guard */
         return in_chk ? 0 : eval_full_stm(b);
+
+    /* P-44: TT probe -- before movegen AND eval, so a hit costs nothing. */
+    int alpha_orig = alpha;
+    uint64_t key = 0;
+    uint32_t tt_move = 0;
+    int use_qtt = g_use_tt && g_qs_tt && g_tt != NULL;
+    if (use_qtt) {
+        key = board_key(b);
+        TTEntry e;
+        if (tt_load(&g_tt[key & TT_MASK], key, &e)) {
+            int v = TT_VALUE(e);                     /* ply-relative -> node */
+            if (v >= MATE_THRESH) v -= ply;
+            else if (v <= -MATE_THRESH) v += ply;
+            int fl = TT_FLAG(e);
+            if (fl == TT_EXACT) return v;
+            if (fl == TT_LOWER && v >= beta) return v;
+            if (fl == TT_UPPER && v <= alpha) return v;
+            tt_move = TT_MOVE(e);
+        }
+    }
 
     int color = b->turn, best, stand = 0;
     uint32_t moves[256];
@@ -1223,12 +1272,17 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
         if (n == 0 && (!g_qgen || !has_legal_quiet(b)))
             return 0;                                /* stalemate: draw, not eval */
         stand = eval_full_stm(b);
-        if (stand >= beta) return stand;             /* fail-soft stand-pat */
+        if (stand >= beta) {                         /* fail-soft stand-pat */
+            if (use_qtt && !CS_UNWINDING())          /* P-44: cache the cutoff */
+                qs_tt_store(key, stand, ply, 0, TT_LOWER);
+            return stand;
+        }
         if (stand > alpha) alpha = stand;
         best = stand;
     }
 
-    order_moves(b, moves, n, ply < CS_MAXPLY ? ply : 0, 0, 0);
+    uint32_t bm = 0;                                 /* P-44: best move found */
+    order_moves(b, moves, n, ply < CS_MAXPLY ? ply : 0, 0, tt_move);
     for (int i = 0; i < n; i++) {
         uint32_t m = moves[i];
         int victim   = (m >> MV_SHIFT_VICTIM) & 7;
@@ -1249,9 +1303,15 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
         apply_move(&c, m);
         int v = -qsearch(&c, -beta, -alpha, ply + 1, in_check(&c));
         if (CS_UNWINDING()) return 0;                /* v is garbage: unwind */
-        if (v > best) best = v;
+        if (v > best) { best = v; bm = m; }
         if (v > alpha) alpha = v;
         if (alpha >= beta) break;
+    }
+    /* P-44: store the resolved node (bm==0 when stand-pat stayed best). */
+    if (use_qtt && !CS_UNWINDING()) {
+        int flag = (best <= alpha_orig) ? TT_UPPER
+                 : (best >= beta)       ? TT_LOWER : TT_EXACT;
+        qs_tt_store(key, best, ply, bm, flag);
     }
     return best;
 }

@@ -151,6 +151,13 @@ if os.path.exists("csearch.c"):
             ce._lib.set_improving(0)
         except AttributeError:
             pass                       # pre-P-04 csearch.so: no such toggle
+        # P-44 qsearch TT probe defaults ON (A/B vs v34 pending) and changes
+        # the tree; pin it OFF so the ladder tracks the CONFIRMED v34 search.
+        # Remove this and re-measure CE_LADDER when P-44 confirms into v35.
+        try:
+            ce._lib.set_qs_tt(0)
+        except AttributeError:
+            pass                       # pre-P-44 csearch.so: no such toggle
         # EP-01 FIDE-exact ep hashing is DORMANT (default OFF: correctness
         # fix, but tree-changing -- queued for its own A/B behind P-04).
         # Belt-and-braces pin so the ladder tracks the confirmed search even

@@ -41,8 +41,13 @@ Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
     generation is ON (csearch.c set_qgen, default on: NODE-IDENTICAL by
     construction -- same noisy subset, same order, stalemate semantics
     preserved -- verified over 8 FENs x 2 depths, +32% NPS on a mixed bench
-    / +55% on startpos; being node-identical it needs no ladder pin); no
-    singular
+    / +55% on startpos; being node-identical it needs no ladder pin); P-44
+    qsearch TT probe/store is ON (csearch.c set_qs_tt, default on, A/B vs
+    v34 pending -- the node-majority qsearch now probes the warm TT before
+    movegen/eval and stores depth-0 entries that never displace negamax
+    entries; -15% fixed-depth nodes but ~-18% NPS from the per-node probe's
+    DRAM latency, so time-to-depth is ~flat and the A/B decides;
+    set_qs_tt(0) restores v34 node-exactly); no singular
     extensions / razoring (dormant or absent in v30 at match depths anyway),
   * repetition detection covers negamax nodes, not quiescence nodes,
   * the position hash mixes the RAW ep square (set after every double push),
