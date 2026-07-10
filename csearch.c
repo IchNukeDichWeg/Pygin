@@ -919,6 +919,8 @@ static int pawn_structure(uint64_t wp, uint64_t bp, int phase)
     return s;
 }
 
+static int g_simp_thresh = 0, g_simp_weight = 10;   /* v30 simplify port;
+                                                     * 0 = off (default) */
 static int eval_white(const Board* b)
 {
     uint64_t occ_w = b->occ[WHITE], occ_b = b->occ[BLACK];
@@ -973,6 +975,28 @@ static int eval_white(const Board* b)
                                   b->rooks, b->queens,
                                   b->pawns & occ_w, b->pawns & occ_b,
                                   b->kings, phase);
+    /* simplify (port of _simplify_bb; NOT applied on the lone-loser path
+     * above, matching Python's early return): FULL material diff incl.
+     * pawns at the classic 100..900 values (_npm), reward the leader per
+     * minor/major already traded off. */
+    if (g_simp_thresh > 0) {
+        int mw = 100 * __builtin_popcountll(b->pawns   & occ_w)
+               + 320 * __builtin_popcountll(b->knights & occ_w)
+               + 330 * __builtin_popcountll(b->bishops & occ_w)
+               + 500 * __builtin_popcountll(b->rooks   & occ_w)
+               + 900 * __builtin_popcountll(b->queens  & occ_w);
+        int mb = 100 * __builtin_popcountll(b->pawns   & occ_b)
+               + 320 * __builtin_popcountll(b->knights & occ_b)
+               + 330 * __builtin_popcountll(b->bishops & occ_b)
+               + 500 * __builtin_popcountll(b->rooks   & occ_b)
+               + 900 * __builtin_popcountll(b->queens  & occ_b);
+        int diff = mw - mb;
+        if ((diff < 0 ? -diff : diff) >= g_simp_thresh) {
+            int pieces = __builtin_popcountll(b->knights | b->bishops
+                                              | b->rooks | b->queens);
+            score += (diff > 0 ? 1 : -1) * g_simp_weight * (14 - pieces);
+        }
+    }
     return score;
 }
 
@@ -1468,6 +1492,17 @@ static int g_contempt = 50, g_draw_margin = 200;
 void csearch_set_draw(int contempt, int margin)
 {
     g_contempt = contempt; g_draw_margin = margin;
+}
+
+/* v30 ``use_simplify`` port, re-gated for the >=500cp re-test (the 200cp
+ * original A/B'd -14 Elo in the Python era -- it traded into drawn endings;
+ * at a decisive threshold that failure mode shrinks to nothing). threshold
+ * 0 = off (the default; the term then cannot touch the eval). NOTE: mostly
+ * invisible to ADJUDICATED matches (WDL calls wins near the same cp band);
+ * its real surface is unadjudicated play -- odds vs Stockfish, GUI games. */
+void csearch_set_simplify(int threshold, int weight)
+{
+    g_simp_thresh = threshold; g_simp_weight = weight;
 }
 
 /* Contempt-adjusted draw value, side-to-move view (port of _draw_score):
