@@ -41,7 +41,10 @@ Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
     generation is ON (csearch.c set_qgen, default on: NODE-IDENTICAL by
     construction -- same noisy subset, same order, stalemate semantics
     preserved -- verified over 8 FENs x 2 depths, +32% NPS on a mixed bench
-    / +55% on startpos; being node-identical it needs no ladder pin); P-44
+    / +55% on startpos; being node-identical it needs no ladder pin. Timed
+    Elo measured 2026-07-10 as the P-22+P-44 bundle vs v34: ~+71.8 +/-8.5
+    @7k games -- the NPS converts at the classic ~2-3 Elo/1%; P-44's share
+    pending the engine_qtt_off isolation A/B); P-44
     qsearch TT probe/store is ON (csearch.c set_qs_tt, default on, A/B vs
     v34 pending -- the node-majority qsearch now probes the warm TT before
     movegen/eval and stores depth-0 entries that never displace negamax
