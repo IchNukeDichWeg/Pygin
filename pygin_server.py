@@ -18,6 +18,7 @@ eng = subprocess.Popen([ENGINE], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
 
 
 def send(cmd):
+    print(">>", cmd, flush=True)
     eng.stdin.write(cmd + "\n")
     eng.stdin.flush()
 
@@ -27,6 +28,7 @@ def wait_for(prefix):
         line = eng.stdout.readline()
         if not line:
             raise RuntimeError("engine died")
+        print("<<", line.rstrip(), flush=True)
         if line.startswith(prefix):
             return line.strip()
 
