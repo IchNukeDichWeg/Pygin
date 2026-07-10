@@ -940,8 +940,12 @@ static int eval_white(const Board* b)
             mg -= mv + mgt[i]; eg -= ev + egt[i]; phase += pw;
         }
     }
-    if (phase > 24) phase = 24;
-    int score = (mg * phase + eg * (24 - phase)) / 24;
+    /* FB-06: PHASE_MAX is a synced eval tunable (eval_c.c, set_mobility_
+     * params) -- the hardcoded 24 here would silently desync on a retune. */
+    extern int PHASE_MAX;
+    if (phase > PHASE_MAX) phase = PHASE_MAX;
+    int score = PHASE_MAX > 0
+              ? (mg * phase + eg * (PHASE_MAX - phase)) / PHASE_MAX : mg;
     score += (b->turn == WHITE) ? g_tempo : -g_tempo;
 
     /* lone-loser strong mop-up shortcut (replaces ALL positional terms).
@@ -1139,6 +1143,19 @@ void cs_tt_reset(void)
 {
     if (g_tt) memset(g_tt, 0, TT_SIZE * sizeof(TTEntry));
     g_gen = 0;
+}
+
+/* FI-13a: TT utilization in permille (UCI `hashfull`) -- samples 1000
+ * evenly-spaced slots; an all-zero entry image means never written. */
+int cs_hashfull(void)
+{
+    if (g_tt == NULL) return 0;
+    int used = 0;
+    for (int i = 0; i < 1000; i++) {
+        const TTEntry* t = &g_tt[(uint64_t)i * (TT_SIZE / 1000)];
+        if (t->key_x | t->d1 | t->d2) used++;
+    }
+    return used;
 }
 
 static inline void tt_store_raw(TTEntry* t, uint64_t key, int value,
@@ -1469,14 +1486,28 @@ static __thread int g_is_helper = 0;    /* set at helper-thread entry */
 /* Node-entry poll (negamax + qsearch): every 4096 nodes check the clock.
  * At ~2.5M nps that is ~1.6 ms granularity -- finer than v30's poll.
  * Helpers additionally unwind when the main thread's iteration is done. */
+/* FB-09: optional node budget (UCI `go nodes N`; 0 = unlimited). Checked in
+ * the same rate-limited slot as the deadline; main thread only (helpers ride
+ * g_hstop). Node-identical when 0. */
+static uint64_t g_node_limit = 0;
+void set_node_limit(uint64_t n) { g_node_limit = n; }
+
 #define CS_TIME_CHECK() do { \
-        if ((g_nodes & 4095) == 0 && g_deadline && now_ns() >= g_deadline) \
-            g_abort = 1; \
+        if ((g_nodes & 4095) == 0) { \
+            if (g_deadline && now_ns() >= g_deadline) g_abort = 1; \
+            if (g_node_limit && !g_is_helper && g_nodes >= g_node_limit) \
+                g_abort = 1; \
+        } \
         if (CS_UNWINDING()) return 0; \
     } while (0)
 
 /* Host-requested abort (UCI `stop`): same unwind path as the deadline. */
 void cs_stop(void) { g_abort = 1; }
+
+/* FI-13a: selective depth -- deepest ply touched since cs_search_begin
+ * (main thread; extensions + qsearch included). For UCI `seldepth`. */
+static __thread int g_seldepth = 0;
+int cs_seldepth(void) { return g_seldepth; }
 
 static uint64_t g_helper_nodes = 0;     /* Lazy-SMP helper node aggregate
                                          * (atomic adds on helper exit) */
@@ -1782,6 +1813,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
                             * line -- a stale slot would splice wrong moves
                             * into the parent's PV. ply < PV_MAX: the guard
                             * below caps recursion at CS_MAXPLY + 60. */
+    if (ply > g_seldepth) g_seldepth = ply;  /* FI-13a: UCI seldepth */
     CS_TIME_CHECK();
     if (in_chk < 0) in_chk = in_check(b);
     if (ply >= CS_MAXPLY + 60)                       /* hard recursion guard */
@@ -1908,6 +1940,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     g_pv_len[ply] = 0;     /* PV-01: see qsearch -- every exit path must
                             * leave a valid (empty) line. ply <= CS_MAXPLY
                             * here, well inside PV_MAX. */
+    if (ply > g_seldepth) g_seldepth = ply;  /* FI-13a: UCI seldepth */
     CS_TIME_CHECK();
     if (in_chk < 0) in_chk = in_check(b);
 
@@ -1937,7 +1970,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     /* --- TT probe -------------------------------------------------- */
     uint32_t tt_move = 0;
     TTEntry* tte = NULL;
-    if (g_use_tt) {
+    if (g_use_tt && g_tt) {         /* FB-13b: g_tt may be NULL (failed alloc) */
         tte = &g_tt[key & TT_MASK];
         TTEntry e;
         if (tt_load(tte, key, &e)) {
@@ -2162,7 +2195,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
      * Never store while unwinding (belt-and-braces: the loop returns before
      * reaching here, but a garbage store would poison EVERY later search
      * through the shared, persistent table). */
-    if (g_use_tt && !CS_UNWINDING()) {
+    if (g_use_tt && tte && !CS_UNWINDING()) {   /* FB-13b: tte NULL when TT-less */
         TTEntry cur = *tte;
         uint64_t cur_key = cur.key_x ^ cur.d1 ^ cur.d2;
         int replace = (cur_key == key)
@@ -2217,15 +2250,17 @@ void cs_search_begin(const uint64_t* hist, int nhist, double budget_sec)
     }
     memset(g_ctx, 0, sizeof(g_ctx));
     g_root_pv_len = 0;                   /* PV-01: fresh line per game move */
+    g_seldepth = 0;                      /* FI-13a: per-move seldepth */
     g_helper_nodes = 0;                  /* Lazy-SMP helper node aggregate */
-    if (g_tt == NULL) {
+    if (g_tt == NULL && g_use_tt) {
+        /* Q-13 + FB-13b: degrade, don't segfault -- and RETRY each move
+         * instead of latching g_use_tt=0 forever (a transient failure would
+         * have permanently disabled the TT). Consumers guard on g_tt. */
         g_tt = (TTEntry*)calloc(TT_SIZE, sizeof(TTEntry));
-        if (g_tt == NULL) {                  /* Q-13: degrade, don't segfault */
+        if (g_tt == NULL)
             fprintf(stderr, "csearch: TT calloc(%zu) failed -- searching "
-                    "without a transposition table\n",
+                    "without a transposition table this move\n",
                     (size_t)TT_SIZE * sizeof(TTEntry));
-            g_use_tt = 0;
-        }
     }
     if (!g_lmr_ready) init_lmr();
     g_gen = (g_gen + 1) & 0x7FFF;        /* old entries become replaceable */
@@ -2303,7 +2338,7 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
     }
 
     /* Root TT store (feeds the next iteration's ordering + the PV walk). */
-    if (g_use_tt && !g_abort && !(g_is_helper && g_hstop) && *out_done > 0) {
+    if (g_use_tt && g_tt && !g_abort && !(g_is_helper && g_hstop) && *out_done > 0) {
         int flag = (best <= alpha_orig) ? TT_UPPER
                  : (best >= beta)       ? TT_LOWER : TT_EXACT;
         tt_store_raw(&g_tt[key & TT_MASK], key, best,
@@ -2458,6 +2493,8 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted);
 }
 
-int csearch_abi(void) { return 6; }   /* 6 = cs_get_pv (PV-01) + set_pv_exact
+int csearch_abi(void) { return 7; }   /* 7 = set_node_limit + cs_seldepth +
+                                       * cs_hashfull (FB-09/FI-13);
+                                       * 6 = cs_get_pv (PV-01) + set_pv_exact
                                        * + set_check_ext_budget; 5 = Lazy SMP
                                        * (set_threads) + cs_stop */

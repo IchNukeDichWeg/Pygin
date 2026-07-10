@@ -11,10 +11,13 @@ time_manager.calculate_move_time, so `go wtime/btime/winc/binc` gets the
 same budgets the internal harnesses use.
 
 Options:
-    Threads  (spin 1..64, default 1)  -- Lazy-SMP helper threads in C
-    OwnBook  (check, default true)    -- engine's own Polyglot book
-    UseTB    (check, default false)   -- root Lichess-Syzygy probe
-                                         (difficulty-gated; needs network)
+    Threads       (spin 1..64, default 1)  -- Lazy-SMP helper threads in C
+    OwnBook       (check, default true)    -- engine's own Polyglot book
+    UseTB         (check, default false)   -- root Lichess-Syzygy probe
+                                              (difficulty-gated; needs network)
+    Move Overhead (spin 0..5000, default 40) -- per-move clock slack, ms
+    (+ the P-26 tuning spins; `bench` prints the OpenBench nodes signature;
+    `go nodes N` is honored via a C-side node budget)
 
 `stop` aborts the search via engine.stop() -- the host-owned `_abort` flag
 plus cs_stop(); the search thread then prints the bestmove found so far
@@ -53,21 +56,54 @@ def info_line(rec, white_to_move, engine):
         score_str = f"cp {stm}"
     t = max(1, rec.get("time_ms", 0))
     nodes = rec.get("nodes", 0)
-    parts = [f"info depth {rec.get('depth', 0)}", f"score {score_str}",
-             f"nodes {nodes}", f"nps {int(nodes * 1000 / t)}", f"time {t}"]
+    # FI-13a: seldepth (deepest ply incl. extensions/qsearch) + hashfull
+    # (TT permille) -- standard GUI fields, sampled from the C side.
+    parts = [f"info depth {rec.get('depth', 0)}",
+             f"seldepth {engine._lib.cs_seldepth()}",
+             f"score {score_str}",
+             f"nodes {nodes}", f"nps {int(nodes * 1000 / t)}",
+             f"hashfull {engine._lib.cs_hashfull()}", f"time {t}"]
     pv = rec.get("pv", "")
     if pv:
         parts.append(f"pv {pv}")
     return " ".join(parts)
 
 
+# FI-13c: OpenBench-style `bench` -- fixed suite, fixed depth, cold TT per
+# position; the node total is the reproducible signature.
+BENCH_FENS = [
+    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3",
+    "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
+    "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+    "8/2k5/3p4/p2P1p2/P2P1P2/8/8/4K3 w - - 0 1",
+    "r2q1rk1/pP1p2pp/Q4n2/bbp1p3/Np6/1B3NBn/pPPP1PPP/R3K2R b KQ - 0 1",
+]
+
+
+def run_bench(engine, depth=11):
+    import time as _time
+    total, t0 = 0, _time.perf_counter()
+    for fen in BENCH_FENS:
+        engine._lib.cs_tt_reset()
+        engine.get_best_move(chess.Board(fen), depth)
+        total += engine.nodes_searched
+    dt = max(1e-9, _time.perf_counter() - t0)
+    out(f"{total} nodes {int(total / dt)} nps")
+
+
 def main():
     engine = cengine.Engine()
     engine.pv_uci = True                     # UCI pv format
+    engine.move_overhead_ms = 40             # FI-13b: UCI Move Overhead
     # P-26: shadow copies of the paired C-side tuning values (set_rfp and
     # set_null_move each set two values; UCI options arrive one at a time).
+    # FB-06: PUSH them once so Python is authoritative -- if a C default ever
+    # drifts, the first setoption would otherwise pair a stale shadow with it.
     engine._rfp_margin, engine._rfp_depth = 80, 6
     engine._null_base, engine._null_div = 2, 6
+    engine._lib.set_rfp(engine._rfp_margin, engine._rfp_depth)
+    engine._lib.set_null_move(engine._null_base, engine._null_div)
     board = chess.Board()
     search_thread = None
 
@@ -95,15 +131,23 @@ def main():
                 params["infinite"] = True
 
         max_depth = int(params.get("depth", 60))
+        # FB-09: honor `go nodes N` (deterministic testing / OpenBench);
+        # None = unlimited. Applied per-go, cleared after.
+        engine.node_limit = params.get("nodes") or None
         if "movetime" in params:
-            budget = params["movetime"] / 1000.0
+            # FB-09/B-22: movetime 0 (or negative) means "move now", not
+            # "search until the depth cap" -- clamp to a near-instant budget.
+            budget = max(1, params["movetime"]) / 1000.0
         elif "wtime" in params or "btime" in params:
             my = params.get("wtime" if board.turn else "btime", 0)
             opp = params.get("btime" if board.turn else "wtime", 0)
             inc = params.get("winc" if board.turn else "binc", 0)
             budget = calculate_move_time(
                 board, my, opp, inc,
+                overhead_ms=engine.move_overhead_ms,   # FI-13b
                 movestogo=params.get("movestogo")) / 1000.0
+        elif "nodes" in params:
+            budget = None                    # node-limited: C aborts at N
         elif "infinite" in params or "depth" in params:
             budget = None                    # until `stop` / depth cap
         else:
@@ -122,23 +166,38 @@ def main():
 
         # B-03: UCI requires `go infinite` (and bare `go`) to hold bestmove
         # until `stop`, even if the search finishes early (mate break,
-        # depth cap). Depth/time/clock-limited gos still report on completion.
+        # depth cap). Depth/time/clock/node-limited gos report on completion.
         hold = ("infinite" in params) or not any(
-            k in params for k in ("movetime", "wtime", "btime", "depth"))
+            k in params for k in ("movetime", "wtime", "btime", "depth",
+                                  "nodes"))
         stop_evt = threading.Event()
 
         white_to_move = board.turn == chess.WHITE
         engine.on_depth = lambda rec: out(info_line(rec, white_to_move, engine))
         engine.on_final = None               # final info == last depth line
+        # FB-13d: snapshot the position NOW -- a `position` command racing
+        # the thread's startup must not change what gets searched.
+        search_board = board.copy()
 
         def run():
-            if budget is None:
-                mv = engine.get_best_move(board.copy(), max_depth)
-            else:
-                mv = engine.get_best_move_timed(board.copy(), budget, max_depth)
-            if hold:
-                stop_evt.wait()              # B-03: hold until `stop`
-            out(f"bestmove {mv.uci() if mv is not None else '0000'}")
+            # FB-02: an unhandled exception here used to kill the thread
+            # silently -- no bestmove EVER = the host hangs the whole slot.
+            # Always emit a bestmove; 0000 on error (arbiter-visible, not
+            # a hang).
+            mv = None
+            try:
+                if budget is None:
+                    mv = engine.get_best_move(search_board, max_depth)
+                else:
+                    mv = engine.get_best_move_timed(search_board, budget,
+                                                    max_depth)
+            except Exception as ex:
+                print(f"cuci: search error: {ex!r}", file=sys.stderr)
+            finally:
+                engine.node_limit = None     # FB-09: per-go, don't leak
+                if hold:
+                    stop_evt.wait()          # B-03: hold until `stop`
+                out(f"bestmove {mv.uci() if mv is not None else '0000'}")
 
         th = threading.Thread(target=run, daemon=True)
         th.stop_evt = stop_evt
@@ -174,12 +233,30 @@ def main():
                 out("option name AspDelta type spin default 30 min 10 max 120")
                 out("option name SoftStable type spin default 40 min 20 max 70")
                 out("option name SoftUnstable type spin default 80 min 50 max 130")
+                out("option name Move Overhead type spin default 40 min 0 max 5000")
+                # FI-13d: self-identifying config line (A/B forensics: PGN
+                # headers grep this to know exactly what was playing).
+                out(f"info string abi={engine._lib.csearch_abi()}"
+                    f" pv_exact={int(engine.PV_EXACT)}"
+                    f" check_ext_budget={engine.CHECK_EXT_BUDGET}"
+                    f" outpost={int(engine.USE_OUTPOST)}"
+                    f" simplify={int(engine.USE_SIMPLIFY)}"
+                    f" threads={engine.smp_workers}")
                 out("uciok")
             elif cmd == "isready":
                 out("readyok")
-            elif cmd == "setoption" and len(tokens) >= 5 and tokens[1] == "name":
-                name = tokens[2].lower()
-                value = tokens[4]
+            elif cmd == "setoption" and len(tokens) >= 3 and tokens[1] == "name":
+                # FB-13a: UCI option names may be MULTI-WORD ("Move Overhead")
+                # -- parse name as everything up to the `value` keyword and
+                # normalize by dropping spaces, so single-word names keep
+                # matching exactly as before.
+                if "value" in tokens:
+                    vi = tokens.index("value")
+                    name = "".join(tokens[2:vi]).lower()
+                    value = " ".join(tokens[vi + 1:])
+                else:
+                    name = "".join(tokens[2:]).lower()
+                    value = ""
                 if name == "threads":
                     engine.smp_workers = max(1, min(64, int(value)))
                 elif name == "ownbook":
@@ -216,9 +293,19 @@ def main():
                     engine.SOFT_STOP_STABLE_FRAC = int(value) / 100.0
                 elif name == "softunstable":
                     engine.SOFT_STOP_UNSTABLE_FRAC = int(value) / 100.0
+                elif name == "moveoverhead":            # FI-13b
+                    engine.move_overhead_ms = max(0, int(value))
+            elif cmd == "bench":                        # FI-13c: OpenBench
+                if not searching():
+                    run_bench(engine)
             elif cmd == "ucinewgame":
                 if searching():
                     engine.stop()
+                    # FB-01: a HELD search (go infinite / bare go) blocks on
+                    # stop_evt after unwinding -- joining without releasing
+                    # it deadlocked the whole host on GUIs that send
+                    # ucinewgame mid-analysis.
+                    search_thread.stop_evt.set()
                     search_thread.join()
                 engine._lib.cs_tt_reset()
                 engine.last_score = 0        # reset the TB difficulty gate
