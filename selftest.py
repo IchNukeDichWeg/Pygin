@@ -125,10 +125,10 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # quiet developing moves flip between depths without being a regression.
 # Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
 CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3"
-CE_LADDER = {                     # depth -> (nodes, score)  [v37: PV-02 exact PV on]
+CE_LADDER = {                     # depth -> (nodes, score)  [v38: CB-01 on]
     1: (102, 126), 2: (189, 126), 3: (749, 126), 4: (1020, 122),
-    5: (6097, 67), 6: (19407, 64), 7: (33844, 79), 8: (89878, 58),
-    9: (176360, 67), 10: (314265, 67), 11: (443853, 67), 12: (733220, 72),
+    5: (6158, 73), 6: (10561, 68), 7: (30449, 74), 8: (73264, 57),
+    9: (138861, 67), 10: (285524, 53), 11: (417116, 67), 12: (870872, 65),
 }
 if os.path.exists("csearch.c"):
     try:
@@ -136,10 +136,8 @@ if os.path.exists("csearch.c"):
         # Outpost: NULL, OFF (A/B vs v37 2026-07-10: -0.90 +/-6.8) -- the
         # default already reproduces v37; belt-and-braces pin.
         cengine.Engine.USE_OUTPOST = False
-        # CB-01 correctness batch is the LIVE candidate (default True, vs
-        # Old Engine/37); pin it off so the ladder tracks the confirmed v37
-        # search. Remove + re-measure CE_LADDER on its verdict.
-        cengine.Engine.SCORE_HYGIENE = False
+        # CB-01 correctness batch: CONFIRMED into v38 (+1.36 null KEPT as
+        # correctness), default ON -- part of the pinned reference search.
         ce = cengine.Engine()
         ce.use_book = False
         ce.use_tb = False
