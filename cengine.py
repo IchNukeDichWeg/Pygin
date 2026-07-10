@@ -68,11 +68,16 @@ Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
     PV-01 triangular PV is ON (csearch.c cs_get_pv: the PV is collected
     during the search instead of TT-walked afterwards -- NODE-EXACT, pure
     bookkeeping; _extract_pv emits the exact prefix in full, splicing the
-    old TT walk only past any truncation; mate-in-4/5 spot check went 5/6
-    full mate PVs vs the old walk's ~40-48%); PV-02 exact-PV is DORMANT
-    (csearch.c set_pv_exact, default OFF: skips TT cutoffs/narrowing at PV
-    nodes so the collected PV is complete end-to-end, 6/6 on the same spot
-    check -- tree-changing, queued for its own A/B); the check-extension
+    old TT walk only past any truncation. CAVEAT measured on the full
+    matetrack suite: with the warm TT, PV nodes hit exact entries almost
+    immediately -- check extensions inflate stored depths along mate lines
+    -- so the exact prefix is often 1 move and Bad-PVs stayed ~60%: PV-01
+    alone is necessary plumbing but NOT sufficient); PV-02 exact-PV is
+    DORMANT (csearch.c set_pv_exact, default OFF: skips TT cutoffs/
+    narrowing at PV nodes so the collected PV is complete end-to-end --
+    verified: the same matetrack FEN goes 1-move -> full 13-ply mate PV;
+    tree-changing (d12 probe: -20% nodes, sign unknown), QUEUED as the A/B
+    after P-47 -- matetrack Bad-PVs only drop when this confirms); the check-extension
     BUDGET is runtime-settable (P-47, csearch.c set_check_ext_budget, 5 =
     v36 node-exact; LIVE CANDIDATE: cengine.CHECK_EXT_BUDGET = 8, A/B vs
     v36 PENDING -- the second 50+0.20-era campaign); no singular
