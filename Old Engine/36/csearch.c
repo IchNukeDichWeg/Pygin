@@ -1206,9 +1206,6 @@ static inline void hist_update(int color, int fromto, int bonus)
  * FRESHER history than v35's node-entry snapshot, so live trees diverge
  * (often smaller). P-23 is therefore a search-behavior feature judged by
  * A/B, not a pure-speed change.
- * CONFIRMED into v36 (2026-07-10): +24.67 +/-6.8 over 10k @45+0.1 vs
- * Old Engine/35 (53.55%, pair ratio 1.39, norm +47.51) -- the second-
- * biggest single feature of the C era after P-14.
  * TT/killer/counter moves are validated by move_from_key (acceptance ==
  * gen_legal membership); killers/counter must reconstruct as QUIET, since
  * a capture with the same key was already emitted (and scored) as a

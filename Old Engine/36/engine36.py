@@ -1,6 +1,20 @@
 """
-cengine.py -- Python root driver for the C search core (phase-3 step 6).
-=========================================================================
+engine36.py -- FROZEN SNAPSHOT of v36 (2026-07-10).
+===========================================================================
+
+Snapshot of the repo-root ``cengine.py`` at the v36 milestone: v35 + P-23
+staged move ordering (lazy per-class generation; quiets scored with FRESHER
+history than v35's node-entry snapshot -- a deliberate tree change) with the
+P-46 lazy-qsearch speed rider. A/B vs Old Engine/35: **+24.67 +/-6.8 over
+10,000 games @ 45+0.1** (53.55%, ptnml 295/998/1911/1295/501, pair ratio
+1.39, norm +47.51). This closes the 45+0.10 ledger era: from the next
+campaign on the standard TC is 50+0.30 (match.py era note). Self-contained:
+the eval oracle / book provider is the sibling ``engine_eval.py`` (the
+same-day engine.py frozen), loaded by explicit path. C sources frozen
+alongside; ./setup.sh builds this directory's .so files.
+
+Original driver documentation follows.
+===========================================================================
 
 A drop-in ``Engine`` for the project's battle/match harness, with the ENTIRE
 per-node search loop in C (csearch.so): board, move ordering, transposition
@@ -52,8 +66,7 @@ Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
     could not show. v35 = v34 + P-22 + P-44 ~ +72, snapshotted Old
     Engine/35); P-46 lazy qsearch generation is ON (csearch.c set_qs_lazy,
     node-identical, ~+1-3% NPS batched rider); P-23 staged move ordering is
-    ON (csearch.c set_staged, CONFIRMED into v36: +24.67 +/-6.8 @10k vs
-    v35, snapshotted Old Engine/36 -- generates
+    ON (csearch.c set_staged, default on, A/B vs v35 PENDING -- generates
     TT-move/captures/killers/counter/quiets/bad-captures lazily per stage,
     ~+10-20% NPS AND a deliberate tree change: later stages score quiets
     with FRESHER history than v35's node-entry snapshot; stream equality
@@ -86,11 +99,19 @@ CS_MATE_THRESH = CS_INF - 1000
 
 
 def _load_pyengine():
-    """Import the sibling engine.py (param source + book probe)."""
-    if _DIR not in sys.path:
-        sys.path.insert(0, _DIR)
-    import engine as pyengine
-    return pyengine
+    """Load the FROZEN sibling engine_eval.py (param source + book probe)
+    by explicit path under a unique module name -- never the live repo-root
+    engine.py, and immune to sys.modules collisions with it."""
+    import importlib.util
+    name = "_v36_engine_eval"
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(
+        name, os.path.join(_DIR, "engine_eval.py"))
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
 
 
 class Engine:
