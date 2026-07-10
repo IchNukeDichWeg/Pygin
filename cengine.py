@@ -568,8 +568,13 @@ class Engine:
             self._py.use_book = True
             book = self._py._book_move(board)
             if book is not None:
+                # UCI hosts surface the move via the info pv (a bare depth-0
+                # line was indistinguishable from a no-move result); depth
+                # stays 0 + "book": True as the machine-readable marker.
+                self.last_pv = book.uci()
                 record = {"depth": 0, "move": book.uci(), "score": 0,
-                          "nodes": 0, "time_ms": 0, "book": True}
+                          "nodes": 0, "time_ms": 0, "book": True,
+                          "pv": book.uci()}
                 self._emit(record)
                 self._emit(dict(record, final=True), final=True)
                 return book
@@ -590,9 +595,10 @@ class Engine:
                 score_white = ((wdl if board.turn == chess.WHITE else -wdl)
                                * self._py.TB_SCORE_UNIT)
                 self.last_score = score_white
+                self.last_pv = tb_move.uci()
                 record = {"depth": 0, "move": tb_move.uci(),
                           "score": score_white, "nodes": 0, "time_ms": 0,
-                          "tb": True, "wdl": wdl}
+                          "tb": True, "wdl": wdl, "pv": tb_move.uci()}
                 self._emit(record)
                 self._emit(dict(record, final=True), final=True)
                 return tb_move
