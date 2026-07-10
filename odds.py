@@ -670,11 +670,17 @@ def main():
     ap = argparse.ArgumentParser(description="engine vs engine material/time odds match")
     ap.add_argument("--engine1"); ap.add_argument("--engine2")
     ap.add_argument("--num-games", type=int); ap.add_argument("--workers", type=int)
+    ap.add_argument("--positions", type=int,
+                    help="match.py-style count: each position is played twice "
+                         "(once per colour), so total games = positions * 2 "
+                         "(overrides --num-games)")
     ap.add_argument("--stockfish-elo", type=int); ap.add_argument("--smp", type=int)
     ap.add_argument("--odds-squares", help="comma list of squares to remove, e.g. d1 (queen) or 'none'")
     ap.add_argument("--odds-given-by", choices=("engine_1", "engine_2", "none"))
     ap.add_argument("--tc-seconds", type=float); ap.add_argument("--tc-inc", type=float)
     a = ap.parse_args()
+    if a.positions is not None:
+        a.num_games = a.positions * 2   # colour-alternating pairs
     _flag_env = {
         "engine1": "ODDS_ENGINE1", "engine2": "ODDS_ENGINE2",
         "num_games": "ODDS_NUM_GAMES", "workers": "ODDS_WORKERS",
