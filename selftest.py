@@ -156,7 +156,7 @@ if os.path.exists("csearch.c"):
         # P-23 staged ordering: CONFIRMED into v36 (+24.67 A/B vs v35),
         # default ON -- part of the pinned reference search above.
         # Q-01 continuation history defaults ON (A/B vs v36 pending, first
-        # 50+0.30-era campaign) and changes the tree; pin it OFF so the
+        # 50+0.20-era campaign) and changes the tree; pin it OFF so the
         # ladder tracks the CONFIRMED v36 search. Remove + re-measure
         # CE_LADDER when Q-01 confirms.
         try:
@@ -171,6 +171,14 @@ if os.path.exists("csearch.c"):
             ce._lib.set_ep_filter(0)
         except AttributeError:
             pass                       # pre-EP-01 csearch.so: no such toggle
+        # P-47 check-ext budget (5 = confirmed recipe) and PV-02 exact-PV
+        # (skip TT cutoffs at PV nodes) are DORMANT tree changers; pin both
+        # to the confirmed values, belt-and-braces like the toggles above.
+        try:
+            ce._lib.set_check_ext_budget(5)
+            ce._lib.set_pv_exact(0)
+        except AttributeError:
+            pass                       # pre-P-47/PV-02 csearch.so
         print("\nC core ladder (cold TT per depth):")
         ok_all, mv_final = True, None
         for d in range(1, 13):
