@@ -85,7 +85,12 @@ def main():
         for tok in it:
             if tok in ("wtime", "btime", "winc", "binc", "movestogo",
                        "movetime", "depth", "nodes", "mate"):
-                params[tok] = int(next(it, 0))
+                # B-06: a malformed number must not swallow the whole go
+                # (no bestmove ever = host hang); skip the bad token.
+                try:
+                    params[tok] = int(next(it, 0))
+                except (ValueError, TypeError):
+                    pass
             elif tok == "infinite":
                 params["infinite"] = True
 
@@ -104,6 +109,24 @@ def main():
         else:
             budget = None                    # bare `go` == go infinite
 
+        # B-05: `go movetime X` means SPEND X -- the P-35 base soft-stop
+        # (soft_stop_frac 0.55) and the U-06 stability scaling are clock-game
+        # economies that would end an exact-time search at 40-80% of the
+        # budget. Disable BOTH for movetime; restore for clock mode.
+        if "movetime" in params:
+            engine.use_stability_time = False
+            engine.soft_stop_frac = None
+        else:
+            engine.use_stability_time = True
+            engine.soft_stop_frac = 0.55     # cengine constructor default
+
+        # B-03: UCI requires `go infinite` (and bare `go`) to hold bestmove
+        # until `stop`, even if the search finishes early (mate break,
+        # depth cap). Depth/time/clock-limited gos still report on completion.
+        hold = ("infinite" in params) or not any(
+            k in params for k in ("movetime", "wtime", "btime", "depth"))
+        stop_evt = threading.Event()
+
         white_to_move = board.turn == chess.WHITE
         engine.on_depth = lambda rec: out(info_line(rec, white_to_move, engine))
         engine.on_final = None               # final info == last depth line
@@ -113,9 +136,13 @@ def main():
                 mv = engine.get_best_move(board.copy(), max_depth)
             else:
                 mv = engine.get_best_move_timed(board.copy(), budget, max_depth)
+            if hold:
+                stop_evt.wait()              # B-03: hold until `stop`
             out(f"bestmove {mv.uci() if mv is not None else '0000'}")
 
-        return threading.Thread(target=run, daemon=True)
+        th = threading.Thread(target=run, daemon=True)
+        th.stop_evt = stop_evt
+        return th
 
     for raw in sys.stdin:
         # BUG-01: malformed input must never kill the process mid-game --
@@ -197,25 +224,29 @@ def main():
                 engine.last_score = 0        # reset the TB difficulty gate
                 board = chess.Board()
             elif cmd == "position":
-                if "fen" in tokens:
-                    i = tokens.index("fen")
-                    j = tokens.index("moves") if "moves" in tokens else len(tokens)
-                    board = chess.Board(" ".join(tokens[i + 1:j]))
-                else:                        # startpos
-                    board = chess.Board()
-                if "moves" in tokens:
-                    # BUG-02: guard every push -- an unparseable/illegal
-                    # token must stop cleanly HERE, never leave a
-                    # half-applied board that the next `go` silently
-                    # searches (uci.py's rule).
-                    for u in tokens[tokens.index("moves") + 1:]:
-                        try:
-                            mv = chess.Move.from_uci(u)
-                        except ValueError:
-                            break
-                        if mv not in board.legal_moves:
-                            break
-                        board.push(mv)
+                # BUG-02 + B-08: ALL-OR-NOTHING. Build on a scratch board;
+                # a bad FEN or an unparseable/illegal move token rejects the
+                # whole command (stderr note) and keeps the previous board --
+                # never a half-applied prefix that the next `go` silently
+                # searches, and never a stale board pretending to be the new
+                # position without saying so.
+                try:
+                    if "fen" in tokens:
+                        i = tokens.index("fen")
+                        j = tokens.index("moves") if "moves" in tokens else len(tokens)
+                        nb = chess.Board(" ".join(tokens[i + 1:j]))
+                    else:                    # startpos
+                        nb = chess.Board()
+                    if "moves" in tokens:
+                        for u in tokens[tokens.index("moves") + 1:]:
+                            mv = chess.Move.from_uci(u)   # raises on garbage
+                            if mv not in nb.legal_moves:
+                                raise ValueError(f"illegal move {u!r}")
+                            nb.push(mv)
+                    board = nb
+                except Exception as ex:
+                    print(f"cuci: position command rejected ({ex})",
+                          file=sys.stderr)
             elif cmd == "go":
                 if searching():
                     continue                 # already searching; ignore
@@ -224,10 +255,12 @@ def main():
             elif cmd == "stop":
                 if searching():
                     engine.stop()
+                    search_thread.stop_evt.set()   # B-03: release the hold
                     search_thread.join()
             elif cmd == "quit":
                 if searching():
                     engine.stop()
+                    search_thread.stop_evt.set()
                     search_thread.join()
                 break
         except Exception:
