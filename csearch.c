@@ -1225,8 +1225,9 @@ typedef struct {
     int stage;                          /* 0 tt, 1 caps, 2 k0, 3 k1, 4 cnt,
                                          * 5 quiets, 6 badcaps, 7 done */
     uint32_t k0, k1;                    /* killer keys snapshot */
-    uint32_t cap[128]; int csc[128]; int ncap, icap;
-    uint32_t bad[128]; int bsc[128]; int nbad, ibad;
+    uint32_t cap[192]; int csc[192]; int ncap, icap;   /* B-07: adversarial
+    * gen_captures ceiling computes to ~128 exactly; 192 = headroom */
+    uint32_t bad[192]; int bsc[192]; int nbad, ibad;
     uint32_t qt[256];  int qsc[256]; int nqt, iqt;
 } Stager;
 
@@ -1266,7 +1267,7 @@ static uint32_t stager_next(Stager* st)
         }
         case 1: {                                    /* good captures */
             if (st->icap == 0 && st->ncap == 0) {    /* lazy generation */
-                uint32_t raw[128];
+                uint32_t raw[192];                   /* B-07 headroom */
                 int n = gen_captures(b, raw);
                 for (int i = 0; i < n; i++) {
                     uint32_t m = raw[i];
@@ -1712,11 +1713,19 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
         if (!in_chk) {
             if (!victim && !is_promo) continue;      /* quiets: not in qsearch */
             if (victim && !is_promo) {               /* pure capture */
-                int from = m & 63, to = (m >> 6) & 63;
-                int sv = see(b->pawns, b->knights, b->bishops, b->rooks,
-                             b->queens, b->kings, b->occ[WHITE], b->occ[BLACK],
-                             color, from, to, (m & MV_BIT_EP) ? 1 : 0);
-                if (sv < 0) continue;                /* skip losing captures */
+                /* Q-02: SEE only when the mover outranks the victim -- with
+                 * mover <= victim the worst case after the recapture is
+                 * victim - mover >= 0, so SEE can never be negative and the
+                 * skip below can never fire. Node-identical; the ordering's
+                 * SEE (order_moves / Stager) uses the same gate. */
+                int mover = (m >> MV_SHIFT_MOVER) & 7;
+                if (mover > victim) {
+                    int from = m & 63, to = (m >> 6) & 63;
+                    int sv = see(b->pawns, b->knights, b->bishops, b->rooks,
+                                 b->queens, b->kings, b->occ[WHITE], b->occ[BLACK],
+                                 color, from, to, (m & MV_BIT_EP) ? 1 : 0);
+                    if (sv < 0) continue;            /* skip losing captures */
+                }
                 if (stand + PIECE_VAL[victim] + g_delta_margin <= alpha)
                     continue;                        /* delta pruning */
             }
@@ -2019,7 +2028,15 @@ void cs_search_begin(const uint64_t* hist, int nhist, double budget_sec)
     memset(g_killers, 0, sizeof(g_killers));
     memset(g_counter, 0, sizeof(g_counter));
     g_helper_nodes = 0;                  /* Lazy-SMP helper node aggregate */
-    if (g_tt == NULL) g_tt = (TTEntry*)calloc(TT_SIZE, sizeof(TTEntry));
+    if (g_tt == NULL) {
+        g_tt = (TTEntry*)calloc(TT_SIZE, sizeof(TTEntry));
+        if (g_tt == NULL) {                  /* Q-13: degrade, don't segfault */
+            fprintf(stderr, "csearch: TT calloc(%zu) failed -- searching "
+                    "without a transposition table\n",
+                    (size_t)TT_SIZE * sizeof(TTEntry));
+            g_use_tt = 0;
+        }
+    }
     if (!g_lmr_ready) init_lmr();
     g_gen = (g_gen + 1) & 0x7FFF;        /* old entries become replaceable */
 }
