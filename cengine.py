@@ -73,6 +73,19 @@ ON by default (A/B-confirmed, or free by construction):
     warm TT, PV nodes hit exact entries almost immediately (check
     extensions inflate stored depths along mate lines), so the exact
     prefix was often 1 move and matetrack Bad-PVs stayed ~60%.
+  * FI-02/FI-03 NPS batch (2026-07-11, NODE-IDENTICAL -- ladder passes
+    bit-exactly, eval-cache differential clean over 15.9M nodes): mover PT
+    read from the move word in apply_move (was a 5-branch bitboard probe);
+    ordering's SEE verdict tagged into move-word bits 22-23 and reused by
+    qsearch's losing-capture skip (every consumer masks to 15 bits);
+    lazy pick_next ordering on the non-staged paths (stable shift-to-front,
+    emission order == the full sort's; most nodes cut by move 3 and never
+    sort the tail); static eval cached in the TT entry's spare 16 bits
+    (deterministic per position => EXACT, reused on TT hits in negamax AND
+    qsearch stand-pat -- the eval call is the most expensive per-node op).
+    Paired alternating bench vs v38: +3.94% median, 9/9 pairs positive.
+    Elo rides the Phase-2 batch A/B per the P-22 lesson. (-flto was probed
+    and read null on Apple Silicon -- not adopted.)
   * PV-02 exact PV (set_pv_exact; CONFIRMED into v37 2026-07-10,
     snapshotted Old Engine/37; set_pv_exact(0) = v36's search): skip TT
     cutoffs/narrowing at PV nodes so the collected PV is complete
