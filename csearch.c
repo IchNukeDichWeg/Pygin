@@ -1591,8 +1591,10 @@ static int g_check_ext = 1;
 void set_check_ext(int v) { g_check_ext = v; }
 #define CHECK_EXT_MAX 5
 /* P-47: the budget itself is runtime-settable. 5 (the v30/CHECK_EXT_MAX
- * recipe) reproduces v36 node-exactly; the raise-to-8 candidate queues for
- * its own A/B (tree-changing: deeper check lines). */
+ * recipe) reproduces v36 node-exactly. Raise-to-8 REJECTED (A/B vs v36
+ * 2026-07-10, 10k @ 50+0.20: -4.59 +/-6.8, pair ratio 0.96) -- deeper
+ * check lines cost more than they find; extensions vein confirmed thin
+ * (P-01 +6.8, P-43 +3.5 marginal, P-47 -4.6). Don't re-try at this TC. */
 static int g_check_ext_budget = CHECK_EXT_MAX;
 void set_check_ext_budget(int v)
 {
