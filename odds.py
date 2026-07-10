@@ -28,7 +28,7 @@ once and plays its share of the games; results stream back to one log/PGN.
 # ====================================================================== #
 
 # --- Engines ---------------------------------------------------------- #
-ENGINE_1_PATH = "cengine.py"            # the C core (v31); "engine.py" = v30
+ENGINE_1_PATH = "cengine.py"            # the live C core; "engine.py" = v30
 ENGINE_2_PATH = "stockfish_engine.py"
 
 # Engine 1 plays this color in GAME 1; colors alternate every game after.
@@ -62,9 +62,11 @@ ODDS_GIVEN_BY = "engine_2"
 # So ``["d1"]`` means "queen odds" regardless of which colour gives them.
 #
 # Presets (uncomment ONE):
-# ODDS_SQUARES = ["d1"]                 # Queen odds       (Q on d1)
-ODDS_SQUARES = ["a1"]                   # Rook odds        (Ra1)
-# ODDS_SQUARES = ["b1"]                 # Knight odds      (Nb1)
+# ODDS_SQUARES = ["d1"]                 # Queen odds       (Q on d1, saturated)
+# ODDS_SQUARES = ["a1"]                 # Rook odds        (Ra1, saturated @v31)
+ODDS_SQUARES = ["b1"]                   # Knight odds      (Nb1) -- the standing
+                                        # external yardstick; v31 baseline
+                                        # 76.75% (400g @45+0.15, +207 +/-48)
 # ODDS_SQUARES = ["f1"]                 # Bishop odds      (Bf1)
 # ODDS_SQUARES = ["f2"]                 # Pawn odds        (f-pawn)
 # ODDS_SQUARES = ["d1", "a1"]           # Queen + Rook odds
