@@ -1116,9 +1116,14 @@ void set_order_mode(int m) { g_order_mode = m; }
  * splits colour; + castling/turn/ep). The full key is stored and checked on
  * probe, so a hash collision is rejected, never trusted. */
 #include <stdlib.h>
-#define TT_BITS 21
-#define TT_SIZE (1u << TT_BITS)
-#define TT_MASK (TT_SIZE - 1u)
+#define TT_BITS 21              /* default: 2^21 x 24B = 48 MB */
+/* FI-10: the table size is runtime-settable (UCI Hash). TT_SIZE/TT_MASK
+ * became globals; set_tt_bits reallocates. Default 21 bits = the compiled
+ * size the whole ledger was measured at (node-identical when untouched). */
+static size_t   g_tt_size = (size_t)1 << TT_BITS;
+static uint64_t g_tt_mask = ((uint64_t)1 << TT_BITS) - 1;
+#define TT_SIZE g_tt_size
+#define TT_MASK g_tt_mask
 #define TT_EXACT 0
 #define TT_LOWER 1
 #define TT_UPPER 2
@@ -1152,6 +1157,28 @@ void set_use_tt(int v) { g_use_tt = v; }
 void cs_tt_reset(void)
 {
     if (g_tt) memset(g_tt, 0, TT_SIZE * sizeof(TTEntry));
+    g_gen = 0;
+}
+
+/* FI-10: resize the TT (UCI Hash). Frees + re-callocs; entries are lost by
+ * design (a resize is a config event, like ucinewgame). NEVER call during a
+ * search (the host guards; csearch has no internal lock for this). */
+void set_tt_bits(int bits)
+{
+    if (bits < 16) bits = 16;
+    if (bits > 27) bits = 27;                /* 27 = 3 GB of 24B entries */
+    size_t n = (size_t)1 << bits;
+    if (n == g_tt_size && g_tt) return;
+    free(g_tt);
+    g_tt = (TTEntry*)calloc(n, sizeof(TTEntry));
+    if (g_tt == NULL) {                      /* degrade like Q-13: retry at
+                                              * the old size next move */
+        g_tt_size = (size_t)1 << TT_BITS;
+        g_tt_mask = ((uint64_t)1 << TT_BITS) - 1;
+        return;
+    }
+    g_tt_size = n;
+    g_tt_mask = (uint64_t)n - 1;
     g_gen = 0;
 }
 
@@ -2576,7 +2603,8 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted);
 }
 
-int csearch_abi(void) { return 8; }   /* 8 = set_score_hygiene (CB-01);
+int csearch_abi(void) { return 9; }   /* 9 = set_tt_bits (FI-10 Hash);
+                                       * 8 = set_score_hygiene (CB-01);
                                        * 7 = set_node_limit + cs_seldepth +
                                        * cs_hashfull (FB-09/FI-13);
                                        * 6 = cs_get_pv (PV-01) + set_pv_exact
