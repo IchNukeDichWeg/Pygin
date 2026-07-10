@@ -500,25 +500,6 @@ benchmark" below.
   closed at this TC: P-01 +6.8, P-43 +3.5 marginal, P-47 -4.6).
   Snapshotted as Old Engine/37.
 
-* **v38 (2026-07-10, lives in ``cengine.py`` + ``csearch.c``): CB-01, the
-  correctness batch -- a null by design, kept for correctness.** One master
-  toggle (``set_score_hygiene``) over seven sub-resolution fixes: delta
-  pruning budgets the Texel piece values the eval actually awards (queen
-  ~1150, not the classic 900); qsearch detects in-check repetition and
-  insufficient-material draws (perpetual-check lines used to score as eval,
-  and P-44 persisted the misscore in the warm TT); null-move returns/stores
-  its fail-soft bound (unproven mates clamped); the qsearch TT probe narrows
-  alpha from a LOWER bound; mate-distance pruning at non-PV nodes; deep
-  qsearch orders with the last killer slot, not the root's. **A/B vs v37:
-  +1.36 +/-6.8 over 10,000 games @ 50+0.20 (50.20%%, ptnml
-  257/1208/2043/1223/269, pair ratio 1.02)** -- a clean null, KEPT as a
-  correctness release (PV-02 precedent). Mate-suite payoff: matetrack @0.5s
-  692/600 -> 868/751, still ZERO Bad PVs (mate-distance pruning ~+25%%
-  found). One trap the mate suite caught: mate-distance pruning at PV nodes
-  clamps beta to exactly the fastest-mate score, starving PV-01's in-window
-  store (Bad PVs 0 -> 470) -- restricted to non-PV nodes. Snapshotted as
-  Old Engine/38.
-
 Cross-version benchmark
 -----------------------
 Sweep (2026-07-02): 24 versions x 8 positions x 6 timed 5s runs (1152 searches).
