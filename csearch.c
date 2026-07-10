@@ -1,15 +1,25 @@
-/* csearch.c -- ISOLATED C search-core prototype (roadmap #29/#30, phase 1-2).
- * Board layer extracted verbatim from movegen.c (static, perft-verified);
- * material + full mobility/king-safety eval + fixed-depth alpha-beta appended
- * below to measure the real per-node NPS ceiling for the GO/NO-GO gate.
- * Does NOT touch the shipped movegen.so/eval_c.so.
+/* csearch.c -- the C search core: the SHIPPED engine's entire per-node loop.
+ * cengine.py is the Python root driver (iterative deepening, time policy,
+ * book/TB, eval-param sync); cuci.py the UCI host. Everything per-node lives
+ * here: the board layer (extracted from movegen.c, perft-verified), staged
+ * move ordering, the lockless array TT (persistent + Lazy-SMP-shared),
+ * pruning, quiescence and the FULL static eval -- a bit-exact port of
+ * engine.py's _evaluate_static (differential-verified over 3M positions),
+ * with every tunable synced from the live engine.py instance at startup.
+ * Feature toggles carry their A/B verdicts inline below; the driver-side
+ * summary is cengine.py's docstring.
  *
- * Build (links eval_c.c for the mobility/king-safety term + Constants.c):
- *   clang -O3 -march=native -shared -fPIC -w -I. \
+ * Build: ./setup.sh -- or directly (setup.sh picks -mcpu=native on ARM /
+ * Apple Silicon, -march=native on x86):
+ *   clang -O3 -mcpu=native -shared -fPIC -w -I. \
  *         -o csearch.so csearch.c eval_c.c Constants.c -lm -lpthread
  *
- * GATE RESULT (2026-07-08): full-eval C alpha-beta ~13.5M nodes/s vs the
- * Python engine's ~90k = ~150x. GO for phase 3 (full C search core). */
+ * History: born 2026-07-08 as an isolated phase-1/2 prototype (roadmap
+ * #29/#30) measuring the per-node NPS ceiling for the GO/NO-GO gate --
+ * full-eval C alpha-beta ~13.5M nodes/s vs the Python engine's ~90k =
+ * ~150x, GO -- and the shipped core ever since the phase-3 root driver
+ * landed (Old Engine/31 on; strongest engine in the repo, 29-1-0 vs v30
+ * on arrival). */
 
 #include <stdint.h>
 #include <stdio.h>
