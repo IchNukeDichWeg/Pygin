@@ -113,3 +113,6 @@ final_improvements.md
 
 # attic/: dead code archived out of the root (was individually gitignored before the move)
 attic/
+
+# PyInstaller output (build_exe.sh); build/ is ignored above
+dist/
