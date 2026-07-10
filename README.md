@@ -27,6 +27,69 @@ score-hygiene correctness releases). Against
 **~70%** at knight odds (knight-odds percentages are hardware/environment-
 dependent — compare only runs from the same machine).
 
+### Version progression
+
+Speed (nodes/s) and search depth reached from the **starting position** in a
+fixed single-threaded budget, for every version, plus the A/B Elo gain over
+the immediately preceding version where one was measured. Regenerate with
+`python3 bench_progress.py`.
+
+| Ver | NPS (startpos) | Depth | Elo Δ vs prev | Milestone |
+|----:|---------------:|------:|:--------------|:----------|
+| 1  | 16 k | 4  | — | first working engine |
+| 2  | 31 k | 7  | — | |
+| 3  | 30 k | 7  | — | |
+| 4  | 32 k | 7  | — | |
+| 5  | 31 k | 8  | — | |
+| 6  | 31 k | 8  | — | |
+| 7  | 32 k | 8  | — | |
+| 8  | 35 k | 8  | — | |
+| 9  | 26 k | 9  | — | late-move pruning |
+| 10 | 10 k | 8  | — | |
+| 11 |  8 k | 8  | — | |
+| 12 |  8 k | 8  | — | |
+| 13 |  7 k | 7  | — | |
+| 14 | 32 k | 9  | — | |
+| 15 | 32 k | 10 | — | |
+| 16 | 41 k | 10 | — | C evaluation (`eval_c.c`) |
+| 17 | 55 k | 11 | — | C move generator (`movegen.c`) |
+| 18 | 57 k | 10 | — | |
+| 19 | 55 k | 11 | — | Zobrist / shared TT |
+| 20 | 60 k | 12 | — | |
+| 21 | 60 k | 12 | — | |
+| 22 | 59 k | 12 | — | |
+| 23 | 63 k | 12 | — | |
+| 24 | 59 k | 12 | +11.75 ±6.8 ² | (measured over the v21→v24 span) |
+| 25 | 60 k | 12 | — | |
+| 26 | 68 k | 12 | — | |
+| 27 | 84 k | 12 | — | |
+| 28 | 86 k | 13 | — | NPS-optimisation era |
+| 29 | 85 k | 12 | — | soft-stop time management |
+| 30 | 84 k | 12 | — | last pure-Python version |
+| 31 | 2.7 M | 17 | ≈ +215 ¹ | **C search core** (whole per-node loop in C) |
+| 32 | 2.7 M | 18 | +7.30 ±6.8 | internal iterative reduction |
+| 33 | 2.6 M | 21 | +23.52 ±6.8 | transposition table kept warm across moves |
+| 34 | 2.7 M | 21 | +6.81 ±6.8 | check extensions |
+| 35 | 3.6 M | 21 | ≈ +72 | noisy-only qsearch gen + qsearch TT |
+| 36 | 3.9 M | 22 | +24.67 ±6.8 | staged move ordering |
+| 37 | 3.9 M | 19 | +0.17 ±6.8 | exact PV (correctness) |
+| 38 | 4.1 M | 18 | +1.36 ±6.8 | score-hygiene batch (correctness) |
+| 39-dev | 4.5 M | 18 | *A/B pending* | incremental Zobrist + NPS batch |
+
+¹ v31 is the C-core arrival: **29–1–0** vs v30 in a smoke match; the ≈ +215
+is an external / odds-derived estimate, **not** a same-time-control A/B.
+² The Python era has no per-version A/B; the one measured span is
+v21 → v24 = **+11.75 ±6.8** over 10,000 games.
+
+The C-era Elo figures are 10,000-game A/B matches vs the immediately previous
+version (cumulative **≈ +135** over v31). **Time control differs by era**
+(45 s + 0.10 for v32–v36, 50 s + 0.20 for v37–v39), so cross-era Elo is not
+one currency. **NPS is the clean speed axis; depth reached in a fixed budget
+also reflects selectivity** — v37/v38 search more nodes per ply (exact PV
+re-searches PV nodes, the correctness batch adds quiescence draw checks), so
+their depth dips even as raw NPS keeps climbing. Absolute NPS is
+hardware-dependent (an Apple-Silicon reading); the trend is the signal.
+
 ---
 
 ## Features
