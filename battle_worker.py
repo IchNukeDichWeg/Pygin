@@ -125,12 +125,16 @@ def engine_worker(conn, engine_path, use_book, pv_uci=False, book_path=None):
                 board = chess.Board(fen)
             white_to_move = board.turn == chess.WHITE
 
-            t0 = time.time()
+            # perf_counter, not time.time(): this elapsed feeds match.py's
+            # clock bookkeeping and the NPS line -- the engines themselves
+            # time on the monotonic clock (engine.py P-09), so an NTP step
+            # mid-search would desync the two.
+            t0 = time.perf_counter()
             if mode == "time":
                 move = engine.get_best_move_timed(board, value / 1000.0, max_depth)
             else:
                 move = engine.get_best_move(board, int(value))
-            elapsed = time.time() - t0
+            elapsed = time.perf_counter() - t0
 
             nodes = int(getattr(engine, "nodes_searched", 0) or 0)
             depth = int(getattr(engine, "last_depth", 0) or 0)
