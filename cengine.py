@@ -133,8 +133,10 @@ class Engine:
     # +0 +/-10 at depth 8, P-20a's subsumption logic tempers expectations).
     # Same sync mechanism as USE_KING_SHELTER: flips the embedded engine's
     # use_outpost BEFORE _sync_c_params pushes set_outpost_params into
-    # csearch's eval_c copy. False = v36 eval exactly. A/B slot queued.
-    USE_OUTPOST = False
+    # csearch's eval_c copy. False = v37 eval exactly. LIVE CANDIDATE =
+    # True, A/B vs Old Engine/37 PENDING (fourth 50+0.20-era campaign) --
+    # selftest pins the ladder to False meanwhile.
+    USE_OUTPOST = True
 
     # Simplify-at-500 re-test (user request; v30's use_simplify A/B'd -14 at
     # threshold 200 -- traded into DRAWN endings; a decisive >=500cp gate
