@@ -50,7 +50,14 @@ Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
     stores depth-0 entries that never displace negamax entries; the warm
     table across a game bought what the flat cold-ladder time-to-depth
     could not show. v35 = v34 + P-22 + P-44 ~ +72, snapshotted Old
-    Engine/35); no singular
+    Engine/35); P-46 lazy qsearch generation is ON (csearch.c set_qs_lazy,
+    node-identical, ~+1-3% NPS batched rider); P-23 staged move ordering is
+    ON (csearch.c set_staged, default on, A/B vs v35 PENDING -- generates
+    TT-move/captures/killers/counter/quiets/bad-captures lazily per stage,
+    ~+10-20% NPS AND a deliberate tree change: later stages score quiets
+    with FRESHER history than v35's node-entry snapshot; stream equality
+    under identical state proven by verify mode over ~1M nodes;
+    set_staged(0) restores v35 node-exactly); no singular
     extensions / razoring (dormant or absent in v30 at match depths anyway),
   * repetition detection covers negamax nodes, not quiescence nodes,
   * the position hash mixes the RAW ep square (set after every double push),
