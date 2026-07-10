@@ -153,6 +153,14 @@ if os.path.exists("csearch.c"):
             pass                       # pre-P-04 csearch.so: no such toggle
         # P-44 qsearch TT probe: CONFIRMED into v35 (+8.06 isolation A/B),
         # default ON -- part of the pinned reference search above.
+        # P-23 staged ordering defaults ON (A/B vs v35 pending) and changes
+        # the tree (later stages see FRESHER history than v35's entry-time
+        # snapshot); pin it OFF so the ladder tracks the CONFIRMED v35
+        # search. Remove + re-measure CE_LADDER when P-23 confirms.
+        try:
+            ce._lib.set_staged(0)
+        except AttributeError:
+            pass                       # pre-P-23 csearch.so: no such toggle
         # EP-01 FIDE-exact ep hashing is DORMANT (default OFF: correctness
         # fix, but tree-changing -- queued for its own A/B behind P-04).
         # Belt-and-braces pin so the ladder tracks the confirmed search even

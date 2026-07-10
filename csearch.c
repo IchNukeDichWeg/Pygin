@@ -12,6 +12,7 @@
  * Python engine's ~90k = ~150x. GO for phase 3 (full C search core). */
 
 #include <stdint.h>
+#include <stdio.h>
 #include "Constants.h"   /* #2.1/#2.2: magic tables + INBETWEEN_BITBOARDS */
 
 #define WHITE 1
@@ -495,6 +496,229 @@ static int has_legal_quiet(const Board* b)
     return 0;
 }
 
+/* P-23: the capture / quiet halves of gen_legal for staged ordering, each
+ * emitting its subset in gen_legal's exact relative order (the ordering
+ * sort is stable, so tie order IS generation order and the split must
+ * preserve it). Note the split differs from P-22's noisy/quiet split:
+ * v35 ordering scores NON-CAPTURE promotions as quiets (by history), so
+ * gen_captures excludes promotion pushes and gen_quiets includes them.
+ * Only valid when not in check (same caveat as gen_legal's ordering). */
+static int gen_captures(const Board* b, uint32_t* out)
+{
+    int us = b->turn, them = us ^ 1, cnt = 0;
+    uint64_t own = b->occ[us], enemy = b->occ[them], occ = own | enemy;
+    uint64_t t, a;
+    int from, to;
+
+    uint64_t nonpawns = (b->knights | b->bishops | b->rooks | b->queens | b->kings) & own;
+    for (t = nonpawns; t; t &= ~(1ULL << from)) {
+        from = 63 - __builtin_clzll(t);
+        uint64_t fb = 1ULL << from, att;
+        int mover_pt;
+        if      (b->knights & fb) { att = KNIGHT_ATT[from];               mover_pt = PT_KNIGHT; }
+        else if (b->kings   & fb) { att = KING_ATT[from];                 mover_pt = PT_KING;   }
+        else if (b->bishops & fb) { att = bishop_attacks(from, occ);      mover_pt = PT_BISHOP; }
+        else if (b->rooks   & fb) { att = rook_attacks(from, occ);        mover_pt = PT_ROOK;   }
+        else                      { att = rook_attacks(from, occ) |
+                                          bishop_attacks(from, occ);      mover_pt = PT_QUEEN;  }
+        for (a = att & enemy; a; a &= ~(1ULL << to)) {
+            to = 63 - __builtin_clzll(a);
+            if (legal(b, from, to, 0))
+                out[cnt++] = MOVE_TAG(from, to, 0, mover_pt,
+                                      board_piece_type_at(b, to), 0);
+        }
+    }
+    uint64_t pawns = b->pawns & own;
+    for (t = pawns; t; t &= ~(1ULL << from)) {              /* pawn captures */
+        from = 63 - __builtin_clzll(t);
+        for (a = PAWN_ATT[us][from] & enemy; a; a &= ~(1ULL << to)) {
+            to = 63 - __builtin_clzll(a);
+            int promo = (us == WHITE) ? (to >= 56) : (to < 8);
+            if (promo) {
+                if (legal(b, from, to, 0)) {
+                    int victim_pt = board_piece_type_at(b, to);
+                    out[cnt++] = MOVE_TAG(from, to, 5, PT_PAWN, victim_pt, 0);
+                    out[cnt++] = MOVE_TAG(from, to, 4, PT_PAWN, victim_pt, 0);
+                    out[cnt++] = MOVE_TAG(from, to, 3, PT_PAWN, victim_pt, 0);
+                    out[cnt++] = MOVE_TAG(from, to, 2, PT_PAWN, victim_pt, 0);
+                }
+            } else if (legal(b, from, to, 0)) {
+                out[cnt++] = MOVE_TAG(from, to, 0, PT_PAWN,
+                                      board_piece_type_at(b, to), 0);
+            }
+        }
+    }
+    if (b->ep >= 0 && !((1ULL << b->ep) & occ)) {           /* en passant */
+        for (t = pawns & PAWN_ATT[them][b->ep]; t; t &= ~(1ULL << from)) {
+            from = 63 - __builtin_clzll(t);
+            if (legal(b, from, b->ep, 1))
+                out[cnt++] = MOVE_TAG(from, b->ep, 0, PT_PAWN, PT_PAWN, 1);
+        }
+    }
+    return cnt;
+}
+
+static int gen_quiets(const Board* b, uint32_t* out)
+{
+    int us = b->turn, cnt = 0;
+    uint64_t own = b->occ[us], occ = own | b->occ[us ^ 1];
+    uint64_t empty = ~occ;
+    uint64_t t, a;
+    int from, to;
+
+    uint64_t nonpawns = (b->knights | b->bishops | b->rooks | b->queens | b->kings) & own;
+    for (t = nonpawns; t; t &= ~(1ULL << from)) {
+        from = 63 - __builtin_clzll(t);
+        uint64_t fb = 1ULL << from, att;
+        int mover_pt;
+        if      (b->knights & fb) { att = KNIGHT_ATT[from];               mover_pt = PT_KNIGHT; }
+        else if (b->kings   & fb) { att = KING_ATT[from];                 mover_pt = PT_KING;   }
+        else if (b->bishops & fb) { att = bishop_attacks(from, occ);      mover_pt = PT_BISHOP; }
+        else if (b->rooks   & fb) { att = rook_attacks(from, occ);        mover_pt = PT_ROOK;   }
+        else                      { att = rook_attacks(from, occ) |
+                                          bishop_attacks(from, occ);      mover_pt = PT_QUEEN;  }
+        for (a = att & empty; a; a &= ~(1ULL << to)) {
+            to = 63 - __builtin_clzll(a);
+            if (legal(b, from, to, 0))
+                out[cnt++] = MOVE_TAG(from, to, 0, mover_pt, 0, 0);
+        }
+    }
+    {                                                       /* castling */
+        int e = (us == WHITE) ? 4 : 60;
+        int ks_rook = (us == WHITE) ? 7 : 63;
+        int qs_rook = (us == WHITE) ? 0 : 56;
+        if (b->castling & (1ULL << ks_rook)) {
+            int f = e + 1, g = e + 2;
+            if (!(occ & ((1ULL << f) | (1ULL << g)))
+                && !sq_attacked_by_them(b, e)
+                && !sq_attacked_by_them(b, f)
+                && !sq_attacked_by_them(b, g))
+                out[cnt++] = MOVE_TAG(e, g, 0, PT_KING, 0, 0);
+        }
+        if (b->castling & (1ULL << qs_rook)) {
+            int d = e - 1, c = e - 2, n2 = e - 3;
+            if (!(occ & ((1ULL << d) | (1ULL << c) | (1ULL << n2)))
+                && !sq_attacked_by_them(b, e)
+                && !sq_attacked_by_them(b, d)
+                && !sq_attacked_by_them(b, c))
+                out[cnt++] = MOVE_TAG(e, c, 0, PT_KING, 0, 0);
+        }
+    }
+    uint64_t pawns = b->pawns & own;
+    uint64_t single = (us == WHITE) ? ((pawns << 8) & empty) : ((pawns >> 8) & empty);
+    for (a = single; a; a &= ~(1ULL << to)) {   /* pushes INCLUDING promos */
+        to = 63 - __builtin_clzll(a);
+        from = (us == WHITE) ? to - 8 : to + 8;
+        int promo = (us == WHITE) ? (to >= 56) : (to < 8);
+        if (promo) {
+            if (legal(b, from, to, 0)) {
+                out[cnt++] = MOVE_TAG(from, to, 5, PT_PAWN, 0, 0);
+                out[cnt++] = MOVE_TAG(from, to, 4, PT_PAWN, 0, 0);
+                out[cnt++] = MOVE_TAG(from, to, 3, PT_PAWN, 0, 0);
+                out[cnt++] = MOVE_TAG(from, to, 2, PT_PAWN, 0, 0);
+            }
+        } else if (legal(b, from, to, 0)) {
+            out[cnt++] = MOVE_TAG(from, to, 0, PT_PAWN, 0, 0);
+        }
+    }
+    uint64_t dbl = (us == WHITE) ? ((single << 8) & empty & RANK_4)
+                                 : ((single >> 8) & empty & RANK_5);
+    for (a = dbl; a; a &= ~(1ULL << to)) {
+        to = 63 - __builtin_clzll(a);
+        from = (us == WHITE) ? to - 16 : to + 16;
+        if (legal(b, from, to, 0)) out[cnt++] = MOVE_TAG(from, to, 0, PT_PAWN, 0, 0);
+    }
+    return cnt;
+}
+
+/* P-23: reconstruct + validate a 15-bit move key (from|to<<6|promo<<12)
+ * against the CURRENT position, without generating. Returns the full
+ * tagged move word iff gen_legal would emit exactly this move, else 0 --
+ * the acceptance set must match gen_legal branch-for-branch, because the
+ * staged stream replaces membership-in-the-generated-array as the
+ * legality filter for TT/killer/counter moves. */
+static uint32_t move_from_key(const Board* b, uint32_t key)
+{
+    if (!key) return 0;
+    int from = key & 63, to = (key >> 6) & 63, promo = (key >> 12) & 7;
+    if (from == to) return 0;
+    int us = b->turn, them = us ^ 1;
+    uint64_t fb = 1ULL << from, tb = 1ULL << to;
+    uint64_t own = b->occ[us], enemy = b->occ[them], occ = own | enemy;
+    if (!(own & fb) || (own & tb)) return 0;
+    int mover = board_piece_type_at(b, from);
+    int victim = (enemy & tb) ? board_piece_type_at(b, to) : 0;
+    if (promo && mover != PT_PAWN) return 0;
+
+    if (mover != PT_PAWN) {
+        uint64_t att;
+        if      (mover == PT_KNIGHT) att = KNIGHT_ATT[from];
+        else if (mover == PT_KING)   att = KING_ATT[from];
+        else if (mover == PT_BISHOP) att = bishop_attacks(from, occ);
+        else if (mover == PT_ROOK)   att = rook_attacks(from, occ);
+        else                         att = rook_attacks(from, occ)
+                                         | bishop_attacks(from, occ);
+        if (att & tb) {
+            if (!legal(b, from, to, 0)) return 0;
+            return MOVE_TAG(from, to, 0, mover, victim, 0);
+        }
+        if (mover != PT_KING || victim) return 0;
+        {                                           /* castling two-step */
+            int e = (us == WHITE) ? 4 : 60;
+            if (from != e) return 0;
+            if (to == e + 2) {
+                int ks_rook = (us == WHITE) ? 7 : 63;
+                int f = e + 1, g = e + 2;
+                if (!(b->castling & (1ULL << ks_rook))) return 0;
+                if (occ & ((1ULL << f) | (1ULL << g))) return 0;
+                if (sq_attacked_by_them(b, e) || sq_attacked_by_them(b, f)
+                        || sq_attacked_by_them(b, g)) return 0;
+                return MOVE_TAG(e, g, 0, PT_KING, 0, 0);
+            }
+            if (to == e - 2) {
+                int qs_rook = (us == WHITE) ? 0 : 56;
+                int d = e - 1, c = e - 2, n2 = e - 3;
+                if (!(b->castling & (1ULL << qs_rook))) return 0;
+                if (occ & ((1ULL << d) | (1ULL << c) | (1ULL << n2))) return 0;
+                if (sq_attacked_by_them(b, e) || sq_attacked_by_them(b, d)
+                        || sq_attacked_by_them(b, c)) return 0;
+                return MOVE_TAG(e, c, 0, PT_KING, 0, 0);
+            }
+            return 0;
+        }
+    }
+
+    /* pawn */
+    int last = (us == WHITE) ? (to >= 56) : (to < 8);
+    if (last ? (promo < 2 || promo > 5) : (promo != 0)) return 0;
+    if (PAWN_ATT[us][from] & tb) {
+        if (victim) {
+            if (!legal(b, from, to, 0)) return 0;
+            return MOVE_TAG(from, to, promo, PT_PAWN, victim, 0);
+        }
+        if (to == b->ep && !(tb & occ)) {           /* en passant */
+            if (!legal(b, from, to, 1)) return 0;
+            return MOVE_TAG(from, to, 0, PT_PAWN, PT_PAWN, 1);
+        }
+        return 0;
+    }
+    int fwd = (us == WHITE) ? from + 8 : from - 8;
+    if (to == fwd) {
+        if (occ & tb) return 0;
+        if (!legal(b, from, to, 0)) return 0;
+        return MOVE_TAG(from, to, promo, PT_PAWN, 0, 0);
+    }
+    int dbl2 = (us == WHITE) ? from + 16 : from - 16;
+    int start = (us == WHITE) ? (from >= 8 && from < 16)
+                              : (from >= 48 && from < 56);
+    if (to == dbl2 && start) {
+        if ((occ & (1ULL << fwd)) || (occ & tb)) return 0;
+        if (!legal(b, from, to, 0)) return 0;
+        return MOVE_TAG(from, to, 0, PT_PAWN, 0, 0);
+    }
+    return 0;
+}
+
 /* ---------- exported: generate_legal ------------------------------------- */
 /* Returns move count, or -1 if the side to move is in check (caller should
  * fall back to python-chess to preserve the evasion move order). */
@@ -965,6 +1189,170 @@ static inline void hist_update(int color, int fromto, int bonus)
     int *h = &g_history[color][fromto];
     int ab = bonus < 0 ? -bonus : bonus;
     *h += bonus - (*h) * ab / HIST_MAX;
+}
+
+/* --- P-23: staged move ordering ---------------------------------------- *
+ * v35 generates + scores + sorts EVERY move at EVERY negamax node, but most
+ * nodes cut off after the first move or two -- the rest of the generation,
+ * SEE calls and sorting were pure waste. Staged emission produces the SAME
+ * stream as order_moves' stable sort UNDER IDENTICAL STATE (class bands
+ * never interleave: TT 2M > captures ~1M > killers 900k/800k > counter
+ * 700k > quiet history |h|<=16384 > bad captures < -900k; ties break by
+ * generation order, which each stage preserves -- proven by VERIFY mode
+ * over ~1M nodes), but generates each class only when the search actually
+ * reaches it: a TT-move cutoff never generates anything at all.
+ * DELIBERATE TREE CHANGE vs v35: quiets are scored when their stage runs,
+ * AFTER earlier subtrees mutated global history -- later stages see
+ * FRESHER history than v35's node-entry snapshot, so live trees diverge
+ * (often smaller). P-23 is therefore a search-behavior feature judged by
+ * A/B, not a pure-speed change.
+ * TT/killer/counter moves are validated by move_from_key (acceptance ==
+ * gen_legal membership); killers/counter must reconstruct as QUIET, since
+ * a capture with the same key was already emitted (and scored) as a
+ * capture, exactly like v35's victim-first scoring.
+ * set_staged: 0 = v35 monolithic path, 1 = staged (default),
+ * 2 = VERIFY mode -- searches with the v35 path but builds the staged
+ * stream at every eligible node and aborts on the first mismatch (the
+ * strongest oracle: stream equality implies node identity). Staged engages
+ * only at !in_chk, full-ordering, P-43-off nodes; others use v35's path. */
+static int g_staged = 1;
+void set_staged(int v) { g_staged = v; }
+
+typedef struct {
+    const Board* b;
+    int ply;
+    uint32_t counter_key, tt_key;
+    int stage;                          /* 0 tt, 1 caps, 2 k0, 3 k1, 4 cnt,
+                                         * 5 quiets, 6 badcaps, 7 done */
+    uint32_t k0, k1;                    /* killer keys snapshot */
+    uint32_t cap[128]; int csc[128]; int ncap, icap;
+    uint32_t bad[128]; int bsc[128]; int nbad, ibad;
+    uint32_t qt[256];  int qsc[256]; int nqt, iqt;
+} Stager;
+
+static void stager_init(Stager* st, const Board* b, int ply,
+                        uint32_t counter_key, uint32_t tt_move)
+{
+    st->b = b; st->ply = ply;
+    st->counter_key = counter_key;
+    st->tt_key = tt_move & 0x7FFF;
+    st->stage = 0;
+    st->k0 = g_killers[ply][0]; st->k1 = g_killers[ply][1];
+    st->ncap = st->icap = st->nbad = st->ibad = st->nqt = st->iqt = 0;
+}
+
+/* stable insertion sort of (mv, sc) pairs, score desc -- same comparator
+ * and tie behavior as order_moves' sort, applied per class. */
+static void stager_sort(uint32_t* mv, int* sc, int n)
+{
+    for (int i = 1; i < n; i++) {
+        uint32_t xm = mv[i]; int xs = sc[i], j = i - 1;
+        while (j >= 0 && sc[j] < xs) { mv[j+1]=mv[j]; sc[j+1]=sc[j]; j--; }
+        mv[j+1] = xm; sc[j+1] = xs;
+    }
+}
+
+static uint32_t stager_next(Stager* st)
+{
+    const Board* b = st->b;
+    int color = b->turn;
+    for (;;) {
+        switch (st->stage) {
+        case 0: {                                    /* TT move */
+            st->stage = 1;
+            uint32_t mv = move_from_key(b, st->tt_key);
+            if (mv) return mv;
+            break;
+        }
+        case 1: {                                    /* good captures */
+            if (st->icap == 0 && st->ncap == 0) {    /* lazy generation */
+                uint32_t raw[128];
+                int n = gen_captures(b, raw);
+                for (int i = 0; i < n; i++) {
+                    uint32_t m = raw[i];
+                    if ((m & 0x7FFF) == st->tt_key) continue;  /* emitted */
+                    int from = m & 63, to = (m >> 6) & 63;
+                    int victim = (m >> MV_SHIFT_VICTIM) & 7;
+                    int mover  = (m >> MV_SHIFT_MOVER) & 7;
+                    int s = ORD_CAPTURE + victim * 100 - mover;
+                    if (mover > victim) {            /* maybe losing -> SEE */
+                        int sv = see(b->pawns, b->knights, b->bishops,
+                                     b->rooks, b->queens, b->kings,
+                                     b->occ[WHITE], b->occ[BLACK],
+                                     color, from, to, (m & MV_BIT_EP) ? 1 : 0);
+                        if (sv < 0) {
+                            st->bad[st->nbad] = m;
+                            st->bsc[st->nbad++] = ORD_BADCAP + sv;
+                            continue;
+                        }
+                    }
+                    st->cap[st->ncap] = m;
+                    st->csc[st->ncap++] = s;
+                }
+                stager_sort(st->cap, st->csc, st->ncap);
+            }
+            if (st->icap < st->ncap) return st->cap[st->icap++];
+            st->stage = 2;
+            break;
+        }
+        case 2: {                                    /* killer 0 */
+            st->stage = 3;
+            uint32_t k = st->k0;
+            if (k && k != st->tt_key) {
+                uint32_t mv = move_from_key(b, k);
+                if (mv && !((mv >> MV_SHIFT_VICTIM) & 7)) return mv;
+            }
+            break;
+        }
+        case 3: {                                    /* killer 1 */
+            st->stage = 4;
+            uint32_t k = st->k1;
+            if (k && k != st->tt_key && k != st->k0) {
+                uint32_t mv = move_from_key(b, k);
+                if (mv && !((mv >> MV_SHIFT_VICTIM) & 7)) return mv;
+            }
+            break;
+        }
+        case 4: {                                    /* counter move */
+            st->stage = 5;
+            uint32_t k = st->counter_key;
+            if (k && k != st->tt_key && k != st->k0 && k != st->k1) {
+                uint32_t mv = move_from_key(b, k);
+                if (mv && !((mv >> MV_SHIFT_VICTIM) & 7)) return mv;
+            }
+            break;
+        }
+        case 5: {                                    /* quiets by history */
+            if (st->iqt == 0 && st->nqt == 0) {      /* lazy generation */
+                uint32_t raw[256];
+                int n = gen_quiets(b, raw);
+                for (int i = 0; i < n; i++) {
+                    uint32_t m = raw[i];
+                    uint32_t key = m & 0x7FFF;
+                    if (key == st->tt_key || key == st->k0
+                            || key == st->k1 || key == st->counter_key)
+                        continue;                    /* already emitted */
+                    int from = m & 63, to = (m >> 6) & 63;
+                    st->qt[st->nqt] = m;
+                    st->qsc[st->nqt++] = g_history[color][(from << 6) | to];
+                }
+                stager_sort(st->qt, st->qsc, st->nqt);
+            }
+            if (st->iqt < st->nqt) return st->qt[st->iqt++];
+            st->stage = 6;
+            break;
+        }
+        case 6: {                                    /* bad captures */
+            if (st->ibad == 0 && st->nbad > 1)
+                stager_sort(st->bad, st->bsc, st->nbad);
+            if (st->ibad < st->nbad) return st->bad[st->ibad++];
+            st->stage = 7;
+            break;
+        }
+        default:
+            return 0;
+        }
+    }
 }
 
 /* --- Phase-3 step 6: root-driver support -------------------------------- *
@@ -1439,24 +1827,65 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         }
     }
 
-    uint32_t moves[256];
-    int n = gen_legal(b, moves);
-    if (n == 0)
-        return in_chk ? -CS_INF + ply : 0;           /* ply-relative mate */
-
-    /* P-43: single-reply extension -- node-level, fires when this node has
-     * exactly one legal move (spends from the srb budget). */
-    int sr_ext = (g_single_reply && n == 1 && srb > 0) ? 1 : 0;
-
     uint32_t counter_key = (prev12 != 0xFFFFFFFF) ? g_counter[prev12] : 0;
-    order_moves(b, moves, n, ply, counter_key, tt_move);
+
+    /* P-23: staged ordering engages at not-in-check, full-ordering nodes
+     * with P-43 off (single-reply needs the total move count up front);
+     * everything else keeps the v35 generate-all path. */
+    int staged = (g_staged == 1 && g_order_mode == 1 && !in_chk
+                  && !g_single_reply);
+    Stager st;
+    uint32_t moves[256];
+    int n = 0, sr_ext = 0;
+    if (staged) {
+        stager_init(&st, b, ply, counter_key, tt_move);
+    } else {
+        n = gen_legal(b, moves);
+        if (n == 0)
+            return in_chk ? -CS_INF + ply : 0;       /* ply-relative mate */
+        /* P-43: single-reply extension -- node-level, fires when this node
+         * has exactly one legal move (spends from the srb budget). */
+        sr_ext = (g_single_reply && n == 1 && srb > 0) ? 1 : 0;
+
+        if (g_staged == 2 && g_order_mode == 1 && !in_chk && !g_single_reply) {
+            /* VERIFY mode: the staged stream must equal order_moves' sorted
+             * array move-for-move at every eligible node. */
+            uint32_t ref[256];
+            for (int i = 0; i < n; i++) ref[i] = moves[i];
+            order_moves(b, ref, n, ply, counter_key, tt_move);
+            Stager vs;
+            stager_init(&vs, b, ply, counter_key, tt_move);
+            for (int i = 0; i < n; i++) {
+                uint32_t sm = stager_next(&vs);
+                if (sm != ref[i]) {
+                    fprintf(stderr, "P-23 VERIFY MISMATCH ply=%d i=%d/%d "
+                            "staged=%08x ref=%08x\n", ply, i, n, sm, ref[i]);
+                    abort();
+                }
+            }
+            if (stager_next(&vs) != 0) {
+                fprintf(stderr, "P-23 VERIFY: staged stream longer than "
+                        "gen_legal (n=%d)\n", n);
+                abort();
+            }
+        }
+        order_moves(b, moves, n, ply, counter_key, tt_move);
+    }
 
     int color = b->turn, best = -CS_INF;
-    uint32_t best_move = moves[0];
+    uint32_t best_move = 0;
     uint32_t quiets[256]; int nq = 0;
     int lmp_lim = (g_prune && !is_pv && !in_chk && depth <= 3) ? g_lmp[depth] : 999;
-    for (int i = 0; i < n; i++) {
-        uint32_t m = moves[i];
+    for (int i = 0; ; i++) {
+        uint32_t m;
+        if (staged) {
+            m = stager_next(&st);
+            if (!m) break;
+        } else {
+            if (i >= n) break;
+            m = moves[i];
+        }
+        if (i == 0) best_move = m;
         int victim = (m >> MV_SHIFT_VICTIM) & 7;
         int mover  = (m >> MV_SHIFT_MOVER) & 7;
         int fromto = (m & 63) << 6 | ((m >> 6) & 63);
@@ -1526,6 +1955,14 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             break;
         }
     }
+
+    /* P-23: on the staged path mate/stalemate is discovered by exhaustion --
+     * no stage produced a single legal move. (best_move can only stay 0 with
+     * zero moves streamed: the first streamed move is never skipped, since
+     * LMP/futility both require best > -MATE_THRESH.) Return BEFORE the TT
+     * store, exactly like the v35 n==0 path. */
+    if (staged && best_move == 0)
+        return in_chk ? -CS_INF + ply : 0;
 
     /* --- TT store: gen-aware depth-preferred, ply-relative mates ---- *
      * Same key: deeper-or-equal wins. Different key: an entry from an older
