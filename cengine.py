@@ -59,11 +59,12 @@ Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
     with FRESHER history than v35's node-entry snapshot; stream equality
     under identical state proven by verify mode over ~1M nodes;
     set_staged(0) restores v35 node-exactly); Q-01 continuation history is
-    ON (csearch.c set_cont_hist, default on, A/B vs v36 PENDING -- the
-    first 50+0.20-era campaign: quiet ordering adds 1-ply and 2-ply
-    continuation scores (v30's #1.6, piece-to keyed int16 tables, same
-    gravity + malus at cutoffs; root context empty and qsearch reads none
-    -- documented deviations); set_cont_hist(0) restores v36 node-exactly);
+    DORMANT (csearch.c set_cont_hist, default OFF: A/B'd -0.87 +/-6.8 @10k
+    vs v36 -- a dead NULL, the first 50+0.20-era campaign 2026-07-10; the
+    1-ply/2-ply continuation scores (v30's #1.6, piece-to keyed int16
+    tables) bought nothing at this depth and their ~1.6MB of tables cost
+    cache; default reproduces v36 node-exactly, re-test only at a much
+    longer TC);
     PV-01 triangular PV is ON (csearch.c cs_get_pv: the PV is collected
     during the search instead of TT-walked afterwards -- NODE-EXACT, pure
     bookkeeping; _extract_pv emits the exact prefix in full, splicing the
@@ -72,9 +73,9 @@ Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
     (csearch.c set_pv_exact, default OFF: skips TT cutoffs/narrowing at PV
     nodes so the collected PV is complete end-to-end, 6/6 on the same spot
     check -- tree-changing, queued for its own A/B); the check-extension
-    BUDGET is runtime-settable (P-47, csearch.c set_check_ext_budget,
-    default 5 = v36 node-exact; the raise-to-8 candidate queues for its own
-    A/B); no singular
+    BUDGET is runtime-settable (P-47, csearch.c set_check_ext_budget, 5 =
+    v36 node-exact; LIVE CANDIDATE: cengine.CHECK_EXT_BUDGET = 8, A/B vs
+    v36 PENDING -- the second 50+0.20-era campaign); no singular
     extensions / razoring (dormant or absent in v30 at match depths anyway),
   * repetition detection covers negamax nodes, not quiescence nodes,
   * the position hash mixes the RAW ep square (set after every double push),
@@ -148,9 +149,11 @@ class Engine:
     TT_KEEP_WARM = True
 
     # P-47: per-line check-extension budget (v30's MAX_CHECK_EXT recipe).
-    # 5 = v36 node-exact; the raise-to-8 candidate is a tree change (deeper
-    # perpetual/mating check lines) queued for its own A/B after Q-01.
-    CHECK_EXT_BUDGET = 5
+    # 5 = v36 node-exact. LIVE CANDIDATE = 8 (user request: deeper forced/
+    # mating check lines, motivated by the matetrack curve), A/B vs Old
+    # Engine/36 PENDING -- selftest pins the ladder to 5 meanwhile.
+    # Extensions vein is thin per ledger (P-01 +6.8, P-43 +3.5 marginal).
+    CHECK_EXT_BUDGET = 8
 
     # PV-02: skip TT cutoffs/narrowing at PV nodes so the triangular PV
     # (PV-01, always on) is complete end-to-end -- the standard strong-engine
