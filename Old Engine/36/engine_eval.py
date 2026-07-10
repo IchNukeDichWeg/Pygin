@@ -470,22 +470,6 @@ benchmark" below.
   P-44's first A/B; speed changes get their own timed A/B from now on.
   Snapshotted as Old Engine/35.
 
-* **v36 (2026-07-10, lives in ``cengine.py`` + ``csearch.c``): P-23 staged
-  move ordering (+ the P-46 lazy-qsearch speed rider).** Negamax stops
-  generating/scoring every move at every node: the TT move plays via
-  reconstruct-and-validate with zero generation, then captures, killers,
-  counter, quiets and bad captures are generated lazily per class. VERIFY
-  mode proved the staged stream equals order_moves' sorted output under
-  identical state (~1M nodes); live trees deliberately diverge -- quiets
-  are scored AFTER earlier subtrees updated history, i.e. with fresher
-  information (often fewer nodes), plus ~+10-20%% NPS. **A/B vs v35:
-  +24.67 +/-6.8 over 10,000 games @ 45+0.1 (53.55%%, ptnml
-  295/998/1911/1295/501, pair ratio 1.39, norm +47.51)** -- the second-
-  biggest single feature of the C era after P-14. Snapshotted as Old
-  Engine/36. **This closes the 45+0.10 ledger era: the standard A/B TC is
-  50+0.30 from the next campaign on (cross-era Elo is not the same
-  currency).**
-
 Cross-version benchmark
 -----------------------
 Sweep (2026-07-02): 24 versions x 8 positions x 6 timed 5s runs (1152 searches).

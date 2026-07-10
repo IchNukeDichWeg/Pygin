@@ -125,10 +125,10 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # quiet developing moves flip between depths without being a regression.
 # Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
 CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3"
-CE_LADDER = {                     # depth -> (nodes, score)  [v35: P-22 + P-44 on]
+CE_LADDER = {                     # depth -> (nodes, score)  [v36: P-23 staged on]
     1: (95, 126), 2: (181, 126), 3: (741, 126), 4: (1012, 122),
-    5: (7091, 50), 6: (18875, 64), 7: (47308, 74), 8: (93164, 58),
-    9: (163784, 58), 10: (342349, 67), 11: (627228, 71), 12: (1164742, 71),
+    5: (10840, 65), 6: (22253, 64), 7: (47702, 74), 8: (78847, 60),
+    9: (140812, 75), 10: (321418, 59), 11: (565618, 54), 12: (956723, 67),
 }
 if os.path.exists("csearch.c"):
     try:
@@ -153,14 +153,8 @@ if os.path.exists("csearch.c"):
             pass                       # pre-P-04 csearch.so: no such toggle
         # P-44 qsearch TT probe: CONFIRMED into v35 (+8.06 isolation A/B),
         # default ON -- part of the pinned reference search above.
-        # P-23 staged ordering defaults ON (A/B vs v35 pending) and changes
-        # the tree (later stages see FRESHER history than v35's entry-time
-        # snapshot); pin it OFF so the ladder tracks the CONFIRMED v35
-        # search. Remove + re-measure CE_LADDER when P-23 confirms.
-        try:
-            ce._lib.set_staged(0)
-        except AttributeError:
-            pass                       # pre-P-23 csearch.so: no such toggle
+        # P-23 staged ordering: CONFIRMED into v36 (+24.67 A/B vs v35),
+        # default ON -- part of the pinned reference search above.
         # EP-01 FIDE-exact ep hashing is DORMANT (default OFF: correctness
         # fix, but tree-changing -- queued for its own A/B behind P-04).
         # Belt-and-braces pin so the ladder tracks the confirmed search even
