@@ -133,10 +133,13 @@ CE_LADDER = {                     # depth -> (nodes, score)  [v37: PV-02 exact P
 if os.path.exists("csearch.c"):
     try:
         import cengine  # noqa: E402
-        # Outpost eval toggle is the LIVE A/B candidate (vs Old Engine/37);
-        # pin it off so the ladder tracks the confirmed v37 eval. Remove +
-        # re-measure CE_LADDER if it confirms.
+        # Outpost: NULL, OFF (A/B vs v37 2026-07-10: -0.90 +/-6.8) -- the
+        # default already reproduces v37; belt-and-braces pin.
         cengine.Engine.USE_OUTPOST = False
+        # CB-01 correctness batch is the LIVE candidate (default True, vs
+        # Old Engine/37); pin it off so the ladder tracks the confirmed v37
+        # search. Remove + re-measure CE_LADDER on its verdict.
+        cengine.Engine.SCORE_HYGIENE = False
         ce = cengine.Engine()
         ce.use_book = False
         ce.use_tb = False
