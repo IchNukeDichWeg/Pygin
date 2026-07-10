@@ -2211,6 +2211,7 @@ void cs_search_begin(const uint64_t* hist, int nhist, double budget_sec)
         memset(g_cont2, 0, sizeof(g_cont2));
     }
     memset(g_ctx, 0, sizeof(g_ctx));
+    g_root_pv_len = 0;                   /* PV-01: fresh line per game move */
     g_helper_nodes = 0;                  /* Lazy-SMP helper node aggregate */
     if (g_tt == NULL) {
         g_tt = (TTEntry*)calloc(TT_SIZE, sizeof(TTEntry));
@@ -2236,8 +2237,13 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
     Board b = *rb;
     uint64_t key = board_key(&b);
     g_path[0] = key;
-    g_root_pv_len = 0;     /* PV-01: a fail-low iteration leaves it empty --
-                            * the driver falls back to the TT walk then */
+    /* PV-01: g_root_pv is NOT zeroed here -- at short TCs the final ID
+     * iteration almost always aborts mid-search, and zeroing per iteration
+     * wiped the exact line the last COMPLETED iteration collected (the
+     * driver then fell back to the TT walk for the very emit that matters:
+     * matetrack Bad-PVs stayed ~59%). The table is zeroed per game move in
+     * cs_search_begin; within a move the last in-window result wins, and
+     * the driver's first_move==pv[0] check catches any staleness. */
     g_ctx[0] = 0;              /* Q-01: no game-prev context at root (v30
                                 * seeds the real previous move; deviation) */
     /* P-04: seed the eval stack -- the ply-2 reference for ply-2 nodes.
