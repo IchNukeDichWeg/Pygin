@@ -1217,6 +1217,26 @@ void set_qgen(int v) { g_qgen = v; }
 static int g_qs_tt = 1;
 void set_qs_tt(int v) { g_qs_tt = v; }
 
+/* P-45: TT prefetch -- every probe pulls a cold DRAM line from the 50MB
+ * table (~100ns, measured as P-44's main cost). Right after apply_move,
+ * compute the child's key and prefetch its TT line; by the time the child
+ * probes (after its in-check test and entry guards) the line is in cache.
+ * board_key is ~30 cheap ALU ops, an order of magnitude less than the
+ * stall it hides. NODE-IDENTICAL by construction (prefetch has no
+ * semantics); the toggle exists only for clean NPS measurement.
+ * Local (Apple Silicon) verdict: NULL (-0.7% median time-to-depth) -- the
+ * big SLC + OoO already hide the latency. Kept default-ON pending the
+ * SERVER (x86) bench: smaller caches + 200 concurrent engines contending
+ * for DRAM may pay differently; bench there before any 10k A/B. */
+static int g_prefetch = 1;
+void set_prefetch(int v) { g_prefetch = v; }
+
+static inline void tt_prefetch(const Board* c)
+{
+    if (g_prefetch && g_use_tt && g_tt != NULL)
+        __builtin_prefetch(&g_tt[board_key(c) & TT_MASK], 0, 1);
+}
+
 static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
                                int flag)
 {
@@ -1305,6 +1325,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
         }
         Board c = *b;
         apply_move(&c, m);
+        tt_prefetch(&c);                             /* P-45 */
         int v = -qsearch(&c, -beta, -alpha, ply + 1, in_check(&c));
         if (CS_UNWINDING()) return 0;                /* v is garbage: unwind */
         if (v > best) { best = v; bm = m; }
@@ -1438,6 +1459,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
 
         Board c = *b;
         apply_move(&c, m);
+        tt_prefetch(&c);                             /* P-45 */
         int gives_check = in_check(&c);
 
         if (g_prune && quiet && !is_pv && !in_chk && !gives_check && depth == 1
