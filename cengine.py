@@ -195,6 +195,11 @@ class Engine:
     # correctness nulls are free); False = v37 node-exact.
     SCORE_HYGIENE = True
 
+    # FI-10: TT size in bits (2^bits x 24-byte entries; 21 = 48 MB, the size
+    # the entire ledger was measured at -- leave it for A/B play). The UCI
+    # Hash option (cuci) maps MB onto this; a resize wipes the table.
+    TT_BITS = 21
+
     # Simplify-at-500 re-test (user request; v30's use_simplify A/B'd -14 at
     # threshold 200 -- traded into DRAWN endings; a decisive >=500cp gate
     # removes that failure mode). Pushed via csearch_set_simplify; threshold
@@ -275,8 +280,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (set_score_hygiene is abi 8) -- bump together with csearch_abi.
-        if lib.csearch_abi() < 8:
+        # (set_tt_bits is abi 9) -- bump together with csearch_abi.
+        if lib.csearch_abi() < 9:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         B = ctypes.c_uint64
         BOARD_ARGS = [B] * 8 + [ctypes.c_int] * 2 + [B]
@@ -298,6 +303,7 @@ class Engine:
         lib.set_check_ext_budget(int(self.CHECK_EXT_BUDGET))   # P-47
         lib.set_pv_exact(1 if self.PV_EXACT else 0)            # PV-02
         lib.set_score_hygiene(1 if self.SCORE_HYGIENE else 0)  # CB-01
+        lib.set_tt_bits(int(self.TT_BITS))                     # FI-10 (Hash)
         # FB-06: cengine is AUTHORITATIVE over every behavioral C toggle --
         # a stale .so or drifted compiled-in default must not silently change
         # the search. Values = the confirmed ledger state (all defaults, so
