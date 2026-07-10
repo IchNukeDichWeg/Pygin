@@ -1531,7 +1531,10 @@ static uint64_t g_helper_nodes = 0;     /* Lazy-SMP helper node aggregate
  * g_path is per-thread (each SMP thread walks its own line); g_hist is
  * written once per move in cs_search_begin and read-only during search. */
 #define CS_HIST_MAX 128
-static __thread uint64_t g_path[CS_MAXPLY + 8];
+/* Sized past the qsearch recursion guard (CS_MAXPLY + 60): the CB-01
+ * correctness batch writes qsearch keys here too (gated on g_score_hyg;
+ * without hygiene only negamax plies are written, as before). */
+static __thread uint64_t g_path[CS_MAXPLY + 62];
 static uint64_t g_hist[CS_HIST_MAX];
 static int g_nhist = 0;
 
@@ -1641,6 +1644,27 @@ void set_check_ext_budget(int v)
 {
     g_check_ext_budget = v < 0 ? 0 : (v > 32 ? 32 : v);
 }
+
+/* CB-01 (correctness batch, one master toggle -- final_improvements.md
+ * FB-05/FB-07/FB-08 + FI-07): score-hygiene fixes that individually sit
+ * far under the +/-6.8 resolution and together form one "score draws as
+ * draws, keep proven bounds" feature. OFF (0) restores v37 node-exactly:
+ *   (a) FB-05 delta pruning budgets the TEXEL value of the victim (queen
+ *       1150) instead of the classic 900 the synced eval outgrew,
+ *   (b) FB-07 qsearch in-check nodes detect repetition (perpetual-check
+ *       lines used to score as eval, and P-44 persisted the misscore),
+ *   (c) FB-08 qsearch detects insufficient-material dead draws,
+ *   (d) null-move returns/stores its fail-soft bound (unproven mate
+ *       scores clamped to beta),
+ *   (e) the qsearch TT probe narrows alpha from a LOWER bound,
+ *   (f) mate-distance pruning,
+ *   (g) deep-qsearch ordering reads killer slot CS_MAXPLY-1, not the
+ *       ROOT's killers (the old ply>=64 clamp went to slot 0). */
+static int g_score_hyg = 0;
+void set_score_hygiene(int v) { g_score_hyg = v ? 1 : 0; }
+/* (a): max(MG,EG) of the synced Texel values, rounded up -- must COVER the
+ * eval swing of capturing the piece; PIECE_VAL stays for MVV-LVA ordering. */
+static const int DELTA_VAL[7] = {0, 100, 360, 360, 520, 1150, 0};
 
 /* PV-01: triangular PV table -- the PV is collected DURING the search (each
  * PV node prepends its best move to its child's line when the score lands
@@ -1816,7 +1840,8 @@ static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
     tt_store_raw(t, key, sv, move & 0x7FFF, 0, flag);
 }
 
-static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
+static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
+                   int hmc)
 {
     g_nodes++;
     g_pv_len[ply] = 0;     /* PV-01: every exit path leaves a valid (empty)
@@ -1830,13 +1855,25 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
         return in_chk ? 0 : eval_full_stm(b);
     int is_pv = (beta - alpha) > 1;
 
-    /* P-44: TT probe -- before movegen AND eval, so a hit costs nothing. */
+    /* P-44: TT probe -- before movegen AND eval, so a hit costs nothing.
+     * CB-01 (b)/(c): game-state draws are decided BEFORE the probe (same
+     * order negamax uses -- a TT hit must never mask a draw-by-rule). */
     int alpha_orig = alpha;
     uint64_t key = 0;
     uint32_t tt_move = 0;
     int use_qtt = g_use_tt && g_qs_tt && g_tt != NULL;
+    if (g_score_hyg) {
+        if (!(b->pawns | b->rooks | b->queens) && insufficient_material(b))
+            return draw_score(b);            /* (c) dead-drawn exchanges */
+        key = board_key(b);                  /* (b) every qsearch node logs
+                                              * its key so in-check nodes can
+                                              * see even-distance ancestors */
+        g_path[ply] = key;
+        if (in_chk && hmc >= 4 && is_repetition(key, ply, hmc))
+            return draw_score(b);            /* perpetual-check lines */
+    }
     if (use_qtt) {
-        key = board_key(b);
+        if (!key) key = board_key(b);
         TTEntry e;
         if (tt_load(&g_tt[key & TT_MASK], key, &e)) {
             int v = TT_VALUE(e);                     /* ply-relative -> node */
@@ -1847,6 +1884,9 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
                 if (fl == TT_EXACT) return v;
                 if (fl == TT_LOWER && v >= beta) return v;
                 if (fl == TT_UPPER && v <= alpha) return v;
+                if (g_score_hyg && fl == TT_LOWER && v > alpha)
+                    alpha = v;               /* CB-01 (e): proven lower bound
+                                              * sharpens delta pruning below */
             }
             tt_move = TT_MOVE(e);
         }
@@ -1899,7 +1939,11 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
     }
 
     uint32_t bm = 0;                                 /* P-44: best move found */
-    order_moves(b, moves, n, ply < CS_MAXPLY ? ply : 0, 0, tt_move, 0);
+    /* CB-01 (g): plies past the killer table read the LAST slot, not the
+     * root's (the old clamp-to-0 ordered deep qsearch with root killers). */
+    order_moves(b, moves, n,
+                ply < CS_MAXPLY ? ply : (g_score_hyg ? CS_MAXPLY - 1 : 0),
+                0, tt_move, 0);
     for (int i = 0; i < n; i++) {
         uint32_t m = moves[i];
         int victim   = (m >> MV_SHIFT_VICTIM) & 7;
@@ -1920,13 +1964,20 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
                                  color, from, to, (m & MV_BIT_EP) ? 1 : 0);
                     if (sv < 0) continue;            /* skip losing captures */
                 }
-                if (stand + PIECE_VAL[victim] + g_delta_margin <= alpha)
+                /* CB-01 (a): the margin must cover the TEXEL value the
+                 * synced eval actually awards (queen 1148), not the classic
+                 * 900 -- else a saving queen recapture can be pruned. */
+                if (stand + (g_score_hyg ? DELTA_VAL[victim]
+                                         : PIECE_VAL[victim])
+                          + g_delta_margin <= alpha)
                     continue;                        /* delta pruning */
             }
         }
         Board c = *b;
         apply_move(&c, m);
-        int v = -qsearch(&c, -beta, -alpha, ply + 1, in_check(&c));
+        int child_hmc = (victim || ((m >> MV_SHIFT_MOVER) & 7) == PT_PAWN
+                         || is_promo) ? 0 : hmc + 1;
+        int v = -qsearch(&c, -beta, -alpha, ply + 1, in_check(&c), child_hmc);
         if (CS_UNWINDING()) return 0;                /* v is garbage: unwind */
         if (is_pv && v > alpha && v < beta)          /* PV-01: in-window best */
             pv_store(ply, m);
@@ -1973,8 +2024,22 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     if (hmc >= 4 && is_repetition(key, ply, hmc))
         return draw_score(b);
 
+    /* CB-01 (f): mate-distance pruning -- no line from here can beat a mate
+     * already forced at a shallower ply; two compares, prunes whole
+     * subtrees in mate-bearing positions (and never changes the result).
+     * NON-PV nodes only: the fastest-mate score lands EXACTLY on the
+     * clamped beta, so at PV nodes the in-window pv_store condition
+     * (v < beta) could never record the mating line -- first matetrack run
+     * with the clamp everywhere: 470 Bad PVs, all fastest-mate lines. The
+     * node savings live in the zero-window bulk anyway. */
+    if (g_score_hyg && beta - alpha <= 1) {
+        if (alpha < -CS_INF + ply)     alpha = -CS_INF + ply;
+        if (beta  >  CS_INF - ply - 1) beta  =  CS_INF - ply - 1;
+        if (alpha >= beta) return alpha;
+    }
+
     if (depth <= 0)
-        return g_qsearch ? qsearch(b, alpha, beta, ply, in_chk)
+        return g_qsearch ? qsearch(b, alpha, beta, ply, in_chk, hmc)
                          : eval_full_stm(b);
 
     /* --- TT probe -------------------------------------------------- */
@@ -2037,7 +2102,15 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             int ns = -negamax(&c, depth - 1 - R, -beta, -beta + 1, ply + 1,
                               0xFFFFFFFF, 0, 0, chk, srb);
             if (CS_UNWINDING()) return 0;            /* ns is garbage */
-            if (ns >= beta) return beta;
+            if (ns >= beta) {
+                if (!g_score_hyg) return beta;       /* v37: fail-hard */
+                /* CB-01 (d): keep the fail-soft bound (tighter TT info);
+                 * an unproven null-move MATE is never trusted -- clamp. */
+                if (ns >= MATE_THRESH) ns = beta;
+                if (g_use_tt && tte && ns < MATE_THRESH && !CS_UNWINDING())
+                    tt_store_raw(tte, key, ns, 0, depth, TT_LOWER);
+                return ns;
+            }
         }
     }
 
@@ -2503,7 +2576,8 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted);
 }
 
-int csearch_abi(void) { return 7; }   /* 7 = set_node_limit + cs_seldepth +
+int csearch_abi(void) { return 8; }   /* 8 = set_score_hygiene (CB-01);
+                                       * 7 = set_node_limit + cs_seldepth +
                                        * cs_hashfull (FB-09/FI-13);
                                        * 6 = cs_get_pv (PV-01) + set_pv_exact
                                        * + set_check_ext_budget; 5 = Lazy SMP

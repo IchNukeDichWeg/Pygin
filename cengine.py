@@ -8,8 +8,8 @@ transposition table, pruning, quiescence and the full static eval
 (bit-exact port of engine.py's ``_evaluate_static``, verified over 3M
 positions). Born as phase-3 step 6 of the C-core plan; the shipped engine
 since Old Engine/31. Defaults reproduce v37 (Old Engine/37) plus whatever
-eval-toggle candidate is armed on the class attrs below (currently
-USE_OUTPOST, A/B PENDING).
+candidate is armed below (currently SCORE_HYGIENE, the correctness batch,
+A/B PENDING -- the fifth 50+0.20-era campaign).
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -81,6 +81,22 @@ ON by default (A/B-confirmed, or free by construction):
     clean null (+0.17 +/-6.8 @10k 50+0.20, pair ratio 1.02): for a
     correctness feature, a null means FREE.
 
+LIVE CANDIDATE (A/B vs Old Engine/37 PENDING -- fifth 50+0.20 campaign):
+  * CB-01 correctness batch (set_score_hygiene; OFF = v37 node-exact,
+    ladder-pinned): seven sub-resolution "score draws as draws, keep proven
+    bounds" fixes -- Texel-consistent delta-pruning values, qsearch
+    in-check repetition + insufficient-material detection (both draws
+    decided BEFORE the qsearch TT probe, and repetition now sees qsearch
+    plies via g_path logging), null-move fail-soft return + TT LOWER store
+    (unproven mates clamped to beta), qsearch TT lower-bound alpha
+    narrowing, mate-distance pruning (NON-PV nodes only: the fastest-mate
+    score lands exactly on the clamped beta, so a PV-node clamp starves
+    PV-01's in-window store -- first matetrack run proved it, 470 Bad PVs),
+    and deep-qsearch killers reading slot 63 instead of the root's.
+    matetrack @0.5s: 868 found / 751 best, ZERO Bad PVs (v37 baseline:
+    692/600/0) -- mate-distance pruning alone is worth ~+25% found mates.
+    KEEP-ON-NULL (PV-02 precedent: correctness nulls are free).
+
 DORMANT (default OFF, mechanism kept for longer-TC re-tests):
   * P-43 single-reply / forced-move extension (set_single_reply; +3.5
     +/-4.8 over 20k pooled games vs v34 -- positive-leaning on every
@@ -102,7 +118,8 @@ Deliberate deviations from v30 (documented, revisit if an A/B says so):
   * no root random tiebreak (deterministic best move),
   * no singular extensions / razoring (dormant or absent in v30 at match
     depths anyway),
-  * repetition detection covers negamax nodes, not quiescence nodes,
+  * repetition detection covers negamax nodes; quiescence nodes only under
+    the CB-01 candidate (in-check qsearch nodes, path-logged keys),
   * the position hash mixes the RAW ep square (set after every double push),
     so a phantom ep splits one FIDE-identical position across two keys and
     repetition detection can MISS repetitions the arbiter would count --
@@ -154,14 +171,29 @@ class Engine:
     # at this TC; the mechanism stays for future eval-toggle A/Bs.
     USE_KING_SHELTER = False
 
-    # Outpost re-test (user request 2026-07-10; Python-era solo verdict was
-    # +0 +/-10 at depth 8, P-20a's subsumption logic tempers expectations).
-    # Same sync mechanism as USE_KING_SHELTER: flips the embedded engine's
-    # use_outpost BEFORE _sync_c_params pushes set_outpost_params into
-    # csearch's eval_c copy. False = v37 eval exactly. LIVE CANDIDATE =
-    # True, A/B vs Old Engine/37 PENDING (fourth 50+0.20-era campaign) --
-    # selftest pins the ladder to False meanwhile.
-    USE_OUTPOST = True
+    # Outpost re-test: NULL, OFF (A/B vs Old Engine/37 2026-07-10, fourth
+    # 50+0.20 campaign: -0.90 +/-6.8 @10k, 49.87%, ptnml 289/1230/1982/
+    # 1216/283, pair ratio 0.99 -- the Python-era +0 +/-10 depth-8 signal
+    # stayed a null at depth ~14, exactly P-20a's subsumption logic; unlike
+    # a correctness null this buys nothing and costs eval work, so OFF).
+    # C-era eval add-ons now 0-for-2 (shelter -4.27, outpost -0.90): no new
+    # static-eval term without a 2k-game screen first. Same sync mechanism
+    # as USE_KING_SHELTER; False = v37 eval exactly.
+    USE_OUTPOST = False
+
+    # CB-01 correctness batch (LIVE CANDIDATE, fifth 50+0.20-era campaign,
+    # A/B vs Old Engine/37 PENDING; selftest pins the ladder to off).
+    # One master toggle over seven sub-+/-6.8 "score draws as draws, keep
+    # proven bounds" fixes -- csearch.c set_score_hygiene: (a) delta pruning
+    # budgets Texel piece values (queen 1150 vs classic 900), (b) qsearch
+    # in-check repetition detection (perpetuals scored as eval before, and
+    # P-44 persisted the misscore into the warm TT), (c) qsearch
+    # insufficient-material draws, (d) null-move fail-soft return + TT
+    # LOWER store (unproven mates clamped), (e) qsearch TT lower-bound
+    # alpha narrowing, (f) mate-distance pruning, (g) deep-qsearch killers
+    # read slot 63, not the root's. KEEP-ON-NULL (PV-02 precedent:
+    # correctness nulls are free); False = v37 node-exact.
+    SCORE_HYGIENE = True
 
     # Simplify-at-500 re-test (user request; v30's use_simplify A/B'd -14 at
     # threshold 200 -- traded into DRAWN endings; a decisive >=500cp gate
@@ -243,9 +275,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (set_node_limit / cs_seldepth / cs_hashfull are abi 7) --
-        # bump together with csearch_abi.
-        if lib.csearch_abi() < 7:
+        # (set_score_hygiene is abi 8) -- bump together with csearch_abi.
+        if lib.csearch_abi() < 8:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         B = ctypes.c_uint64
         BOARD_ARGS = [B] * 8 + [ctypes.c_int] * 2 + [B]
@@ -266,6 +297,7 @@ class Engine:
         self._lib = lib
         lib.set_check_ext_budget(int(self.CHECK_EXT_BUDGET))   # P-47
         lib.set_pv_exact(1 if self.PV_EXACT else 0)            # PV-02
+        lib.set_score_hygiene(1 if self.SCORE_HYGIENE else 0)  # CB-01
         # FB-06: cengine is AUTHORITATIVE over every behavioral C toggle --
         # a stale .so or drifted compiled-in default must not silently change
         # the search. Values = the confirmed ledger state (all defaults, so
@@ -284,7 +316,8 @@ class Engine:
         # is fine (match workers construct one engine per process).
         global _SYNCED_FINGERPRINT
         fp = (self.USE_KING_SHELTER, self.USE_OUTPOST, self.USE_SIMPLIFY,
-              self.SIMPLIFY_THRESHOLD, self.CHECK_EXT_BUDGET, self.PV_EXACT)
+              self.SIMPLIFY_THRESHOLD, self.CHECK_EXT_BUDGET, self.PV_EXACT,
+              self.SCORE_HYGIENE)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
