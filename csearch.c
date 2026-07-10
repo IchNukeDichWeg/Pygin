@@ -1063,8 +1063,14 @@ static __thread uint32_t g_counter[4096];
  * Deviations from v30 (documented): root context starts empty (v30 seeds
  * the real previous game move); qsearch ordering reads no cont scores
  * (g_ctx is only maintained by negamax, and captures dominate there).
- * set_cont_hist(0) restores v36's search node-exactly. */
-static int g_cont_hist = 1;
+ * set_cont_hist(0) restores v36's search node-exactly.
+ * A/B vs Old Engine/36 (2026-07-10, 10k @ 50+0.20, the first campaign of
+ * that era): -0.87 +/-6.8, ptnml 374/1136/1955/1211/324, pair ratio 1.02 --
+ * a dead NULL. The ordering vein paid for staged generation (P-23 +24.67)
+ * but not for finer quiet scores at this depth; the two ~800KB tables'
+ * cache pressure and the per-move clears buy nothing back. DORMANT
+ * (default OFF = v36 node-exact); re-test only at a much longer TC. */
+static int g_cont_hist = 0;
 void set_cont_hist(int v) { g_cont_hist = v; }
 #define CTX_N 448                       /* (pt 1..6)<<6 | to; 0 = none */
 static __thread int16_t g_cont1[CTX_N][CTX_N];
@@ -2198,8 +2204,12 @@ void cs_search_begin(const uint64_t* hist, int nhist, double budget_sec)
     memset(g_history, 0, sizeof(g_history));
     memset(g_killers, 0, sizeof(g_killers));
     memset(g_counter, 0, sizeof(g_counter));
-    memset(g_cont1, 0, sizeof(g_cont1));     /* Q-01: same per-move lifecycle */
-    memset(g_cont2, 0, sizeof(g_cont2));
+    if (g_cont_hist) {                       /* Q-01: same per-move lifecycle
+                                              * (dormant: skip the ~1.6MB
+                                              * clear, the tables are unread) */
+        memset(g_cont1, 0, sizeof(g_cont1));
+        memset(g_cont2, 0, sizeof(g_cont2));
+    }
     memset(g_ctx, 0, sizeof(g_ctx));
     g_helper_nodes = 0;                  /* Lazy-SMP helper node aggregate */
     if (g_tt == NULL) {
