@@ -201,7 +201,7 @@ static inline int board_piece_type_at(const Board* b, int sq)
 /* Is `sq` attacked by `them`, given occupancy `occ`?  `us` = colour of the
  * piece on sq (for the pawn-attack table lookup).  p/n/bq/rq/k are THEM's
  * pawns / knights / bishops+queens / rooks+queens / king bitboards. */
-static int attacked(int sq, uint64_t occ, int us,
+static inline int attacked(int sq, uint64_t occ, int us,
                     uint64_t p, uint64_t n, uint64_t bq, uint64_t rq, uint64_t k)
 {
     if (KNIGHT_ATT[sq] & n)            return 1;
@@ -215,7 +215,7 @@ static int attacked(int sq, uint64_t occ, int us,
 }
 
 /* Would moving from->to (is_ep: en-passant) leave our king in check? */
-static int legal(const Board* b, int from, int to, int is_ep)
+static inline int legal(const Board* b, int from, int to, int is_ep)
 {
     int us = b->turn, them = us ^ 1;
     uint64_t fb = 1ULL << from, tb = 1ULL << to;
@@ -241,7 +241,7 @@ static int legal(const Board* b, int from, int to, int is_ep)
 }
 
 /* Is `sq` attacked by the side NOT to move, on the current board? (castling) */
-static int sq_attacked_by_them(const Board* b, int sq)
+static inline int sq_attacked_by_them(const Board* b, int sq)
 {
     int us = b->turn, them = us ^ 1;
     uint64_t occ = b->occ[0] | b->occ[1];
@@ -255,7 +255,7 @@ static int sq_attacked_by_them(const Board* b, int sq)
 }
 
 /* Is the side to move currently in check? */
-static int in_check(const Board* b)
+static inline int in_check(const Board* b)
 {
     int us = b->turn;
     uint64_t kbb = b->kings & b->occ[us];
@@ -738,13 +738,11 @@ static void apply_move(Board* b, uint32_t mv)
     int us = b->turn, them = us ^ 1;
     uint64_t fb = 1ULL << from, tb = 1ULL << to;
 
-    int movpt;                                  /* 1=P 2=N 3=B 4=R 5=Q 6=K */
-    if      (b->pawns   & fb) movpt = 1;
-    else if (b->knights & fb) movpt = 2;
-    else if (b->bishops & fb) movpt = 3;
-    else if (b->rooks   & fb) movpt = 4;
-    else if (b->queens  & fb) movpt = 5;
-    else                      movpt = 6;
+    /* FI-02.2: the mover PT is already packed in every move word this
+     * function ever sees (gen_* and move_from_key all pack it; the three
+     * call sites pass their words through) -- the old 5-branch bitboard
+     * probe re-derived it per child, millions of times per second. */
+    int movpt = (mv >> MV_SHIFT_MOVER) & 7;     /* 1=P 2=N 3=B 4=R 5=Q 6=K */
 
     uint64_t capmask = tb;
     if (movpt == 1 && to == b->ep && !(b->occ[them] & tb))
@@ -1146,6 +1144,13 @@ typedef struct {
 #define TT_DEPTH(e)  ((int)(int16_t)(uint16_t)((e).d2))
 #define TT_FLAG(e)   ((int)(uint16_t)((e).d2 >> 16))
 #define TT_GEN(e)    ((int)(uint16_t)((e).d2 >> 32))
+/* FI-03: the static eval cached in d2's spare high 16 bits. The eval is
+ * deterministic per position (params fixed per process -- FB-04 guards
+ * that), so a cached value is EXACT, never approximate: reusing it is
+ * node-identical and skips the most expensive per-node call on TT hits.
+ * TT_EVAL_NONE marks entries stored without one (in-check nodes, root). */
+#define TT_EVAL(e)     ((int)(int16_t)(uint16_t)((e).d2 >> 48))
+#define TT_EVAL_NONE   (-32768)
 
 static TTEntry* g_tt = NULL;
 static int g_use_tt = 1;
@@ -1196,12 +1201,13 @@ int cs_hashfull(void)
 }
 
 static inline void tt_store_raw(TTEntry* t, uint64_t key, int value,
-                                uint32_t move, int depth, int flag)
+                                uint32_t move, int depth, int flag, int ev)
 {
     uint64_t d1 = (uint64_t)(uint32_t)value | ((uint64_t)move << 32);
     uint64_t d2 = (uint64_t)(uint16_t)depth
                 | ((uint64_t)(uint16_t)flag << 16)
-                | ((uint64_t)(uint16_t)g_gen << 32);
+                | ((uint64_t)(uint16_t)g_gen << 32)
+                | ((uint64_t)(uint16_t)(int16_t)ev << 48);   /* FI-03 */
     t->d1 = d1; t->d2 = d2; t->key_x = key ^ d1 ^ d2;
 }
 
@@ -1256,12 +1262,19 @@ static inline uint64_t board_key(const Board* b)
     return h;
 }
 
+/* FI-02.4: sc_out != NULL defers the sort -- scores are written there and
+ * the caller draws moves lazily via pick_next (identical emission order:
+ * strict-> max pick, shift-to-front keeps gen-order ties stable). Most
+ * nodes cut on move 1-3 and never pay for sorting the tail. sc_out == NULL
+ * keeps the classic sort (root, VERIFY reference). */
 static void order_moves(const Board* b, uint32_t* mv, int n, int ply,
-                        uint32_t counter_key, uint32_t tt_move, int use_cont)
+                        uint32_t counter_key, uint32_t tt_move, int use_cont,
+                        int* sc_out)
 {
     int color = b->turn, full = g_order_mode;
     uint32_t k0 = g_killers[ply][0], k1 = g_killers[ply][1];
-    int sc[256];
+    int sc_local[256];
+    int* sc = sc_out ? sc_out : sc_local;
     for (int i = 0; i < n; i++) {
         uint32_t m = mv[i];
         int from = m & 63, to = (m >> 6) & 63;
@@ -1277,6 +1290,12 @@ static void order_moves(const Board* b, uint32_t* mv, int n, int ply,
                              b->queens, b->kings, b->occ[WHITE], b->occ[BLACK],
                              color, from, to, (m & MV_BIT_EP) ? 1 : 0);
                 if (sv < 0) s = ORD_BADCAP + sv;
+                /* FI-02.3: tag the verdict into the move word's reserved
+                 * bits (22-23: 0 unknown, 1 SEE>=0, 2 SEE<0) -- the sort
+                 * carries it, and qsearch's losing-capture skip reads the
+                 * tag instead of recomputing the same SEE. Every consumer
+                 * of these words masks to 15 bits before comparing/storing. */
+                mv[i] = (m & ~(3u << 22)) | ((sv < 0 ? 2u : 1u) << 22);
             }
         } else if (!full) {
             s = 0;                                     /* baseline: gen order */
@@ -1300,11 +1319,30 @@ static void order_moves(const Board* b, uint32_t* mv, int n, int ply,
         }
         sc[i] = s;
     }
+    if (sc_out) return;             /* FI-02.4: caller picks lazily */
     for (int i = 1; i < n; i++) {   /* stable insertion sort, score desc */
         uint32_t xm = mv[i]; int xs = sc[i], j = i - 1;
         while (j >= 0 && sc[j] < xs) { mv[j+1]=mv[j]; sc[j+1]=sc[j]; j--; }
         mv[j+1] = xm; sc[j+1] = xs;
     }
+}
+
+/* FI-02.4: bring the best remaining move to slot i. Strict > picks the
+ * FIRST max (gen-order tie rule) and the shift preserves the relative
+ * order of everything passed over -- the emitted stream is exactly the
+ * stable full sort's. */
+static inline uint32_t pick_next(uint32_t* mv, int* sc, int i, int n)
+{
+    int bi = i;
+    for (int j = i + 1; j < n; j++)
+        if (sc[j] > sc[bi]) bi = j;
+    if (bi != i) {
+        uint32_t bm = mv[bi]; int bs = sc[bi];
+        memmove(&mv[i + 1], &mv[i], (size_t)(bi - i) * sizeof(uint32_t));
+        memmove(&sc[i + 1], &sc[i], (size_t)(bi - i) * sizeof(int));
+        mv[i] = bm; sc[i] = bs;
+    }
+    return mv[i];
 }
 
 /* gravity update toward +-HIST_MAX (same shape as the Python history tables) */
@@ -1852,7 +1890,7 @@ static int g_qs_tt = 1;
 void set_qs_tt(int v) { g_qs_tt = v; }
 
 static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
-                               int flag)
+                               int flag, int ev)
 {
     TTEntry* t = &g_tt[key & TT_MASK];
     TTEntry cur = *t;
@@ -1864,7 +1902,7 @@ static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
     int sv = val;
     if (sv >= MATE_THRESH) sv += ply;                /* node -> ply-relative */
     else if (sv <= -MATE_THRESH) sv -= ply;
-    tt_store_raw(t, key, sv, move & 0x7FFF, 0, flag);
+    tt_store_raw(t, key, sv, move & 0x7FFF, 0, flag, ev);
 }
 
 static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
@@ -1899,10 +1937,12 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         if (in_chk && hmc >= 4 && is_repetition(key, ply, hmc))
             return draw_score(b);            /* perpetual-check lines */
     }
+    int tt_eval = TT_EVAL_NONE;      /* FI-03: cached static eval, if any */
     if (use_qtt) {
         if (!key) key = board_key(b);
         TTEntry e;
         if (tt_load(&g_tt[key & TT_MASK], key, &e)) {
+            tt_eval = TT_EVAL(e);
             int v = TT_VALUE(e);                     /* ply-relative -> node */
             if (v >= MATE_THRESH) v -= ply;
             else if (v <= -MATE_THRESH) v += ply;
@@ -1934,11 +1974,12 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
          * common instant hit -- then the noisy list for locked positions);
          * no legal move at all is still a 0 draw, never an eval.
          * VALUE-IDENTICAL to the v35 path at every node => node-identical. */
-        stand = eval_full_stm(b);
+        stand = (tt_eval != TT_EVAL_NONE) ? tt_eval    /* FI-03: exact cache */
+                                          : eval_full_stm(b);
         if (stand >= beta) {                         /* fail-soft stand-pat */
             if (has_legal_quiet(b) || gen_noisy(b, moves) > 0) {
                 if (use_qtt && !CS_UNWINDING())      /* P-44: cache the cutoff */
-                    qs_tt_store(key, stand, ply, 0, TT_LOWER);
+                    qs_tt_store(key, stand, ply, 0, TT_LOWER, stand);
                 return stand;
             }
             return 0;                                /* stalemate: draw, not eval */
@@ -1955,10 +1996,11 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         n = g_qgen ? gen_noisy(b, moves) : gen_legal(b, moves);
         if (n == 0 && (!g_qgen || !has_legal_quiet(b)))
             return 0;                                /* stalemate: draw, not eval */
-        stand = eval_full_stm(b);
+        stand = (tt_eval != TT_EVAL_NONE) ? tt_eval    /* FI-03: exact cache */
+                                          : eval_full_stm(b);
         if (stand >= beta) {                         /* fail-soft stand-pat */
             if (use_qtt && !CS_UNWINDING())          /* P-44: cache the cutoff */
-                qs_tt_store(key, stand, ply, 0, TT_LOWER);
+                qs_tt_store(key, stand, ply, 0, TT_LOWER, stand);
             return stand;
         }
         if (stand > alpha) alpha = stand;
@@ -1968,11 +2010,12 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
     uint32_t bm = 0;                                 /* P-44: best move found */
     /* CB-01 (g): plies past the killer table read the LAST slot, not the
      * root's (the old clamp-to-0 ordered deep qsearch with root killers). */
+    int msc[256];                    /* FI-02.4: lazy pick, no up-front sort */
     order_moves(b, moves, n,
                 ply < CS_MAXPLY ? ply : (g_score_hyg ? CS_MAXPLY - 1 : 0),
-                0, tt_move, 0);
+                0, tt_move, 0, msc);
     for (int i = 0; i < n; i++) {
-        uint32_t m = moves[i];
+        uint32_t m = pick_next(moves, msc, i, n);
         int victim   = (m >> MV_SHIFT_VICTIM) & 7;
         int is_promo = (m >> 12) & 7;
         if (!in_chk) {
@@ -1985,11 +2028,18 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
                  * SEE (order_moves / Stager) uses the same gate. */
                 int mover = (m >> MV_SHIFT_MOVER) & 7;
                 if (mover > victim) {
-                    int from = m & 63, to = (m >> 6) & 63;
-                    int sv = see(b->pawns, b->knights, b->bishops, b->rooks,
-                                 b->queens, b->kings, b->occ[WHITE], b->occ[BLACK],
-                                 color, from, to, (m & MV_BIT_EP) ? 1 : 0);
-                    if (sv < 0) continue;            /* skip losing captures */
+                    /* FI-02.3: ordering already ran this exact SEE -- read
+                     * its tag (bits 22-23); fall back only if untagged. */
+                    int tag = (m >> 22) & 3;
+                    int neg = (tag == 2);
+                    if (tag == 0) {
+                        int from = m & 63, to = (m >> 6) & 63;
+                        neg = see(b->pawns, b->knights, b->bishops, b->rooks,
+                                  b->queens, b->kings, b->occ[WHITE],
+                                  b->occ[BLACK],
+                                  color, from, to, (m & MV_BIT_EP) ? 1 : 0) < 0;
+                    }
+                    if (neg) continue;               /* skip losing captures */
                 }
                 /* CB-01 (a): the margin must cover the TEXEL value the
                  * synced eval actually awards (queen 1148), not the classic
@@ -2016,7 +2066,8 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
     if (use_qtt && !CS_UNWINDING()) {
         int flag = (best <= alpha_orig) ? TT_UPPER
                  : (best >= beta)       ? TT_LOWER : TT_EXACT;
-        qs_tt_store(key, best, ply, bm, flag);
+        qs_tt_store(key, best, ply, bm, flag,
+                    in_chk ? TT_EVAL_NONE : stand);   /* FI-03 */
     }
     return best;
 }
@@ -2071,12 +2122,14 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
 
     /* --- TT probe -------------------------------------------------- */
     uint32_t tt_move = 0;
+    int tt_eval = TT_EVAL_NONE;      /* FI-03: cached static eval, if any */
     TTEntry* tte = NULL;
     if (g_use_tt && g_tt) {         /* FB-13b: g_tt may be NULL (failed alloc) */
         tte = &g_tt[key & TT_MASK];
         TTEntry e;
         if (tt_load(tte, key, &e)) {
             tt_move = TT_MOVE(e);
+            tt_eval = TT_EVAL(e);
             /* PV-02: at PV nodes skip the whole cutoff/narrowing block (the
              * EXACT return AND the bound-narrowing both truncate the
              * collected PV); the TT move above still orders. */
@@ -2102,7 +2155,11 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
 
     /* static eval (for pruning); meaningless in check, unused at PV nodes
      * (P-04 additionally computes it at PV nodes to feed the eval stack). */
-    int static_eval = (!in_chk && (!is_pv || g_improving)) ? eval_full_stm(b) : 0;
+    int want_eval = !in_chk && (!is_pv || g_improving);
+    int static_eval = want_eval
+        ? (tt_eval != TT_EVAL_NONE ? tt_eval        /* FI-03: exact cache */
+                                   : eval_full_stm(b))
+        : 0;
 
     /* P-04: record this ply's eval and compare to our own two plies ago.
      * Every ancestor on the current path wrote its slot on the way down, so
@@ -2135,7 +2192,8 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                  * an unproven null-move MATE is never trusted -- clamp. */
                 if (ns >= MATE_THRESH) ns = beta;
                 if (g_use_tt && tte && ns < MATE_THRESH && !CS_UNWINDING())
-                    tt_store_raw(tte, key, ns, 0, depth, TT_LOWER);
+                    tt_store_raw(tte, key, ns, 0, depth, TT_LOWER,
+                                 static_eval);        /* FI-03 */
                 return ns;
             }
         }
@@ -2150,6 +2208,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                   && !g_single_reply);
     Stager st;
     uint32_t moves[256];
+    int msc[256];                    /* FI-02.4: lazy-pick scores */
     int n = 0, sr_ext = 0;
     if (staged) {
         stager_init(&st, b, ply, counter_key, tt_move);
@@ -2166,12 +2225,14 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
              * array move-for-move at every eligible node. */
             uint32_t ref[256];
             for (int i = 0; i < n; i++) ref[i] = moves[i];
-            order_moves(b, ref, n, ply, counter_key, tt_move, 1);
+            order_moves(b, ref, n, ply, counter_key, tt_move, 1, NULL);
             Stager vs;
             stager_init(&vs, b, ply, counter_key, tt_move);
             for (int i = 0; i < n; i++) {
                 uint32_t sm = stager_next(&vs);
-                if (sm != ref[i]) {
+                /* FI-02.3 tags live in bits 22-23 of order_moves' output;
+                 * the staged stream never sets them -- compare payload. */
+                if ((sm & 0x3FFFFF) != (ref[i] & 0x3FFFFF)) {
                     fprintf(stderr, "P-23 VERIFY MISMATCH ply=%d i=%d/%d "
                             "staged=%08x ref=%08x\n", ply, i, n, sm, ref[i]);
                     abort();
@@ -2183,7 +2244,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                 abort();
             }
         }
-        order_moves(b, moves, n, ply, counter_key, tt_move, 1);
+        order_moves(b, moves, n, ply, counter_key, tt_move, 1, msc);
     }
 
     int color = b->turn, best = -CS_INF;
@@ -2197,7 +2258,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             if (!m) break;
         } else {
             if (i >= n) break;
-            m = moves[i];
+            m = pick_next(moves, msc, i, n);   /* FI-02.4 */
         }
         if (i == 0) best_move = m;
         int victim = (m >> MV_SHIFT_VICTIM) & 7;
@@ -2323,7 +2384,8 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
              * `(m & 0x7FFF) == tt_move` never match for odd mover PTs
              * (pawn/bishop/queen) -- TT-move ordering was silently dead
              * for those movers. */
-            tt_store_raw(tte, key, sv, best_move & 0x7FFF, depth, flag);
+            tt_store_raw(tte, key, sv, best_move & 0x7FFF, depth, flag,
+                         want_eval ? static_eval : TT_EVAL_NONE);  /* FI-03 */
         }
     }
     return best;
@@ -2410,7 +2472,7 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
         *out_score = in_check(&b) ? -CS_INF : 0;
         return 0;
     }
-    order_moves(&b, moves, n, 0, 0, prev_key, 1);
+    order_moves(&b, moves, n, 0, 0, prev_key, 1, NULL);
 
     int best = -CS_INF;
     uint32_t best_move = moves[0];
@@ -2452,7 +2514,7 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
         int flag = (best <= alpha_orig) ? TT_UPPER
                  : (best >= beta)       ? TT_LOWER : TT_EXACT;
         tt_store_raw(&g_tt[key & TT_MASK], key, best,
-                     best_move & 0x7FFF, depth, flag);
+                     best_move & 0x7FFF, depth, flag, TT_EVAL_NONE);
     }
     *out_score = best;
     return best_move & 0x7FFF;   /* 15-bit move key: from|to<<6|promo<<12 */
