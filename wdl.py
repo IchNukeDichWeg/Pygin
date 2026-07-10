@@ -13,8 +13,10 @@ phase_clamp_min note). Always White's perspective, so the numbers never
 flip with the side to move. Returns None when wdl_model.json is missing.
 
 Mate-convention scores (|score| >= 999_000, engine.py's MATE_THRESHOLD)
-short-circuit to 100/0/0. The model is loaded once per process; call
-`reload()` after refitting to pick a new file up in a live host.
+short-circuit to 100/0/0. The cached model is revalidated against the
+file's mtime on every call, so a refit (fit_wdl_model.py rewriting
+wdl_model.json) is picked up by live hosts automatically -- `reload()` is
+kept only for API compat.
 """
 
 import json

@@ -295,7 +295,7 @@ benchmark" below.
     +2.91 +/-11.6, normalized +5.51 -- no regression; validated with a
     1,068-game interim (+3.8) and the SF-2450 absolute benchmark (≈2442).
 
-* **v26 (2026-07-05, current ``engine.py``): the byte-identical NPS batch
+* **v26 (2026-07-05): the byte-identical NPS batch
   from improvements_v24.md.** Search is node-identical to v25 -- verified per
   item and end-to-end (8-position suite in all four zob x incremental
   configs, 40k+ accumulator round-trips, 56.9k SEE differential, 304-endgame

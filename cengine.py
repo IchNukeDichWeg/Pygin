@@ -1,11 +1,15 @@
 """
-cengine.py -- Python root driver for the C search core (phase-3 step 6).
-=========================================================================
+cengine.py -- Python root driver for the C search core (csearch.so).
+====================================================================
 
-A drop-in ``Engine`` for the project's battle/match harness, with the ENTIRE
-per-node search loop in C (csearch.so): board, move ordering, transposition
-table, pruning, quiescence and the full static eval (bit-exact port of
-engine.py's ``_evaluate_static``, verified over 3M positions).
+A drop-in ``Engine`` for the project's battle/match harness, with the
+ENTIRE per-node search loop in C (csearch.c): board, move ordering,
+transposition table, pruning, quiescence and the full static eval
+(bit-exact port of engine.py's ``_evaluate_static``, verified over 3M
+positions). Born as phase-3 step 6 of the C-core plan; the shipped engine
+since Old Engine/31. Defaults reproduce v37 (Old Engine/37) plus whatever
+eval-toggle candidate is armed on the class attrs below (currently
+USE_OUTPOST, A/B PENDING).
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -15,8 +19,11 @@ Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the opening-book probe (delegated to an embedded engine.Engine, which is
     also the single source of truth for every eval table/parameter synced
     into the C core at construction),
-  * TT retention policy (the C TT persists; cleared after irreversible root
-    moves, v30's rule) and the game-history keys for repetition detection.
+  * TT retention policy (the fixed-size C TT PERSISTS across game moves --
+    P-14, CONFIRMED +23.52 into v33; TT_KEEP_WARM=False restores v30's
+    wipe-after-irreversible-move rule, which only ever existed for the
+    Python engine's unbounded dict TT) and the game-history keys for
+    repetition detection.
 
 API (battle_worker.py contract):
     Engine().get_best_move(board, depth)                     -> Move | None
@@ -25,73 +32,82 @@ API (battle_worker.py contract):
     last_pv, constants MATE_SCORE / MATE_THRESHOLD, settable use_book /
     pv_uci.
 
-Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
-  * no root random tiebreak (deterministic best move),
-  * check extensions ARE on (P-01, csearch.c set_check_ext, A/B'd +6.81
-    +/-6.8 vs v33 -> snapshotted Old Engine/34); single-reply / forced-move
-    extension exists but is DORMANT (P-43, csearch.c set_single_reply,
-    default OFF: A/B'd +3.5 +/-4.8 over 20k pooled games vs v34 --
-    positive-leaning on every signal but sub-significant, kept-marginal by
-    user call; default reproduces v34 node-exactly); the "improving"
-    heuristic exists but is DORMANT (P-04, csearch.c set_improving, default
-    OFF: A/B'd +0.38 +/-6.8 @10k vs v34 -- a dead null despite -56% nodes
-    and +1 ply, the deeper tree saw nothing new at this TC; v30's recipe:
-    eval stack vs ply-2 feeding RFP depth / frontier-futility margin /
-    LMR+1; default reproduces v34 node-exactly); P-22 noisy-only qsearch
-    generation is ON (csearch.c set_qgen, default on: NODE-IDENTICAL by
+Search-feature ledger -- each entry names its csearch.c setter and the
+baseline its non-default setting restores node-exactly (the ladder pin).
+Eval-side toggles (USE_KING_SHELTER / USE_OUTPOST / USE_SIMPLIFY) live on
+the class attrs below with their own verdicts.
+
+ON by default (A/B-confirmed, or free by construction):
+  * P-01 check extensions (set_check_ext; +6.81 +/-6.8 vs v33 ->
+    snapshotted Old Engine/34; OFF = v33 node-exact). P-47 made the
+    per-line budget runtime-settable (set_check_ext_budget; 5 = v36
+    node-exact); raise-to-8 REJECTED 2026-07-10 (-4.59 +/-6.8 @10k
+    50+0.20) -- the extensions vein is thin (P-01 +6.8, P-43 +3.5
+    marginal, P-47 -4.6), do not re-try at this TC.
+  * P-22 noisy-only qsearch generation (set_qgen; NODE-IDENTICAL by
     construction -- same noisy subset, same order, stalemate semantics
-    preserved -- verified over 8 FENs x 2 depths, +32% NPS on a mixed bench
-    / +55% on startpos; being node-identical it needs no ladder pin. Timed
-    Elo measured 2026-07-10 as the P-22+P-44 bundle vs v34: ~+71.8 +/-8.5
-    @7k games -- the NPS converts at the classic ~2-3 Elo/1%); P-44
-    qsearch TT probe/store is ON (csearch.c set_qs_tt, CONFIRMED into v35:
-    isolation A/B vs the P-22 base +8.06 +/-6.8 @10k, CI clear of zero --
-    the node-majority qsearch probes the warm TT before movegen/eval and
-    stores depth-0 entries that never displace negamax entries; the warm
-    table across a game bought what the flat cold-ladder time-to-depth
-    could not show. v35 = v34 + P-22 + P-44 ~ +72, snapshotted Old
-    Engine/35); P-46 lazy qsearch generation is ON (csearch.c set_qs_lazy,
-    node-identical, ~+1-3% NPS batched rider); P-23 staged move ordering is
-    ON (csearch.c set_staged, CONFIRMED into v36: +24.67 +/-6.8 @10k vs
-    v35, snapshotted Old Engine/36 -- generates
-    TT-move/captures/killers/counter/quiets/bad-captures lazily per stage,
-    ~+10-20% NPS AND a deliberate tree change: later stages score quiets
-    with FRESHER history than v35's node-entry snapshot; stream equality
-    under identical state proven by verify mode over ~1M nodes;
-    set_staged(0) restores v35 node-exactly); Q-01 continuation history is
-    DORMANT (csearch.c set_cont_hist, default OFF: A/B'd -0.87 +/-6.8 @10k
-    vs v36 -- a dead NULL, the first 50+0.20-era campaign 2026-07-10; the
-    1-ply/2-ply continuation scores (v30's #1.6, piece-to keyed int16
-    tables) bought nothing at this depth and their ~1.6MB of tables cost
-    cache; default reproduces v36 node-exactly, re-test only at a much
-    longer TC);
-    PV-01 triangular PV is ON (csearch.c cs_get_pv: the PV is collected
-    during the search instead of TT-walked afterwards -- NODE-EXACT, pure
-    bookkeeping; _extract_pv emits the exact prefix in full, splicing the
-    old TT walk only past any truncation. CAVEAT measured on the full
-    matetrack suite: with the warm TT, PV nodes hit exact entries almost
-    immediately -- check extensions inflate stored depths along mate lines
-    -- so the exact prefix is often 1 move and Bad-PVs stayed ~60%: PV-01
-    alone is necessary plumbing but NOT sufficient); PV-02 exact-PV is
-    DORMANT (csearch.c set_pv_exact, default OFF: skips TT cutoffs/
-    narrowing at PV nodes so the collected PV is complete end-to-end --
-    verified: the same matetrack FEN goes 1-move -> full 13-ply mate PV;
-    tree-changing, d12 ~-23% nodes; A/B vs v36 2026-07-10, 10k @ 50+0.20:
-    +0.17 +/-6.8, pair ratio 1.02 -- a clean NULL, which for a correctness
-    feature means FREE: kept ON, CONFIRMED into v37 and snapshotted Old
-    Engine/37; set_pv_exact(0) restores v36's search); the check-extension
-    BUDGET is runtime-settable (P-47, csearch.c set_check_ext_budget, 5 =
-    v36 node-exact; LIVE CANDIDATE: cengine.CHECK_EXT_BUDGET = 8, A/B vs
-    v36 PENDING -- the second 50+0.20-era campaign); no singular
-    extensions / razoring (dormant or absent in v30 at match depths anyway),
+    preserved, verified over 8 FENs x 2 depths -- so it needs no ladder
+    pin; +32% NPS mixed bench / +55% startpos. Timed Elo measured
+    2026-07-10 as the P-22+P-44 bundle vs v34: ~+71.8 +/-8.5 @7k -- the
+    NPS converts at the classic ~2-3 Elo/1%).
+  * P-44 qsearch TT probe/store (set_qs_tt; isolation A/B vs the P-22 base
+    +8.06 +/-6.8 @10k, CI clear of zero -> CONFIRMED into v35, snapshotted
+    Old Engine/35; OFF = v34 node-exact): the node-majority qsearch probes
+    the warm TT before movegen/eval and stores depth-0 entries that never
+    displace negamax entries -- the persistent warm table across a game
+    delivered what the flat cold-ladder time-to-depth bench could not show.
+  * P-46 lazy qsearch generation (set_qs_lazy; node-identical, ~+1-3% NPS):
+    eval + stand-pat run BEFORE movegen, so stand-pat exits never pay for
+    generation.
+  * P-23 staged move ordering (set_staged; +24.67 +/-6.8 @10k vs v35 ->
+    CONFIRMED into v36, snapshotted Old Engine/36; set_staged(0) = v35
+    node-exact): TT-move/captures/killers/counter/quiets/bad-captures
+    generated lazily per stage -- ~+10-20% NPS AND a deliberate tree
+    change (later stages score quiets with FRESHER history than v35's
+    node-entry snapshot); stream equality under identical state proven by
+    verify mode over ~1M nodes.
+  * PV-01 triangular PV (cs_get_pv; NODE-EXACT, pure bookkeeping): the PV
+    is collected during the search instead of TT-walked afterwards;
+    _extract_pv emits the exact prefix in full, splicing the old TT walk
+    only past any truncation. Necessary but NOT sufficient alone: with the
+    warm TT, PV nodes hit exact entries almost immediately (check
+    extensions inflate stored depths along mate lines), so the exact
+    prefix was often 1 move and matetrack Bad-PVs stayed ~60%.
+  * PV-02 exact PV (set_pv_exact; CONFIRMED into v37 2026-07-10,
+    snapshotted Old Engine/37; set_pv_exact(0) = v36's search): skip TT
+    cutoffs/narrowing at PV nodes so the collected PV is complete
+    end-to-end -- the same matetrack FEN goes 1-move -> full 13-ply mate
+    PV, Bad-PVs -> zero. Tree-changing (d12 ~-23% nodes) yet the A/B was a
+    clean null (+0.17 +/-6.8 @10k 50+0.20, pair ratio 1.02): for a
+    correctness feature, a null means FREE.
+
+DORMANT (default OFF, mechanism kept for longer-TC re-tests):
+  * P-43 single-reply / forced-move extension (set_single_reply; +3.5
+    +/-4.8 over 20k pooled games vs v34 -- positive-leaning on every
+    signal but sub-significant, kept-marginal by user call; OFF = v34
+    node-exact).
+  * P-04 "improving" heuristic (set_improving; +0.38 +/-6.8 @10k vs v34 --
+    a dead null despite -56% nodes and +1 ply: at this TC the deeper tree
+    saw nothing new. v30's recipe: eval stack vs ply-2 feeding RFP depth /
+    frontier-futility margin / LMR+1; OFF = v34 node-exact).
+  * Q-01 continuation history (set_cont_hist; -0.87 +/-6.8 @10k 50+0.20 vs
+    v36, 2026-07-10 -- a dead NULL: the 1-ply/2-ply continuation scores
+    (v30's #1.6, piece-to keyed int16 tables) bought nothing at this depth
+    and their ~1.6MB of tables cost cache; OFF = v36 node-exact).
+  * EP-01 FIDE-exact ep hashing (set_ep_filter; correctness-positive --
+    see the deviations below -- but it changes every tree, so it waits for
+    its own A/B slot at a campaign boundary; OFF = raw-ep hashing).
+
+Deliberate deviations from v30 (documented, revisit if an A/B says so):
+  * no root random tiebreak (deterministic best move),
+  * no singular extensions / razoring (dormant or absent in v30 at match
+    depths anyway),
   * repetition detection covers negamax nodes, not quiescence nodes,
   * the position hash mixes the RAW ep square (set after every double push),
     so a phantom ep splits one FIDE-identical position across two keys and
-    repetition detection can MISS repetitions the arbiter would count. A
-    FIDE-exact filter exists (EP-01, csearch.c set_ep_filter: hash ep only
-    when a legal ep capture exists, = python-chess's _transposition_key) but
-    is DORMANT (default OFF): it changes every tree, so it queues for its
-    own A/B once P-04's is resolved,
+    repetition detection can MISS repetitions the arbiter would count --
+    EP-01 above (hash ep only when a legal ep capture exists, =
+    python-chess's _transposition_key) is the fix-in-waiting,
   * Lazy SMP exists in-process (csearch pthreads + lockless shared TT) but
     is strictly OPT-IN (smp_workers / UCI Threads; default 1, Elo
     unmeasured); tablebase probe exists but defaults off (use_tb=False,
