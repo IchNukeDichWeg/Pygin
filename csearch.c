@@ -1608,11 +1608,14 @@ void set_check_ext_budget(int v)
  * Node-exact: pure bookkeeping at is_pv alpha-raises, zero search decisions
  * read it. Sized for qsearch's recursion guard (CS_MAXPLY + 60).
  *
- * PV-02 (set_pv_exact, default OFF, tree-changing -- own A/B): the remaining
- * truncation source is the TT itself, which cuts PV nodes off via EXACT hits
- * and bound-narrowing before their line is walked. pv_exact skips the whole
+ * PV-02 (set_pv_exact, CONFIRMED into v37): the remaining truncation source
+ * is the TT itself, which cuts PV nodes off via EXACT hits and
+ * bound-narrowing before their line is walked. pv_exact skips the whole
  * TT-cutoff block at PV nodes (the standard strong-engine rule; the TT move
- * is still used for ordering), making the collected PV complete end-to-end. */
+ * is still used for ordering), making the collected PV complete end-to-end.
+ * A/B vs v36 (2026-07-10, 10k @ 50+0.20): +0.17 +/-6.8 -- a clean null, so
+ * the exact PV is FREE; the driver defaults it ON (cengine.PV_EXACT).
+ * set_pv_exact(0) restores v36's search. */
 #define PV_MAX (CS_MAXPLY + 62)
 static __thread uint32_t g_pv[PV_MAX][PV_MAX];
 static __thread uint8_t  g_pv_len[PV_MAX];
