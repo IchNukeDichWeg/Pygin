@@ -65,8 +65,10 @@ FIXED_DEPTH = 10             # used when MODE == "depth"
 TC_SECONDS = 50             # used when MODE == "clock": starting clock per side, in seconds
 TC_INCREMENT = 0.20         # used when MODE == "clock": seconds added per move
                             # ERA NOTE: 45+0.10 through v36 (the whole ledger
-                            # v21..v36); 50+0.30 from v37-era A/Bs on -- the
-                            # engine got ~2x faster and outgrew the old TC.
+                            # v21..v36); 50+0.20 from v37-era A/Bs on (0.30
+                            # was deemed increment-heavy on a 50s base;
+                            # revisit 60+0.30 if the base grows). The engine
+                            # got ~2x faster and outgrew the old TC.
                             # Cross-era Elo numbers are NOT the same currency.
 
 # --- WDL-based adjudication (OFF until wdl_model.json is calibrated) ------- #
