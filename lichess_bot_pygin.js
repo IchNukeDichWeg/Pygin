@@ -31,12 +31,14 @@ function interceptWebSocket() {
             webSocketWrapper = ws;
             ws.addEventListener('message', function(e) {
                 const msg = JSON.parse(e.data);
-                if (msg.d && typeof msg.d.fen === 'string' && typeof msg.v === 'number') {
-                    currentSide = msg.v % 2 === 0 ? 'w' : 'b';
-                    currentMoveNumber = Math.floor(msg.v / 2) + 1;  // whole moves only
-                    currentFen = msg.d.fen + ' ' + currentSide;
-                    maybeSearch();
-                }
+                if (msg.t !== 'move' || !msg.d || typeof msg.d.fen !== 'string') return;
+                // v counts EVERY event (clockInc, chat, moretime...) so its
+                // parity drifts; ply counts only moves. Fall back to v if absent.
+                const ply = typeof msg.d.ply === 'number' ? msg.d.ply : msg.v;
+                currentSide = ply % 2 === 0 ? 'w' : 'b';
+                currentMoveNumber = Math.floor(ply / 2) + 1;  // whole moves only
+                currentFen = msg.d.fen + ' ' + currentSide;
+                maybeSearch();
             });
             return ws;
         }
