@@ -130,7 +130,7 @@ NEAR_EQUAL_BASES = {
     # cengine-vs-engine 29-1-0 gate log (a ~700-Elo-gap pairing that would
     # otherwise qualify once "cengine" is listed).
     "cengine", "engine31", "engine32",  "engine33", "engine34", "engine35",
-    "engine36", "engine37", "engine38", "engine39",
+    "engine36", "engine37", "engine38", "engine39", "engine_qtt_off"
     # Python era (kept for reference; re-add ONLY for a deliberate
     # mixed-era fit): "engine", "engine24" ... "engine30".
 }
