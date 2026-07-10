@@ -11,17 +11,20 @@ a full Python engine whose evaluation and move generation are ported to C
 core** (`cengine.py` + `csearch.c`): the *entire* per-node search loop — board,
 ordering, transposition table, pruning, quiescence and a bit-exact port of the
 evaluation — runs in C, with Python keeping only the root layer (iterative
-deepening, time management, opening book). It reaches ~2.5M nodes/s, roughly
-28× the Python core, and searches several plies deeper at the same time
+deepening, time management, opening book). It reaches ~3.5M+ nodes/s, roughly
+40× the Python core, and searches several plies deeper at the same time
 control. `engine.py` remains the single source of truth for evaluation: the C
 core syncs every eval parameter from it at startup.
 
 **Strength:** the Python engine (`engine.py`) measures around **2440–2450 Elo**
 single-threaded (level with Stockfish 18 capped at UCI_Elo 2450 over 2,500
-games). The **C search core** is materially stronger — it wins **29–1–0**
-head-to-head against the Python engine, and against **full-strength**
-Stockfish 18 (no Elo limiter) it scores **~93%** at rook odds and **~77%** at
-knight odds.
+games). The **C search core** is far stronger and still climbing: it beat the
+Python engine **29–1–0** on arrival, and the C-era ledger has since added
+**≈ +135 Elo** of A/B-confirmed gains (v31 → v36: IIR, TT persistence, check
+extensions, qsearch-TT, noisy-only + staged move generation). Against
+**full-strength** Stockfish 18 it scores **~93%** at rook odds and roughly
+**~70%** at knight odds (knight-odds percentages are hardware/environment-
+dependent — compare only runs from the same machine).
 
 ---
 
@@ -40,8 +43,9 @@ knight odds.
 - **C move generator** (`movegen.c`) with magic bitboards, reproducing
   python-chess's move order so the search stays byte-identical.
 - **C search core** (`csearch.c`, driven by `cengine.py`): the whole per-node
-  loop in C — board, ordering, array TT, pruning, quiescence and a bit-exact
-  port of the evaluation (verified over 3M positions) — at ~2.5M nodes/s.
+  loop in C — board, staged move ordering, array TT (kept warm across moves,
+  probed in quiescence), pruning, quiescence and a bit-exact port of the
+  evaluation (verified over 3M positions) — at ~3.5M+ nodes/s.
   `cuci.py` exposes it as a UCI engine.
 - **Lazy SMP:** the C core uses pthreads with a lock-free shared TT (opt-in
   via the UCI `Threads` option); the Python engine has a multi-process
