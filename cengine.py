@@ -76,8 +76,9 @@ Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
     DORMANT (csearch.c set_pv_exact, default OFF: skips TT cutoffs/
     narrowing at PV nodes so the collected PV is complete end-to-end --
     verified: the same matetrack FEN goes 1-move -> full 13-ply mate PV;
-    tree-changing (d12 probe: -20% nodes, sign unknown), QUEUED as the A/B
-    after P-47 -- matetrack Bad-PVs only drop when this confirms); the check-extension
+    tree-changing (d12 probe: -20% nodes, sign unknown); LIVE CANDIDATE:
+    cengine.PV_EXACT = True, A/B vs v36 PENDING -- the third 50+0.20-era
+    campaign; matetrack Bad-PVs only drop when this confirms); the check-extension
     BUDGET is runtime-settable (P-47, csearch.c set_check_ext_budget, 5 =
     v36 node-exact; LIVE CANDIDATE: cengine.CHECK_EXT_BUDGET = 8, A/B vs
     v36 PENDING -- the second 50+0.20-era campaign); no singular
@@ -154,18 +155,21 @@ class Engine:
     TT_KEEP_WARM = True
 
     # P-47: per-line check-extension budget (v30's MAX_CHECK_EXT recipe).
-    # 5 = v36 node-exact. LIVE CANDIDATE = 8 (user request: deeper forced/
-    # mating check lines, motivated by the matetrack curve), A/B vs Old
-    # Engine/36 PENDING -- selftest pins the ladder to 5 meanwhile.
-    # Extensions vein is thin per ledger (P-01 +6.8, P-43 +3.5 marginal).
-    CHECK_EXT_BUDGET = 8
+    # 5 = v36 node-exact. Raise-to-8 REJECTED 2026-07-10: -4.59 +/-6.8 @10k
+    # vs v36 (49.34%, pair ratio 0.96, norm -9.09) -- deeper check lines
+    # cost more than they find at this TC; extensions vein confirmed thin
+    # (P-01 +6.8, P-43 +3.5 marginal, P-47 -4.6). Do not re-try at this TC.
+    CHECK_EXT_BUDGET = 5
 
     # PV-02: skip TT cutoffs/narrowing at PV nodes so the triangular PV
     # (PV-01, always on) is complete end-to-end -- the standard strong-engine
     # rule; the TT move still orders. Tree-changing (PV nodes re-search
-    # instead of cutting), DORMANT until its own A/B; False = v36 node-exact.
-    # matetrack Bad-PV rate is the functional acceptance test.
-    PV_EXACT = False
+    # instead of cutting; d12 probe -20% nodes). LIVE CANDIDATE = True, A/B
+    # vs Old Engine/36 PENDING (third 50+0.20-era campaign) -- selftest pins
+    # the ladder to 0 meanwhile. False = v36 node-exact. matetrack Bad-PV
+    # rate is the functional acceptance test (verified: 1-move -> full
+    # 13-ply mate PV on a failing FEN).
+    PV_EXACT = True
 
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
