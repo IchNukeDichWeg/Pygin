@@ -16,6 +16,8 @@ Options:
     UseTB         (check, default false)   -- root Lichess-Syzygy probe
                                               (difficulty-gated; needs network)
     Move Overhead (spin 0..5000, default 40) -- per-move clock slack, ms
+    Hash          (spin 2..3072 MB, default 48) -- C TT size (FI-10;
+                                              resize wipes the table)
     (+ the P-26 tuning spins; `bench` prints the OpenBench nodes signature;
     `go nodes N` is honored via a C-side node budget)
 
@@ -237,6 +239,7 @@ def main():
                 out("option name SoftStable type spin default 40 min 20 max 70")
                 out("option name SoftUnstable type spin default 80 min 50 max 130")
                 out("option name Move Overhead type spin default 40 min 0 max 5000")
+                out("option name Hash type spin default 48 min 2 max 3072")
                 # FI-13d: self-identifying config line (A/B forensics: PGN
                 # headers grep this to know exactly what was playing).
                 out(f"info string abi={engine._lib.csearch_abi()}"
@@ -298,6 +301,11 @@ def main():
                     engine.SOFT_STOP_UNSTABLE_FRAC = int(value) / 100.0
                 elif name == "moveoverhead":            # FI-13b
                     engine.move_overhead_ms = max(0, int(value))
+                elif name == "hash":                    # FI-10: MB -> bits
+                    if not searching():                 # resize = realloc;
+                        mb = max(2, min(3072, int(value)))   # never mid-search
+                        entries = mb * 1024 * 1024 // 24
+                        engine._lib.set_tt_bits(entries.bit_length() - 1)
             elif cmd == "bench":                        # FI-13c: OpenBench
                 if not searching():
                     run_bench(engine)
