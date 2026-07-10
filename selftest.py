@@ -155,6 +155,14 @@ if os.path.exists("csearch.c"):
         # default ON -- part of the pinned reference search above.
         # P-23 staged ordering: CONFIRMED into v36 (+24.67 A/B vs v35),
         # default ON -- part of the pinned reference search above.
+        # Q-01 continuation history defaults ON (A/B vs v36 pending, first
+        # 50+0.30-era campaign) and changes the tree; pin it OFF so the
+        # ladder tracks the CONFIRMED v36 search. Remove + re-measure
+        # CE_LADDER when Q-01 confirms.
+        try:
+            ce._lib.set_cont_hist(0)
+        except AttributeError:
+            pass                       # pre-Q-01 csearch.so: no such toggle
         # EP-01 FIDE-exact ep hashing is DORMANT (default OFF: correctness
         # fix, but tree-changing -- queued for its own A/B behind P-04).
         # Belt-and-braces pin so the ladder tracks the confirmed search even
