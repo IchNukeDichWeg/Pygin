@@ -9,7 +9,7 @@
 // @connect       127.0.0.1
 // ==/UserScript==
 
-const BRIDGE_URL = 'http://127.0.0.1:8181';
+const BRIDGE_URL = 'http://127.0.0.1:8118';
 
 let webSocketWrapper = null;
 let myColor = null;          // 'w' or 'b' — which side we are playing
