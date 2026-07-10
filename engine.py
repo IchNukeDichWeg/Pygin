@@ -534,6 +534,14 @@ from the internal ledger (chain-audit validated) and from the odds series
 below.
 
 **Odds series vs FULL-strength Stockfish 18 (no limiter, 45+0.15):**
+**ENVIRONMENT CAVEAT (2026-07-10): knight-odds percentages are NOT
+comparable across machines.** Local-Mac re-runs measured v35 at 68.1% and
+v36-dev at 71.0% (400 games each, 10 workers) -- v36 > v35 as the internal
+ledger predicts, but BOTH far below the 76.75% v31 baseline, which was run
+in a different environment (Stockfish's per-move strength scales with the
+host CPU; worker contention differs too). Re-base the yardstick per
+environment; the internal ledger remains the source of relative truth.
+
 queen odds (Qd1) 100/100 (2026-07-06, saturated); rook odds (Ra1): 48.00%
 (v29 era) -> 50.50% (v30, 2026-07-07) over 100 games each -- dead even --
 **-> 93.25% (v31 C core, 2026-07-08: 400 games, 364W/18D/18L, +456 +/-169
