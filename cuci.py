@@ -246,6 +246,7 @@ def main():
                     f" pv_exact={int(engine.PV_EXACT)}"
                     f" check_ext_budget={engine.CHECK_EXT_BUDGET}"
                     f" outpost={int(engine.USE_OUTPOST)}"
+                    f" score_hygiene={int(engine.SCORE_HYGIENE)}"
                     f" simplify={int(engine.USE_SIMPLIFY)}"
                     f" threads={engine.smp_workers}")
                 out("uciok")
