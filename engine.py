@@ -483,7 +483,7 @@ benchmark" below.
   295/998/1911/1295/501, pair ratio 1.39, norm +47.51)** -- the second-
   biggest single feature of the C era after P-14. Snapshotted as Old
   Engine/36. **This closes the 45+0.10 ledger era: the standard A/B TC is
-  50+0.30 from the next campaign on (cross-era Elo is not the same
+  50+0.20 from the next campaign on (cross-era Elo is not the same
   currency).**
 
 Cross-version benchmark
