@@ -17,7 +17,7 @@
 
 /* ---------- tuning constants (overridden by set_mobility_params) ---------- */
 static int MOB_N = 4, MOB_B = 3, MOB_R = 2, MOB_Q = 1;
-static int PHASE_MAX = 24;
+int PHASE_MAX = 24;    /* FB-06: non-static -- csearch.c's taper reads it */
 static int SHIELD_MG = 5,  SHIELD_EG = 2;
 static int RING_MG   = 13, RING_EG   = 0;
 static int OPEN_MG   = 28, OPEN_EG   = 2;

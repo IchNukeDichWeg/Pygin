@@ -120,6 +120,12 @@ def _load_pyengine():
     return pyengine
 
 
+# FB-04: csearch.so's eval params + toggles + TT are PROCESS-WIDE. Two Engine
+# instances with different configs in one process silently share them (the
+# second construction re-syncs the globals under the first). Refuse instead.
+_SYNCED_FINGERPRINT = None
+
+
 class Engine:
     MATE_SCORE = 1_000_000
     MATE_THRESHOLD = MATE_SCORE - 1_000
@@ -221,9 +227,9 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (cs_get_pv / set_pv_exact / set_check_ext_budget are abi 6) --
+        # (set_node_limit / cs_seldepth / cs_hashfull are abi 7) --
         # bump together with csearch_abi.
-        if lib.csearch_abi() < 6:
+        if lib.csearch_abi() < 7:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         B = ctypes.c_uint64
         BOARD_ARGS = [B] * 8 + [ctypes.c_int] * 2 + [B]
@@ -244,6 +250,35 @@ class Engine:
         self._lib = lib
         lib.set_check_ext_budget(int(self.CHECK_EXT_BUDGET))   # P-47
         lib.set_pv_exact(1 if self.PV_EXACT else 0)            # PV-02
+        # FB-06: cengine is AUTHORITATIVE over every behavioral C toggle --
+        # a stale .so or drifted compiled-in default must not silently change
+        # the search. Values = the confirmed ledger state (all defaults, so
+        # this is node-identical; the selftest ladder is the drift detector).
+        for setter, val in (("set_use_tt", 1), ("set_prune", 1),
+                            ("set_qsearch", 1), ("set_order_mode", 1),
+                            ("set_iir", 1), ("set_check_ext", 1),
+                            ("set_qgen", 1), ("set_qs_tt", 1),
+                            ("set_qs_lazy", 1), ("set_staged", 1),
+                            ("set_single_reply", 0), ("set_improving", 0),
+                            ("set_ep_filter", 0), ("set_cont_hist", 0)):
+            getattr(lib, setter)(val)
+        # FB-04: one process = one config. A second construction with a
+        # DIFFERENT config would silently retarget the process-wide globals
+        # under the first instance (the gui.py EvE bug class). Same config
+        # is fine (match workers construct one engine per process).
+        global _SYNCED_FINGERPRINT
+        fp = (self.USE_KING_SHELTER, self.USE_OUTPOST, self.USE_SIMPLIFY,
+              self.SIMPLIFY_THRESHOLD, self.CHECK_EXT_BUDGET, self.PV_EXACT)
+        if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
+            raise RuntimeError(
+                "cengine: two different Engine configs in one process -- "
+                "csearch.so's eval params/toggles are process-wide; run the "
+                "second config in its own process")
+        _SYNCED_FINGERPRINT = fp
+        # FB-04: entries scored under a PREVIOUS construction's eval params
+        # would poison this one (the table is process-global and persistent).
+        # First construction: the table is empty, reset is a no-op.
+        lib.cs_tt_reset()
 
         # --- sync every eval parameter from the live engine.py instance --- #
         # 1. mobility/king-safety & friends: csearch.so links its OWN copy of
@@ -294,7 +329,12 @@ class Engine:
         # not yet A/B-measured, so multi-threading is strictly opt-in (set
         # this attr, or the Threads option in cuci.py). CLAUDECHESS_SMP env
         # honored like engine.py.
-        self.smp_workers = max(1, int(os.environ.get("CLAUDECHESS_SMP", "1")))
+        # FB-13c: clamp to the C-side ceiling (set_threads clamps at 64
+        # silently -- the Python attr must not misrepresent the real count).
+        self.smp_workers = min(64, max(1, int(os.environ.get(
+            "CLAUDECHESS_SMP", "1"))))
+        # FB-09: optional node budget (UCI `go nodes N`); None = unlimited.
+        self.node_limit = None
         self.nodes_searched = 0
         self.last_score = 0                  # White POV, v30 mate convention
         self.last_depth = 0
@@ -369,13 +409,24 @@ class Engine:
     # ------------------------------------------------------------------ #
     # Public API
     # ------------------------------------------------------------------ #
+    def _clear_stale_abort(self):
+        """FB-10: `_abort` is host-owned (the host clears it before its next
+        `go`) -- but a DIRECT API caller who did stop() after a finished
+        search would otherwise get an instant garbage move from the next
+        call. A set flag with NO search running is by definition stale;
+        a stop aimed at a live search is untouched (the lock is held)."""
+        if self._abort and not Engine._SEARCH_LOCK.locked():
+            self._abort = False
+
     def get_best_move(self, board, depth):
+        self._clear_stale_abort()
         return self._search(board, None, depth)
 
     def get_best_move_timed(self, board, time_limit, max_depth=245):
         # Default = MAX_DEPTH_CAP so the clock, not the cap, is the limit --
         # the old default of 10 silently capped ad-hoc timed searches (the C
         # core passes depth 10 in well under a second).
+        self._clear_stale_abort()            # FB-10
         return self._search(board, time_limit, max_depth)
 
     def stop(self):
@@ -480,6 +531,17 @@ class Engine:
             hist.append(self._lib.cs_board_key(*self._bargs(h)))
         arr = (ctypes.c_uint64 * max(1, len(hist)))(*hist)
         self._lib.set_threads(int(self.smp_workers))     # Lazy SMP
+        # FB-09: node budget (0 = unlimited); node-identical when unset.
+        self._lib.set_node_limit(
+            ctypes.c_uint64(int(self.node_limit) if self.node_limit else 0))
+        # FB-11: book/TB/history setup time comes OUT of the budget -- the C
+        # deadline armed below must not extend the move past the allocation
+        # (a 2s TB stall on a 3s budget used to spend 5s). Sub-5ms setup
+        # (the normal path) is left alone: bit-identical clock behavior.
+        if time_limit is not None:
+            setup = time.perf_counter() - t0
+            if setup > 0.005:
+                time_limit = max(0.05, time_limit - setup)
         self._lib.cs_search_begin(arr, len(hist),
                                   float(time_limit) if time_limit else 0.0)
 
