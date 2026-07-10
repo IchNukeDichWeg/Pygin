@@ -111,6 +111,22 @@ class Engine:
     # at this TC; the mechanism stays for future eval-toggle A/Bs.
     USE_KING_SHELTER = False
 
+    # Outpost re-test (user request 2026-07-10; Python-era solo verdict was
+    # +0 +/-10 at depth 8, P-20a's subsumption logic tempers expectations).
+    # Same sync mechanism as USE_KING_SHELTER: flips the embedded engine's
+    # use_outpost BEFORE _sync_c_params pushes set_outpost_params into
+    # csearch's eval_c copy. False = v36 eval exactly. A/B slot queued.
+    USE_OUTPOST = False
+
+    # Simplify-at-500 re-test (user request; v30's use_simplify A/B'd -14 at
+    # threshold 200 -- traded into DRAWN endings; a decisive >=500cp gate
+    # removes that failure mode). Pushed via csearch_set_simplify; threshold
+    # 0 (off) = v36 eval exactly. CAVEAT: adjudicated matches barely see it
+    # (WDL calls wins near this same band) -- its verdict harness is
+    # MATCH_ADJUDICATE=0 matches and/or odds-vs-Stockfish conversion play.
+    USE_SIMPLIFY = False
+    SIMPLIFY_THRESHOLD = 500
+
     # P-14 (CONFIRMED v33, +23.52 +/-6.8 vs v32): KEEP the C TT across
     # irreversible root moves. v30's wipe-on-capture/pawn-move rule existed
     # because its dict TT grew unbounded and dead entries wasted memory; the
@@ -162,6 +178,7 @@ class Engine:
         # Eval toggles under A/B (see class attrs above): applied to the
         # embedded engine BEFORE _sync_c_params pushes them into csearch.so.
         self._py.use_king_shelter = bool(self.USE_KING_SHELTER)
+        self._py.use_outpost = bool(self.USE_OUTPOST)
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
@@ -211,6 +228,10 @@ class Engine:
         )
         # 3. contempt draw scoring.
         lib.csearch_set_draw(eng.CONTEMPT, eng.DRAW_AVOID_MARGIN)
+        # 4. simplify-at-500 (threshold 0 = off = v36 eval exactly).
+        lib.csearch_set_simplify(
+            int(self.SIMPLIFY_THRESHOLD) if self.USE_SIMPLIFY else 0,
+            int(eng.SIMPLIFY_WEIGHT))
 
         # --- host-visible state (battle_worker contract) ------------------ #
         self.use_book = True
