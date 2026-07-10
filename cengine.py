@@ -52,7 +52,8 @@ Deliberate v1 deviations from v30 (documented, revisit if the A/B says so):
     could not show. v35 = v34 + P-22 + P-44 ~ +72, snapshotted Old
     Engine/35); P-46 lazy qsearch generation is ON (csearch.c set_qs_lazy,
     node-identical, ~+1-3% NPS batched rider); P-23 staged move ordering is
-    ON (csearch.c set_staged, default on, A/B vs v35 PENDING -- generates
+    ON (csearch.c set_staged, CONFIRMED into v36: +24.67 +/-6.8 @10k vs
+    v35, snapshotted Old Engine/36 -- generates
     TT-move/captures/killers/counter/quiets/bad-captures lazily per stage,
     ~+10-20% NPS AND a deliberate tree change: later stages score quiets
     with FRESHER history than v35's node-entry snapshot; stream equality
