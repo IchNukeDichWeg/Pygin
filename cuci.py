@@ -171,6 +171,7 @@ def main():
             k in params for k in ("movetime", "wtime", "btime", "depth",
                                   "nodes"))
         stop_evt = threading.Event()
+        holding = threading.Event()          # FB-14: search DONE, only holding
 
         white_to_move = board.turn == chess.WHITE
         engine.on_depth = lambda rec: out(info_line(rec, white_to_move, engine))
@@ -195,12 +196,14 @@ def main():
                 print(f"cuci: search error: {ex!r}", file=sys.stderr)
             finally:
                 engine.node_limit = None     # FB-09: per-go, don't leak
-                if hold:
+                holding.set()                # FB-14: from here on, a release
+                if hold:                     # is instant -- no search running
                     stop_evt.wait()          # B-03: hold until `stop`
                 out(f"bestmove {mv.uci() if mv is not None else '0000'}")
 
         th = threading.Thread(target=run, daemon=True)
         th.stop_evt = stop_evt
+        th.holding = holding
         return th
 
     for raw in sys.stdin:
@@ -336,7 +339,18 @@ def main():
                           file=sys.stderr)
             elif cmd == "go":
                 if searching():
-                    continue                 # already searching; ignore
+                    # FB-14: a self-terminated `go infinite` (mate break /
+                    # depth cap) leaves its thread HOLDING the bestmove --
+                    # dropping this go would mean no bestmove for it, ever
+                    # (silent host hang on GUIs that skip the `stop`).
+                    # Holding-only thread: implicit stop -- release the held
+                    # bestmove, join, proceed. Genuinely live search: keep
+                    # the old behavior (UCI says the GUI must stop first).
+                    if search_thread.holding.is_set():
+                        search_thread.stop_evt.set()
+                        search_thread.join()
+                    else:
+                        continue             # actively searching; ignore
                 search_thread = go(tokens[1:])
                 search_thread.start()
             elif cmd == "stop":
