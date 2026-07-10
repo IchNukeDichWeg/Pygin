@@ -155,10 +155,10 @@ if os.path.exists("csearch.c"):
         # default ON -- part of the pinned reference search above.
         # P-23 staged ordering: CONFIRMED into v36 (+24.67 A/B vs v35),
         # default ON -- part of the pinned reference search above.
-        # Q-01 continuation history defaults ON (A/B vs v36 pending, first
-        # 50+0.20-era campaign) and changes the tree; pin it OFF so the
-        # ladder tracks the CONFIRMED v36 search. Remove + re-measure
-        # CE_LADDER when Q-01 confirms.
+        # Q-01 continuation history is DORMANT (default OFF after a dead-null
+        # 10k A/B vs v36: -0.87 +/-6.8, the first 50+0.20-era campaign); the
+        # default already reproduces v36, so this pin is belt-and-braces
+        # against a future default flip.
         try:
             ce._lib.set_cont_hist(0)
         except AttributeError:
