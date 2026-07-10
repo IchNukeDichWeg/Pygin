@@ -1200,6 +1200,14 @@ void set_qsearch(int v) { g_qsearch = v; }
 static int g_qgen = 1;
 void set_qgen(int v) { g_qgen = v; }
 
+/* P-46: lazy qsearch generation -- eval + stand-pat run BEFORE movegen, so
+ * the many nodes that exit at stand-pat never pay for generation at all.
+ * Needs P-22's gen_noisy/has_legal_quiet split (hence gated on g_qgen too);
+ * value-identical at every node => node-identical trees, pure speed.
+ * set_qs_lazy(0) restores the v35 order (gen first). */
+static int g_qs_lazy = 1;
+void set_qs_lazy(int v) { g_qs_lazy = v; }
+
 /* P-44: quiescence TT probe/store. The node majority lives in qsearch, and
  * until now it never touched the transposition table: every qsearch node
  * recomputed the full static eval and re-resolved exchanges the warm P-14
@@ -1268,6 +1276,28 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk)
         n = gen_legal(b, moves);                     /* full evasions */
         if (n == 0) return -CS_INF + ply;            /* checkmate */
         best = -CS_INF;
+    } else if (g_qs_lazy && g_qgen) {
+        /* P-46: eval + stand-pat BEFORE generation -- a large share of
+         * qsearch nodes exit right here, and their movegen was pure waste.
+         * Stalemate semantics preserved exactly: before returning stand we
+         * confirm a legal move exists (early-exit quiet scan first -- the
+         * common instant hit -- then the noisy list for locked positions);
+         * no legal move at all is still a 0 draw, never an eval.
+         * VALUE-IDENTICAL to the v35 path at every node => node-identical. */
+        stand = eval_full_stm(b);
+        if (stand >= beta) {                         /* fail-soft stand-pat */
+            if (has_legal_quiet(b) || gen_noisy(b, moves) > 0) {
+                if (use_qtt && !CS_UNWINDING())      /* P-44: cache the cutoff */
+                    qs_tt_store(key, stand, ply, 0, TT_LOWER);
+                return stand;
+            }
+            return 0;                                /* stalemate: draw, not eval */
+        }
+        n = gen_noisy(b, moves);
+        if (n == 0 && !has_legal_quiet(b))
+            return 0;                                /* stalemate: draw, not eval */
+        if (stand > alpha) alpha = stand;
+        best = stand;
     } else {
         /* P-22: noisy-only generation; stalemate still detected BEFORE the
          * stand-pat return (empty noisy list + no legal quiet = stalemate),
