@@ -125,10 +125,10 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # quiet developing moves flip between depths without being a regression.
 # Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
 CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3"
-CE_LADDER = {                     # depth -> (nodes, score)  [v42 = v41 counts: CW-01 can't fire here]
+CE_LADDER = {                     # depth -> (nodes, score)  [v43: NV-01 verification dropped]
     1: (102, 126), 2: (189, 126), 3: (749, 126), 4: (1020, 122),
     5: (8823, 73), 6: (16866, 63), 7: (42298, 74), 8: (80121, 72),
-    9: (130991, 75), 10: (307932, 58), 11: (471989, 70), 12: (828672, 88),
+    9: (130991, 75), 10: (307932, 58), 11: (471981, 70), 12: (828647, 88),
 }
 if os.path.exists("csearch.c"):
     try:
@@ -147,12 +147,11 @@ if os.path.exists("csearch.c"):
         # force mate), default ON. The ladder is UNCHANGED by it (the clamp
         # cannot fire from this FEN's trees -- both sides keep pawns), so
         # the v41 pins carry over verbatim.
-        # NV-01 verification isolation (LIVE candidate, eleventh 50+0.20
-        # campaign, A/B vs Old Engine/42 pending): the candidate REMOVES
-        # CB-02's deep-null verification (NULL_VERIFY=False default); pin
-        # it back ON so the ladder tracks the confirmed v42 search.
-        # On a positive verdict the v43 ladder re-measures without it.
-        cengine.Engine.NULL_VERIFY = True
+        # NV-01 verification isolation: RESOLVED into v43 (+5.18 vs Old
+        # Engine/42, removal direction -- two independent reads priced
+        # CB-02's deep-null verification at ~3-5 Elo of nodes-to-depth
+        # cost, so v43 DROPS it; NULL_VERIFY=False is the confirmed
+        # default, True = v42's verifying search).
         ce = cengine.Engine()
         ce.use_book = False
         ce.use_tb = False
@@ -190,6 +189,13 @@ if os.path.exists("csearch.c"):
         # +/-6.8 @10k vs Old Engine/40, 2026-07-11; default -1 = off = v40
         # rule). The cold ladder never saw it either way (post-reset
         # old-gen entries are zeroed depth-0 slots).
+        # FI-04 history-LMR (LMR_HIST, LIVE candidate, twelfth 50+0.20
+        # campaign, A/B vs Old Engine/43 pending): pin OFF so the ladder
+        # tracks the confirmed v43 search. Remove + re-measure on confirm.
+        try:
+            ce._lib.set_lmr_hist(0)
+        except AttributeError:
+            pass                       # pre-FI-04 csearch.so
         # P-47 check-ext budget: raise-to-8 REJECTED (-4.59 +/-6.8 @10k);
         # 5 is the confirmed recipe and the default -- belt-and-braces pin.
         # PV-02 exact PV: CONFIRMED into v37 (+0.17 null = free correctness),
