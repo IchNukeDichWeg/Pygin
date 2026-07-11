@@ -572,6 +572,23 @@ benchmark" below.
   was implemented alongside but is the TENTH campaign's candidate --
   dormant in v41.)
 
+* **v42 (2026-07-11, lives in ``cengine.py`` + ``csearch.c``): CW-01, the
+  cannot-win eval clamp -- the fifth correctness release, and the first
+  user-reported one.** At the end of the static eval (both engines,
+  bit-exact twins: ``use_cantwin`` here, ``set_cantwin``/``CANTWIN`` in the
+  C core), if the side the score favors has no pawns, no rooks/queens, and
+  at most a lone minor (or two knights), the score clamps to 0: that side
+  cannot force mate, so the position's true upper bound is a draw. Fixes
+  horizon draw-dodging -- a lone-bishop side no longer shuffles at "+2.6"
+  against tripled pawns, avoiding the capture that would reveal the
+  insufficient-material draw (the reported position goes +2.92/shuffles ->
+  0.00/plays Kxc4). Oracle differential clean over 389 positions incl.
+  no-pawn endings; the fixed-depth ladder is untouched (the clamp cannot
+  fire while both sides keep pawns). **A/B vs v41: +3.27 +/-6.8 over
+  10,000 games @ 50+0.20 (50.47%%, ptnml 257/1115/2159/1215/254, pair
+  ratio 1.07, normalized +6.98)** -- a null KEPT as correctness
+  (PV-02/CB-01/EP-01/CB-02 precedent). Snapshotted as Old Engine/42.
+
 Cross-version benchmark
 -----------------------
 Sweep (2026-07-02): 24 versions x 8 positions x 6 timed 5s runs (1152 searches).
