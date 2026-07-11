@@ -17,6 +17,8 @@ let myColor = null;          // 'w' or 'b' — which side we are playing
 let currentFen = "";
 let currentSide = 'w';       // side to move for currentFen
 let currentMoveNumber = 1;   // whole-move number for currentFen
+let currentPly = 0;          // ply count for currentFen
+let moveHistory = [];        // moveHistory[ply-1] = uci of that move
 
 let inFlight = false;        // is a request to the bridge running?
 
@@ -35,6 +37,8 @@ function interceptWebSocket() {
                 // v counts EVERY event (clockInc, chat, moretime...) so its
                 // parity drifts; ply counts only moves. Fall back to v if absent.
                 const ply = typeof msg.d.ply === 'number' ? msg.d.ply : msg.v;
+                if (msg.d.uci && ply >= 1) moveHistory[ply - 1] = msg.d.uci;
+                currentPly = ply;
                 currentSide = ply % 2 === 0 ? 'w' : 'b';
                 currentMoveNumber = Math.floor(ply / 2) + 1;  // whole moves only
                 currentFen = msg.d.fen + ' ' + currentSide;
@@ -63,17 +67,29 @@ function maybeSearch() {
     startSearch();
 }
 
+// Full move list if we have every ply contiguously (so the engine sees
+// repetitions); null if there's a gap (e.g. joined mid-game) → caller uses FEN.
+function movesString() {
+    for (let i = 0; i < currentPly; i++) {
+        if (moveHistory[i] === undefined) return null;
+    }
+    return moveHistory.slice(0, currentPly).join(' ');
+}
+
 function startSearch() {
     const fenAtRequest = currentFen;
     const moveNumAtRequest = currentMoveNumber;
     const pieces = (currentFen.split(' ')[0].match(/[a-zA-Z]/g) || []).length;
     const depth = Math.min(18, 12 + Math.floor((32 - pieces) / 4));
+    const moves = movesString();
+    const payload = moves !== null ? { moves: moves, depth: depth }
+                                    : { fen: fenAtRequest, depth: depth };
     inFlight = true;
 
     GM_xmlhttpRequest({
         method: 'POST',
         url: BRIDGE_URL,
-        data: JSON.stringify({ fen: fenAtRequest, depth: depth }),
+        data: JSON.stringify(payload),
         headers: { 'Content-Type': 'application/json' },
         onload: function(response) {
             inFlight = false;
