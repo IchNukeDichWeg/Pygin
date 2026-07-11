@@ -5,8 +5,16 @@
 #     ./export.sh
 #
 set -euo pipefail
-tar czf /tmp/match_export.tar.gz *engine*.txt *engine*.pgn
-rm -f *engine*.txt *engine*.pgn
+shopt -s nullglob
+files=(*engine*.txt *engine*.pgn)
+if [ ${#files[@]} -eq 0 ]; then
+    echo "no *engine*.txt / *engine*.pgn files here -- nothing to export (existing archive, if any, left untouched)"
+    exit 1
+fi
+# write to a temp name first so a failed/interrupted tar never clobbers a good existing archive
+tar czf /tmp/match_export.tar.gz.new "${files[@]}"
+mv /tmp/match_export.tar.gz.new /tmp/match_export.tar.gz
+rm -f "${files[@]}"
 echo "done -> /tmp/match_export.tar.gz"
 echo ""
 echo "next steps:"
