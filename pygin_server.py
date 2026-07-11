@@ -121,7 +121,10 @@ class Handler(BaseHTTPRequestHandler):
             send("position startpos" + (" moves " + mv if mv else ""))
         else:
             send("position fen " + full_fen(req["fen"]))
-        send("go depth %d" % req.get("depth", 12))
+        if req.get("movetime", 0) > 0:
+            send("go movetime %d" % req["movetime"])
+        else:
+            send("go depth %d" % req.get("depth", 12))
         best = wait_for("bestmove").split()[1]
         body = json.dumps({"bestmove": best}).encode()
         self.send_response(200)
