@@ -1220,6 +1220,17 @@ static size_t   g_tt_size = (size_t)1 << TT_BITS;
 static uint64_t g_tt_mask = ((uint64_t)1 << TT_BITS) - 1;
 #define TT_SIZE g_tt_size
 #define TT_MASK g_tt_mask
+/* FI-17 (P-45 re-arm, bench-gated): prefetch the child's TT line right
+ * after apply_move -- FI-01 made c.key free, which was P-45's own stated
+ * revisit condition. Compile with -DCS_PREFETCH to enable; the default
+ * build is byte-identical without it. Raw key is fine (the EP-01 fixup
+ * diverges only on rare phantom-ep nodes; a wrong-line prefetch is a
+ * harmless hint). */
+#ifdef CS_PREFETCH
+#define TT_PREFETCH(k) do { if (g_tt) __builtin_prefetch(&g_tt[(k) & TT_MASK], 0, 0); } while (0)
+#else
+#define TT_PREFETCH(k) do { } while (0)
+#endif
 #define TT_EXACT 0
 #define TT_LOWER 1
 #define TT_UPPER 2
@@ -2223,6 +2234,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         }
         Board c = *b;
         apply_move(&c, m);
+        TT_PREFETCH(c.key);                          /* FI-17 */
         int child_hmc = (victim || ((m >> MV_SHIFT_MOVER) & 7) == PT_PAWN
                          || is_promo) ? 0 : hmc + 1;
         int v = -qsearch(&c, -beta, -alpha, ply + 1, in_check(&c), child_hmc);
@@ -2479,6 +2491,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
 
         Board c = *b;
         apply_move(&c, m);
+        TT_PREFETCH(c.key);                          /* FI-17 */
         g_ctx[ply + 1] = (uint16_t)((mover << 6) | ((m >> 6) & 63));  /* Q-01 */
         int gives_check = in_check(&c);
 
@@ -2696,6 +2709,7 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
         int child_hmc = (victim || mover == PT_PAWN) ? 0 : hmc + 1;
         Board c = b;
         apply_move(&c, m);
+        TT_PREFETCH(c.key);                          /* FI-17 */
         int gc = in_check(&c);
         g_ctx[1] = (uint16_t)((((m >> MV_SHIFT_MOVER) & 7) << 6)
                               | ((m >> 6) & 63));    /* Q-01 child context */
