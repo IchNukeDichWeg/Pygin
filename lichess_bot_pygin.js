@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lichess Bot Pygin
 // @description  Fully automated lichess bot using local pygin engine
-// @author       Nuro
+// @author       Claude Fable 5
 // @match         *://lichess.org/*
 // @run-at        document-start
 // @grant         GM_xmlhttpRequest
@@ -10,7 +10,7 @@
 // ==/UserScript==
 
 const BRIDGE_URL = 'http://127.0.0.1:8118';
-const MOVETIME_MS = 0;   // >0: search this many ms per move; 0: use depth instead
+const MOVETIME_MS = 175; // >0: search this many ms per move; 0: use depth instead
 
 let webSocketWrapper = null;
 let myColor = null;          // 'w' or 'b' — which side we are playing
