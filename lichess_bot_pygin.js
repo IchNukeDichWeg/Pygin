@@ -22,9 +22,10 @@ let currentPly = 0;          // ply count for currentFen
 let moveHistory = [];        // moveHistory[ply-1] = uci of that move
 
 let inFlight = false;        // is a request to the bridge running?
-let replyTable = null;       // PM-01: {key, table, premove} — certified
-                             // instant replies for the position after OUR
-                             // last move; key = full move history string
+let replyTable = null;       // PM-01: {key, chain} — certified chain of
+                             // instant replies; key = move history string
+                             // the NEXT chain entry applies to (advanced as
+                             // the chain is consumed)
 
 interceptWebSocket();
 kickoffAsWhite();
@@ -60,11 +61,20 @@ function interceptWebSocket() {
                     let gap = false;
                     for (let i = 0; i < hist.length; i++)
                         if (hist[i] === undefined) gap = true;
-                    if (!gap && hist.join(' ') === replyTable.key
-                            && replyTable.table[msg.d.uci]) {
-                        const reply = replyTable.table[msg.d.uci];
-                        console.log('[Bot] INSTANT reply:', msg.d.uci, '->', reply);
-                        replyTable = null;
+                    const next = replyTable.chain.length ? replyTable.chain[0]
+                                                         : null;
+                    if (!gap && next && hist.join(' ') === replyTable.key
+                            && next[0] === msg.d.uci) {
+                        const reply = next[1];
+                        console.log('[Bot] INSTANT reply:', msg.d.uci, '->',
+                                    reply, '(' + (replyTable.chain.length - 1)
+                                    + ' more in chain)');
+                        // advance the chain: the next entry applies to the
+                        // history including this exchange
+                        replyTable.key += (replyTable.key ? ' ' : '')
+                                        + msg.d.uci + ' ' + reply;
+                        replyTable.chain.shift();
+                        if (!replyTable.chain.length) replyTable = null;
                         webSocketWrapper.send(JSON.stringify({
                             t: 'move',
                             d: { u: reply, s: '0', a: String(currentMoveNumber) }
@@ -72,7 +82,8 @@ function interceptWebSocket() {
                         return;              // our echo event re-enters here
                     }
                 }
-                if (replyTable && msg.d.uci) replyTable = null;  // stale
+                if (replyTable && msg.d.uci
+                        && detectColor() === currentSide) replyTable = null;
                 maybeSearch();
             });
             return ws;
@@ -169,10 +180,9 @@ function fetchReplies(expectedKey) {
             try {
                 const j = JSON.parse(r.responseText);
                 if (j && j.key === expectedKey
-                      && Object.keys(j.table || {}).length) {
+                      && (j.chain || []).length) {
                     replyTable = j;
-                    console.log('[Bot] armed instant replies:', j.table,
-                                j.premove ? ('premove ' + j.premove) : '');
+                    console.log('[Bot] armed reply chain:', j.chain);
                 }
             } catch (e) {}
         },
