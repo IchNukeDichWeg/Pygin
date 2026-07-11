@@ -366,7 +366,7 @@ def main():
             if cmd == "uci":
                 out(f"id name {NAME}")
                 out(f"id author {AUTHOR}")
-                out("option name Threads type spin default 1 min 1 max 64")
+                out("option name Threads type spin default 1 min 1 max 256")
                 out("option name OwnBook type check default true")
                 out("option name UseTB type check default false")
                 # P-26 tuning knobs (chess-tuning-tools): defaults = shipped
@@ -411,7 +411,7 @@ def main():
                     name = "".join(tokens[2:]).lower()
                     value = ""
                 if name == "threads":
-                    engine.smp_workers = max(1, min(64, int(value)))
+                    engine.smp_workers = max(1, min(256, int(value)))
                 elif name == "ownbook":
                     engine.use_book = value.lower() == "true"
                 elif name == "usetb":
