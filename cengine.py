@@ -14,8 +14,12 @@ Engine/42). v43 = v42 MINUS CB-02's deep-null verification: NV-01
 measured the removal at +5.18 +/-6.8 vs Old Engine/42 (pair ratio 1.08),
 converging with CB-02's own -2.88 lean -- the insurance cost ~3-5 Elo of
 nodes-to-depth and is DROPPED (modern-engine practice); snapshotted Old
-Engine/43. Armed candidate: FI-04 history-based LMR (LMR_HIST = 8192,
-A/B vs Old Engine/43 PENDING -- the wave's 5/5-consensus feature).
+Engine/43; FI-04 history-LMR read +2.15 null and is DORMANT -- the
+finer-quiet-signal vein is 0-for-3). Armed candidate: FI-26a = the TT
+prefetch, NODE-IDENTICAL (+4.9% NPS median, 3/3 tight pairs; P-45's
+null inverted by FI-01's free child key) -- the ladder is unchanged,
+the timed A/B vs Old Engine/43 prices the speed (the P-22 rule). A
+staged-quiet lazy pick was tried alongside and PARKED (bench noise).
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -310,15 +314,15 @@ class Engine:
     # + the TT cover zugzwang). True = v42's verifying search.
     NULL_VERIFY = False
 
-    # FI-04 history-based LMR (LIVE CANDIDATE, twelfth 50+0.20-era campaign,
-    # A/B vs Old Engine/43 PENDING; selftest pins the ladder to 0): the
-    # quiet's butterfly history nudges its LMR reduction by +/-1
-    # (adj = hist/LMR_HIST clamped; HIST_MAX=16384, so 8192 fires only on
-    # strong signals). The wave's 5/5-consensus feature -- a move-QUALITY
-    # change at fixed depth (P-23's paying family), tempered by the
-    # Q-01/P-42 finer-signal nulls. If the verdict is +3..+10 marginal, ONE
-    # divisor tune (4096/12288) before the next feature. 0 = v43 node-exact.
-    LMR_HIST = 8192
+    # FI-04 history-based LMR: DORMANT (twelfth 50+0.20-era campaign, A/B
+    # vs Old Engine/43 2026-07-12: +2.15 +/-6.8 @10k, 50.31%, pair ratio
+    # 1.05 -- a null below the pre-registered +3 tune threshold, so no
+    # divisor tune; not correctness => the Q-01/P-04 rule: default 0,
+    # mechanism kept). The finer-quiet-signal vein is now 0-for-3 at this
+    # TC (Q-01 -0.87, P-42 -16.4, FI-04 +2.15) -- even the v39+ wave's
+    # 5/5-consensus form doesn't pay; do not re-try without a longer TC.
+    # divisor > 0 enables (adj = hist/div clamped +/-1); 0 = v43 exact.
+    LMR_HIST = 0
 
     # FI-10: TT size in bits (2^bits x 24-byte entries; 21 = 48 MB, the size
     # the entire ledger was measured at -- leave it for A/B play). The UCI

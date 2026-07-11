@@ -1220,17 +1220,13 @@ static size_t   g_tt_size = (size_t)1 << TT_BITS;
 static uint64_t g_tt_mask = ((uint64_t)1 << TT_BITS) - 1;
 #define TT_SIZE g_tt_size
 #define TT_MASK g_tt_mask
-/* FI-17 (P-45 re-arm, bench-gated): prefetch the child's TT line right
- * after apply_move -- FI-01 made c.key free, which was P-45's own stated
- * revisit condition. Compile with -DCS_PREFETCH to enable; the default
- * build is byte-identical without it. Raw key is fine (the EP-01 fixup
- * diverges only on rare phantom-ep nodes; a wrong-line prefetch is a
- * harmless hint). */
-#ifdef CS_PREFETCH
+/* FI-17/FI-26a (P-45 re-arm, ADOPTED 2026-07-12): prefetch the child's TT
+ * line right after apply_move. P-45 measured null because computing the
+ * child key ate the gain; FI-01 made c.key free -- re-benched at +4.9% NPS
+ * median, 3/3 pairs positive. Node-identical (a prefetch is a hint; raw
+ * key is fine, the EP-01 fixup diverges only on rare phantom-ep nodes).
+ * Timed Elo measured as part of the FI-26a batch A/B. */
 #define TT_PREFETCH(k) do { if (g_tt) __builtin_prefetch(&g_tt[(k) & TT_MASK], 0, 0); } while (0)
-#else
-#define TT_PREFETCH(k) do { } while (0)
-#endif
 #define TT_EXACT 0
 #define TT_LOWER 1
 #define TT_UPPER 2
@@ -1629,6 +1625,13 @@ static uint32_t stager_next(Stager* st)
                     st->qsc[st->nqt++] = s;
                 }
                 stager_sort(st->qt, st->qsc, st->nqt);
+                /* (FI-26 note, 2026-07-12: a lazy-pick variant of this sort
+                 * was tried -- stream-identical, ladder-verified -- but the
+                 * paired bench could not separate it from noise and its
+                 * worst case (all-nodes consuming the whole quiet list) is
+                 * memmove-heavy. Parked for the full FI-26 batch; the
+                 * staged path reaches here mostly at non-cut nodes, unlike
+                 * the FI-02.4 paths where lazy picking paid.) */
             }
             if (st->iqt < st->nqt) return st->qt[st->iqt++];
             st->stage = 6;
