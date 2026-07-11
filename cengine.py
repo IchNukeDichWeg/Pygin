@@ -7,10 +7,10 @@ ENTIRE per-node search loop in C (csearch.c): board, move ordering,
 transposition table, pruning, quiescence and the full static eval
 (bit-exact port of engine.py's ``_evaluate_static``, verified over 3M
 positions). Born as phase-3 step 6 of the C-core plan; the shipped engine
-since Old Engine/31. Its defaults ARE v39 -- the Phase-2 NPS train
-(FI-02/FI-03/FI-01, +8.86 +/-6.8 vs Old Engine/38, snapshotted
-Old Engine/39); armed candidate: EP-01 FIDE-exact ep hashing
-(EP_FILTER = True, A/B vs Old Engine/39 PENDING).
+since Old Engine/31. Its defaults ARE v40 -- v39 + EP-01 FIDE-exact ep
+hashing (+4.31 +/-6.8 vs Old Engine/39, a null KEPT as correctness --
+repetition detection now agrees with the FIDE arbiter; snapshotted
+Old Engine/40). No candidate armed.
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -123,6 +123,19 @@ ON by default (A/B-confirmed, or free by construction):
     slot 63 not the root's. A/B vs v37: +1.36 +/-6.8 @10k 50+0.20 (pair
     ratio 1.02) -- a clean null KEPT as correctness (PV-02 precedent);
     matetrack @0.5s 692/600 -> 868/751, ZERO Bad PVs (MDP ~+25% found).
+  * EP-01 FIDE-exact ep hashing (set_ep_filter / EP_FILTER class attr;
+    CONFIRMED into v40 2026-07-11, snapshotted Old Engine/40;
+    EP_FILTER=False = v39 node-exact): the position key counts an
+    en-passant square only when a legal ep capture actually exists
+    (= python-chess's _transposition_key), so repetition detection agrees
+    with the FIDE arbiter -- a phantom ep after a double push no longer
+    splits one FIDE-identical position across two keys, missing
+    repetitions in either direction. Since FI-01 it is an O(1) fixup in
+    board_key that only runs when an ep square is set: near-zero cost,
+    and merging the phantom-ep TT entries even saves nodes (d12 ladder
+    713,014 -> 562,363). A/B vs Old Engine/39: +4.31 +/-6.8 @10k 50+0.20
+    (50.62%, ptnml 227/1203/2064/1231/275, pair ratio 1.05, norm +9.14)
+    -- a null KEPT as correctness (PV-02/CB-01 precedent).
 
 DORMANT (default OFF, mechanism kept for longer-TC re-tests):
   * P-43 single-reply / forced-move extension (set_single_reply; +3.5
@@ -137,20 +150,17 @@ DORMANT (default OFF, mechanism kept for longer-TC re-tests):
     v36, 2026-07-10 -- a dead NULL: the 1-ply/2-ply continuation scores
     (v30's #1.6, piece-to keyed int16 tables) bought nothing at this depth
     and their ~1.6MB of tables cost cache; OFF = v36 node-exact).
-  * (EP-01 graduated from this list: LIVE CANDIDATE via the EP_FILTER
-    class attr, see above -- since FI-01 it is an O(1) board_key fixup.)
+  * (EP-01 graduated from this list to ON-by-default: CONFIRMED into v40,
+    see the ledger above.)
 
 Deliberate deviations from v30 (documented, revisit if an A/B says so):
   * no root random tiebreak (deterministic best move),
   * no singular extensions / razoring (dormant or absent in v30 at match
     depths anyway),
-  * repetition detection covers negamax nodes; quiescence nodes only under
-    the CB-01 candidate (in-check qsearch nodes, path-logged keys),
-  * the position hash mixes the RAW ep square (set after every double push),
-    so a phantom ep splits one FIDE-identical position across two keys and
-    repetition detection can MISS repetitions the arbiter would count --
-    EP-01 above (hash ep only when a legal ep capture exists, =
-    python-chess's _transposition_key) is the fix-in-waiting,
+  * repetition detection covers negamax nodes; quiescence only its
+    in-check nodes (CB-01, path-logged keys),
+  * (the raw-ep-hash deviation was FIXED by EP-01 in v40: the key now
+    counts an ep square only when a legal ep capture exists,)
   * Lazy SMP exists in-process (csearch pthreads + lockless shared TT) but
     is strictly OPT-IN (smp_workers / UCI Threads; default 1, Elo
     unmeasured); tablebase probe exists but defaults off (use_tb=False,
@@ -221,16 +231,14 @@ class Engine:
     # correctness nulls are free); False = v37 node-exact.
     SCORE_HYGIENE = True
 
-    # EP-01 (LIVE CANDIDATE, seventh 50+0.20-era campaign, A/B vs Old
-    # Engine/39 PENDING; selftest pins the ladder to off): FIDE-exact ep
-    # hashing -- the position key counts an en-passant square only when a
-    # legal ep capture actually exists, matching python-chess's
-    # _transposition_key, so the engine's repetition detection agrees with
-    # the arbiter's (a phantom ep no longer splits one FIDE position across
-    # two keys, missing repetitions the arbiter would count). Since FI-01
-    # the filter is an O(1) fixup in board_key that only runs when an ep
-    # square is set (rare) -- near-zero cost. KEEP-ON-NULL (correctness).
-    # False = v39 node-exact.
+    # EP-01 FIDE-exact ep hashing: CONFIRMED into v40 (seventh 50+0.20-era
+    # campaign, A/B vs Old Engine/39 2026-07-11: +4.31 +/-6.8 @10k, 50.62%,
+    # pair ratio 1.05 -- a null KEPT as correctness, PV-02/CB-01 precedent).
+    # The position key counts an en-passant square only when a legal ep
+    # capture actually exists (= python-chess's _transposition_key), so
+    # repetition detection agrees with the FIDE arbiter. Since FI-01 the
+    # filter is an O(1) fixup in board_key that only runs when an ep square
+    # is set -- near-zero cost. False = v39 node-exact.
     EP_FILTER = True
 
     # FI-10: TT size in bits (2^bits x 24-byte entries; 21 = 48 MB, the size

@@ -20,9 +20,10 @@ core syncs every eval parameter from it at startup.
 single-threaded (level with Stockfish 18 capped at UCI_Elo 2450 over 2,500
 games). The **C search core** is far stronger and still climbing: it beat the
 Python engine **29–1–0** on arrival, and the C-era ledger has since added
-**≈ +144 Elo** of A/B-confirmed gains (v31 → v39: IIR, TT persistence, check
-extensions, qsearch-TT, noisy-only + staged move generation, exact-PV and
-score-hygiene correctness releases, and an incremental-Zobrist NPS batch).
+**≈ +148 Elo** of A/B-confirmed gains (v31 → v40: IIR, TT persistence, check
+extensions, qsearch-TT, noisy-only + staged move generation, an
+incremental-Zobrist NPS batch, and three correctness releases — exact PV,
+score hygiene, FIDE-exact en-passant hashing).
 Against
 **full-strength** Stockfish 18 it scores **~93%** at rook odds and roughly
 **~70%** at knight odds (knight-odds percentages are hardware/environment-
@@ -76,6 +77,7 @@ one was measured. Regenerate with `python3 bench_progress.py`.
 | 37 | 3.9 M | 19 | +0.17 ±6.8 | exact PV (correctness) |
 | 38 | 4.1 M | 18 | +1.36 ±6.8 | score-hygiene batch (correctness) |
 | 39 | 4.5 M | 18 | +8.86 ±6.8 | incremental Zobrist + eval-in-TT + NPS batch |
+| 40 | 4.7 M | 18 | +4.31 ±6.8 | FIDE-exact en-passant hashing (correctness) |
 
 ¹ v31 is the C-core arrival: **29–1–0** vs v30 in a smoke match; the ≈ +215
 is an external / odds-derived estimate, **not** a same-time-control A/B.
@@ -116,13 +118,17 @@ absolute anchor is the SF-2450 benchmark: the engine reaches ≈2442 by v25).
 - **v38 → v39, ↑ 4.1M → 4.5M:** incremental Zobrist hashing (the position
   key is XOR-updated per move instead of recomputed per node), the static eval
   cached in spare TT bits, and a batch of micro-optimisations.
+- **v39 → v40, ↑ 4.5M → 4.7M:** FIDE-exact en-passant hashing — phantom-ep
+  positions now share one hash key, so their TT entries merge and the same
+  depth costs fewer nodes (d12 ladder −21%). A correctness fix that happens
+  to speed things up.
 
 Each Elo figure is an A/B match vs the immediately previous version (the
-C-era ones are 10,000 games each; cumulative **≈ +144** over v31, and the
+C-era ones are 10,000 games each; cumulative **≈ +148** over v31, and the
 v25→v30 adjacent chain alone sums to **≈ +139** — a direct v25→v28 re-match
 read **+80.56 ±10.2**, confirming the adjacent gains compose). **Time control
 is not uniform** (the early spans ran at various fast TCs ⁴; v32–v36 at
-45 s + 0.10, v37–v39 at 50 s + 0.20), so Elo is comparable only within a
+45 s + 0.10, v37–v40 at 50 s + 0.20), so Elo is comparable only within a
 matching-TC run, never summed across the whole column as a single rating. **NPS is the clean speed axis; depth reached in a fixed budget
 also reflects selectivity** — v37/v38 search more nodes per ply (exact PV
 re-searches PV nodes, the correctness batch adds quiescence draw checks), so
