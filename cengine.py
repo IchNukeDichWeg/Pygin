@@ -403,12 +403,41 @@ class Engine:
         self._py.use_king_shelter = bool(self.USE_KING_SHELTER)
         self._py.use_outpost = bool(self.USE_OUTPOST)
         self._py.use_cantwin = bool(self.CANTWIN)          # CW-01 mirror
+        # FI-27: mirror simplify too -- flipping USE_SIMPLIFY for its queued
+        # re-test must not split the GUI eval bar (evaluate_position -> _py)
+        # from the C search's eval. And use_pin_eval is the ONE
+        # _evaluate_static input with no C port: a Python-era experiment
+        # flipping it would silently desync the oracle -- refuse loudly.
+        self._py.use_simplify = bool(self.USE_SIMPLIFY)
+        self._py.SIMPLIFY_THRESHOLD = int(self.SIMPLIFY_THRESHOLD)
+        assert not self._py.use_pin_eval, \
+            "use_pin_eval has no C port; the eval oracle would desync"
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
         # (set_tt_bits is abi 9) -- bump together with csearch_abi.
         if lib.csearch_abi() < 9:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
+        # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
+        # touched eval_c without relinking csearch would silently drift the
+        # param interface. Same gate engine.py applies to eval_c.so.
+        if lib.abi_version() != self._pymod._EVAL_C_ABI:
+            raise RuntimeError("csearch.so embeds a stale eval_c ABI -- "
+                               "rebuild via ./setup.sh")
+        # FI-27: the eval-setter argtypes were declared on eval_c.so's CDLL
+        # only; ctypes argtypes live per-handle, so the PRODUCTION path ran
+        # untyped. Copy engine.py's declarations onto this handle -- a future
+        # signature change now fails loudly here too.
+        for _n in ("set_mobility_params", "set_positional_params",
+                   "set_mobility_area", "set_outpost_params",
+                   "set_phalanx_params", "set_rook_on_7th_params",
+                   "set_shelter_params", "set_space_params",
+                   "set_storm_params", "set_threats_params"):
+            try:
+                getattr(lib, _n).argtypes = \
+                    getattr(self._pymod._eval_lib, _n).argtypes
+            except AttributeError:
+                pass
         # FB-04 + FB-18: one process = one config. Checked BEFORE any
         # lib.set_* / eval-sync call -- a rejected second construction must
         # never have already retargeted the process-wide globals under the
@@ -615,12 +644,23 @@ class Engine:
         `go`) -- but a DIRECT API caller who did stop() after a finished
         search would otherwise get an instant garbage move from the next
         call. A set flag with NO search running is by definition stale;
-        a stop aimed at a live search is untouched (the lock is held)."""
+        a stop aimed at a live search is untouched (the lock is held).
+
+        FB-21: while a host-issued `go` is IN FLIGHT (`_go_pending`, set by
+        cuci before thread.start()), a set flag is NOT stale -- it is a
+        stop that raced the search thread's startup (buffered stdin
+        delivers `go\nstop` before the child runs a bytecode). Erasing it
+        here made `go infinite` + quick `stop` search to the depth cap
+        with the host wedged in join(). The pending window closes below,
+        once the flag has been sampled by the starting search."""
+        if getattr(self, "_go_pending", False):
+            return
         if self._abort and not Engine._SEARCH_LOCK.locked():
             self._abort = False
 
     def get_best_move(self, board, depth):
         self._clear_stale_abort()
+        self._go_pending = False             # FB-21: window closed
         return self._search(board, None, depth)
 
     def get_best_move_timed(self, board, time_limit, max_depth=245):
@@ -628,6 +668,7 @@ class Engine:
         # the old default of 10 silently capped ad-hoc timed searches (the C
         # core passes depth 10 in well under a second).
         self._clear_stale_abort()            # FB-10
+        self._go_pending = False             # FB-21: window closed
         return self._search(board, time_limit, max_depth)
 
     def stop(self):
@@ -697,6 +738,10 @@ class Engine:
                           "pv": book.uci()}
                 self._emit(record)
                 self._emit(dict(record, final=True), final=True)
+                # FI-27: keep the TB difficulty gate armed across book moves
+                # (last_score=0 would force a probe on the first post-book
+                # move regardless of how decisive the game already is).
+                self.last_score = prev_verdict
                 return book
 
         # Tablebase probe (root-only, delegated to the embedded engine which

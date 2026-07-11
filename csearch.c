@@ -141,7 +141,9 @@ static void init_tables(void)
  *   bits 18-20 : victim PT     (3)   0 = none, else 1..6
  *                                    (victim != 0 IS the capture predicate)
  *   bit  21    : ep flag       (1)   en-passant capture
- *   bits 22-31 : reserved for #2.6 TAG_CHECK
+ *   bits 22-23 : FI-02.3 SEE-verdict tags (ordering computes, qsearch
+ *                 reuses; every key consumer masks to 15 bits)
+ *   bits 24-31 : reserved
  */
 #define MV_SHIFT_MOVER   15
 #define MV_SHIFT_VICTIM  18
@@ -1325,20 +1327,20 @@ static inline int tt_load(const TTEntry* t, uint64_t key, TTEntry* out)
     return 1;
 }
 
-/* EP-01: FIDE-exact ep in the position hash -- DORMANT, default OFF.
- * board_key mixes the RAW ep square, which is set after EVERY double push;
- * but per FIDE (and python-chess's _transposition_key, which the match
- * arbiter's threefold claims use) the ep right is part of the position only
- * if an ep capture is actually LEGAL. A phantom ep therefore splits one
- * real position across two keys: repetitions can be MISSED (g_path/g_hist
- * compare keys) and TT sharing is needlessly split. With the filter on, ep
- * hashes only when some own pawn can legally play the ep capture -- exactly
- * has_legal_en_passant. cs_board_key shares this path, so the driver's
- * game-history keys stay consistent with the search either way.
- * DEFAULT OFF: set_ep_filter(0) is node-exact with v34, and P-04's A/B vs
- * v34 is still in flight -- flipping this changes every tree, so it queues
- * for its own A/B at the next boundary (correctness-positive: strictly more
- * accurate repetition detection, strictly more TT sharing). */
+/* EP-01: FIDE-exact ep in the position hash -- CONFIRMED into v40
+ * (2026-07-11, +4.31 +/-6.8 @10k, a null KEPT as correctness; the driver
+ * pushes EP_FILTER=True, this compiled default stays 0 as the ladder pin).
+ * Raw-ep hashing set a key component after EVERY double push; per FIDE
+ * (and python-chess's _transposition_key, which the match arbiter's
+ * threefold claims use) the ep right is part of the position only if an ep
+ * capture is actually LEGAL. A phantom ep therefore split one real
+ * position across two keys: repetitions could be MISSED and TT sharing was
+ * needlessly split (merging the entries even saves nodes). With the filter
+ * on, ep hashes only when some own pawn can legally play the capture --
+ * exactly has_legal_en_passant; since FI-01 an O(1) board_key fixup.
+ * cs_board_key shares this path, so the driver's game-history keys stay
+ * consistent with the search either way. set_ep_filter(0) = tip minus
+ * EP-01 (= v39's hashing). */
 static int g_ep_filter = 0;
 void set_ep_filter(int v) { g_ep_filter = v; }
 
@@ -1798,7 +1800,9 @@ void set_iir(int v) { g_iir = v; }
  * MAX_CHECK_EXT recipe; the budget flows down the line, spent only when an
  * extension fires). LMR never touches these moves (it requires
  * !gives_check), so extension and reduction are mutually exclusive.
- * set_check_ext(0) restores v33's search node-exactly. */
+ * set_check_ext(0) = tip minus check extensions (node-exact vs v33 at
+ * INTRODUCTION; later confirmed features stack on top -- the selftest
+ * ladder is the executable regression authority, not this comment). */
 static int g_check_ext = 1;
 void set_check_ext(int v) { g_check_ext = v; }
 #define CHECK_EXT_MAX 5
@@ -1881,7 +1885,7 @@ int cs_get_pv(uint32_t* out, int maxn)
  * these budgets apart too). A forced node has width 1, so the extension
  * deepens a single line without widening the tree -- inherently cheap; it can
  * stack with a check extension on the same move (still just one line).
- * set_single_reply(0) restores v34's search node-exactly.
+ * set_single_reply(0) = tip minus P-43 (node-exact vs v34 at introduction).
  * A/B vs v34 (2026-07-09, 20k games pooled @45+0.1): +3.5 +/-4.8 -- positive
  * on every secondary signal but sub-significant even at 20k. KEPT-MARGINAL,
  * DORMANT (default OFF, user call): the mechanism is monotone-safe and may be
@@ -1893,7 +1897,8 @@ void set_single_reply(int v) { g_single_reply = v; }
 /* P-04: "improving" heuristic (v30's exact recipe, engine.py ~3986-4310).
  * A per-thread eval stack records each ply's static eval on the way down;
  * `improving` = the side to move's static eval beat their own eval two plies
- * ago. Three uses, all gated so set_improving(0) restores v34 node-exactly:
+ * ago. Three uses, all gated: set_improving(0) = tip minus P-04 (was
+ * node-exact vs v34 at introduction):
  *   - RFP margin becomes RFP_MARGIN * (depth - improving): an improving node
  *     prunes one ply deeper for the same eval (not-improving == v34),
  *   - frontier futility margin widens by RFP_MARGIN/2 when NOT improving
@@ -1988,7 +1993,7 @@ void set_qs_lazy(int v) { g_qs_lazy = v; }
  * Stores go in at depth 0 with the gen-aware rule, so a qsearch entry can
  * never displace a same-key negamax entry (depth-preferred) -- it fills
  * empty/stale slots. The TT move also seeds qsearch ordering. Same
- * ply-relative mate encoding as negamax. set_qs_tt(0) restores v34's
+ * ply-relative mate encoding as negamax. set_qs_tt(0) = tip minus P-44's
  * search node-exactly.
  * CONFIRMED into v35 (2026-07-10): isolation A/B vs the P-22 base (both
  * sides equally fast) +8.06 +/-6.8 over 10k @45+0.1, CI clear of zero --

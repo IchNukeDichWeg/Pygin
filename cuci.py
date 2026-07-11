@@ -60,11 +60,13 @@ def info_line(rec, white_to_move, engine):
     nodes = rec.get("nodes", 0)
     # FI-13a: seldepth (deepest ply incl. extensions/qsearch) + hashfull
     # (TT permille) -- standard GUI fields, sampled from the C side.
-    parts = [f"info depth {rec.get('depth', 0)}",
-             f"seldepth {engine._lib.cs_seldepth()}",
-             f"score {score_str}",
-             f"nodes {nodes}", f"nps {int(nodes * 1000 / t)}",
-             f"hashfull {engine._lib.cs_hashfull()}", f"time {t}"]
+    booky = bool(rec.get("book") or rec.get("tb"))   # FB-25: no search ran;
+    parts = [f"info depth {rec.get('depth', 0)}",     # the C counters still
+             f"seldepth {0 if booky else engine._lib.cs_seldepth()}",  # hold
+             f"score {score_str}",                    # the PREVIOUS search's
+             f"nodes {nodes}", f"nps {int(nodes * 1000 / t)}",  # values
+             f"hashfull {0 if booky else engine._lib.cs_hashfull()}",
+             f"time {t}"]
     pv = rec.get("pv", "")
     if pv:
         parts.append(f"pv {pv}")
@@ -221,6 +223,7 @@ def main():
     engine._lib.set_null_move(engine._null_base, engine._null_div)
     board = chess.Board()
     search_thread = None
+    pending_hash_mb = None                   # FB-25: Hash sent mid-search
 
     def searching():
         return search_thread is not None and search_thread.is_alive()
@@ -231,6 +234,9 @@ def main():
         # search starts -- so a stop that raced the previous search thread's
         # startup can never leak into (or get erased by) this one.
         engine._abort = False
+        engine._go_pending = True            # FB-21: a stop arriving before
+                                             # the search thread starts is
+                                             # LIVE, not stale
         params = {}
         it = iter(tokens)
         for tok in it:
@@ -246,9 +252,17 @@ def main():
                 params["infinite"] = True
 
         max_depth = int(params.get("depth", 60))
+        if "mate" in params and "depth" not in params:   # FB-25: `go mate N`
+            max_depth = min(60, 2 * max(1, params["mate"]))
         # FB-09: honor `go nodes N` (deterministic testing / OpenBench);
         # None = unlimited. Applied per-go, cleared after.
-        engine.node_limit = params.get("nodes") or None
+        engine.node_limit = (max(1, params["nodes"])
+                             if "nodes" in params else None)   # FB-25: 0 -> 1
+        if engine.node_limit and engine.smp_workers > 1:
+            # FB-25: the C budget counts MAIN-thread nodes only -- helpers
+            # would make the reported total blow past the limit, and
+            # node-limited runs exist for determinism anyway.
+            engine._lib.set_threads(1)
         if "movetime" in params:
             # FB-09/B-22: movetime 0 (or negative) means "move now", not
             # "search until the depth cap" -- clamp to a near-instant budget.
@@ -284,7 +298,7 @@ def main():
         # depth cap). Depth/time/clock/node-limited gos report on completion.
         hold = ("infinite" in params) or not any(
             k in params for k in ("movetime", "wtime", "btime", "depth",
-                                  "nodes"))
+                                  "nodes", "mate"))   # FB-25: mate reports
         stop_evt = threading.Event()
         holding = threading.Event()          # FB-14: search DONE, only holding
 
@@ -317,7 +331,11 @@ def main():
                 print(f"cuci: search error: {ex!r}", file=sys.stderr)
             finally:
                 engine.node_limit = None     # FB-09: per-go, don't leak
-                holding.set()                # FB-14: from here on, a release
+                holding.set()                # FB-14/FI-27: set BEFORE the
+                                             # hold-wait AND as early as the
+                                             # search result exists -- a go
+                                             # arriving in the gap is handed
+                                             # off, not dropped. Release
                 if hold:                     # is instant -- no search running
                     stop_evt.wait()          # B-03: hold until `stop`
                 out(f"bestmove {mv.uci() if mv is not None else '0000'}")
@@ -399,6 +417,13 @@ def main():
                     f" outpost={int(engine.USE_OUTPOST)}"
                     f" score_hygiene={int(engine.SCORE_HYGIENE)}"
                     f" simplify={int(engine.USE_SIMPLIFY)}"
+                    f" ep_filter={int(engine.EP_FILTER)}"
+                    f" cb2={int(engine.CB2)}"
+                    f" cantwin={int(engine.CANTWIN)}"
+                    f" null_verify={int(engine.NULL_VERIFY)}"
+                    f" lmr_hist={engine.LMR_HIST}"
+                    f" qs_evict_max={engine.QS_EVICT_MAX}"
+                    f" hash_bits={engine.TT_BITS}"
                     f" threads={engine.smp_workers}")
                 out("uciok")
             elif cmd == "isready":
@@ -460,6 +485,9 @@ def main():
                         mb = max(2, min(3072, int(value)))   # never mid-search
                         entries = mb * 1024 * 1024 // 24
                         engine._lib.set_tt_bits(entries.bit_length() - 1)
+                        pending_hash_mb = None
+                    else:                               # FB-25: defer, don't
+                        pending_hash_mb = int(value)    # silently drop
             elif cmd == "bench":                        # FI-13c: OpenBench
                 if not searching():
                     run_bench(engine)
@@ -500,6 +528,11 @@ def main():
                     print(f"cuci: position command rejected ({ex})",
                           file=sys.stderr)
             elif cmd == "go":
+                if pending_hash_mb is not None and not searching():
+                    mb = max(2, min(3072, pending_hash_mb))   # FB-25: apply
+                    entries = mb * 1024 * 1024 // 24          # deferred Hash
+                    engine._lib.set_tt_bits(entries.bit_length() - 1)
+                    pending_hash_mb = None
                 if searching():
                     # FB-14: a self-terminated `go infinite` (mate break /
                     # depth cap) leaves its thread HOLDING the bestmove --
@@ -519,7 +552,10 @@ def main():
                 if searching():
                     engine.stop()
                     search_thread.stop_evt.set()   # B-03: release the hold
-                    search_thread.join()
+                    search_thread.join(timeout=30)   # FI-27: a wedged C
+                    if search_thread.is_alive():     # search must not brick
+                        print("cuci: search thread failed to stop in 30s",
+                              file=sys.stderr)       # the whole host slot
             elif cmd == "quit":
                 if searching():
                     engine.stop()
