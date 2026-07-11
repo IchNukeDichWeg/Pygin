@@ -7,12 +7,12 @@ ENTIRE per-node search loop in C (csearch.c): board, move ordering,
 transposition table, pruning, quiescence and the full static eval
 (bit-exact port of engine.py's ``_evaluate_static``, verified over 3M
 positions). Born as phase-3 step 6 of the C-core plan; the shipped engine
-since Old Engine/31. Its defaults ARE v41 -- v40 + CB-02, correctness
-batch #4 (-2.88 +/-6.8 vs Old Engine/40, a null KEPT as correctness:
-null-store replacement policy, qsearch 50-move, verified deep null
-cutoffs, root fail-high adoption/promotion; snapshotted Old Engine/41);
-armed candidate: CW-01 cannot-win eval clamp (CANTWIN = True, A/B vs
-Old Engine/41 PENDING, keep-on-null).
+since Old Engine/31. Its defaults ARE v42 -- v41 + CW-01 cannot-win eval
+clamp (+3.27 +/-6.8 vs Old Engine/41, a null KEPT as correctness: the
+eval no longer favors sides that cannot force mate; snapshotted Old
+Engine/42); armed candidate: NV-01 verification isolation (NULL_VERIFY =
+False vs Old Engine/42 PENDING -- does CB-02's deep-null verification
+earn its ~one-ply nodes-to-depth cost?).
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -147,6 +147,15 @@ ON by default (A/B-confirmed, or free by construction):
     aspiration calls. A/B vs Old Engine/40: -2.88 +/-6.8 @10k 50+0.20
     (49.59%, ptnml 287/1198/2086/1169/260, pair ratio 0.96, norm -6.04)
     -- a null KEPT as correctness, the fourth of its class.
+  * CW-01 cannot-win eval clamp (set_cantwin / CANTWIN class attr,
+    mirrored into the embedded engine's use_cantwin; CONFIRMED into v42
+    2026-07-11, snapshotted Old Engine/42; CANTWIN=False = v41 eval
+    exactly): the eval clamps to 0 when the favored side has no pawns, no
+    rooks/queens, and at most a lone minor (or two knights) -- it cannot
+    force mate, so the true upper bound is a draw. A/B vs Old Engine/41:
+    +3.27 +/-6.8 @10k 50+0.20 (50.47%, ptnml 257/1115/2159/1215/254, pair
+    ratio 1.07, norm +6.98) -- a null KEPT as correctness, the fifth of
+    its class.
 
 DORMANT (default OFF, mechanism kept for longer-TC re-tests):
   * P-43 single-reply / forced-move extension (set_single_reply; +3.5
@@ -166,8 +175,8 @@ DORMANT (default OFF, mechanism kept for longer-TC re-tests):
   * FI-08 qsearch depth-0 eviction guard (set_qs_evict_max; +0.14 +/-6.8
     @10k vs Old Engine/40 -- dead null, not correctness, so unlike
     PV-02/CB-01/EP-01 it reverted: -1 = off = v40 rule, mechanism kept).
-  * (CW-01 graduated from this list: LIVE CANDIDATE via the CANTWIN
-    class attr, see above -- tenth campaign, A/B vs Old Engine/41.)
+  * (CW-01 graduated from this list to ON-by-default: CONFIRMED into
+    v42, see the ledger above.)
 
 Deliberate deviations from v30 (documented, revisit if an A/B says so):
   * no root random tiebreak (deterministic best move),
@@ -278,17 +287,28 @@ class Engine:
     # (v30's _partial_root_move rule). False = v40 node-exact.
     CB2 = True
 
-    # CW-01 cannot-win clamp (LIVE CANDIDATE, tenth 50+0.20-era campaign,
-    # A/B vs Old Engine/41 PENDING; selftest pins the ladder to off): eval
-    # clamps to 0 when the side it favors has no pawns and cannot force
-    # mate (lone minor / two knights). Fixes the practical horizon bug the
-    # user hit: lone bishop vs tripled pawns shuffling at "+2.6", AVOIDING
-    # the capture that would reveal the draw (verified: that position goes
+    # CW-01 cannot-win clamp: CONFIRMED into v42 (tenth 50+0.20-era
+    # campaign, A/B vs Old Engine/41 2026-07-11: +3.27 +/-6.8 @10k, 50.47%,
+    # pair ratio 1.07 -- a null KEPT as correctness, the fifth of its
+    # class). Eval clamps to 0 when the side it favors has no pawns and
+    # cannot force mate (lone minor / two knights) -- no more shuffling at
+    # "+2.6" to dodge a drawing capture (user-reported position goes
     # +2.92/shuffles -> 0.00/plays Kxc4). Bit-exact twin of engine.py's
-    # use_cantwin (the mirror below keeps the GUI eval bar and the search
-    # agreeing); oracle differential clean over 389 positions incl. no-pawn
-    # endings. KEEP-ON-NULL (correctness). False = v41 eval exactly.
+    # use_cantwin (mirrored below: GUI eval bar and search always agree);
+    # oracle differential clean over 389 positions. False = v41 eval.
     CANTWIN = True
+
+    # NV-01 (LIVE CANDIDATE, eleventh 50+0.20-era campaign, A/B vs Old
+    # Engine/42 PENDING; selftest pins the ladder to True): isolate
+    # CB-02(c), the deep-null verification search -- the one component of
+    # the CB-02 batch with a real cost (~+47% d12 nodes, ~one ply of
+    # nodes-to-depth) and the one modern engines dropped (Stockfish-family
+    # runs unverified null; has_non_pawn + the TT cover zugzwang). The
+    # candidate REMOVES it: False = search without verification (v42 minus
+    # CB-02(c)); True = v42's verifying search node-exactly. Positive
+    # verdict => drop verification in v43 and the ledger records what the
+    # insurance cost; null => it really was free, restore True.
+    NULL_VERIFY = False
 
     # FI-10: TT size in bits (2^bits x 24-byte entries; 21 = 48 MB, the size
     # the entire ledger was measured at -- leave it for A/B play). The UCI
@@ -403,6 +423,7 @@ class Engine:
         lib.set_qs_evict_max(int(self.QS_EVICT_MAX))           # FI-08/Q-03
         lib.set_cb2(1 if self.CB2 else 0)                      # CB-02
         lib.set_cantwin(1 if self.CANTWIN else 0)              # CW-01
+        lib.set_null_verify(1 if self.NULL_VERIFY else 0)      # NV-01
         lib.set_tt_bits(int(self.TT_BITS))                     # FI-10 (Hash)
         # FB-06: cengine is AUTHORITATIVE over every behavioral C toggle --
         # a stale .so or drifted compiled-in default must not silently change
@@ -424,7 +445,7 @@ class Engine:
         fp = (self.USE_KING_SHELTER, self.USE_OUTPOST, self.USE_SIMPLIFY,
               self.SIMPLIFY_THRESHOLD, self.CHECK_EXT_BUDGET, self.PV_EXACT,
               self.SCORE_HYGIENE, self.EP_FILTER, self.QS_EVICT_MAX,
-              self.CB2, self.CANTWIN)
+              self.CB2, self.CANTWIN, self.NULL_VERIFY)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
