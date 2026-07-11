@@ -589,6 +589,19 @@ benchmark" below.
   ratio 1.07, normalized +6.98)** -- a null KEPT as correctness
   (PV-02/CB-01/EP-01/CB-02 precedent). Snapshotted as Old Engine/42.
 
+* **v42 -> v43 (2026-07-11, lives in ``cengine.py`` + ``csearch.c``): NV-01
+  -- the first REMOVAL release.** v43 = v42 minus CB-02's deep-null
+  verification search (component (c) of the v41 batch). The isolation A/B
+  measured the removal at **+5.18 +/-6.8 over 10,000 games @ 50+0.20 vs
+  v42 (50.74%%, ptnml 258/1151/2068/1230/293, pair ratio 1.08, normalized
+  +10.82)**; combined with CB-02's own -2.88 lean, two independent reads
+  priced the zugzwang insurance at ~3-5 Elo of nodes-to-depth (it cost
+  ~one ply in a fixed budget; d18 recovered at 5s startpos) -- so it goes,
+  matching modern practice (Stockfish-family runs unverified null-move;
+  has_non_pawn + the TT cover zugzwang). ``NULL_VERIFY=True`` restores
+  v42's verifying search. The rest of CB-02 (null-store policy, qsearch
+  50-move, fail-high adoption) stays. Snapshotted as Old Engine/43.
+
 Cross-version benchmark
 -----------------------
 Sweep (2026-07-02): 24 versions x 8 positions x 6 timed 5s runs (1152 searches).
