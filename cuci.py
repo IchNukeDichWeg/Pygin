@@ -119,7 +119,7 @@ def run_bench(engine, depth=11):
 PREMOVE_CHECK_DEPTH = 6
 PREMOVE_TABLE_DEPTH = 9
 PREMOVE_FORCED_DEPTH = 12
-PREMOVE_CAP_S = 0.5
+PREMOVE_CAP_S = 0.2      # hard wall-clock cap (user: bullet-safe)
 
 
 def certify_premoves(engine, board, my_move, margin_cp, stop_evt):

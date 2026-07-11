@@ -147,7 +147,8 @@ function startSearch() {
                 if (payload.moves !== undefined) {
                     const expectedKey =
                         (payload.moves ? payload.moves + ' ' : '') + move;
-                    setTimeout(function() { fetchReplies(expectedKey); }, 700);
+                    // cert cap is 0.2s engine-side; fetch shortly after
+                    setTimeout(function() { fetchReplies(expectedKey); }, 400);
                 }
             }
         },
