@@ -91,14 +91,13 @@ def main():
                     help="plies / MILLISECONDS / nodes (default: 2000 ms)")
     ap.add_argument("--threads", type=int, default=4,
                     help="Lazy-SMP threads (default 4, max 256)")
-    ap.add_argument("--hash", default="256",
-                    help="TT size in MB, '256' or '256mb' (default 256)")
+    ap.add_argument("--hash", type=int, default=256,
+                    help="TT size in MB, plain number (default 256)")
     ap.add_argument("--warmup", type=int, default=2,
                     help="unmeasured warmup runs (default 2)")
     ap.add_argument("--runs", type=int, default=4,
                     help="measured runs to average (default 4)")
     args = ap.parse_args()
-    args.hash = int(str(args.hash).lower().rstrip("bm") or 48)
 
     try:
         board = chess.Board(args.fen)
