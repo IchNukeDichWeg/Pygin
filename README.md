@@ -11,8 +11,8 @@ a full Python engine whose evaluation and move generation are ported to C
 core** (`cengine.py` + `csearch.c`): the *entire* per-node search loop — board,
 ordering, transposition table, pruning, quiescence and a bit-exact port of the
 evaluation — runs in C, with Python keeping only the root layer (iterative
-deepening, time management, opening book). It reaches ~3.5M+ nodes/s, roughly
-40× the Python core, and searches several plies deeper at the same time
+deepening, time management, opening book). It reaches ~4.5M nodes/s, roughly
+50× the Python core, and searches several plies deeper at the same time
 control. `engine.py` remains the single source of truth for evaluation: the C
 core syncs every eval parameter from it at startup.
 
@@ -143,7 +143,7 @@ hardware-dependent (an Apple-Silicon reading); the trend is the signal.
 - **C search core** (`csearch.c`, driven by `cengine.py`): the whole per-node
   loop in C — board, staged move ordering, array TT (kept warm across moves,
   probed in quiescence), pruning, quiescence and a bit-exact port of the
-  evaluation (verified over 3M positions) — at ~3.5M+ nodes/s.
+  evaluation (verified over 3M positions) — at ~4.5M nodes/s.
   `cuci.py` exposes it as a UCI engine.
 - **Lazy SMP:** the C core uses pthreads with a lock-free shared TT (opt-in
   via the UCI `Threads` option); the Python engine has a multi-process
