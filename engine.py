@@ -551,6 +551,27 @@ benchmark" below.
   KEPT as correctness (PV-02/CB-01 precedent). Snapshotted as Old
   Engine/40.
 
+* **v41 (2026-07-11, lives in ``cengine.py`` + ``csearch.c``): CB-02,
+  correctness batch #4 -- the fourth correctness release.** Four fixes
+  under one toggle (``set_cb2`` + the driver's CB2 logic): (a) the
+  null-move TT store obeys the replacement policy -- a deep entry and its
+  best move are no longer clobbered by a shallower moveless bound (FB-22,
+  self-inflicted ordering damage against the warm table); (b) quiescence
+  applies the 50-move rule (completing CB-01's draw set); (c) deep
+  null-move cutoffs (depth >= 10) are verified with a reduced no-null
+  re-search -- zugzwang/fortress insurance has_non_pawn alone cannot give;
+  (d) root fail-high moves are adopted as the depth's provisional best,
+  ordered first in the widened re-search, and played if it aborts --
+  v30's ``_partial_root_move`` rule, which the C port had dropped (the
+  engine could play a move it had just PROVEN inferior). **A/B vs v40:
+  -2.88 +/-6.8 over 10,000 games @ 50+0.20 (49.59%%, ptnml
+  287/1198/2086/1169/260, pair ratio 0.96, normalized -6.04)** -- a null
+  KEPT as correctness (PV-02/CB-01/EP-01 precedent; the verification
+  re-searches cost ~+47%% d12 nodes and bought their safety at noise-level
+  price). Snapshotted as Old Engine/41. (CW-01, the cannot-win eval clamp,
+  was implemented alongside but is the TENTH campaign's candidate --
+  dormant in v41.)
+
 Cross-version benchmark
 -----------------------
 Sweep (2026-07-02): 24 versions x 8 positions x 6 timed 5s runs (1152 searches).

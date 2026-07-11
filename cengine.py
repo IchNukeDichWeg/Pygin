@@ -7,13 +7,12 @@ ENTIRE per-node search loop in C (csearch.c): board, move ordering,
 transposition table, pruning, quiescence and the full static eval
 (bit-exact port of engine.py's ``_evaluate_static``, verified over 3M
 positions). Born as phase-3 step 6 of the C-core plan; the shipped engine
-since Old Engine/31. Its defaults ARE v40 -- v39 + EP-01 FIDE-exact ep
-hashing (+4.31 +/-6.8 vs Old Engine/39, a null KEPT as correctness --
-repetition detection now agrees with the FIDE arbiter; snapshotted
-Old Engine/40); armed candidate: CB-02 correctness batch #4 (CB2 = True,
-A/B vs Old Engine/40 PENDING, keep-on-null -- FB-22 null-store policy +
-qsearch 50-move + verified deep null cutoffs + FB-23 root fail-high
-adoption/promotion). FI-08 read a dead null (+0.14) and is DORMANT.
+since Old Engine/31. Its defaults ARE v41 -- v40 + CB-02, correctness
+batch #4 (-2.88 +/-6.8 vs Old Engine/40, a null KEPT as correctness:
+null-store replacement policy, qsearch 50-move, verified deep null
+cutoffs, root fail-high adoption/promotion; snapshotted Old Engine/41);
+armed candidate: CW-01 cannot-win eval clamp (CANTWIN = True, A/B vs
+Old Engine/41 PENDING, keep-on-null).
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -139,6 +138,15 @@ ON by default (A/B-confirmed, or free by construction):
     713,014 -> 562,363). A/B vs Old Engine/39: +4.31 +/-6.8 @10k 50+0.20
     (50.62%, ptnml 227/1203/2064/1231/275, pair ratio 1.05, norm +9.14)
     -- a null KEPT as correctness (PV-02/CB-01 precedent).
+  * CB-02 correctness batch #4 (set_cb2 + the CB2 driver logic; CONFIRMED
+    into v41 2026-07-11, snapshotted Old Engine/41; CB2=False = v40
+    node-exact): null-move TT store obeys the replacement policy (deeper
+    entries and their moves survive), qsearch 50-move rule, verified deep
+    null cutoffs (depth >= 10, g_no_null suppresses nulls in the
+    verification subtree), root fail-high adoption/promotion across
+    aspiration calls. A/B vs Old Engine/40: -2.88 +/-6.8 @10k 50+0.20
+    (49.59%, ptnml 287/1198/2086/1169/260, pair ratio 0.96, norm -6.04)
+    -- a null KEPT as correctness, the fourth of its class.
 
 DORMANT (default OFF, mechanism kept for longer-TC re-tests):
   * P-43 single-reply / forced-move extension (set_single_reply; +3.5
@@ -158,10 +166,8 @@ DORMANT (default OFF, mechanism kept for longer-TC re-tests):
   * FI-08 qsearch depth-0 eviction guard (set_qs_evict_max; +0.14 +/-6.8
     @10k vs Old Engine/40 -- dead null, not correctness, so unlike
     PV-02/CB-01/EP-01 it reverted: -1 = off = v40 rule, mechanism kept).
-  * CW-01 cannot-win clamp (set_cantwin / CANTWIN class attr, mirrored
-    into the embedded engine's use_cantwin; QUEUED as the tenth campaign
-    -- dormant only because CB-02 holds the one-live-candidate slot).
-    Local GUI configs (WebChess) flip it ON for analysis truth.
+  * (CW-01 graduated from this list: LIVE CANDIDATE via the CANTWIN
+    class attr, see above -- tenth campaign, A/B vs Old Engine/41.)
 
 Deliberate deviations from v30 (documented, revisit if an A/B says so):
   * no root random tiebreak (deterministic best move),
@@ -260,28 +266,29 @@ class Engine:
     # >= 0 = replace old-gen entries only up to that depth; -1 = v40 rule.
     QS_EVICT_MAX = -1
 
-    # CB-02 (LIVE CANDIDATE, ninth 50+0.20-era campaign, A/B vs Old
-    # Engine/40 PENDING): correctness batch #4, keep-on-null class (the
-    # v37/v38/v40 pattern). C side (set_cb2): (a) FB-22 null-move TT store
-    # obeys the replacement policy (never clobbers deeper entries, keeps a
-    # same-key entry's move); (b) FI-27.1 qsearch 50-move rule; (c) FI-24c
-    # deep null cutoffs (depth >= 10) verified with a reduced no-null
-    # re-search (zugzwang insurance). Driver side (this attr): FB-23 root
-    # fail-high moves are adopted as the depth's provisional best, ordered
-    # first in the widened re-search, and played if the re-search aborts
-    # with done == 0 -- v30's _partial_root_move rule, restoring the
-    # port-fidelity claim in this docstring. False = v40 node-exact.
+    # CB-02 correctness batch #4: CONFIRMED into v41 (ninth 50+0.20-era
+    # campaign, A/B vs Old Engine/40 2026-07-11: -2.88 +/-6.8 @10k, 49.59%,
+    # pair ratio 0.96 -- a null KEPT as correctness, the fourth of its
+    # class after PV-02/CB-01/EP-01). C side (set_cb2): (a) FB-22 null-move
+    # TT store obeys the replacement policy (never clobbers deeper entries,
+    # keeps a same-key entry's move); (b) FI-27.1 qsearch 50-move rule;
+    # (c) FI-24c deep null cutoffs (depth >= 10) verified with a reduced
+    # no-null re-search (zugzwang insurance). Driver side (this attr):
+    # FB-23 root fail-high moves adopted/promoted across aspiration calls
+    # (v30's _partial_root_move rule). False = v40 node-exact.
     CB2 = True
 
-    # CW-01 cannot-win clamp (QUEUED as the TENTH campaign -- DORMANT while
-    # CB-02 runs, one tree change at a time): eval clamps to 0 when the side
-    # it favors has no pawns and cannot force mate (lone minor / two
-    # knights). Fixes the practical horizon bug the user hit: lone bishop vs
-    # tripled pawns shuffling at "+2.6", AVOIDING the capture that would
-    # reveal the draw. Bit-exact twin of engine.py's use_cantwin (the
-    # mirror below keeps the GUI eval bar and the search agreeing).
-    # Keep-on-null correctness class when armed. False = v40 eval exactly.
-    CANTWIN = False
+    # CW-01 cannot-win clamp (LIVE CANDIDATE, tenth 50+0.20-era campaign,
+    # A/B vs Old Engine/41 PENDING; selftest pins the ladder to off): eval
+    # clamps to 0 when the side it favors has no pawns and cannot force
+    # mate (lone minor / two knights). Fixes the practical horizon bug the
+    # user hit: lone bishop vs tripled pawns shuffling at "+2.6", AVOIDING
+    # the capture that would reveal the draw (verified: that position goes
+    # +2.92/shuffles -> 0.00/plays Kxc4). Bit-exact twin of engine.py's
+    # use_cantwin (the mirror below keeps the GUI eval bar and the search
+    # agreeing); oracle differential clean over 389 positions incl. no-pawn
+    # endings. KEEP-ON-NULL (correctness). False = v41 eval exactly.
+    CANTWIN = True
 
     # FI-10: TT size in bits (2^bits x 24-byte entries; 21 = 48 MB, the size
     # the entire ledger was measured at -- leave it for A/B play). The UCI
