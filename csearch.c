@@ -993,6 +993,28 @@ static int pawn_structure(uint64_t wp, uint64_t bp, int phase)
 
 static int g_simp_thresh = 0, g_simp_weight = 10;   /* v30 simplify port;
                                                      * 0 = off (default) */
+/* CW-01 (QUEUED tenth campaign; DORMANT until CB-02 resolves -- one tree
+ * change at a time): cannot-win clamp. If the side the eval favors has no
+ * pawns, no rooks/queens, and at most a lone minor (or two knights), it
+ * cannot force mate -- the position's true upper bound is a draw, so the
+ * score clamps to 0. Fixes the GUI/practical blindness where the engine
+ * shuffles at "+2.6" with a lone bishop vs pawns, actively AVOIDING the
+ * capture that would reveal the draw (horizon-effect draw-avoidance).
+ * Mirrored bit-exactly in engine.py's _evaluate_static (use_cantwin) --
+ * the oracle differential covers both. 0 = v40 eval exactly. */
+static int g_cantwin = 0;
+void set_cantwin(int v) { g_cantwin = v; }
+static inline int cantwin_clamp(const Board* b, int s)
+{
+    if (!g_cantwin || s == 0) return s;
+    uint64_t strong = (s > 0) ? b->occ[WHITE] : b->occ[BLACK];
+    if ((b->pawns | b->rooks | b->queens) & strong) return s;
+    int nb = __builtin_popcountll(b->bishops & strong);
+    int nn = __builtin_popcountll(b->knights & strong);
+    if (nb + nn <= 1 || (nb == 0 && nn == 2)) return 0;
+    return s;
+}
+
 static int eval_white(const Board* b)
 {
     uint64_t occ_w = b->occ[WHITE], occ_b = b->occ[BLACK];
@@ -1042,7 +1064,7 @@ static int eval_white(const Board* b)
             int md = (df < 0 ? -df : df) + (dr < 0 ? -dr : dr);
             int bonus = g_mopup_scmd * CENTER_MANH[loser]
                       + g_mopup_sking * (14 - md);
-            return score + ((adv > 0) ? bonus : -bonus);
+            return cantwin_clamp(b, score + ((adv > 0) ? bonus : -bonus));
         }
     }
 
@@ -1073,7 +1095,7 @@ static int eval_white(const Board* b)
             score += (diff > 0 ? 1 : -1) * g_simp_weight * (14 - pieces);
         }
     }
-    return score;
+    return cantwin_clamp(b, score);
 }
 
 static int eval_full_stm(const Board* b)

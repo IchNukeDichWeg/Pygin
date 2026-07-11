@@ -155,6 +155,13 @@ DORMANT (default OFF, mechanism kept for longer-TC re-tests):
     and their ~1.6MB of tables cost cache; OFF = v36 node-exact).
   * (EP-01 graduated from this list to ON-by-default: CONFIRMED into v40,
     see the ledger above.)
+  * FI-08 qsearch depth-0 eviction guard (set_qs_evict_max; +0.14 +/-6.8
+    @10k vs Old Engine/40 -- dead null, not correctness, so unlike
+    PV-02/CB-01/EP-01 it reverted: -1 = off = v40 rule, mechanism kept).
+  * CW-01 cannot-win clamp (set_cantwin / CANTWIN class attr, mirrored
+    into the embedded engine's use_cantwin; QUEUED as the tenth campaign
+    -- dormant only because CB-02 holds the one-live-candidate slot).
+    Local GUI configs (WebChess) flip it ON for analysis truth.
 
 Deliberate deviations from v30 (documented, revisit if an A/B says so):
   * no root random tiebreak (deterministic best move),
@@ -266,6 +273,16 @@ class Engine:
     # port-fidelity claim in this docstring. False = v40 node-exact.
     CB2 = True
 
+    # CW-01 cannot-win clamp (QUEUED as the TENTH campaign -- DORMANT while
+    # CB-02 runs, one tree change at a time): eval clamps to 0 when the side
+    # it favors has no pawns and cannot force mate (lone minor / two
+    # knights). Fixes the practical horizon bug the user hit: lone bishop vs
+    # tripled pawns shuffling at "+2.6", AVOIDING the capture that would
+    # reveal the draw. Bit-exact twin of engine.py's use_cantwin (the
+    # mirror below keeps the GUI eval bar and the search agreeing).
+    # Keep-on-null correctness class when armed. False = v40 eval exactly.
+    CANTWIN = False
+
     # FI-10: TT size in bits (2^bits x 24-byte entries; 21 = 48 MB, the size
     # the entire ledger was measured at -- leave it for A/B play). The UCI
     # Hash option (cuci) maps MB onto this; a resize wipes the table.
@@ -348,6 +365,7 @@ class Engine:
         # embedded engine BEFORE _sync_c_params pushes them into csearch.so.
         self._py.use_king_shelter = bool(self.USE_KING_SHELTER)
         self._py.use_outpost = bool(self.USE_OUTPOST)
+        self._py.use_cantwin = bool(self.CANTWIN)          # CW-01 mirror
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
@@ -377,6 +395,7 @@ class Engine:
         lib.set_ep_filter(1 if self.EP_FILTER else 0)          # EP-01
         lib.set_qs_evict_max(int(self.QS_EVICT_MAX))           # FI-08/Q-03
         lib.set_cb2(1 if self.CB2 else 0)                      # CB-02
+        lib.set_cantwin(1 if self.CANTWIN else 0)              # CW-01
         lib.set_tt_bits(int(self.TT_BITS))                     # FI-10 (Hash)
         # FB-06: cengine is AUTHORITATIVE over every behavioral C toggle --
         # a stale .so or drifted compiled-in default must not silently change
@@ -398,7 +417,7 @@ class Engine:
         fp = (self.USE_KING_SHELTER, self.USE_OUTPOST, self.USE_SIMPLIFY,
               self.SIMPLIFY_THRESHOLD, self.CHECK_EXT_BUDGET, self.PV_EXACT,
               self.SCORE_HYGIENE, self.EP_FILTER, self.QS_EVICT_MAX,
-              self.CB2)
+              self.CB2, self.CANTWIN)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
