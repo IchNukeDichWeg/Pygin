@@ -69,7 +69,12 @@ send("setoption name Threads value 4")
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-        send("position fen " + full_fen(req["fen"]))
+        # Prefer full history (startpos + moves) so the engine sees repetitions
+        # and can avoid/claim threefold draws; FEN loses that context.
+        if "moves" in req:
+            send("position startpos" + (" moves " + req["moves"] if req["moves"] else ""))
+        else:
+            send("position fen " + full_fen(req["fen"]))
         send("go depth %d" % req.get("depth", 12))
         best = wait_for("bestmove").split()[1]
         body = json.dumps({"bestmove": best}).encode()
