@@ -2,7 +2,7 @@
 """benchmark.py -- one-position engine benchmark with warmup + averaging.
 
     python3 benchmark.py --type depth --value 14
-    python3 benchmark.py --type time  --value 5 --runs 8 --threads 4 --hash 256
+    python3 benchmark.py --type time  --value 5000 --runs 8 --threads 4 --hash 256
     python3 benchmark.py --type nodes --value 2000000 --fen "r1bqkbnr/..."
 
 Runs the live C core (cengine, shipped defaults) on ONE position under ONE
@@ -18,9 +18,9 @@ warm table and finishes in milliseconds, poisoning the average.
 
 Limit types:
     depth  -- fixed-depth search; value = plies.
-    time   -- timed search; value = SECONDS (float ok). The driver's
-              soft-stop economies (P-35/U-06) are DISABLED so the full
-              budget is spent, mirroring cuci's `go movetime` rule (B-05).
+    time   -- timed search; value = MILLISECONDS. The driver's soft-stop
+              economies (P-35/U-06) are DISABLED so the full budget is
+              spent, mirroring cuci's `go movetime` rule (B-05).
     nodes  -- node-limited search; value = node count (C-side abort, FB-09).
 """
 import argparse
@@ -54,10 +54,10 @@ def one_run(e, board, kind, value):
             mv = e.get_best_move(board.copy(), 60)
         finally:
             e.node_limit = None
-    else:                                 # time
+    else:                                 # time (value = milliseconds)
         e.use_stability_time = False      # B-05: spend the FULL budget
         e.soft_stop_frac = None
-        mv = e.get_best_move_timed(board.copy(), float(value), 60)
+        mv = e.get_best_move_timed(board.copy(), float(value) / 1000.0, 60)
     dt = max(1e-9, time.perf_counter() - t0)
     return {
         "move": str(mv),
@@ -74,7 +74,7 @@ def one_run(e, board, kind, value):
 def fmt(r):
     return (f"move {r['move']:7s} depth {r['depth']:2d}/{r['seldepth']:<2d} "
             f"score {r['score']:6d}  nodes {r['nodes']:>12,}  "
-            f"time {r['time']:7.3f}s  nps {int(r['nps']):>10,}  "
+            f"time {r['time'] * 1000:9.1f} ms  nps {int(r['nps']):>10,}  "
             f"hashfull {r['hashfull']}")
 
 
@@ -86,7 +86,7 @@ def main():
                     choices=("depth", "time", "nodes"),
                     help="limit type for every run")
     ap.add_argument("--value", required=True, type=float,
-                    help="plies / seconds / node count (per --type)")
+                    help="plies / MILLISECONDS / node count (per --type)")
     ap.add_argument("--threads", type=int, default=1,
                     help="Lazy-SMP threads (default 1)")
     ap.add_argument("--hash", type=int, default=48,
@@ -124,16 +124,36 @@ def main():
     npss = [r["nps"] for r in results]
     mean_nps = statistics.fmean(npss)
     spread = (statistics.stdev(npss) / mean_nps * 100) if len(npss) > 1 else 0.0
-    print(f"\n== average over {args.runs} runs ==")
-    print(f"nps     : {int(mean_nps):,}   "
-          f"(min {int(min(npss)):,}, max {int(max(npss)):,}, "
-          f"stdev {spread:.1f}%)")
-    print(f"nodes   : {int(statistics.fmean(r['nodes'] for r in results)):,}")
-    print(f"time    : {statistics.fmean(r['time'] for r in results):.3f} s")
-    print(f"depth   : {statistics.fmean(r['depth'] for r in results):.1f}"
-          f"  (seldepth {statistics.fmean(r['seldepth'] for r in results):.1f})")
-    print(f"score   : {statistics.fmean(r['score'] for r in results):+.0f} cp"
-          f"   move {results[-1]['move']}")
+    unit = {"depth": "plies", "time": "ms", "nodes": "nodes"}[args.kind]
+    W = 62
+
+    def row(label, val, label2="", val2=""):
+        left = f"  {label:<10} {val}"
+        if label2:
+            left = f"{left:<36}{label2:<10} {val2}"
+        print(left)
+
+    print()
+    print("=" * W)
+    print(f"  Pygin benchmark -- results".upper())
+    print("=" * W)
+    row("Position", board.fen())
+    row("Limit", f"{args.kind} = {args.value:g} {unit}")
+    row("Threads", e.smp_workers, "Hash", f"{args.hash} MB")
+    row("Runs", f"{args.runs} measured", "Warmup", args.warmup)
+    row("Engine", f"abi {e._lib.csearch_abi()} (live cengine defaults)")
+    print("-" * W)
+    row("NPS", f"{int(mean_nps):,}")
+    row("", f"min {int(min(npss)):,}   max {int(max(npss)):,}   "
+            f"stdev {spread:.1f}%")
+    row("Nodes", f"{int(statistics.fmean(r['nodes'] for r in results)):,}")
+    row("Time", f"{statistics.fmean(r['time'] for r in results) * 1000:,.1f} ms")
+    row("Depth", f"{statistics.fmean(r['depth'] for r in results):.1f}",
+        "Seldepth", f"{statistics.fmean(r['seldepth'] for r in results):.1f}")
+    row("Hashfull", f"{statistics.fmean(r['hashfull'] for r in results):.0f} permille")
+    row("Score", f"{statistics.fmean(r['score'] for r in results):+.0f} cp",
+        "Best move", results[-1]["move"])
+    print("=" * W)
 
 
 if __name__ == "__main__":
