@@ -125,7 +125,7 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # quiet developing moves flip between depths without being a regression.
 # Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
 CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3"
-CE_LADDER = {                     # depth -> (nodes, score)  [v41: CB-02 batch]
+CE_LADDER = {                     # depth -> (nodes, score)  [v42 = v41 counts: CW-01 can't fire here]
     1: (102, 126), 2: (189, 126), 3: (749, 126), 4: (1020, 122),
     5: (8823, 73), 6: (16866, 63), 7: (42298, 74), 8: (80121, 72),
     9: (130991, 75), 10: (307932, 58), 11: (471989, 70), 12: (828672, 88),
@@ -142,12 +142,17 @@ if os.path.exists("csearch.c"):
         # as correctness -- 50-move in qsearch, verified null, null-store
         # policy, fail-high adoption), default ON -- part of the pinned
         # reference search above.
-        # CW-01 cannot-win eval clamp (LIVE candidate, tenth 50+0.20
-        # campaign, A/B vs Old Engine/41 pending): pinned OFF so the ladder
-        # tracks the confirmed v41 search (belt-and-braces -- the clamp
-        # cannot fire from this FEN's trees, both sides keep pawns, but the
-        # pin costs nothing). Remove on confirm.
-        cengine.Engine.CANTWIN = False
+        # CW-01 cannot-win eval clamp: CONFIRMED into v42 (+3.27 null KEPT
+        # as correctness -- the eval no longer favors sides that cannot
+        # force mate), default ON. The ladder is UNCHANGED by it (the clamp
+        # cannot fire from this FEN's trees -- both sides keep pawns), so
+        # the v41 pins carry over verbatim.
+        # NV-01 verification isolation (LIVE candidate, eleventh 50+0.20
+        # campaign, A/B vs Old Engine/42 pending): the candidate REMOVES
+        # CB-02's deep-null verification (NULL_VERIFY=False default); pin
+        # it back ON so the ladder tracks the confirmed v42 search.
+        # On a positive verdict the v43 ladder re-measures without it.
+        cengine.Engine.NULL_VERIFY = True
         ce = cengine.Engine()
         ce.use_book = False
         ce.use_tb = False
