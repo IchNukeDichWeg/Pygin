@@ -209,8 +209,10 @@ Driven from Python at the root only; each sub-step verified before the next:
    the search (in-check at 100 plays on, v30's rule); **insufficient
    material** with v30's cheap `pawns|rooks|queens` pre-filter; all three
    contempt-scored via a `_draw_score` port (`csearch_set_draw`).
-   Deliberate v1 deviations (documented in cengine.py): no root random
-   tiebreak, no repetition check at quiescence nodes, no SMP/TB.
+   Deliberate deviations (documented in cengine.py): no root random
+   tiebreak. (The other v1 deviations retired: CB-01 added qsearch
+   repetition/50-move/insufficient-material, Phase 4 added Lazy SMP and
+   the gated TB probe, EP-01 fixed the raw-ep hashing.)
    Verified: KQK mate in 8 moves at 0.2s/move; winning side steps around
    threefold; 125-ply clean self-play game; budget honored (338 ms of a
    600 ms budget -- soft-stop banking); mate-score conventions map to v30's
