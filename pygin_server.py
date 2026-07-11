@@ -5,8 +5,10 @@ Run:  python3 pygin_server.py
 Test: curl -s -X POST http://127.0.0.1:8181 -d '{"fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w","depth":10}'
 """
 import json
+import queue
 import subprocess
 import sys
+import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import chess
@@ -28,14 +30,59 @@ def send(cmd):
     eng.stdin.flush()
 
 
-def wait_for(prefix):
-    while True:
-        line = eng.stdout.readline()
-        if not line:
-            raise RuntimeError("engine died")
+# One pump thread owns the engine's stdout; consumers read the queue. This
+# lets the PM-01 reply collector use timeouts (a raw readline cannot).
+_outq = queue.Queue()
+
+
+def _pump():
+    for line in eng.stdout:
         print("<<", line.rstrip(), flush=True)
+        _outq.put(line.strip())
+
+
+threading.Thread(target=_pump, daemon=True).start()
+
+
+def wait_for(prefix, timeout=None):
+    while True:
+        line = _outq.get(timeout=timeout)    # queue.Empty on timeout
         if line.startswith(prefix):
-            return line.strip()
+            return line
+
+
+# PM-01: the engine (Premove option ON below) emits certified instant
+# replies AFTER bestmove, on the opponent's clock:
+#   info string pygin-reply <r> <m>   ("if the opponent plays r, answer m")
+#   info string pygin-premove <m>     (safe blind premove)
+#   info string pygin-end             (always: collection terminator)
+# The move response is returned to the userscript IMMEDIATELY; a background
+# collector then gathers the table under ENG_LOCK (a next request blocks on
+# the lock at most ~1s, and only when the opponent replies faster than the
+# cert cap AND the table missed). GET /replies serves the latest table.
+ENG_LOCK = threading.Lock()
+REPLIES = {"key": None, "table": {}, "premove": None}
+
+
+def _collect_replies(key):
+    with ENG_LOCK:
+        table, pm = {}, None
+        try:
+            while True:
+                line = _outq.get(timeout=1.0)
+                if "pygin-end" in line:
+                    break
+                parts = line.split()
+                if "pygin-reply" in line and len(parts) >= 5:
+                    table[parts[-2]] = parts[-1]
+                elif "pygin-premove" in line and len(parts) >= 4:
+                    pm = parts[-1]
+        except queue.Empty:
+            pass
+        REPLIES.update(key=key, table=table, premove=pm)
+        if table or pm:
+            print(f"   pygin-replies armed for [{key}]: {table} premove={pm}",
+                  file=sys.stderr, flush=True)
 
 
 def normalize_moves(moves_str):
@@ -109,25 +156,43 @@ send("uci")
 wait_for("uciok")
 send("setoption name OwnBook value true")
 send("setoption name Threads value 6")
+send("setoption name Premove value true")    # PM-01 instant replies
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         # Prefer full history (startpos + moves) so the engine sees repetitions
         # and can avoid/claim threefold draws; FEN loses that context.
-        if "moves" in req:
-            mv = normalize_moves(req["moves"]) if req["moves"] else ""
-            send("position startpos" + (" moves " + mv if mv else ""))
-        else:
-            send("position fen " + full_fen(req["fen"]))
-        if req.get("movetime", 0) > 0:
-            send("go movetime %d" % req["movetime"])
-        else:
-            send("go depth %d" % req.get("depth", 12))
-        best = wait_for("bestmove").split()[1]
+        mv = ""
+        with ENG_LOCK:
+            if "moves" in req:
+                mv = normalize_moves(req["moves"]) if req["moves"] else ""
+                send("position startpos" + (" moves " + mv if mv else ""))
+            else:
+                send("position fen " + full_fen(req["fen"]))
+            if req.get("movetime", 0) > 0:
+                send("go movetime %d" % req["movetime"])
+            else:
+                send("go depth %d" % req.get("depth", 12))
+            best = wait_for("bestmove").split()[1]
         body = json.dumps({"bestmove": best}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+        # PM-01: collect the certified replies in the background; key = the
+        # move history AFTER our move (what the userscript will verify).
+        if "moves" in req and best not in ("(none)", "0000"):
+            key = (mv + " " + best).strip()
+            threading.Thread(target=_collect_replies, args=(key,),
+                             daemon=True).start()
+
+    def do_GET(self):
+        body = json.dumps(REPLIES).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
