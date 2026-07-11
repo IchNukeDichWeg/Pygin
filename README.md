@@ -20,9 +20,10 @@ core syncs every eval parameter from it at startup.
 single-threaded (level with Stockfish 18 capped at UCI_Elo 2450 over 2,500
 games). The **C search core** is far stronger and still climbing: it beat the
 Python engine **29–1–0** on arrival, and the C-era ledger has since added
-**≈ +135 Elo** of A/B-confirmed gains (v31 → v38: IIR, TT persistence, check
-extensions, qsearch-TT, noisy-only + staged move generation, plus exact-PV and
-score-hygiene correctness releases). Against
+**≈ +144 Elo** of A/B-confirmed gains (v31 → v39: IIR, TT persistence, check
+extensions, qsearch-TT, noisy-only + staged move generation, exact-PV and
+score-hygiene correctness releases, and an incremental-Zobrist NPS batch).
+Against
 **full-strength** Stockfish 18 it scores **~93%** at rook odds and roughly
 **~70%** at knight odds (knight-odds percentages are hardware/environment-
 dependent — compare only runs from the same machine).
@@ -74,7 +75,7 @@ one was measured. Regenerate with `python3 bench_progress.py`.
 | 36 | 3.9 M | 22 | +24.67 ±6.8 | staged move ordering |
 | 37 | 3.9 M | 19 | +0.17 ±6.8 | exact PV (correctness) |
 | 38 | 4.1 M | 18 | +1.36 ±6.8 | score-hygiene batch (correctness) |
-| 39-dev | 4.5 M | 18 | *A/B pending* | incremental Zobrist + NPS batch |
+| 39 | 4.5 M | 18 | +8.86 ±6.8 | incremental Zobrist + eval-in-TT + NPS batch |
 
 ¹ v31 is the C-core arrival: **29–1–0** vs v30 in a smoke match; the ≈ +215
 is an external / odds-derived estimate, **not** a same-time-control A/B.
@@ -107,12 +108,12 @@ before v20 means the era predates systematic A/B testing, not a zero gain.
   filtering.
 - **v35 → v36, ↑ 3.6M → 3.9M:** staged (lazy) move ordering — each move class
   is generated only when the search actually reaches it.
-- **v38 → v39-dev, ↑ 4.1M → 4.5M:** incremental Zobrist hashing (the position
+- **v38 → v39, ↑ 4.1M → 4.5M:** incremental Zobrist hashing (the position
   key is XOR-updated per move instead of recomputed per node), the static eval
   cached in spare TT bits, and a batch of micro-optimisations.
 
 Each Elo figure is an A/B match vs the immediately previous version (the
-C-era ones are 10,000 games each; cumulative **≈ +135** over v31, and the
+C-era ones are 10,000 games each; cumulative **≈ +144** over v31, and the
 v25→v30 adjacent chain alone sums to **≈ +139** — a direct v25→v28 re-match
 read **+80.56 ±10.2**, confirming the adjacent gains compose). **Time control
 is not uniform** (the early spans ran at various fast TCs ⁴; v32–v36 at

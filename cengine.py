@@ -7,9 +7,9 @@ ENTIRE per-node search loop in C (csearch.c): board, move ordering,
 transposition table, pruning, quiescence and the full static eval
 (bit-exact port of engine.py's ``_evaluate_static``, verified over 3M
 positions). Born as phase-3 step 6 of the C-core plan; the shipped engine
-since Old Engine/31. Defaults reproduce v37 (Old Engine/37) plus whatever
-candidate is armed: the Phase-2 NPS train (FI-02/FI-03/FI-01, ~+9% NPS,
-A/B vs Old Engine/38 PENDING -- the sixth 50+0.20-era campaign).
+since Old Engine/31. Its defaults ARE v39 -- the Phase-2 NPS train
+(FI-02/FI-03/FI-01, +8.86 +/-6.8 vs Old Engine/38, snapshotted
+Old Engine/39); no A/B candidate currently armed.
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -84,8 +84,8 @@ ON by default (A/B-confirmed, or free by construction):
     (deterministic per position => EXACT, reused on TT hits in negamax AND
     qsearch stand-pat -- the eval call is the most expensive per-node op).
     Paired alternating bench vs v38: +3.94% median, 9/9 pairs positive.
-    Elo rides the Phase-2 batch A/B per the P-22 lesson. (-flto was probed
-    and read null on Apple Silicon -- not adopted.)
+    Confirmed into v39 as the Phase-2 batch with FI-01 (+8.86 +/-6.8 vs Old
+    Engine/38). (-flto was probed and read null on Apple Silicon, not adopted.)
   * FI-01 incremental Zobrist (2026-07-11, Phase-2 train part 2): the
     position key lives ON the Board and is XOR-maintained through
     apply_move/make_null (splitmix64 randoms, fixed seed) instead of the
@@ -98,8 +98,8 @@ ON by default (A/B-confirmed, or free by construction):
     values -> different TT index-collision patterns -- NOT a logic change);
     matetrack 896/767, zero Bad PVs. Paired bench: full Phase-2 train
     +8.92% NPS median vs v38, 9/9 pairs positive (Zobrist's own share
-    ~+4.8% on top of part 1's +3.94%). A/B vs Old Engine/38 = the Phase-2
-    batch campaign, PENDING.
+    ~+4.8% on top of part 1's +3.94%). A/B vs Old Engine/38: +8.86 +/-6.8
+    @10k 50+0.20 (pair ratio 1.15, norm +18.89) -- CONFIRMED into v39.
   * PV-02 exact PV (set_pv_exact; CONFIRMED into v37 2026-07-10,
     snapshotted Old Engine/37; set_pv_exact(0) = v36's search): skip TT
     cutoffs/narrowing at PV nodes so the collected PV is complete
