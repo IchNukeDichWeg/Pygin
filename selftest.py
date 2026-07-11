@@ -189,13 +189,17 @@ if os.path.exists("csearch.c"):
         # +/-6.8 @10k vs Old Engine/40, 2026-07-11; default -1 = off = v40
         # rule). The cold ladder never saw it either way (post-reset
         # old-gen entries are zeroed depth-0 slots).
-        # FI-04 history-LMR (LMR_HIST, LIVE candidate, twelfth 50+0.20
-        # campaign, A/B vs Old Engine/43 pending): pin OFF so the ladder
-        # tracks the confirmed v43 search. Remove + re-measure on confirm.
+        # FI-04 history-LMR is DORMANT (+2.15 null @10k vs Old Engine/43,
+        # 2026-07-12; the finer-quiet-signal vein is 0-for-3); the default
+        # already reproduces v43, so this pin is belt-and-braces.
         try:
             ce._lib.set_lmr_hist(0)
         except AttributeError:
             pass                       # pre-FI-04 csearch.so
+        # FI-26a (LIVE candidate, thirteenth 50+0.20 campaign, A/B vs Old
+        # Engine/43 pending): the TT prefetch -- NODE-IDENTICAL, so this
+        # ladder needs NO pin and passing UNCHANGED is itself the
+        # correctness gate.
         # P-47 check-ext budget: raise-to-8 REJECTED (-4.59 +/-6.8 @10k);
         # 5 is the confirmed recipe and the default -- belt-and-braces pin.
         # PV-02 exact PV: CONFIRMED into v37 (+0.17 null = free correctness),
