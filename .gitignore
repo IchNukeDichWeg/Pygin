@@ -116,3 +116,10 @@ attic/
 
 # PyInstaller output (build_exe.sh); build/ is ignored above
 dist/
+
+# --- Only "Old Engine/" is a tracked folder; ignore every other top-level
+# directory (side projects, logs, build output, caches, GUIs). Root-level
+# source files stay tracked -- this matches directories only. New folders
+# are auto-ignored. (User request 2026-07-11.)
+/*/
+!/Old Engine/
