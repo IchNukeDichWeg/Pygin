@@ -15,6 +15,12 @@ import chess
 
 ENGINE = "/Users/sam/Desktop/bot/NeuerOrdner/ClaudeChess/dist/pygin"
 
+# PM-01 instant replies are OPT-IN here too, not just at the engine level:
+# nothing enables them unless you launch with PYGIN_PREMOVE=1 (the engine's
+# own UCI default is false, match play/releases never see it either way).
+import os
+PREMOVE = os.environ.get("PYGIN_PREMOVE", "0") == "1"
+
 # cwd = repo root so the engine finds Perfect2023.bin (book lookup searches
 # the working directory) no matter where the server is launched from.
 # start_new_session: own process group so terminal Ctrl+C hits only us, not
@@ -156,7 +162,9 @@ send("uci")
 wait_for("uciok")
 send("setoption name OwnBook value true")
 send("setoption name Threads value 6")
-send("setoption name Premove value true")    # PM-01 instant replies
+if PREMOVE:
+    send("setoption name Premove value true")    # PM-01 instant replies
+    print("PM-01 instant replies: ON (PYGIN_PREMOVE=1)", flush=True)
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -183,7 +191,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
         # PM-01: collect the certified replies in the background; key = the
         # move history AFTER our move (what the userscript will verify).
-        if "moves" in req and best not in ("(none)", "0000"):
+        if PREMOVE and "moves" in req and best not in ("(none)", "0000"):
             key = (mv + " " + best).strip()
             threading.Thread(target=_collect_replies, args=(key,),
                              daemon=True).start()
