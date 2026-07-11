@@ -34,13 +34,18 @@ function interceptWebSocket() {
             ws.addEventListener('message', function(e) {
                 const msg = JSON.parse(e.data);
                 if (msg.t !== 'move' || !msg.d || typeof msg.d.fen !== 'string') return;
-                // v counts EVERY event (clockInc, chat, moretime...) so its
-                // parity drifts; ply counts only moves. Fall back to v if absent.
-                const ply = typeof msg.d.ply === 'number' ? msg.d.ply : msg.v;
-                if (msg.d.uci && ply >= 1) moveHistory[ply - 1] = msg.d.uci;
-                currentPly = ply;
-                currentSide = ply % 2 === 0 ? 'w' : 'b';
-                currentMoveNumber = Math.floor(ply / 2) + 1;  // whole moves only
+                // Track ply ourselves by counting move events in order — don't
+                // rely on d.ply (not always present) or v (counts clock/chat
+                // events too, so its parity drifts). Contiguous history for a
+                // game watched from the start; a gap only if we joined midway.
+                if (msg.d.uci) {
+                    const ply = typeof msg.d.ply === 'number' ? msg.d.ply
+                                                              : moveHistory.length + 1;
+                    moveHistory[ply - 1] = msg.d.uci;
+                    currentPly = ply;
+                }
+                currentSide = currentPly % 2 === 0 ? 'w' : 'b';
+                currentMoveNumber = Math.floor(currentPly / 2) + 1;  // whole moves only
                 currentFen = msg.d.fen + ' ' + currentSide;
                 maybeSearch();
             });
@@ -84,6 +89,7 @@ function startSearch() {
     const moves = movesString();
     const payload = moves !== null ? { moves: moves, depth: depth }
                                     : { fen: fenAtRequest, depth: depth };
+    console.log('[Bot]', moves !== null ? 'history: ' + moves : 'FEN: ' + fenAtRequest);
     inFlight = true;
 
     GM_xmlhttpRequest({
