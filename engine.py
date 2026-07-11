@@ -1554,6 +1554,16 @@ class Engine:
         # default. Flag kept for future A/B if the term is improved.
         self.use_pin_eval = False
 
+        # CW-01 cannot-win clamp (2026-07-11, C-era backlog): if the side the
+        # eval favors has no pawns, no rooks/queens and at most a lone minor
+        # (or two knights), it cannot force mate -- clamp the score to 0
+        # (the position's true upper bound is a draw). Fixes the practical
+        # blindness where a lone-bishop side sits at "+2.6" vs tripled pawns
+        # and shuffles to AVOID the capture that would reveal the draw.
+        # Ported bit-exactly to csearch.c (set_cantwin); cengine mirrors this
+        # attr (CANTWIN class attr). OFF by default until its own A/B slot.
+        self.use_cantwin = False
+
         # "Trade down when ahead" eval term (see SIMPLIFY_*). A/B verdict: ON
         # scored 47.9% (-14 Elo) over 800 games @0.8s -> it HURTS (likely trades
         # into drawn endings), so OFF. (A noisy 100-game/0.15s run had said +;
@@ -2254,7 +2264,15 @@ class Engine:
         ``_qs_stand_pat``) without ever recomputing the base.
         """
         base, ctx = self._eval_base_white(board)
-        return base + self._eval_positional_white(board, ctx)
+        score = base + self._eval_positional_white(board, ctx)
+        if self.use_cantwin and score != 0:            # CW-01 (see __init__)
+            strong = board.occupied_co[score > 0]      # True == chess.WHITE
+            if not ((board.pawns | board.rooks | board.queens) & strong):
+                nb = chess.popcount(board.bishops & strong)
+                nn = chess.popcount(board.knights & strong)
+                if nb + nn <= 1 or (nb == 0 and nn == 2):
+                    score = 0
+        return score
 
     def _eval_base_white(self, board):
         """Cheap half: tapered material + PST + tempo (White's perspective).
