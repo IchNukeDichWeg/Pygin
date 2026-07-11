@@ -171,6 +171,11 @@ if os.path.exists("csearch.c"):
         # EP-01 FIDE-exact ep hashing: CONFIRMED into v40 (+4.31 null KEPT as
         # correctness -- repetition detection now matches the FIDE arbiter),
         # default ON -- part of the pinned reference search above.
+        # FI-08/Q-03 qsearch eviction guard (QS_EVICT_MAX, LIVE candidate,
+        # A/B vs Old Engine/40 pending): needs NO pin -- it only affects
+        # prior-generation TT entries, which after cs_tt_reset are all
+        # zeroed depth-0 slots, so this cold ladder is provably identical
+        # guard-on and guard-off (verified: passes with the default 6).
         # P-47 check-ext budget: raise-to-8 REJECTED (-4.59 +/-6.8 @10k);
         # 5 is the confirmed recipe and the default -- belt-and-braces pin.
         # PV-02 exact PV: CONFIRMED into v37 (+0.17 null = free correctness),

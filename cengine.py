@@ -10,7 +10,9 @@ positions). Born as phase-3 step 6 of the C-core plan; the shipped engine
 since Old Engine/31. Its defaults ARE v40 -- v39 + EP-01 FIDE-exact ep
 hashing (+4.31 +/-6.8 vs Old Engine/39, a null KEPT as correctness --
 repetition detection now agrees with the FIDE arbiter; snapshotted
-Old Engine/40). No candidate armed.
+Old Engine/40); armed candidate: FI-08/Q-03 qsearch depth-0 eviction guard
+(QS_EVICT_MAX = 6, A/B vs Old Engine/40 PENDING -- warm-play only, the
+cold ladder is unaffected).
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -241,6 +243,18 @@ class Engine:
     # is set -- near-zero cost. False = v39 node-exact.
     EP_FILTER = True
 
+    # FI-08 / Q-03 (LIVE CANDIDATE, eighth 50+0.20-era campaign, A/B vs Old
+    # Engine/40 PENDING): qsearch depth-0 eviction guard. P-44's stand-pat
+    # stores may evict prior-GENERATION entries of any depth -- including
+    # the deep entries from the previous move's search that P-14 (+23.5)
+    # proved are the engine's most valuable asset. With the guard, a
+    # qsearch store replaces an old-gen entry only if its depth <= this
+    # value; -1 = off (v40's rule). Cold-TT fixed-depth trees are
+    # unaffected either way (the ladder needs no pin -- verified equal),
+    # the effect exists only in warm timed play. TT policy is 2-for-2
+    # (P-14 +23.5, P-44 +8.1). -1 = v40 node-exact.
+    QS_EVICT_MAX = 6
+
     # FI-10: TT size in bits (2^bits x 24-byte entries; 21 = 48 MB, the size
     # the entire ledger was measured at -- leave it for A/B play). The UCI
     # Hash option (cuci) maps MB onto this; a resize wipes the table.
@@ -350,6 +364,7 @@ class Engine:
         lib.set_pv_exact(1 if self.PV_EXACT else 0)            # PV-02
         lib.set_score_hygiene(1 if self.SCORE_HYGIENE else 0)  # CB-01
         lib.set_ep_filter(1 if self.EP_FILTER else 0)          # EP-01
+        lib.set_qs_evict_max(int(self.QS_EVICT_MAX))           # FI-08/Q-03
         lib.set_tt_bits(int(self.TT_BITS))                     # FI-10 (Hash)
         # FB-06: cengine is AUTHORITATIVE over every behavioral C toggle --
         # a stale .so or drifted compiled-in default must not silently change
@@ -370,7 +385,7 @@ class Engine:
         global _SYNCED_FINGERPRINT
         fp = (self.USE_KING_SHELTER, self.USE_OUTPOST, self.USE_SIMPLIFY,
               self.SIMPLIFY_THRESHOLD, self.CHECK_EXT_BUDGET, self.PV_EXACT,
-              self.SCORE_HYGIENE, self.EP_FILTER)
+              self.SCORE_HYGIENE, self.EP_FILTER, self.QS_EVICT_MAX)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
