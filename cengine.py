@@ -409,6 +409,24 @@ class Engine:
         # (set_tt_bits is abi 9) -- bump together with csearch_abi.
         if lib.csearch_abi() < 9:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
+        # FB-04 + FB-18: one process = one config. Checked BEFORE any
+        # lib.set_* / eval-sync call -- a rejected second construction must
+        # never have already retargeted the process-wide globals under the
+        # first instance (the gui.py EvE bug class); the tuple includes
+        # TT_BITS (a construction-time free+calloc of the SHARED table) and
+        # TT_KEEP_WARM (per-move wipe policy on it).
+        global _SYNCED_FINGERPRINT
+        fp = (self.USE_KING_SHELTER, self.USE_OUTPOST, self.USE_SIMPLIFY,
+              self.SIMPLIFY_THRESHOLD, self.CHECK_EXT_BUDGET, self.PV_EXACT,
+              self.SCORE_HYGIENE, self.EP_FILTER, self.QS_EVICT_MAX,
+              self.CB2, self.CANTWIN, self.NULL_VERIFY, self.LMR_HIST,
+              self.TT_BITS, self.TT_KEEP_WARM)
+        if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
+            raise RuntimeError(
+                "cengine: two different Engine configs in one process -- "
+                "csearch.so's eval params/toggles are process-wide; run the "
+                "second config in its own process")
+        _SYNCED_FINGERPRINT = fp
         B = ctypes.c_uint64
         BOARD_ARGS = [B] * 8 + [ctypes.c_int] * 2 + [B]
         lib.cs_search_begin.argtypes = [ctypes.POINTER(B), ctypes.c_int,
@@ -448,21 +466,16 @@ class Engine:
                             ("set_single_reply", 0), ("set_improving", 0),
                             ("set_cont_hist", 0)):
             getattr(lib, setter)(val)
-        # FB-04: one process = one config. A second construction with a
-        # DIFFERENT config would silently retarget the process-wide globals
-        # under the first instance (the gui.py EvE bug class). Same config
-        # is fine (match workers construct one engine per process).
-        global _SYNCED_FINGERPRINT
-        fp = (self.USE_KING_SHELTER, self.USE_OUTPOST, self.USE_SIMPLIFY,
-              self.SIMPLIFY_THRESHOLD, self.CHECK_EXT_BUDGET, self.PV_EXACT,
-              self.SCORE_HYGIENE, self.EP_FILTER, self.QS_EVICT_MAX,
-              self.CB2, self.CANTWIN, self.NULL_VERIFY, self.LMR_HIST)
-        if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
-            raise RuntimeError(
-                "cengine: two different Engine configs in one process -- "
-                "csearch.so's eval params/toggles are process-wide; run the "
-                "second config in its own process")
-        _SYNCED_FINGERPRINT = fp
+        # FB-19: the six P-26 selectivity knobs, pushed authoritatively too
+        # (values = the compiled defaults, so this is a node-identical no-op
+        # TODAY; a drifted default or stale .so now fails the ladder instead
+        # of silently changing every non-UCI campaign).
+        lib.set_rfp(80, 6)
+        lib.set_null_move(2, 6)
+        lib.set_fut_margin(150)
+        lib.set_delta_margin(200)
+        lib.set_lmp(6, 10, 14)
+        lib.set_lmr_div(200)
         # FB-04: entries scored under a PREVIOUS construction's eval params
         # would poison this one (the table is process-global and persistent).
         # First construction: the table is empty, reset is a no-op.
@@ -735,7 +748,13 @@ class Engine:
         if time_limit is not None:
             setup = time.perf_counter() - t0
             if setup > 0.005:
-                time_limit = max(0.05, time_limit - setup)
+                # FB-24: floor never EXCEEDS the original budget (a 20ms
+                # zeitnot allocation must not become 50ms)...
+                time_limit = max(min(time_limit, 0.05), time_limit - setup)
+                # ...and elapsed restarts here so the ID loop's soft-stop
+                # doesn't subtract the setup a SECOND time (v30 never
+                # mutated the budget; the port double-counted).
+                t0 = time.perf_counter()
         self._lib.cs_search_begin(arr, len(hist),
                                   float(time_limit) if time_limit else 0.0)
 
@@ -844,8 +863,8 @@ class Engine:
                 or abs(prev_score) >= CS_MATE_THRESH):
             return self._root(bargs, depth, -CS_INF, CS_INF, prev_key, hmc)
         delta = self.ASPIRATION_DELTA
-        alpha = prev_score - delta
-        beta = prev_score + delta
+        alpha = max(-CS_INF, prev_score - delta)   # FB-26: well-formed even
+        beta = min(CS_INF, prev_score + delta)     # at near-mate prev_score
         provisional = 0                      # CB-02/FB-23: best PROVEN move
         while True:
             res = self._root(bargs, depth, alpha, beta, prev_key, hmc)

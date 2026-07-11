@@ -85,13 +85,18 @@ BENCH_FENS = [
 
 def run_bench(engine, depth=11):
     import time as _time
-    total, t0 = 0, _time.perf_counter()
-    for fen in BENCH_FENS:
-        engine._lib.cs_tt_reset()
-        engine.get_best_move(chess.Board(fen), depth)
-        total += engine.nodes_searched
-    dt = max(1e-9, _time.perf_counter() - t0)
-    out(f"{total} nodes {int(total / dt)} nps")
+    saved = engine.use_book, engine.use_tb    # FB-20: the signature must not
+    engine.use_book = engine.use_tb = False   # depend on which .bin files
+    try:                                      # exist (a book hit = 0 nodes)
+        total, t0 = 0, _time.perf_counter()
+        for fen in BENCH_FENS:
+            engine._lib.cs_tt_reset()
+            engine.get_best_move(chess.Board(fen), depth)
+            total += engine.nodes_searched
+        dt = max(1e-9, _time.perf_counter() - t0)
+        out(f"{total} nodes {int(total / dt)} nps")
+    finally:
+        engine.use_book, engine.use_tb = saved
 
 
 # --------------------------------------------------------------------------- #
