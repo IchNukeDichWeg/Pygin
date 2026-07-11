@@ -125,14 +125,7 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # quiet developing moves flip between depths without being a regression.
 # Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
 CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3"
-# v39-dev PENDING the Phase-2 batch A/B: FI-01 incremental Zobrist changed
-# the KEY VALUES (not the search logic -- d1-5 match v38 bit-exactly, the
-# ZKEY differential is clean over 52M nodes), so TT index-collision patterns
-# and with them deep node counts drift. If the batch A/B rejects, revert the
-# Zobrist commit and restore the v38 row:
-#   5: (6158, 73), 6: (10561, 68), 7: (30449, 74), 8: (73264, 57),
-#   9: (138861, 67), 10: (285524, 53), 11: (417116, 67), 12: (870872, 65),
-CE_LADDER = {                     # depth -> (nodes, score)  [v39-dev: FI-01]
+CE_LADDER = {                     # depth -> (nodes, score)  [v39: Phase-2 NPS train]
     1: (102, 126), 2: (189, 126), 3: (749, 126), 4: (1020, 122),
     5: (6158, 73), 6: (10562, 68), 7: (30449, 74), 8: (73260, 57),
     9: (138829, 67), 10: (293344, 53), 11: (418493, 69), 12: (713014, 58),

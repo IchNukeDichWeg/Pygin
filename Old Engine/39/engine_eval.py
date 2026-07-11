@@ -519,22 +519,6 @@ benchmark" below.
   store (Bad PVs 0 -> 470) -- restricted to non-PV nodes. Snapshotted as
   Old Engine/38.
 
-* **v39 (2026-07-11, lives in ``cengine.py`` + ``csearch.c``): the Phase-2
-  NPS train -- the first Elo gain after two correctness releases.** Three
-  speed changes, each ladder-verified: FI-01 incremental Zobrist (the
-  position key lives on the Board and is XOR-maintained through apply_move/
-  make_null instead of a 9-multiply full-state hash recomputed at every
-  node; the ZKEY differential vs a from-scratch oracle is clean over 52.4M
-  nodes; EP-01's FIDE ep filter folds in as an O(1) fixup); FI-03 the static
-  eval cached in the TT entry's spare 16 bits (exact by determinism, reused
-  at negamax pruning-eval and qsearch stand-pat); and the FI-02 micro-batch
-  (mover PT read from the move word, ordering's SEE verdict tagged and reused
-  by quiescence, lazy pick_next move ordering). **+8.9%% NPS on a paired
-  alternating bench (9/9 pairs positive). A/B vs v38: +8.86 +/-6.8 over
-  10,000 games @ 50+0.20 (51.28%%, ptnml 218/1158/2042/1315/267, pair ratio
-  1.15, normalized +18.89)** -- the NPS converted at ~1 Elo/1%%. Snapshotted
-  as Old Engine/39.
-
 Cross-version benchmark
 -----------------------
 Sweep (2026-07-02): 24 versions x 8 positions x 6 timed 5s runs (1152 searches).
