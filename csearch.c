@@ -1955,6 +1955,18 @@ void set_qs_lazy(int v) { g_qs_lazy = v; }
 static int g_qs_tt = 1;
 void set_qs_tt(int v) { g_qs_tt = v; }
 
+/* FI-08 (Q-03, LIVE CANDIDATE): P-14 proved the warm cross-move table is
+ * the engine's most valuable asset (+23.5); P-44's depth-0 qsearch stores
+ * erode it a little every move, because a different-key OLD-GENERATION
+ * entry is freely replaceable no matter how deep it is -- a depth-12
+ * entry from the previous move's search can be evicted by a stand-pat
+ * cutoff. Guard: old-gen entries are replaceable by a qsearch store only
+ * up to this depth. -1 = off (v40's rule: old-gen always replaceable).
+ * Cold-TT fixed-depth trees are UNAFFECTED either way (after a reset the
+ * only old-gen entries are zeroed slots, depth 0). */
+static int g_qs_evict_max = -1;
+void set_qs_evict_max(int v) { g_qs_evict_max = v; }
+
 static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
                                int flag, int ev)
 {
@@ -1963,7 +1975,9 @@ static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
     uint64_t ck = cur.key_x ^ cur.d1 ^ cur.d2;
     int replace = (ck == key)
                 ? (TT_DEPTH(cur) <= 0)
-                : (TT_GEN(cur) != (int)(uint16_t)g_gen || TT_DEPTH(cur) <= 0);
+                : (TT_GEN(cur) != (int)(uint16_t)g_gen
+                       ? (g_qs_evict_max < 0 || TT_DEPTH(cur) <= g_qs_evict_max)
+                       : TT_DEPTH(cur) <= 0);
     if (!replace) return;
     int sv = val;
     if (sv >= MATE_THRESH) sv += ply;                /* node -> ply-relative */
