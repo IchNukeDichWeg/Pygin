@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """benchmark.py -- one-position engine benchmark with warmup + averaging.
 
-    python3 benchmark.py --type depth --value 14
-    python3 benchmark.py --type time  --value 5000 --runs 8 --threads 4 --hash 256
+    python3 benchmark.py                    # 2000 ms, queen-odds startpos,
+                                            # 4 threads, 256 MB, 4 runs
+    python3 benchmark.py --type depth --value 14 --threads 1
     python3 benchmark.py --type nodes --value 2000000 --fen "r1bqkbnr/..."
 
 Runs the live C core (cengine, shipped defaults) on ONE position under ONE
@@ -37,7 +38,7 @@ def build_engine(threads, hash_mb):
     e = cengine.Engine()
     e.use_book = False                    # a book hit searches 0 nodes
     e.use_tb = False
-    e.smp_workers = max(1, min(64, threads))
+    e.smp_workers = max(1, min(256, threads))   # matches the C-side cap
     entries = hash_mb * 1024 * 1024 // 24  # cuci's Hash MB -> bits mapping
     e._lib.set_tt_bits(max(16, entries.bit_length() - 1))
     return e
@@ -80,22 +81,24 @@ def fmt(r):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--fen", default=chess.STARTING_FEN,
-                    help="position to search (default: startpos)")
-    ap.add_argument("--type", required=True, dest="kind",
+    DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNB1KBNR w KQkq - 0 1"
+    ap.add_argument("--fen", default=DEFAULT_FEN,
+                    help="position to search (default: queen-odds startpos)")
+    ap.add_argument("--type", dest="kind", default="time",
                     choices=("depth", "time", "nodes"),
-                    help="limit type for every run")
-    ap.add_argument("--value", required=True, type=float,
-                    help="plies / MILLISECONDS / node count (per --type)")
-    ap.add_argument("--threads", type=int, default=1,
-                    help="Lazy-SMP threads (default 1)")
-    ap.add_argument("--hash", type=int, default=48,
-                    help="TT size in MB, cuci mapping (default 48)")
+                    help="limit type for every run (default: time)")
+    ap.add_argument("--value", type=float, default=2000,
+                    help="plies / MILLISECONDS / nodes (default: 2000 ms)")
+    ap.add_argument("--threads", type=int, default=4,
+                    help="Lazy-SMP threads (default 4, max 256)")
+    ap.add_argument("--hash", default="256",
+                    help="TT size in MB, '256' or '256mb' (default 256)")
     ap.add_argument("--warmup", type=int, default=2,
                     help="unmeasured warmup runs (default 2)")
-    ap.add_argument("--runs", type=int, default=5,
-                    help="measured runs to average (default 5)")
+    ap.add_argument("--runs", type=int, default=4,
+                    help="measured runs to average (default 4)")
     args = ap.parse_args()
+    args.hash = int(str(args.hash).lower().rstrip("bm") or 48)
 
     try:
         board = chess.Board(args.fen)

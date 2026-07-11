@@ -519,7 +519,7 @@ class Engine:
         # honored like engine.py.
         # FB-13c: clamp to the C-side ceiling (set_threads clamps at 64
         # silently -- the Python attr must not misrepresent the real count).
-        self.smp_workers = min(64, max(1, int(os.environ.get(
+        self.smp_workers = min(256, max(1, int(os.environ.get(
             "CLAUDECHESS_SMP", "1"))))
         # FB-09: optional node budget (UCI `go nodes N`); None = unlimited.
         self.node_limit = None
