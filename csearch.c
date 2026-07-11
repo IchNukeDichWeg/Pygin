@@ -2015,6 +2015,17 @@ void set_cb2(int v) { g_cb2 = v; }
 static int g_null_verify = 1;
 void set_null_verify(int v) { g_null_verify = v; }
 
+/* FI-04 (LIVE CANDIDATE, twelfth 50+0.20 campaign): history-based LMR --
+ * the one search-formula idea ALL FIVE v39+ audits proposed independently.
+ * The quiet's own butterfly history (already maintained for ordering) nudges
+ * its reduction: well-scoring quiets reduce one less, badly-scoring ones one
+ * more. A move-QUALITY feature at fixed depth (P-23's paying family), not a
+ * depth-chaser; the divisor is the runtime knob (adj = hist/div clamped to
+ * +/-1; HIST_MAX=16384, div 8192 => adj != 0 only on strong signals).
+ * 0 = off = v43 node-exact. */
+static int g_lmr_hist = 0;
+void set_lmr_hist(int v) { g_lmr_hist = v; }
+
 static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
                                int flag, int ev)
 {
@@ -2467,6 +2478,12 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             R = g_lmr[depth < 64 ? depth : 63][i < 64 ? i : 63];
             if (is_pv && R) R--;
             if (g_improving && !improving) R++;      /* P-04: sharpen declining lines */
+            if (g_lmr_hist) {                        /* FI-04: history nudge */
+                int adj = g_history[b->turn][((m & 63) << 6) | ((m >> 6) & 63)]
+                        / g_lmr_hist;
+                if (adj > 1) adj = 1; else if (adj < -1) adj = -1;
+                R -= adj;
+            }
             if (R > depth - 2) R = depth - 2;
             if (R < 0) R = 0;
         }
