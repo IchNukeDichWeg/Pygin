@@ -110,7 +110,6 @@ wait_for("uciok")
 send("setoption name OwnBook value true")
 send("setoption name Threads value 6")
 
-
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
