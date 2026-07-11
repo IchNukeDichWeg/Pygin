@@ -10,9 +10,12 @@ positions). Born as phase-3 step 6 of the C-core plan; the shipped engine
 since Old Engine/31. Its defaults ARE v42 -- v41 + CW-01 cannot-win eval
 clamp (+3.27 +/-6.8 vs Old Engine/41, a null KEPT as correctness: the
 eval no longer favors sides that cannot force mate; snapshotted Old
-Engine/42); armed candidate: NV-01 verification isolation (NULL_VERIFY =
-False vs Old Engine/42 PENDING -- does CB-02's deep-null verification
-earn its ~one-ply nodes-to-depth cost?).
+Engine/42). v43 = v42 MINUS CB-02's deep-null verification: NV-01
+measured the removal at +5.18 +/-6.8 vs Old Engine/42 (pair ratio 1.08),
+converging with CB-02's own -2.88 lean -- the insurance cost ~3-5 Elo of
+nodes-to-depth and is DROPPED (modern-engine practice); snapshotted Old
+Engine/43. Armed candidate: FI-04 history-based LMR (LMR_HIST = 8192,
+A/B vs Old Engine/43 PENDING -- the wave's 5/5-consensus feature).
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -298,17 +301,24 @@ class Engine:
     # oracle differential clean over 389 positions. False = v41 eval.
     CANTWIN = True
 
-    # NV-01 (LIVE CANDIDATE, eleventh 50+0.20-era campaign, A/B vs Old
-    # Engine/42 PENDING; selftest pins the ladder to True): isolate
-    # CB-02(c), the deep-null verification search -- the one component of
-    # the CB-02 batch with a real cost (~+47% d12 nodes, ~one ply of
-    # nodes-to-depth) and the one modern engines dropped (Stockfish-family
-    # runs unverified null; has_non_pawn + the TT cover zugzwang). The
-    # candidate REMOVES it: False = search without verification (v42 minus
-    # CB-02(c)); True = v42's verifying search node-exactly. Positive
-    # verdict => drop verification in v43 and the ledger records what the
-    # insurance cost; null => it really was free, restore True.
+    # NV-01 verification isolation: RESOLVED into v43 (eleventh 50+0.20
+    # campaign, A/B vs Old Engine/42 2026-07-11: +5.18 +/-6.8 @10k for the
+    # REMOVAL, 50.74%, pair ratio 1.08, norm +10.82). Converging evidence
+    # (CB-02's own -2.88 lean + a recovered ply of nodes-to-depth) priced
+    # CB-02(c)'s zugzwang insurance at ~3-5 Elo -- v43 drops it, matching
+    # modern practice (Stockfish-family runs unverified null; has_non_pawn
+    # + the TT cover zugzwang). True = v42's verifying search.
     NULL_VERIFY = False
+
+    # FI-04 history-based LMR (LIVE CANDIDATE, twelfth 50+0.20-era campaign,
+    # A/B vs Old Engine/43 PENDING; selftest pins the ladder to 0): the
+    # quiet's butterfly history nudges its LMR reduction by +/-1
+    # (adj = hist/LMR_HIST clamped; HIST_MAX=16384, so 8192 fires only on
+    # strong signals). The wave's 5/5-consensus feature -- a move-QUALITY
+    # change at fixed depth (P-23's paying family), tempered by the
+    # Q-01/P-42 finer-signal nulls. If the verdict is +3..+10 marginal, ONE
+    # divisor tune (4096/12288) before the next feature. 0 = v43 node-exact.
+    LMR_HIST = 8192
 
     # FI-10: TT size in bits (2^bits x 24-byte entries; 21 = 48 MB, the size
     # the entire ledger was measured at -- leave it for A/B play). The UCI
@@ -423,6 +433,7 @@ class Engine:
         lib.set_qs_evict_max(int(self.QS_EVICT_MAX))           # FI-08/Q-03
         lib.set_cb2(1 if self.CB2 else 0)                      # CB-02
         lib.set_cantwin(1 if self.CANTWIN else 0)              # CW-01
+        lib.set_lmr_hist(int(self.LMR_HIST))                   # FI-04
         lib.set_null_verify(1 if self.NULL_VERIFY else 0)      # NV-01
         lib.set_tt_bits(int(self.TT_BITS))                     # FI-10 (Hash)
         # FB-06: cengine is AUTHORITATIVE over every behavioral C toggle --
@@ -445,7 +456,7 @@ class Engine:
         fp = (self.USE_KING_SHELTER, self.USE_OUTPOST, self.USE_SIMPLIFY,
               self.SIMPLIFY_THRESHOLD, self.CHECK_EXT_BUDGET, self.PV_EXACT,
               self.SCORE_HYGIENE, self.EP_FILTER, self.QS_EVICT_MAX,
-              self.CB2, self.CANTWIN, self.NULL_VERIFY)
+              self.CB2, self.CANTWIN, self.NULL_VERIFY, self.LMR_HIST)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
