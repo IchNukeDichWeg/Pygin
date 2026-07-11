@@ -52,20 +52,20 @@ one was measured. Regenerate with `python3 bench_progress.py`.
 | 14 | 35 k | 10 | — | Syzygy TB probe + IIR |
 | 15 | 35 k | 10 | — | pre-C baseline |
 | 16 | 44 k | 11 | — | **evaluation ported to C** (`eval_c.c`) |
-| 17 | 58 k | 10 | — | **move generation ported to C** (`movegen.c`) |
+| 17 | 58 k | 10 | +69 ±16 ³ | **move generation ported to C** (`movegen.c`) |
 | 18 | 57 k | 10 | — | Zobrist hashing |
 | 19 | 57 k | 12 | — | lock-free shared TT |
-| 20 | 61 k | 12 | — | |
-| 21 | 62 k | 13 | — | |
+| 20 | 61 k | 12 | +45 ±11 ⁴ | mobility/threat eval, one-call C eval |
+| 21 | 62 k | 13 | +16 ±10 ⁴ | capture history, SEE capture pruning |
 | 22 | 61 k | 12 | — | |
 | 23 | 59 k | 13 | — | |
 | 24 | 59 k | 13 | +11.75 ±6.8 ² | (measured over the v21→v24 span) |
-| 25 | 60 k | 13 | — | |
-| 26 | 72 k | 13 | — | node-identical speed batch |
-| 27 | 85 k | 13 | — | node-identical speed batch (+12 %) |
-| 28 | 88 k | 13 | — | node-identical speed batch (+4 %) |
-| 29 | 89 k | 13 | — | soft-stop time management |
-| 30 | 88 k | 12 | — | last pure-Python version |
+| 25 | 60 k | 13 | +2.91 ±11.6 | Lazy-SMP fixes |
+| 26 | 72 k | 13 | +41.90 ±5.7 | node-identical speed batch |
+| 27 | 85 k | 13 | +35.17 ±7.7 | node-identical speed batch (+12 %) |
+| 28 | 88 k | 13 | +13.13 ±6.0 | node-identical speed batch (+4 %) |
+| 29 | 89 k | 13 | +38.34 ±6.9 | soft-stop time management (P-35) |
+| 30 | 88 k | 12 | +10.91 ±6.8 | stability-scaled time (U-06); last Python |
 | 31 | 2.7 M | 17 | ≈ +215 ¹ | **C search core** (whole per-node loop in C) |
 | 32 | 2.7 M | 18 | +7.30 ±6.8 | internal iterative reduction |
 | 33 | 2.6 M | 21 | +23.52 ±6.8 | transposition table kept warm across moves |
@@ -78,8 +78,13 @@ one was measured. Regenerate with `python3 bench_progress.py`.
 
 ¹ v31 is the C-core arrival: **29–1–0** vs v30 in a smoke match; the ≈ +215
 is an external / odds-derived estimate, **not** a same-time-control A/B.
-² The Python era has no per-version A/B; the one measured span is
-v21 → v24 = **+11.75 ±6.8** over 10,000 games.
+² v22–v24 were tested as one span (Lazy-SMP + NPS work): v21 → v24 =
+**+11.75 ±6.8** over 10,000 games; v22 and v23 have no standalone A/B.
+³ v16 and v17 (the eval and movegen C ports) were A/B'd together vs v15:
+**+69 ±16** over 2,000 games.
+⁴ Early Python-era A/Bs ran at assorted fast time controls (0.65+0.1,
+0.75+0.25, 45+0.15, 45+0.1 — see `engine.py`'s version history); a "—"
+before v20 means the era predates systematic A/B testing, not a zero gain.
 
 **What moves the NPS** (the load-bearing jumps, up and down):
 
@@ -106,10 +111,13 @@ v21 → v24 = **+11.75 ±6.8** over 10,000 games.
   key is XOR-updated per move instead of recomputed per node), the static eval
   cached in spare TT bits, and a batch of micro-optimisations.
 
-The C-era Elo figures are 10,000-game A/B matches vs the immediately previous
-version (cumulative **≈ +135** over v31). **Time control differs by era**
-(45 s + 0.10 for v32–v36, 50 s + 0.20 for v37–v39), so cross-era Elo is not
-one currency. **NPS is the clean speed axis; depth reached in a fixed budget
+Each Elo figure is an A/B match vs the immediately previous version (the
+C-era ones are 10,000 games each; cumulative **≈ +135** over v31, and the
+v25→v30 adjacent chain alone sums to **≈ +139** — a direct v25→v28 re-match
+read **+80.56 ±10.2**, confirming the adjacent gains compose). **Time control
+is not uniform** (the early spans ran at various fast TCs ⁴; v32–v36 at
+45 s + 0.10, v37–v39 at 50 s + 0.20), so Elo is comparable only within a
+matching-TC run, never summed across the whole column as a single rating. **NPS is the clean speed axis; depth reached in a fixed budget
 also reflects selectivity** — v37/v38 search more nodes per ply (exact PV
 re-searches PV nodes, the correctness batch adds quiescence draw checks), so
 their depth dips even as raw NPS keeps climbing. Absolute NPS is
