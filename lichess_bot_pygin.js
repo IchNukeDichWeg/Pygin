@@ -10,6 +10,7 @@
 // ==/UserScript==
 
 const BRIDGE_URL = 'http://127.0.0.1:8118';
+const MOVETIME_MS = 0;   // >0: search this many ms per move; 0: use depth instead
 
 let webSocketWrapper = null;
 let myColor = null;          // 'w' or 'b' — which side we are playing
@@ -87,8 +88,8 @@ function startSearch() {
     const pieces = (currentFen.split(' ')[0].match(/[a-zA-Z]/g) || []).length;
     const depth = Math.min(18, 12 + Math.floor((32 - pieces) / 4));
     const moves = movesString();
-    const payload = moves !== null ? { moves: moves, depth: depth }
-                                    : { fen: fenAtRequest, depth: depth };
+    const payload = moves !== null ? { moves: moves, depth: depth, movetime: MOVETIME_MS }
+                                    : { fen: fenAtRequest, depth: depth, movetime: MOVETIME_MS };
     console.log('[Bot]', moves !== null ? 'history: ' + moves : 'FEN: ' + fenAtRequest);
     inFlight = true;
 
