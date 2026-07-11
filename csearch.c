@@ -1967,6 +1967,23 @@ void set_qs_tt(int v) { g_qs_tt = v; }
 static int g_qs_evict_max = -1;
 void set_qs_evict_max(int v) { g_qs_evict_max = v; }
 
+/* CB-02 (LIVE CANDIDATE, ninth 50+0.20 campaign, A/B vs Old Engine/40
+ * pending): correctness batch #4, keep-on-null class like CB-01 --
+ *  (a) FB-22: the null-move TT store obeys the replacement policy instead
+ *      of clobbering deeper entries (and keeps a same-key entry's move),
+ *  (b) FI-27.1: qsearch applies the 50-move rule (completes CB-01's
+ *      draw set; same !in_chk semantics as negamax),
+ *  (c) FI-24c: deep null cutoffs (depth >= 10) are verified with a
+ *      reduced NO-NULL search -- zugzwang/fortress insurance that
+ *      has_non_pawn alone cannot provide (g_no_null suppresses null
+ *      moves for the whole verification subtree, Heinz-style).
+ * The driver half (FB-23, cengine.CB2) rides the same class attr:
+ * root fail-high moves are adopted+promoted across aspiration calls.
+ * 0 = v40 node-exact. */
+static int g_cb2 = 0;
+static __thread int g_no_null = 0;
+void set_cb2(int v) { g_cb2 = v; }
+
 static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
                                int flag, int ev)
 {
@@ -2010,6 +2027,10 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
     if (g_score_hyg) {
         if (!(b->pawns | b->rooks | b->queens) && insufficient_material(b))
             return draw_score(b);            /* (c) dead-drawn exchanges */
+        if (g_cb2 && hmc >= 100 && !in_chk)  /* CB-02(b): 50-move rule --
+                                              * same in-check-plays-on
+                                              * semantics as negamax */
+            return draw_score(b);
         key = board_key(b);                  /* (b) every qsearch node logs
                                               * its key so in-check nodes can
                                               * see even-distance ancestors */
@@ -2259,7 +2280,8 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             return static_eval;
         /* null-move pruning (hmc 0 below the null: repetition/50-move
          * cannot be tracked across a non-move, so disable them there) */
-        if (depth >= 3 && static_eval >= beta && has_non_pawn(b, b->turn)) {
+        if (depth >= 3 && static_eval >= beta && has_non_pawn(b, b->turn)
+            && !(g_cb2 && g_no_null)) {      /* CB-02(c): verify subtree */
             int R = g_null_base + depth / g_null_div;
             Board c = *b; make_null(&c);
             g_ctx[ply + 1] = 0;              /* Q-01: null = no context */
@@ -2267,14 +2289,49 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                               0xFFFFFFFF, 0, 0, chk, srb);
             if (CS_UNWINDING()) return 0;            /* ns is garbage */
             if (ns >= beta) {
-                if (!g_score_hyg) return beta;       /* v37: fail-hard */
-                /* CB-01 (d): keep the fail-soft bound (tighter TT info);
-                 * an unproven null-move MATE is never trusted -- clamp. */
-                if (ns >= MATE_THRESH) ns = beta;
-                if (g_use_tt && tte && ns < MATE_THRESH && !CS_UNWINDING())
-                    tt_store_raw(tte, key, ns, 0, depth, TT_LOWER,
-                                 static_eval);        /* FI-03 */
-                return ns;
+                int verified = 1;
+                if (g_cb2 && depth >= 10) {
+                    /* CB-02(c): confirm the deep cutoff with a reduced
+                     * no-null re-search at THIS node (same window). */
+                    g_no_null = 1;
+                    int vs = negamax(b, depth - 1 - R, beta - 1, beta, ply,
+                                     prev12, in_chk, hmc, chk, srb);
+                    g_no_null = 0;
+                    if (CS_UNWINDING()) return 0;
+                    if (vs < beta) verified = 0;     /* zugzwang mis-cut */
+                }
+                if (verified) {
+                    if (!g_score_hyg) return beta;   /* v37: fail-hard */
+                    /* CB-01 (d): keep the fail-soft bound (tighter TT
+                     * info); an unproven null-move MATE is never trusted
+                     * -- clamp. */
+                    if (ns >= MATE_THRESH) ns = beta;
+                    if (g_use_tt && tte && ns < MATE_THRESH
+                        && !CS_UNWINDING()) {
+                        if (!g_cb2) {
+                            tt_store_raw(tte, key, ns, 0, depth, TT_LOWER,
+                                         static_eval);        /* FI-03 */
+                        } else {
+                            /* CB-02(a)/FB-22: obey the replacement policy;
+                             * never clobber a DEEPER entry, and keep a
+                             * same-key entry's move (ordering asset). */
+                            TTEntry cur = *tte;
+                            uint64_t ck = cur.key_x ^ cur.d1 ^ cur.d2;
+                            if (ck == key) {
+                                if (depth >= TT_DEPTH(cur))
+                                    tt_store_raw(tte, key, ns,
+                                                 TT_MOVE(cur) & 0x7FFF,
+                                                 depth, TT_LOWER,
+                                                 static_eval);
+                            } else if (TT_GEN(cur) != (int)(uint16_t)g_gen
+                                       || depth >= TT_DEPTH(cur)) {
+                                tt_store_raw(tte, key, ns, 0, depth,
+                                             TT_LOWER, static_eval);
+                            }
+                        }
+                    }
+                    return ns;
+                }
             }
         }
     }
