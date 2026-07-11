@@ -71,15 +71,15 @@ one was measured. Regenerate with `python3 bench_progress.py`.
 | 30 | 88 k | 12 | +10.91 ±6.8 | stability-scaled time (U-06); last Python |
 | 31 | 2.7 M | 17 | ≈ +215 ¹ | **C search core** (whole per-node loop in C) |
 | 32 | 2.7 M | 18 | +7.30 ±6.8 | internal iterative reduction |
-| 33 | 2.6 M | 21 | +23.52 ±6.8 | transposition table kept warm across moves |
-| 34 | 2.7 M | 21 | +6.81 ±6.8 | check extensions |
-| 35 | 3.6 M | 21 | ≈ +72 | noisy-only qsearch gen + qsearch TT |
-| 36 | 3.9 M | 22 | +24.67 ±6.8 | staged move ordering |
-| 37 | 3.9 M | 19 | +0.17 ±6.8 | exact PV (correctness) |
+| 33 | 2.5 M | 21 | +23.52 ±6.8 | transposition table kept warm across moves |
+| 34 | 2.5 M | 21 | +6.81 ±6.8 | check extensions |
+| 35 | 3.6 M | 20 | ≈ +72 | noisy-only qsearch gen + qsearch TT |
+| 36 | 4.0 M | 22 | +24.67 ±6.8 | staged move ordering |
+| 37 | 4.2 M | 19 | +0.17 ±6.8 | exact PV (correctness) |
 | 38 | 4.1 M | 18 | +1.36 ±6.8 | score-hygiene batch (correctness) |
-| 39 | 4.5 M | 18 | +8.86 ±6.8 | incremental Zobrist + eval-in-TT + NPS batch |
-| 40 | 4.7 M | 18 | +4.31 ±6.8 | FIDE-exact en-passant hashing (correctness) |
-| 41 | 4.1 M | 17 | −2.88 ±6.8 | verified null + 50-move + TT-store policy (correctness) |
+| 39 | 4.4 M | 18 | +8.86 ±6.8 | incremental Zobrist + eval-in-TT + NPS batch |
+| 40 | 4.3 M | 18 | +4.31 ±6.8 | FIDE-exact en-passant hashing (correctness) |
+| 41 | 4.3 M | 17 | −2.88 ±6.8 | verified null + 50-move + TT-store policy (correctness) |
 
 ¹ v31 is the C-core arrival: **29–1–0** vs v30 in a smoke match; the ≈ +215
 is an external / odds-derived estimate, **not** a same-time-control A/B.
@@ -124,11 +124,14 @@ absolute anchor is the SF-2450 benchmark: the engine reaches ≈2442 by v25).
   positions now share one hash key, so their TT entries merge and the same
   depth costs fewer nodes (d12 ladder −21%). A correctness fix that happens
   to speed things up.
-- **v40 → v41, ↓ 4.7M → 4.1M / d18 → d17:** the verified-null correctness
-  batch — deep null-move cutoffs are now confirmed with a reduced no-null
-  re-search before being trusted (zugzwang insurance), which re-searches
-  cost nodes and a bit of depth. Deliberate: the safety measured at
-  noise-level Elo price and is kept as correctness.
+- **v40 → v41, NPS unchanged / d18 → d17:** the verified-null correctness
+  batch. Raw speed is identical (4.28M vs 4.29M in a paired same-session
+  run — an earlier cross-session reading of "4.7M → 4.1M" was measurement
+  conditions, not the engine); what the verification re-searches really
+  cost is NODES-TO-DEPTH: ~one ply in a fixed budget. The A/B priced that
+  at −2.88 ±6.8 (noise-level) and the batch is kept as correctness. The
+  whole C-era block of this table was re-measured in one uniform session
+  (2026-07-11) for comparability.
 
 Each Elo figure is an A/B match vs the immediately previous version (the
 C-era ones are 10,000 games each; cumulative **≈ +145** over v31, and the
