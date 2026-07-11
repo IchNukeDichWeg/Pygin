@@ -2006,6 +2006,15 @@ static int g_cb2 = 0;
 static __thread int g_no_null = 0;
 void set_cb2(int v) { g_cb2 = v; }
 
+/* NV-01 (LIVE CANDIDATE, eleventh 50+0.20 campaign): isolate CB-02(c).
+ * The deep-null verification search is the only COSTLY component of the
+ * CB-02 batch (~+47% d12 nodes, ~one ply of nodes-to-depth) and modern
+ * top engines dropped verification years ago (has_non_pawn + TT cover
+ * zugzwang well enough). The candidate is verification OFF (cengine
+ * pushes NULL_VERIFY=False); 1 = v41/v42's verifying search exactly. */
+static int g_null_verify = 1;
+void set_null_verify(int v) { g_null_verify = v; }
+
 static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
                                int flag, int ev)
 {
@@ -2312,7 +2321,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             if (CS_UNWINDING()) return 0;            /* ns is garbage */
             if (ns >= beta) {
                 int verified = 1;
-                if (g_cb2 && depth >= 10) {
+                if (g_cb2 && g_null_verify && depth >= 10) {
                     /* CB-02(c): confirm the deep cutoff with a reduced
                      * no-null re-search at THIS node (same window). */
                     g_no_null = 1;
