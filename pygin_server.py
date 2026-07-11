@@ -51,22 +51,22 @@ def wait_for(prefix, timeout=None):
             return line
 
 
-# PM-01: the engine (Premove option ON below) emits certified instant
-# replies AFTER bestmove, on the opponent's clock:
-#   info string pygin-reply <r> <m>   ("if the opponent plays r, answer m")
-#   info string pygin-premove <m>     (safe blind premove)
+# PM-01: the engine (Premove option ON below) emits an ordered CHAIN of
+# certified instant replies AFTER bestmove, on the opponent's clock:
+#   info string pygin-reply <r> <m>   ("if the opponent plays r, answer m";
+#                                      successive lines continue the line)
 #   info string pygin-end             (always: collection terminator)
 # The move response is returned to the userscript IMMEDIATELY; a background
 # collector then gathers the table under ENG_LOCK (a next request blocks on
 # the lock at most ~1s, and only when the opponent replies faster than the
 # cert cap AND the table missed). GET /replies serves the latest table.
 ENG_LOCK = threading.Lock()
-REPLIES = {"key": None, "table": {}, "premove": None}
+REPLIES = {"key": None, "chain": []}
 
 
 def _collect_replies(key):
     with ENG_LOCK:
-        table, pm = {}, None
+        chain = []
         try:
             while True:
                 line = _outq.get(timeout=1.0)
@@ -74,14 +74,12 @@ def _collect_replies(key):
                     break
                 parts = line.split()
                 if "pygin-reply" in line and len(parts) >= 5:
-                    table[parts[-2]] = parts[-1]
-                elif "pygin-premove" in line and len(parts) >= 4:
-                    pm = parts[-1]
+                    chain.append([parts[-2], parts[-1]])
         except queue.Empty:
             pass
-        REPLIES.update(key=key, table=table, premove=pm)
-        if table or pm:
-            print(f"   pygin-replies armed for [{key}]: {table} premove={pm}",
+        REPLIES.update(key=key, chain=chain)
+        if chain:
+            print(f"   pygin-chain armed for [{key}]: {chain}",
                   file=sys.stderr, flush=True)
 
 

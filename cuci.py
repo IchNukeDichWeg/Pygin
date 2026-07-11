@@ -99,14 +99,18 @@ def run_bench(engine, depth=11):
 # true`; inert by default, zero effect on match play).
 #
 # After `bestmove m1` the engine keeps working ON THE OPPONENT'S CLOCK for up
-# to PREMOVE_CAP_S and FOLLOWS ITS OWN LINE: it takes the PV's predicted
-# opponent reply and certifies ONE answer to it (or, when the opponent has
-# exactly one legal move, answers that -- fully safe). Emitted via
-# spec-ignored info-string lines the bridge parses:
+# to PREMOVE_CAP_S and FOLLOWS ITS OWN LINE, emitting an ordered CHAIN of
+# certified pairs via spec-ignored info-string lines the bridge parses:
 #   info string pygin-reply <r> <m>     -- "if the opponent plays r, answer m
-#                                          instantly" (the client acts only on
-#                                          an exact match: zero misfire risk)
+#                                          instantly" (the client walks the
+#                                          chain on exact matches only: zero
+#                                          misfire risk)
 #   info string pygin-end               -- collection terminator (always)
+# Chain caps (don't trade depth for speed): at most 2 pairs where the
+# opponent had a CHOICE -- every instant reply skips a full search, so an
+# uncapped chain would play shallow -- but UNCAPPED while the opponent's
+# reply is FORCED (single legal move: mate funnels, forced recaptures --
+# nothing to search, no depth lost).
 # Quality gate: the answer must be depth-stable (d6 and d9 agree) -- a missing
 # reply costs one normal round-trip; a wrong one would cost a game. The
 # certification searches warm the TT with exactly the position the next move
@@ -120,44 +124,71 @@ PREMOVE_CAP_S = 0.1      # hard wall-clock cap (user: bullet-safe)
 
 
 def certify_premoves(engine, board, my_move, stop_evt):
-    """Return at most ONE certified (predicted_reply, answer) pair, following
-    the engine's own PV. BOARD is the position MY_MOVE was played from."""
+    """Return an ordered CHAIN of certified (predicted_reply, answer) pairs,
+    following the engine's own PV. BOARD is the position MY_MOVE was played
+    from. Two caps, per the design rule "don't trade depth for speed":
+      * at most 2 pairs where the opponent had a CHOICE (each instant reply
+        skips a full search, so an uncapped chain would play shallow) --
+      * UNCAPPED while the opponent's reply is FORCED (single legal move --
+        mate funnels, forced recapture ladders: no depth is lost, there was
+        nothing to search)."""
     import time as _t
     t_end = _t.perf_counter() + PREMOVE_CAP_S
     pv = (engine.last_pv or "").split()      # read BEFORE any cert search
     b = board.copy()
     b.push(my_move)
-    if b.is_game_over():
-        return []
-    replies = list(b.legal_moves)
-    if len(replies) == 1:                    # forced: fully safe, go deeper
-        bb = b.copy(); bb.push(replies[0])
+    chain = []
+    normal = 0                               # pairs where opponent had choice
+    pvi = 1                                  # next PV token = opponent reply
+    pv_ok = True                             # PV still aligned with the chain
+    while not stop_evt.is_set() and _t.perf_counter() < t_end:
+        if b.is_game_over():
+            break
+        replies = list(b.legal_moves)
+        if len(replies) == 1:                # FORCED: safe, uncapped
+            r = replies[0]
+            bb = b.copy(); bb.push(r)
+            if bb.is_game_over():
+                break
+            m = engine.get_best_move(bb, PREMOVE_FORCED_DEPTH)
+            if m is None:
+                break
+            chain.append((r, m))
+            # keep PV alignment only if the line predicted this exchange
+            if pv_ok and pvi + 1 < len(pv) and pv[pvi] == r.uci() \
+                    and pv[pvi + 1] == m.uci():
+                pvi += 2
+            else:
+                pv_ok = False
+            b = bb; b.push(m)
+            continue
+        # CHOICE: follow the PV prediction, capped at 2 such pairs
+        if normal >= 2 or not pv_ok or pvi >= len(pv):
+            break
+        try:
+            r = chess.Move.from_uci(pv[pvi])
+        except ValueError:
+            break
+        if r not in b.legal_moves:
+            break
+        bb = b.copy(); bb.push(r)
         if bb.is_game_over():
-            return []
-        m = engine.get_best_move(bb, PREMOVE_FORCED_DEPTH)
-        return [(replies[0], m)] if m is not None else []
-    if len(pv) < 2:
-        return []
-    try:
-        r = chess.Move.from_uci(pv[1])       # the line's predicted reply
-    except ValueError:
-        return []
-    if r not in b.legal_moves:
-        return []
-    bb = b.copy(); bb.push(r)
-    if bb.is_game_over():
-        return []
-    m6 = engine.get_best_move(bb, PREMOVE_CHECK_DEPTH)
-    s6 = engine.last_score
-    if stop_evt.is_set() or _t.perf_counter() > t_end:
-        return []
-    m9 = engine.get_best_move(bb, PREMOVE_TABLE_DEPTH)
-    s9 = engine.last_score
-    if m9 is None or m6 != m9 or abs(s9 - s6) > 60:
-        return []                            # not depth-stable: stay silent
-    if len(pv) >= 3 and m9.uci() != pv[2]:
-        return []                            # the line's own answer must
-    return [(r, m9)]                         # agree with the fresh checks
+            break
+        m6 = engine.get_best_move(bb, PREMOVE_CHECK_DEPTH)
+        s6 = engine.last_score
+        if stop_evt.is_set() or _t.perf_counter() > t_end:
+            break
+        m9 = engine.get_best_move(bb, PREMOVE_TABLE_DEPTH)
+        s9 = engine.last_score
+        if m9 is None or m6 != m9 or abs(s9 - s6) > 60:
+            break                            # not depth-stable: stop here
+        if pvi + 1 < len(pv) and m9.uci() != pv[pvi + 1]:
+            break                            # fresh checks must agree with
+        chain.append((r, m9))                # the line's own answer
+        normal += 1
+        pvi += 2
+        b = bb; b.push(m9)
+    return chain
 
 
 def main():
