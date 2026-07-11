@@ -107,10 +107,11 @@ def run_bench(engine, depth=11):
 #                                          misfire risk)
 #   info string pygin-end               -- collection terminator (always)
 # Chain caps (don't trade depth for speed): at most 2 pairs where the
-# opponent had a CHOICE -- every instant reply skips a full search, so an
-# uncapped chain would play shallow -- but UNCAPPED while the opponent's
-# reply is FORCED (single legal move: mate funnels, forced recaptures --
-# nothing to search, no depth lost).
+# opponent had a CHOICE, and only while the searched line REMAINING after
+# each pair is >= PREMOVE_MIN_LINE plies (a d13 search affords 1 pair, d14+
+# the full 2, below d12 none) -- but UNCAPPED while the opponent's reply is
+# FORCED (single legal move: mate funnels, forced recaptures -- nothing to
+# search, no depth lost).
 # Quality gate: the answer must be depth-stable (d6 and d9 agree) -- a missing
 # reply costs one normal round-trip; a wrong one would cost a game. The
 # certification searches warm the TT with exactly the position the next move
@@ -120,6 +121,11 @@ def run_bench(engine, depth=11):
 PREMOVE_CHECK_DEPTH = 6
 PREMOVE_TABLE_DEPTH = 9
 PREMOVE_FORCED_DEPTH = 10
+PREMOVE_MIN_LINE = 10    # a choice-pair may only be played while the line
+                         # REMAINING after it is >= this deep: each instant
+                         # reply consumes 2 plies of the searched line, so a
+                         # d13 search affords 1 pair (13-2=11 ok, 13-4=9 no),
+                         # d14+ affords the max 2, below d12 none at all
 PREMOVE_CAP_S = 0.1      # hard wall-clock cap (user: bullet-safe)
 
 
@@ -135,6 +141,7 @@ def certify_premoves(engine, board, my_move, stop_evt):
     import time as _t
     t_end = _t.perf_counter() + PREMOVE_CAP_S
     pv = (engine.last_pv or "").split()      # read BEFORE any cert search
+    d0 = engine.last_depth or 0              # the searched line's depth
     b = board.copy()
     b.push(my_move)
     chain = []
@@ -162,8 +169,11 @@ def certify_premoves(engine, board, my_move, stop_evt):
                 pv_ok = False
             b = bb; b.push(m)
             continue
-        # CHOICE: follow the PV prediction, capped at 2 such pairs
-        if normal >= 2 or not pv_ok or pvi >= len(pv):
+        # CHOICE: follow the PV prediction -- capped at 2 such pairs AND
+        # only while the line remaining after this pair is >= d10 deep
+        # (PREMOVE_MIN_LINE): never trade real depth for instant speed.
+        if (normal >= 2 or d0 - 2 * (normal + 1) < PREMOVE_MIN_LINE
+                or not pv_ok or pvi >= len(pv)):
             break
         try:
             r = chess.Move.from_uci(pv[pvi])
