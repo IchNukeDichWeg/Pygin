@@ -125,10 +125,10 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # quiet developing moves flip between depths without being a regression.
 # Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
 CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3"
-CE_LADDER = {                     # depth -> (nodes, score)  [v39: Phase-2 NPS train]
+CE_LADDER = {                     # depth -> (nodes, score)  [v40: EP-01 ep hashing]
     1: (102, 126), 2: (189, 126), 3: (749, 126), 4: (1020, 122),
-    5: (6158, 73), 6: (10562, 68), 7: (30449, 74), 8: (73260, 57),
-    9: (138829, 67), 10: (293344, 53), 11: (418493, 69), 12: (713014, 58),
+    5: (6155, 73), 6: (10554, 68), 7: (30388, 74), 8: (73481, 57),
+    9: (129136, 67), 10: (217588, 53), 11: (359628, 53), 12: (562363, 69),
 }
 if os.path.exists("csearch.c"):
     try:
@@ -168,13 +168,9 @@ if os.path.exists("csearch.c"):
             ce._lib.set_cont_hist(0)
         except AttributeError:
             pass                       # pre-Q-01 csearch.so: no such toggle
-        # EP-01 FIDE-exact ep hashing is the LIVE candidate (EP_FILTER=True,
-        # A/B vs Old Engine/39 pending); pin it off so the ladder tracks the
-        # confirmed v39 search. Remove + re-measure CE_LADDER on confirm.
-        try:
-            ce._lib.set_ep_filter(0)
-        except AttributeError:
-            pass                       # pre-EP-01 csearch.so: no such toggle
+        # EP-01 FIDE-exact ep hashing: CONFIRMED into v40 (+4.31 null KEPT as
+        # correctness -- repetition detection now matches the FIDE arbiter),
+        # default ON -- part of the pinned reference search above.
         # P-47 check-ext budget: raise-to-8 REJECTED (-4.59 +/-6.8 @10k);
         # 5 is the confirmed recipe and the default -- belt-and-braces pin.
         # PV-02 exact PV: CONFIRMED into v37 (+0.17 null = free correctness),

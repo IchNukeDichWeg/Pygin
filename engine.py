@@ -535,6 +535,22 @@ benchmark" below.
   1.15, normalized +18.89)** -- the NPS converted at ~1 Elo/1%%. Snapshotted
   as Old Engine/39.
 
+* **v40 (2026-07-11, lives in ``cengine.py`` + ``csearch.c``): EP-01
+  FIDE-exact en-passant hashing -- the third correctness release.** The
+  position key counts an ep square only when a legal ep capture actually
+  exists (= python-chess's ``_transposition_key``), so the engine's
+  repetition detection finally agrees with the FIDE arbiter: a phantom ep
+  after a double push no longer splits one FIDE-identical position across
+  two hash keys (which could miss a saving repetition claim or blunder into
+  one). The oldest open correctness item in the repo -- every audit flagged
+  it -- made nearly free by v39's incremental Zobrist: an O(1) fixup in
+  board_key that only runs when an ep square is set. Merging the phantom-ep
+  TT entries even saves nodes (d12 ladder 713,014 -> 562,363). **A/B vs
+  v39: +4.31 +/-6.8 over 10,000 games @ 50+0.20 (50.62%%, ptnml
+  227/1203/2064/1231/275, pair ratio 1.05, normalized +9.14)** -- a null
+  KEPT as correctness (PV-02/CB-01 precedent). Snapshotted as Old
+  Engine/40.
+
 Cross-version benchmark
 -----------------------
 Sweep (2026-07-02): 24 versions x 8 positions x 6 timed 5s runs (1152 searches).
