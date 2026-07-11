@@ -956,10 +956,20 @@ void csearch_set_eval(const int* mg_pst, const int* eg_pst,  /* [6*64] P,N,B,R,Q
     g_isolated = isolated; g_backward = backward;
     g_mopup_min = mopup_min;
     g_mopup_scmd = mopup_strong_cmd; g_mopup_sking = mopup_strong_king;
-    for (int ph = 0; ph <= 24; ph++)
-        for (int rel = 0; rel < 8; rel++)
-            g_passed_taper[ph][rel] =
-                (passed_mg[rel] * ph + passed_eg[rel] * (24 - ph)) / 24;
+    /* FB-17: build the taper against the SYNCED PHASE_MAX (sync order
+     * guarantees set_mobility_params already ran) -- a retune below 24 no
+     * longer desyncs the blend from engine.py's `// _pm`; above 24 is
+     * clamped here AND at the read (the [25] table is the hard bound). */
+    {
+        extern int PHASE_MAX;
+        int pm = (PHASE_MAX > 0 && PHASE_MAX <= 24) ? PHASE_MAX : 24;
+        for (int ph = 0; ph <= 24; ph++) {
+            int p = ph > pm ? pm : ph;
+            for (int rel = 0; rel < 8; rel++)
+                g_passed_taper[ph][rel] =
+                    (passed_mg[rel] * p + passed_eg[rel] * (pm - p)) / pm;
+        }
+    }
     g_eval_ready = 1;
 }
 
@@ -967,7 +977,7 @@ void csearch_set_eval(const int* mg_pst, const int* eg_pst,  /* [6*64] P,N,B,R,Q
 static int pawn_structure(uint64_t wp, uint64_t bp, int phase)
 {
     int s = 0;
-    const int* taper = g_passed_taper[phase];
+    const int* taper = g_passed_taper[phase > 24 ? 24 : phase]; /* FB-17 */
     for (int f = 0; f < 8; f++) {
         int c = __builtin_popcountll(wp & FILE_BB8[f]);
         if (c > 1) s -= g_doubled * (c - 1);
@@ -1144,7 +1154,7 @@ extern int see(uint64_t pawns, uint64_t knights, uint64_t bishops, uint64_t rook
  * only the TT is shared between threads. Zero-initialised per new thread;
  * the main thread's copy is reset by cs_search_begin exactly as before. */
 static __thread int      g_history[2][4096];
-static __thread uint32_t g_killers[CS_MAXPLY][2];
+static __thread uint32_t g_killers[CS_MAXPLY + 8][2];  /* FB-26 headroom */
 static __thread uint32_t g_counter[4096];
 
 /* Q-01: continuation history (v30 #1.6, deferred at phase-3 step 1 and
@@ -1260,12 +1270,14 @@ void set_tt_bits(int bits)
     if (bits > 27) bits = 27;                /* 27 = 3 GB of 24B entries */
     size_t n = (size_t)1 << bits;
     if (n == g_tt_size && g_tt) return;
+    size_t old_size = g_tt_size;             /* FB-26: the comment promised */
+    uint64_t old_mask = g_tt_mask;           /* "the OLD size" -- keep it   */
     free(g_tt);
     g_tt = (TTEntry*)calloc(n, sizeof(TTEntry));
     if (g_tt == NULL) {                      /* degrade like Q-13: retry at
                                               * the old size next move */
-        g_tt_size = (size_t)1 << TT_BITS;
-        g_tt_mask = ((uint64_t)1 << TT_BITS) - 1;
+        g_tt_size = old_size;
+        g_tt_mask = old_mask;
         return;
     }
     g_tt_size = n;
@@ -1289,6 +1301,13 @@ int cs_hashfull(void)
 static inline void tt_store_raw(TTEntry* t, uint64_t key, int value,
                                 uint32_t move, int depth, int flag, int ev)
 {
+    /* FB-26: the int16 eval pack -- unreachable in legal play, enforced.
+     * NEVER touch the TT_EVAL_NONE sentinel (-32768): clamping it to
+     * -32767 would turn "no cached eval" into a fake real one. */
+    if (ev != TT_EVAL_NONE) {
+        if (ev > 32767) ev = 32767;
+        else if (ev < -32767) ev = -32767;
+    }
     uint64_t d1 = (uint64_t)(uint32_t)value | ((uint64_t)move << 32);
     uint64_t d2 = (uint64_t)(uint16_t)depth
                 | ((uint64_t)(uint16_t)flag << 16)
@@ -1892,7 +1911,7 @@ void set_single_reply(int v) { g_single_reply = v; }
 static int g_improving = 0;
 void set_improving(int v) { g_improving = v; }
 #define SEVAL_NONE INT32_MIN
-static __thread int g_seval[CS_MAXPLY];
+static __thread int g_seval[CS_MAXPLY + 8];            /* FB-26 headroom */
 
 /* P-26: runtime-tunable selectivity constants. Defaults are the shipped v34
  * values (formerly #defines, verified node-exact after the conversion);
@@ -1921,7 +1940,8 @@ static void init_lmr(void)
             g_lmr[d][m] = (int)(0.75 + log((double)d) * log((double)m) / g_lmr_div);
     g_lmr_ready = 1;
 }
-void set_lmr_div(int x100) { g_lmr_div = x100 / 100.0; init_lmr(); }
+void set_lmr_div(int x100) { if (x100 < 25) x100 = 25;   /* FB-26: /0 UB */
+                             g_lmr_div = x100 / 100.0; init_lmr(); }
 
 /* null move: pass the turn, clear the (single-move) ep right. */
 static inline void make_null(Board* b)
@@ -2062,7 +2082,6 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
     /* P-44: TT probe -- before movegen AND eval, so a hit costs nothing.
      * CB-01 (b)/(c): game-state draws are decided BEFORE the probe (same
      * order negamax uses -- a TT hit must never mask a draw-by-rule). */
-    int alpha_orig = alpha;
     uint64_t key = 0;
     uint32_t tt_move = 0;
     int use_qtt = g_use_tt && g_qs_tt && g_tt != NULL;
@@ -2101,6 +2120,10 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
             tt_move = TT_MOVE(e);
         }
     }
+    int alpha_orig = alpha;      /* FB-26: captured AFTER the CB-01(e)
+                                  * narrowing, like negamax -- the store
+                                  * below must never label a value that only
+                                  * beat the PRE-narrow alpha as EXACT */
 
     int color = b->turn, best, stand = 0;
     uint32_t moves[256];
