@@ -29,7 +29,10 @@ static int POS_ROOK_OPEN = 22, POS_ROOK_SEMI = 11;
 static int POS_BP_MG = 30, POS_BP_EG = 50;
 static int POS_MOPUP_MIN = 500;
 static int POS_MOPUP_CMD = 8, POS_MOPUP_KING = 10;
-static int POS_MOPUP_STRONG_CMD = 24, POS_MOPUP_STRONG_KING = 18;
+/* FI-27: POS_MOPUP_STRONG_* deleted -- they were write-only (the live
+ * strong mop-up lives in csearch.c's g_mopup_scmd/sking); the stale 24/18
+ * initializers were a trap for a future "wire up symmetry" refactor. The
+ * setter keeps its arity for ABI stability and ignores the two args. */
 
 /* #3.x: rook on 7th rank tuning (overridden by set_rook_on_7th_params).
  * Phased blend; 0/0 disables. Bonus applies per rook on the side's 7th
@@ -641,7 +644,7 @@ void set_positional_params(int rook_open, int rook_semi,
     POS_BP_MG = bp_mg; POS_BP_EG = bp_eg;
     POS_MOPUP_MIN = mopup_min;
     POS_MOPUP_CMD = mopup_cmd; POS_MOPUP_KING = mopup_king;
-    POS_MOPUP_STRONG_CMD = mopup_str_cmd; POS_MOPUP_STRONG_KING = mopup_str_king;
+    (void)mopup_str_cmd; (void)mopup_str_king;   /* FI-27: see above */
 }
 
 /* ====================================================================== *
