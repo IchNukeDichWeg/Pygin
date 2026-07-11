@@ -95,116 +95,69 @@ def run_bench(engine, depth=11):
 
 
 # --------------------------------------------------------------------------- #
-# PM-01: certified premoves / instant replies (opt-in via `setoption name
-# Premove value true`; inert by default, zero effect on match play).
+# PM-01: certified instant reply (opt-in via `setoption name Premove value
+# true`; inert by default, zero effect on match play).
 #
 # After `bestmove m1` the engine keeps working ON THE OPPONENT'S CLOCK for up
-# to PREMOVE_CAP_S and emits, via spec-ignored `info string` lines:
+# to PREMOVE_CAP_S and FOLLOWS ITS OWN LINE: it takes the PV's predicted
+# opponent reply and certifies ONE answer to it (or, when the opponent has
+# exactly one legal move, answers that -- fully safe). Emitted via
+# spec-ignored info-string lines the bridge parses:
 #   info string pygin-reply <r> <m>     -- "if the opponent plays r, answer m
-#                                          instantly" (zero misfire risk: the
-#                                          client acts only on exact matches)
-#   info string pygin-premove <m>       -- m is safe as a BLIND premove: for
-#                                          every legal reply r where m stays
-#                                          legal, m is within PremoveMargin cp
-#                                          of best (a premove executes whenever
-#                                          LEGAL, not whenever predicted -- so
-#                                          this is certified, never assumed)
-# Reply-table quality gates: a pair is emitted only for FORCING replies
-# (captures/checks/the PV reply) whose answer is depth-stable (d6 and d9
-# agree), or for a forced single reply (searched deeper -- fully safe).
-# The loop bails on stop_evt: a new go/stop/ucinewgame joins us within one
-# millisecond-scale step. Certification searches warm the TT with exactly
-# the positions the next move will face -- a free poor-man's ponder.
+#                                          instantly" (the client acts only on
+#                                          an exact match: zero misfire risk)
+#   info string pygin-end               -- collection terminator (always)
+# Quality gate: the answer must be depth-stable (d6 and d9 agree) -- a missing
+# reply costs one normal round-trip; a wrong one would cost a game. The
+# certification searches warm the TT with exactly the position the next move
+# will face (a free poor-man's ponder), and the loop bails on stop_evt (a new
+# go/stop/ucinewgame joins within one ms-scale step).
 # --------------------------------------------------------------------------- #
 PREMOVE_CHECK_DEPTH = 6
 PREMOVE_TABLE_DEPTH = 9
-PREMOVE_FORCED_DEPTH = 12
-PREMOVE_CAP_S = 0.2      # hard wall-clock cap (user: bullet-safe)
+PREMOVE_FORCED_DEPTH = 10
+PREMOVE_CAP_S = 0.1      # hard wall-clock cap (user: bullet-safe)
 
 
-def certify_premoves(engine, board, my_move, margin_cp, stop_evt):
-    """Return (pairs, premove): certified (reply, answer) list + optional
-    blind-premove move. BOARD is the position MY_MOVE was played from."""
+def certify_premoves(engine, board, my_move, stop_evt):
+    """Return at most ONE certified (predicted_reply, answer) pair, following
+    the engine's own PV. BOARD is the position MY_MOVE was played from."""
     import time as _t
     t_end = _t.perf_counter() + PREMOVE_CAP_S
     pv = (engine.last_pv or "").split()      # read BEFORE any cert search
-    pv_reply = pv[1] if len(pv) >= 2 else None
     b = board.copy()
     b.push(my_move)
     if b.is_game_over():
-        return [], None
+        return []
     replies = list(b.legal_moves)
-    pairs = []
     if len(replies) == 1:                    # forced: fully safe, go deeper
         bb = b.copy(); bb.push(replies[0])
-        if not bb.is_game_over():
-            m = engine.get_best_move(bb, PREMOVE_FORCED_DEPTH)
-            if m is not None:
-                pairs.append((replies[0], m))
-        return pairs, (pairs[0][1] if pairs else None)
-
-    best_after = {}                          # r.uci() -> (best, score, board)
-    in_chk = b.is_check()                    # our move checks: ALL replies
-    for r in replies:                        # are forcing (and few)
-        if stop_evt.is_set() or _t.perf_counter() > t_end:
-            break
-        if not (in_chk or b.is_capture(r) or b.gives_check(r)
-                or r.uci() == pv_reply):
-            continue
-        bb = b.copy(); bb.push(r)
         if bb.is_game_over():
-            continue
-        m6 = engine.get_best_move(bb, PREMOVE_CHECK_DEPTH)
-        s6 = engine.last_score
-        m9 = engine.get_best_move(bb, PREMOVE_TABLE_DEPTH)
-        s9 = engine.last_score
-        if m9 is None:
-            continue
-        best_after[r.uci()] = (m9, s9, bb)
-        if m6 == m9 and abs(s9 - s6) <= 60:  # depth-stable = obvious
-            pairs.append((r, m9))
-
-    # blind premove: the PV reply's answer, certified against EVERY legal
-    # reply for which it stays legal (that is what "safe premove" means).
-    premove = None
-    if pv_reply in best_after:
-        m2 = best_after[pv_reply][0]
-        white = board.turn == chess.WHITE    # our side
-        ok = True
-        for r in replies:
-            if stop_evt.is_set() or _t.perf_counter() > t_end:
-                ok = False
-                break
-            got = best_after.get(r.uci())
-            bb = got[2] if got else None
-            if bb is None:
-                bb = b.copy(); bb.push(r)
-                if bb.is_game_over():
-                    continue
-            if m2 not in bb.legal_moves:
-                continue                     # premove auto-cancels: safe
-            if got:
-                mm, sb = got[0], got[1]
-            else:
-                mm = engine.get_best_move(bb, PREMOVE_CHECK_DEPTH)
-                sb = engine.last_score
-            if mm is None:
-                ok = False; break
-            if mm == m2:
-                continue                     # m2 IS best here
-            bb2 = bb.copy(); bb2.push(m2)
-            if bb2.is_game_over():
-                if bb2.is_checkmate():
-                    continue                 # m2 mates: obviously fine
-                ok = False; break            # stalemate/draw: conservative no
-            engine.get_best_move(bb2, PREMOVE_CHECK_DEPTH)
-            s2 = engine.last_score           # value after m2 (White POV)
-            if (white and s2 < sb - margin_cp) or \
-               (not white and s2 > sb + margin_cp):
-                ok = False; break
-        if ok:
-            premove = m2
-    return pairs, premove
+            return []
+        m = engine.get_best_move(bb, PREMOVE_FORCED_DEPTH)
+        return [(replies[0], m)] if m is not None else []
+    if len(pv) < 2:
+        return []
+    try:
+        r = chess.Move.from_uci(pv[1])       # the line's predicted reply
+    except ValueError:
+        return []
+    if r not in b.legal_moves:
+        return []
+    bb = b.copy(); bb.push(r)
+    if bb.is_game_over():
+        return []
+    m6 = engine.get_best_move(bb, PREMOVE_CHECK_DEPTH)
+    s6 = engine.last_score
+    if stop_evt.is_set() or _t.perf_counter() > t_end:
+        return []
+    m9 = engine.get_best_move(bb, PREMOVE_TABLE_DEPTH)
+    s9 = engine.last_score
+    if m9 is None or m6 != m9 or abs(s9 - s6) > 60:
+        return []                            # not depth-stable: stay silent
+    if len(pv) >= 3 and m9.uci() != pv[2]:
+        return []                            # the line's own answer must
+    return [(r, m9)]                         # agree with the fresh checks
 
 
 def main():
@@ -216,7 +169,6 @@ def main():
     # FB-06: PUSH them once so Python is authoritative -- if a C default ever
     # drifts, the first setoption would otherwise pair a stale shadow with it.
     engine.premove_on = False                # PM-01 (opt-in)
-    engine.premove_margin = 20               # cp tolerance for blind premoves
     engine._rfp_margin, engine._rfp_depth = 80, 6
     engine._null_base, engine._null_div = 2, 6
     engine._lib.set_rfp(engine._rfp_margin, engine._rfp_depth)
@@ -338,13 +290,10 @@ def main():
                         engine.on_depth = engine.on_final = None
                         engine.use_book = False   # cert needs real scores
                         engine.smp_workers = 1    # ms-scale probes: no SMP
-                        pairs, pm = certify_premoves(
-                            engine, search_board, mv,
-                            engine.premove_margin, stop_evt)
+                        pairs = certify_premoves(
+                            engine, search_board, mv, stop_evt)
                         for r, m in pairs:
                             out(f"info string pygin-reply {r.uci()} {m.uci()}")
-                        if pm is not None:
-                            out(f"info string pygin-premove {pm.uci()}")
                     except Exception as ex:
                         print(f"cuci: premove cert error: {ex!r}",
                               file=sys.stderr)
@@ -394,7 +343,6 @@ def main():
                 out("option name SoftStable type spin default 40 min 20 max 70")
                 out("option name SoftUnstable type spin default 80 min 50 max 130")
                 out("option name Premove type check default false")
-                out("option name PremoveMargin type spin default 20 min 0 max 100")
                 out("option name Move Overhead type spin default 40 min 0 max 5000")
                 out("option name Hash type spin default 48 min 2 max 3072")
                 # FI-13d: self-identifying config line (A/B forensics: PGN
@@ -459,8 +407,6 @@ def main():
                     engine.SOFT_STOP_UNSTABLE_FRAC = int(value) / 100.0
                 elif name == "premove":                 # PM-01
                     engine.premove_on = value.lower() == "true"
-                elif name == "premovemargin":
-                    engine.premove_margin = max(0, min(100, int(value)))
                 elif name == "moveoverhead":            # FI-13b
                     engine.move_overhead_ms = max(0, int(value))
                 elif name == "hash":                    # FI-10: MB -> bits
