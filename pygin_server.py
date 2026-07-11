@@ -108,7 +108,7 @@ def full_fen(fen):
 send("uci")
 wait_for("uciok")
 send("setoption name OwnBook value true")
-send("setoption name Threads value 4")
+send("setoption name Threads value 6")
 
 
 class Handler(BaseHTTPRequestHandler):
