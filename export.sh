@@ -11,7 +11,16 @@ if [ ${#files[@]} -eq 0 ]; then
     echo "no *engine*.txt / *engine*.pgn files here -- nothing to export (existing archive, if any, left untouched)"
     exit 1
 fi
-# write to a temp name first so a failed/interrupted tar never clobbers a good existing archive
+# rotate any existing archive out of the way first -- it's never overwritten, just renamed
+if [ -f /tmp/match_export.tar.gz ]; then
+    n=1
+    while [ -f "/tmp/match_export.$n.tar.gz" ]; do
+        n=$((n + 1))
+    done
+    mv /tmp/match_export.tar.gz "/tmp/match_export.$n.tar.gz"
+    echo "kept previous archive -> /tmp/match_export.$n.tar.gz"
+fi
+# write to a temp name first so a failed/interrupted tar never clobbers anything
 tar czf /tmp/match_export.tar.gz.new "${files[@]}"
 mv /tmp/match_export.tar.gz.new /tmp/match_export.tar.gz
 rm -f "${files[@]}"
