@@ -37,31 +37,31 @@ one was measured. Regenerate with `python3 bench_progress.py`.
 
 | Ver | NPS (startpos) | Depth | Elo Δ vs prev | Milestone |
 |----:|---------------:|------:|:--------------|:----------|
-| 1  | 17 k | 4  | — | first working engine |
-| 2  | 31 k | 7  | — | search + eval build-out (PVS, aspiration) |
-| 3  | 31 k | 7  | — | |
-| 4  | 33 k | 8  | — | SEE move ordering |
-| 5  | 31 k | 8  | — | |
-| 6  | 31 k | 9  | — | |
-| 7  | 32 k | 8  | — | |
-| 8  | 35 k | 9  | — | quiescence stand-pat |
-| 9  | 27 k | 10 | — | late-move pruning (heavier per node) |
-| 10 | 28 k | 10 | — | TT probe/store refactor |
-| 11 | 30 k | 10 | — | incremental base eval |
-| 12 | 30 k | 10 | — | |
-| 13 | 31 k | 10 | — | eval-weight retune |
-| 14 | 35 k | 10 | — | Syzygy TB probe + IIR |
-| 15 | 35 k | 10 | — | pre-C baseline |
-| 16 | 44 k | 11 | — | **evaluation ported to C** (`eval_c.c`) |
+| 1  | 17 k | 4  | — | first working engine (naive negamax + material eval) |
+| 2  | 31 k | 7  | ≈ +120 est ⁵ | search + eval build-out: PVS, futility, LMR, aspiration, pawn/mobility/king-safety eval, book |
+| 3  | 31 k | 7  | ≈ +15 est ⁵ | endgame mop-up, contempt draws, counter-moves |
+| 4  | 33 k | 8  | ≈ +20 est ⁵ | SEE move ordering + losing-capture pruning |
+| 5  | 31 k | 8  | ≈ +3 est ⁵ | recapture extension |
+| 6  | 31 k | 9  | ≈ +8 est ⁵ | lone-king endgame eval fix |
+| 7  | 32 k | 8  | ≈ +4 est ⁵ | pin evaluation |
+| 8  | 35 k | 9  | ≈ +12 est ⁵ | quiescence stand-pat, trade-down simplify, PV extraction |
+| 9  | 27 k | 10 | ≈ +12 est ⁵ | late-move pruning, history malus, improving heuristic |
+| 10 | 28 k | 10 | ≈ +8 est ⁵ | TT refactor (two-tier + depth-preferred replacement) |
+| 11 | 30 k | 10 | ≈ +3 est ⁵ | incremental base eval (byte-identical) |
+| 12 | 30 k | 10 | ≈ +4 est ⁵ | check-extension budgeting + max-extensions cap |
+| 13 | 31 k | 10 | ≈ +4 est ⁵ | eval-weight retune |
+| 14 | 35 k | 10 | ≈ +8 est ⁵ | Syzygy TB probe, internal iterative reduction, pawn hash |
+| 15 | 35 k | 10 | ≈ +0 est ⁵ | LMR-divisor tune (tie); probcut tried & removed |
+| 16 | 44 k | 11 | (in ³) | **evaluation ported to C** (`eval_c.c`) |
 | 17 | 58 k | 10 | +69 ±16 ³ | **move generation ported to C** (`movegen.c`) |
-| 18 | 57 k | 10 | — | Zobrist hashing |
-| 19 | 57 k | 12 | — | lock-free shared TT |
-| 20 | 61 k | 12 | +45 ±11 ⁴ | mobility/threat eval, one-call C eval |
-| 21 | 62 k | 13 | +16 ±10 ⁴ | capture history, SEE capture pruning |
-| 22 | 61 k | 12 | — | |
-| 23 | 59 k | 13 | — | |
-| 24 | 59 k | 13 | +11.75 ±6.8 ² | (measured over the v21→v24 span) |
-| 25 | 60 k | 13 | +2.91 ±11.6 | Lazy-SMP fixes |
+| 18 | 57 k | 10 | ≈ +0 est ⁵ | incremental Zobrist hashing (off by default; SMP infra) |
+| 19 | 57 k | 12 | ≈ +5 est ⁵ | lock-free shared TT, multi-process SMP, packed move word |
+| 20 | 61 k | 12 | +45 ±11 ⁴ | rook-on-7th, mobility area, threats; one-call C eval |
+| 21 | 62 k | 13 | +16 ±10 ⁴ | capture history, SEE capture pruning, LMR losing captures |
+| 22 | 61 k | 12 | ≈ +8 est ² | nine correctness bug fixes + six NPS wins |
+| 23 | 59 k | 13 | ≈ +0 est ² | Zobrist dispatch de-branching (code quality) |
+| 24 | 59 k | 13 | +11.75 ±6.8 ² | TT-dispatch de-branching (± is the v21→v24 span) |
+| 25 | 60 k | 13 | +2.91 ±11.6 | 18-item bug block; Lazy-SMP production fixes |
 | 26 | 72 k | 13 | +41.90 ±5.7 | node-identical speed batch |
 | 27 | 85 k | 13 | +35.17 ±7.7 | node-identical speed batch (+12 %) |
 | 28 | 88 k | 13 | +13.13 ±6.0 | node-identical speed batch (+4 %) |
@@ -79,13 +79,18 @@ one was measured. Regenerate with `python3 bench_progress.py`.
 
 ¹ v31 is the C-core arrival: **29–1–0** vs v30 in a smoke match; the ≈ +215
 is an external / odds-derived estimate, **not** a same-time-control A/B.
-² v22–v24 were tested as one span (Lazy-SMP + NPS work): v21 → v24 =
-**+11.75 ±6.8** over 10,000 games; v22 and v23 have no standalone A/B.
+² v22–v24 were tested as one span vs v21 = **+11.75 ±6.8** (10,000 games);
+the per-version v22/v23 figures inside it are estimates (⁵).
 ³ v16 and v17 (the eval and movegen C ports) were A/B'd together vs v15:
-**+69 ±16** over 2,000 games.
+**+69 ±16** (2,000 games); the v16 row's gain lives in that bundle.
 ⁴ Early Python-era A/Bs ran at assorted fast time controls (0.65+0.1,
-0.75+0.25, 45+0.15, 45+0.1 — see `engine.py`'s version history); a "—"
-before v20 means the era predates systematic A/B testing, not a zero gain.
+0.75+0.25, 45+0.15, 45+0.1 — see `engine.py`'s version history).
+⁵ **`est` = a pessimistic, feature-based estimate, NOT an A/B.** The
+pre-systematic-testing versions were never matched head-to-head; these are
+deliberately conservative lower-bound guesses at what each change plausibly
+added, shown so every row carries a figure. Only the `±` values are
+measured — the `est` column is not summable into a rating (the real
+absolute anchor is the SF-2450 benchmark: the engine reaches ≈2442 by v25).
 
 **What moves the NPS** (the load-bearing jumps, up and down):
 
