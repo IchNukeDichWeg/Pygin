@@ -168,10 +168,9 @@ if os.path.exists("csearch.c"):
             ce._lib.set_cont_hist(0)
         except AttributeError:
             pass                       # pre-Q-01 csearch.so: no such toggle
-        # EP-01 FIDE-exact ep hashing is DORMANT (default OFF: correctness
-        # fix, but tree-changing -- queued for its own A/B behind P-04).
-        # Belt-and-braces pin so the ladder tracks the confirmed search even
-        # if the default flips later.
+        # EP-01 FIDE-exact ep hashing is the LIVE candidate (EP_FILTER=True,
+        # A/B vs Old Engine/39 pending); pin it off so the ladder tracks the
+        # confirmed v39 search. Remove + re-measure CE_LADDER on confirm.
         try:
             ce._lib.set_ep_filter(0)
         except AttributeError:
