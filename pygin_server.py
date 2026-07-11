@@ -15,6 +15,14 @@ import chess
 
 ENGINE = "/Users/sam/Desktop/bot/NeuerOrdner/ClaudeChess/dist/pygin"
 
+# PM-01 instant-reply chains. Flip to False to turn the whole feature off:
+# gates BOTH the engine setoption and the reply collector (with the option
+# off the engine emits nothing, and an ungated collector would hold the
+# engine lock for its 1s timeout after every move -- a real slowdown, not
+# a clean disable). The userscript needs no change either way: an empty
+# /replies chain simply never arms.
+PREMOVE = True
+
 # cwd = repo root so the engine finds Perfect2023.bin (book lookup searches
 # the working directory) no matter where the server is launched from.
 # start_new_session: own process group so terminal Ctrl+C hits only us, not
@@ -153,8 +161,9 @@ def full_fen(fen):
 send("uci")
 wait_for("uciok")
 send("setoption name OwnBook value true")
-send("setoption name Threads value 6")
-send("setoption name Premove value true")    # PM-01 instant replies
+send("setoption name Threads value 7")
+if PREMOVE:
+    send("setoption name Premove value true")    # PM-01 instant replies
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -181,7 +190,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
         # PM-01: collect the certified replies in the background; key = the
         # move history AFTER our move (what the userscript will verify).
-        if "moves" in req and best not in ("(none)", "0000"):
+        if PREMOVE and "moves" in req and best not in ("(none)", "0000"):
             key = (mv + " " + best).strip()
             threading.Thread(target=_collect_replies, args=(key,),
                              daemon=True).start()
