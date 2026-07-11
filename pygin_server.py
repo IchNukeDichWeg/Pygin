@@ -12,8 +12,10 @@ ENGINE = "/Users/sam/Desktop/bot/NeuerOrdner/ClaudeChess/dist/pygin"
 
 # cwd = repo root so the engine finds Perfect2023.bin (book lookup searches
 # the working directory) no matter where the server is launched from.
+# start_new_session: own process group so terminal Ctrl+C hits only us, not
+# the engine (otherwise pygin dumps its own KeyboardInterrupt traceback).
 eng = subprocess.Popen([ENGINE], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                       text=True, bufsize=1,
+                       text=True, bufsize=1, start_new_session=True,
                        cwd="/Users/sam/Desktop/bot/NeuerOrdner/ClaudeChess")
 
 
@@ -61,6 +63,7 @@ def full_fen(fen):
 send("uci")
 wait_for("uciok")
 send("setoption name OwnBook value true")
+send("setoption name Threads value 4")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -81,4 +84,11 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print("pygin bridge on http://127.0.0.1:8118")
-    HTTPServer(("127.0.0.1", 8118), Handler).serve_forever()
+    srv = HTTPServer(("127.0.0.1", 8118), Handler)
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        print("\nshutting down")
+    finally:
+        srv.server_close()
+        eng.terminate()
