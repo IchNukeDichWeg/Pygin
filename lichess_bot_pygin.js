@@ -22,6 +22,9 @@ let currentPly = 0;          // ply count for currentFen
 let moveHistory = [];        // moveHistory[ply-1] = uci of that move
 
 let inFlight = false;        // is a request to the bridge running?
+let replyTable = null;       // PM-01: {key, table, premove} — certified
+                             // instant replies for the position after OUR
+                             // last move; key = full move history string
 
 interceptWebSocket();
 kickoffAsWhite();
@@ -48,6 +51,28 @@ function interceptWebSocket() {
                 currentSide = currentPly % 2 === 0 ? 'w' : 'b';
                 currentMoveNumber = Math.floor(currentPly / 2) + 1;  // whole moves only
                 currentFen = msg.d.fen + ' ' + currentSide;
+                // PM-01: certified instant reply — zero engine round-trip.
+                // Valid only if the table was computed for EXACTLY the
+                // history ending in our last move (key check), the incoming
+                // move is the opponent's, and it has a certified answer.
+                if (replyTable && msg.d.uci && detectColor() === currentSide) {
+                    const hist = moveHistory.slice(0, currentPly - 1);
+                    let gap = false;
+                    for (let i = 0; i < hist.length; i++)
+                        if (hist[i] === undefined) gap = true;
+                    if (!gap && hist.join(' ') === replyTable.key
+                            && replyTable.table[msg.d.uci]) {
+                        const reply = replyTable.table[msg.d.uci];
+                        console.log('[Bot] INSTANT reply:', msg.d.uci, '->', reply);
+                        replyTable = null;
+                        webSocketWrapper.send(JSON.stringify({
+                            t: 'move',
+                            d: { u: reply, s: '0', a: String(currentMoveNumber) }
+                        }));
+                        return;              // our echo event re-enters here
+                    }
+                }
+                if (replyTable && msg.d.uci) replyTable = null;  // stale
                 maybeSearch();
             });
             return ws;
@@ -117,12 +142,40 @@ function startSearch() {
                     t: 'move',
                     d: { u: move, s: '0', a: String(moveNumAtRequest) }
                 }));
+                // PM-01: the engine certifies instant replies on the
+                // opponent's clock; pick them up once they're ready.
+                if (payload.moves !== undefined) {
+                    const expectedKey =
+                        (payload.moves ? payload.moves + ' ' : '') + move;
+                    setTimeout(function() { fetchReplies(expectedKey); }, 700);
+                }
             }
         },
         onerror: function() {
             inFlight = false;
             console.error('[Bot] Bridge unreachable — is pygin_server.py running?');
         }
+    });
+}
+
+// PM-01: pull the certified instant-reply table from the bridge and arm it
+// iff it was computed for exactly the history we expect.
+function fetchReplies(expectedKey) {
+    GM_xmlhttpRequest({
+        method: 'GET',
+        url: BRIDGE_URL + '/replies',
+        onload: function(r) {
+            try {
+                const j = JSON.parse(r.responseText);
+                if (j && j.key === expectedKey
+                      && Object.keys(j.table || {}).length) {
+                    replyTable = j;
+                    console.log('[Bot] armed instant replies:', j.table,
+                                j.premove ? ('premove ' + j.premove) : '');
+                }
+            } catch (e) {}
+        },
+        onerror: function() {}
     });
 }
 
