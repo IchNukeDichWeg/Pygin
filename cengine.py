@@ -9,7 +9,8 @@ transposition table, pruning, quiescence and the full static eval
 positions). Born as phase-3 step 6 of the C-core plan; the shipped engine
 since Old Engine/31. Its defaults ARE v39 -- the Phase-2 NPS train
 (FI-02/FI-03/FI-01, +8.86 +/-6.8 vs Old Engine/38, snapshotted
-Old Engine/39); no A/B candidate currently armed.
+Old Engine/39); armed candidate: EP-01 FIDE-exact ep hashing
+(EP_FILTER = True, A/B vs Old Engine/39 PENDING).
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -136,9 +137,8 @@ DORMANT (default OFF, mechanism kept for longer-TC re-tests):
     v36, 2026-07-10 -- a dead NULL: the 1-ply/2-ply continuation scores
     (v30's #1.6, piece-to keyed int16 tables) bought nothing at this depth
     and their ~1.6MB of tables cost cache; OFF = v36 node-exact).
-  * EP-01 FIDE-exact ep hashing (set_ep_filter; correctness-positive --
-    see the deviations below -- but it changes every tree, so it waits for
-    its own A/B slot at a campaign boundary; OFF = raw-ep hashing).
+  * (EP-01 graduated from this list: LIVE CANDIDATE via the EP_FILTER
+    class attr, see above -- since FI-01 it is an O(1) board_key fixup.)
 
 Deliberate deviations from v30 (documented, revisit if an A/B says so):
   * no root random tiebreak (deterministic best move),
@@ -220,6 +220,18 @@ class Engine:
     # read slot 63, not the root's. KEEP-ON-NULL (PV-02 precedent:
     # correctness nulls are free); False = v37 node-exact.
     SCORE_HYGIENE = True
+
+    # EP-01 (LIVE CANDIDATE, seventh 50+0.20-era campaign, A/B vs Old
+    # Engine/39 PENDING; selftest pins the ladder to off): FIDE-exact ep
+    # hashing -- the position key counts an en-passant square only when a
+    # legal ep capture actually exists, matching python-chess's
+    # _transposition_key, so the engine's repetition detection agrees with
+    # the arbiter's (a phantom ep no longer splits one FIDE position across
+    # two keys, missing repetitions the arbiter would count). Since FI-01
+    # the filter is an O(1) fixup in board_key that only runs when an ep
+    # square is set (rare) -- near-zero cost. KEEP-ON-NULL (correctness).
+    # False = v39 node-exact.
+    EP_FILTER = True
 
     # FI-10: TT size in bits (2^bits x 24-byte entries; 21 = 48 MB, the size
     # the entire ledger was measured at -- leave it for A/B play). The UCI
@@ -329,6 +341,7 @@ class Engine:
         lib.set_check_ext_budget(int(self.CHECK_EXT_BUDGET))   # P-47
         lib.set_pv_exact(1 if self.PV_EXACT else 0)            # PV-02
         lib.set_score_hygiene(1 if self.SCORE_HYGIENE else 0)  # CB-01
+        lib.set_ep_filter(1 if self.EP_FILTER else 0)          # EP-01
         lib.set_tt_bits(int(self.TT_BITS))                     # FI-10 (Hash)
         # FB-06: cengine is AUTHORITATIVE over every behavioral C toggle --
         # a stale .so or drifted compiled-in default must not silently change
@@ -340,7 +353,7 @@ class Engine:
                             ("set_qgen", 1), ("set_qs_tt", 1),
                             ("set_qs_lazy", 1), ("set_staged", 1),
                             ("set_single_reply", 0), ("set_improving", 0),
-                            ("set_ep_filter", 0), ("set_cont_hist", 0)):
+                            ("set_cont_hist", 0)):
             getattr(lib, setter)(val)
         # FB-04: one process = one config. A second construction with a
         # DIFFERENT config would silently retarget the process-wide globals
@@ -349,7 +362,7 @@ class Engine:
         global _SYNCED_FINGERPRINT
         fp = (self.USE_KING_SHELTER, self.USE_OUTPOST, self.USE_SIMPLIFY,
               self.SIMPLIFY_THRESHOLD, self.CHECK_EXT_BUDGET, self.PV_EXACT,
-              self.SCORE_HYGIENE)
+              self.SCORE_HYGIENE, self.EP_FILTER)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
