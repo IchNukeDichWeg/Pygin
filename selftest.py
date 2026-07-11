@@ -125,10 +125,10 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # quiet developing moves flip between depths without being a regression.
 # Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
 CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3"
-CE_LADDER = {                     # depth -> (nodes, score)  [v40: EP-01 ep hashing]
+CE_LADDER = {                     # depth -> (nodes, score)  [v41: CB-02 batch]
     1: (102, 126), 2: (189, 126), 3: (749, 126), 4: (1020, 122),
-    5: (6155, 73), 6: (10554, 68), 7: (30388, 74), 8: (73481, 57),
-    9: (129136, 67), 10: (217588, 53), 11: (359628, 53), 12: (562363, 69),
+    5: (8823, 73), 6: (16866, 63), 7: (42298, 74), 8: (80121, 72),
+    9: (130991, 75), 10: (307932, 58), 11: (471989, 70), 12: (828672, 88),
 }
 if os.path.exists("csearch.c"):
     try:
@@ -138,14 +138,16 @@ if os.path.exists("csearch.c"):
         cengine.Engine.USE_OUTPOST = False
         # CB-01 correctness batch: CONFIRMED into v38 (+1.36 null KEPT as
         # correctness), default ON -- part of the pinned reference search.
-        # CB-02 correctness batch #4 (LIVE candidate, ninth 50+0.20
-        # campaign, A/B vs Old Engine/40 pending): null-store policy +
-        # qsearch 50-move + verified deep null cutoffs + root fail-high
-        # adoption. Pinned OFF here (class attr -- it gates BOTH the C
-        # toggle and the driver's aspiration re-search ordering) so the
-        # ladder tracks the confirmed v40 search. Remove + re-measure
-        # CE_LADDER on confirm.
-        cengine.Engine.CB2 = False
+        # CB-02 correctness batch #4: CONFIRMED into v41 (-2.88 null KEPT
+        # as correctness -- 50-move in qsearch, verified null, null-store
+        # policy, fail-high adoption), default ON -- part of the pinned
+        # reference search above.
+        # CW-01 cannot-win eval clamp (LIVE candidate, tenth 50+0.20
+        # campaign, A/B vs Old Engine/41 pending): pinned OFF so the ladder
+        # tracks the confirmed v41 search (belt-and-braces -- the clamp
+        # cannot fire from this FEN's trees, both sides keep pawns, but the
+        # pin costs nothing). Remove on confirm.
+        cengine.Engine.CANTWIN = False
         ce = cengine.Engine()
         ce.use_book = False
         ce.use_tb = False
