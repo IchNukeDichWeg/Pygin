@@ -138,6 +138,14 @@ if os.path.exists("csearch.c"):
         cengine.Engine.USE_OUTPOST = False
         # CB-01 correctness batch: CONFIRMED into v38 (+1.36 null KEPT as
         # correctness), default ON -- part of the pinned reference search.
+        # CB-02 correctness batch #4 (LIVE candidate, ninth 50+0.20
+        # campaign, A/B vs Old Engine/40 pending): null-store policy +
+        # qsearch 50-move + verified deep null cutoffs + root fail-high
+        # adoption. Pinned OFF here (class attr -- it gates BOTH the C
+        # toggle and the driver's aspiration re-search ordering) so the
+        # ladder tracks the confirmed v40 search. Remove + re-measure
+        # CE_LADDER on confirm.
+        cengine.Engine.CB2 = False
         ce = cengine.Engine()
         ce.use_book = False
         ce.use_tb = False
@@ -171,11 +179,10 @@ if os.path.exists("csearch.c"):
         # EP-01 FIDE-exact ep hashing: CONFIRMED into v40 (+4.31 null KEPT as
         # correctness -- repetition detection now matches the FIDE arbiter),
         # default ON -- part of the pinned reference search above.
-        # FI-08/Q-03 qsearch eviction guard (QS_EVICT_MAX, LIVE candidate,
-        # A/B vs Old Engine/40 pending): needs NO pin -- it only affects
-        # prior-generation TT entries, which after cs_tt_reset are all
-        # zeroed depth-0 slots, so this cold ladder is provably identical
-        # guard-on and guard-off (verified: passes with the default 6).
+        # FI-08/Q-03 qsearch eviction guard: DORMANT (dead null +0.14
+        # +/-6.8 @10k vs Old Engine/40, 2026-07-11; default -1 = off = v40
+        # rule). The cold ladder never saw it either way (post-reset
+        # old-gen entries are zeroed depth-0 slots).
         # P-47 check-ext budget: raise-to-8 REJECTED (-4.59 +/-6.8 @10k);
         # 5 is the confirmed recipe and the default -- belt-and-braces pin.
         # PV-02 exact PV: CONFIRMED into v37 (+0.17 null = free correctness),
