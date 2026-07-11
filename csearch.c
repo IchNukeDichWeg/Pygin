@@ -2713,7 +2713,7 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
  * Helper results are discarded -- their value is the TT fill. */
 #include <pthread.h>
 static int g_threads = 1;
-void set_threads(int n) { g_threads = (n < 1) ? 1 : (n > 64 ? 64 : n); }
+void set_threads(int n) { g_threads = (n < 1) ? 1 : (n > 256 ? 256 : n); }
 
 typedef struct { Board b; int depth, hmc; uint32_t prev; } HelperArg;
 
@@ -2751,8 +2751,8 @@ uint32_t cs_search_root(uint64_t pawns, uint64_t knights, uint64_t bishops,
                          occ_w, occ_b, turn, ep, castling);
 
     /* Helpers only pay off once the tree is non-trivial. */
-    pthread_t tids[64];
-    HelperArg args[64];
+    pthread_t tids[256];
+    HelperArg args[256];
     int nh = (g_threads > 1 && depth >= 4) ? g_threads - 1 : 0;
     g_hstop = 0;
     /* BUG-05: darwin gives secondary threads a 512 KB stack (the main
