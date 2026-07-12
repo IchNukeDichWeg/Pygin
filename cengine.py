@@ -26,12 +26,13 @@ bench noise). v45 = v44 + FI-25, the TT-value pruning-eval sharpener:
 norm +28.34) -- sonnet5's top new idea confirmed at full value, back to
 back with v44's +13.31; snapshotted Old Engine/45. FI-18 SEE pruning of
 losing captures read -1.25 null and FI-06 root-move ordering read +2.26
-null (positive lean but the CI covers zero) vs Old Engine/45 -- both
-DORMANT, mechanisms kept (neither is correctness). Armed candidate:
-TT_BITS = 22 (a 96 MB TT, up from v45's 48 MB; A/B vs Old Engine/45
-PENDING -- the memory-size test motivated by a hashfull capture showing
-a single deep search fills half the 48 MB table. RISK is DRAM bandwidth
-under 223-worker load, not RAM capacity; 21 = v45 exact).
+null (both DORMANT, mechanisms kept) vs Old Engine/45. v46 = v45 with the
+TT doubled to 22 bits (96 MB): +5.94 +/-6.8 vs Old Engine/45 @10k 50+0.20
+(50.85%, pair ratio 1.10, norm +12.33) -- a borderline-positive (CI just
+touches zero) shipped on the monotonic-low-risk rationale, motivated by a
+hashfull capture showing a single deep search fills half the 48 MB table;
+snapshotted Old Engine/46. Armed candidate: TT_BITS = 23 (192 MB, A/B vs
+Old Engine/46 PENDING -- does bigger compound or does bandwidth bite?).
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -387,18 +388,21 @@ class Engine:
     # iteration-1 seed, main thread only). False = v45 node-exact.
     ROOT_ORDER = False
 
-    # FI-10: TT size in bits (2^bits x 24-byte entries; 21 = 48 MB). ARMED
-    # at 22 (96 MB) as the seventeenth 50+0.20-era campaign, A/B vs Old
-    # Engine/45 PENDING -- the memory-size test the user's hashfull capture
-    # motivated (a single deep search fills ~half the 48 MB table; the warm
-    # persistent TT then climbs to 950 permille+ within a game). Bigger
-    # table = a different collision/index pattern => a real tree change, so
-    # it needs a slot, not a free pass. RISK is DRAM bandwidth, not RAM
-    # (server has 184 GB free; 223 x 96 MB ~= 21 GB) -- 223 engines striding
-    # a 2x footprint can lose the gain to memory contention, which is why
-    # this MUST be measured at the full 223-worker load. The UCI Hash option
-    # (cuci) maps MB onto this; a resize wipes the table. 21 = v45 exact.
-    TT_BITS = 22
+    # FI-10: TT size in bits (2^bits x 24-byte entries; 21 = 48 MB, 22 =
+    # 96 MB, 23 = 192 MB). CONFIRMED into v46 at 22 (seventeenth 50+0.20-era
+    # campaign, A/B vs Old Engine/45 2026-07-13: +5.94 +/-6.8 @10k, 50.85%,
+    # pair ratio 1.10, norm +12.33 -- a BORDERLINE-positive, CI just touches
+    # zero, shipped on the monotonic-low-risk rationale: a bigger table
+    # cannot worsen decision quality at fixed nodes and its only downside
+    # (DRAM bandwidth) was exercised at the full 223-worker load = net +).
+    # Motivated by the user's hashfull capture (a single deep search fills
+    # ~half the 48 MB table). ARMED at 23 (192 MB) as the eighteenth
+    # campaign, A/B vs Old Engine/46 PENDING -- does going bigger compound,
+    # or does 223 engines striding a 4x footprint start losing to memory
+    # bandwidth? RAM fine (223 x 192 MB ~= 43 GB, server has 184 free). The
+    # UCI Hash option (cuci) maps MB onto this; a resize wipes the table.
+    # 22 = v46 exact.
+    TT_BITS = 23
 
     # Simplify-at-500 re-test (user request; v30's use_simplify A/B'd -14 at
     # threshold 200 -- traded into DRAWN endings; a decisive >=500cp gate
