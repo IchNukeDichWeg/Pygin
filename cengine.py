@@ -24,11 +24,13 @@ Old Engine/44 (a staged-quiet lazy pick was tried alongside and PARKED,
 bench noise). v45 = v44 + FI-25, the TT-value pruning-eval sharpener:
 +13.52 +/-6.8 vs Old Engine/44 @10k 50+0.20 (51.94%, pair ratio 1.22,
 norm +28.34) -- sonnet5's top new idea confirmed at full value, back to
-back with v44's +13.31; snapshotted Old Engine/45. Armed candidate:
-FI-18 = SEE pruning of losing captures (SEE_PRUNE = True, A/B vs Old
-Engine/45 PENDING -- skip SEE-negative captures at non-PV depth <= 3,
-late in the list, not in/giving check; the verdict is free, the staged
-stream's stage-6 emissions ARE the losing captures).
+back with v44's +13.31; snapshotted Old Engine/45. FI-18 SEE pruning of
+losing captures read -1.25 null vs Old Engine/45 (fifteenth campaign)
+and is DORMANT -- SEE_PRUNE=False, mechanism kept. Armed
+candidate: FI-06 = root-move ordering (ROOT_ORDER = True, A/B vs Old
+Engine/45 PENDING -- non-PV root moves ordered by prior-iteration
+subtree node counts, iteration 1 seeded from the warm TT; root-only
+bookkeeping, zero per-node cost, fewer aspiration re-search nodes).
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -364,15 +366,29 @@ class Engine:
     # 1.22 -- confirmed at full value, back to back with v44's +13.31).
     TT_EVAL_SHARPEN = True
 
-    # FI-18 SEE pruning of losing captures: ARMED (fifteenth 50+0.20-era
-    # campaign, A/B vs Old Engine/45 PENDING). Bad captures are ordered
-    # last but still fully searched everywhere; the standard prune skips
-    # SEE-negative captures at non-PV, not-in-check, non-check-giving
-    # nodes, depth <= 3, move index >= 3. The SEE verdict costs nothing
-    # new: the staged stream's stage-6 emissions ARE the losing captures,
-    # the array path reads the FI-02.3 tag. Failure mode = tactical
-    # misses (matetrack gate). False = v45 node-exact.
-    SEE_PRUNE = True
+    # FI-18 SEE pruning of losing captures: DORMANT (fifteenth 50+0.20-era
+    # campaign, A/B vs Old Engine/45 2026-07-13: -1.25 +/-6.8 @10k, 49.82%,
+    # pair ratio 0.98 -- a dead null with a negative lean; not correctness
+    # => the Q-01/P-04 rule: default False, mechanism kept). Even the
+    # standard-everywhere shallow losing-capture prune doesn't pay at this
+    # TC -- bad captures are already ordered last, so alpha-beta was
+    # getting most of the skip for free. matetrack stayed clean (913/783),
+    # the Elo just wasn't there. False = v45 node-exact.
+    SEE_PRUNE = False
+
+    # FI-06 root-move ordering: ARMED (sixteenth 50+0.20-era campaign, A/B
+    # vs Old Engine/45 PENDING). Three root-only refinements, zero per-node
+    # cost: (a) after each completed iteration the C root records every
+    # root move's SUBTREE NODE COUNT; the next iteration keeps the PV/prev
+    # move first and orders the rest by those counts (a fail-low move that
+    # still ate a big tree is the likeliest refutation candidate --
+    # FA-08/opus4.7); (b) iteration 1 of a fresh search seeds its ordering
+    # from the warm persistent TT's best move when the driver has no
+    # prev_key yet (FA-16 -- P-14's asset, one probe); (c) main thread
+    # only, helpers keep v45 ordering (no shared-state race). Better root
+    # order = earlier aspiration cutoffs = fewer re-search nodes.
+    # False = v45 node-exact.
+    ROOT_ORDER = True
 
     # FI-10: TT size in bits (2^bits x 24-byte entries; 21 = 48 MB, the size
     # the entire ledger was measured at -- leave it for A/B play). The UCI
@@ -503,8 +519,8 @@ class Engine:
               self.SIMPLIFY_THRESHOLD, self.CHECK_EXT_BUDGET, self.PV_EXACT,
               self.SCORE_HYGIENE, self.EP_FILTER, self.QS_EVICT_MAX,
               self.CB2, self.CANTWIN, self.NULL_VERIFY, self.LMR_HIST,
-              self.TT_EVAL_SHARPEN, self.SEE_PRUNE, self.TT_BITS,
-              self.TT_KEEP_WARM)
+              self.TT_EVAL_SHARPEN, self.SEE_PRUNE, self.ROOT_ORDER,
+              self.TT_BITS, self.TT_KEEP_WARM)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -538,6 +554,7 @@ class Engine:
         lib.set_lmr_hist(int(self.LMR_HIST))                   # FI-04
         lib.set_tt_eval_sharpen(1 if self.TT_EVAL_SHARPEN else 0)  # FI-25
         lib.set_see_prune(1 if self.SEE_PRUNE else 0)          # FI-18
+        lib.set_root_order(1 if self.ROOT_ORDER else 0)        # FI-06
         lib.set_null_verify(1 if self.NULL_VERIFY else 0)      # NV-01
         lib.set_tt_bits(int(self.TT_BITS))                     # FI-10 (Hash)
         # FB-06: cengine is AUTHORITATIVE over every behavioral C toggle --
