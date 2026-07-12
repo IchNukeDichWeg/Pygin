@@ -2065,6 +2065,18 @@ void set_null_verify(int v) { g_null_verify = v; }
 static int g_lmr_hist = 0;
 void set_lmr_hist(int v) { g_lmr_hist = v; }
 
+/* FI-25 (armed for the fourteenth 50+0.20 A/B, vs Old Engine/44): use the
+ * TT's SEARCH value as a pruning-eval sharpener. FI-03 reuses the cached
+ * STATIC eval; the entry's search value is strictly better information
+ * whenever its bound applies (LOWER above / UPPER below the static eval,
+ * EXACT always) -- prunes both more accurately and less wrongly at the
+ * same depth, Stockfish-family practice. Non-mate values only (mate scores
+ * are ply-dependent); the sharpened value feeds RFP / null-move / frontier
+ * futility ONLY -- static_eval itself stays raw for the FI-03 TT cache and
+ * the P-04 eval stack (exactness invariants). 0 = off = v44 node-exact. */
+static int g_tt_eval_sharpen = 0;
+void set_tt_eval_sharpen(int v) { g_tt_eval_sharpen = v; }
+
 static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
                                int flag, int ev)
 {
@@ -2309,6 +2321,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     /* --- TT probe -------------------------------------------------- */
     uint32_t tt_move = 0;
     int tt_eval = TT_EVAL_NONE;      /* FI-03: cached static eval, if any */
+    int tt_sh_flag = -1, tt_sh_val = 0;          /* FI-25: hit's flag+value */
     TTEntry* tte = NULL;
     if (g_use_tt && g_tt) {         /* FB-13b: g_tt may be NULL (failed alloc) */
         tte = &g_tt[key & TT_MASK];
@@ -2316,6 +2329,8 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         if (tt_load(tte, key, &e)) {
             tt_move = TT_MOVE(e);
             tt_eval = TT_EVAL(e);
+            tt_sh_flag = TT_FLAG(e);             /* FI-25: any-depth bound */
+            tt_sh_val = TT_VALUE(e);
             /* PV-02: at PV nodes skip the whole cutoff/narrowing block (the
              * EXACT return AND the bound-narrowing both truncate the
              * collected PV); the TT move above still orders. */
@@ -2357,15 +2372,27 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             improving = static_eval > g_seval[ply - 2];
     }
 
+    /* FI-25: sharpen the PRUNING eval with the TT's search value when its
+     * bound provably improves the estimate (after the seval stack recorded
+     * the raw value; the FI-03 stores below also keep static_eval raw). */
+    int prune_eval = static_eval;
+    if (g_tt_eval_sharpen && tt_sh_flag >= 0 && want_eval
+            && tt_sh_val > -MATE_THRESH && tt_sh_val < MATE_THRESH) {
+        if (tt_sh_flag == TT_EXACT
+            || (tt_sh_flag == TT_LOWER && tt_sh_val > prune_eval)
+            || (tt_sh_flag == TT_UPPER && tt_sh_val < prune_eval))
+            prune_eval = tt_sh_val;
+    }
+
     /* --- pre-move pruning (non-PV, not in check) ------------------- */
     if (g_prune && !is_pv && !in_chk && abs(beta) < MATE_THRESH) {
         /* reverse futility / static null-move (P-04: an improving node
          * prunes one ply deeper for the same eval; off/not-improving = v34) */
-        if (depth <= g_rfp_depth && static_eval - g_rfp_margin * (depth - improving) >= beta)
-            return static_eval;
+        if (depth <= g_rfp_depth && prune_eval - g_rfp_margin * (depth - improving) >= beta)
+            return prune_eval;
         /* null-move pruning (hmc 0 below the null: repetition/50-move
          * cannot be tracked across a non-move, so disable them there) */
-        if (depth >= 3 && static_eval >= beta && has_non_pawn(b, b->turn)
+        if (depth >= 3 && prune_eval >= beta && has_non_pawn(b, b->turn)
             && !(g_cb2 && g_no_null)) {      /* CB-02(c): verify subtree */
             int R = g_null_base + depth / g_null_div;
             Board c = *b; make_null(&c);
@@ -2500,7 +2527,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
 
         if (g_prune && quiet && !is_pv && !in_chk && !gives_check && depth == 1
                 && best > -MATE_THRESH
-                && static_eval + g_fut_margin
+                && prune_eval + g_fut_margin
                    + ((g_improving && !improving) ? g_rfp_margin / 2 : 0) <= alpha)
             continue;    /* frontier futility (P-04: declining node cuts more) */
 
