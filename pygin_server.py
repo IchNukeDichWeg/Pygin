@@ -161,7 +161,7 @@ def full_fen(fen):
 send("uci")
 wait_for("uciok")
 send("setoption name OwnBook value true")
-send("setoption name Threads value 7")
+send("setoption name Threads value 8")
 if PREMOVE:
     send("setoption name Premove value true")    # PM-01 instant replies
 
