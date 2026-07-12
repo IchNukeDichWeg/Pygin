@@ -2090,6 +2090,26 @@ void set_tt_eval_sharpen(int v) { g_tt_eval_sharpen = v; }
 static int g_see_prune = 0;
 void set_see_prune(int v) { g_see_prune = v; }
 
+/* FI-06 (armed for the sixteenth 50+0.20 A/B, vs Old Engine/45): root-move
+ * ordering by prior-iteration subtree node counts + warm-TT seed for
+ * iteration 1. Root-only bookkeeping, zero per-node cost: after a
+ * completed iteration the MAIN thread records how many nodes each root
+ * move's subtree ate; the next iteration (same root position) keeps the
+ * PV/prev move first and orders the rest by those counts descending -- a
+ * fail-low move that still ate a big tree is the likeliest refutation
+ * candidate, so trying it earlier tightens alpha sooner and shrinks the
+ * aspiration re-searches. When the driver has no prev_key yet (iteration
+ * 1 of a fresh game move), the ordering seeds from the persistent TT's
+ * stored best move (P-14's warm asset, one probe). Helpers never read or
+ * write the tables (g_is_helper guard): no shared-state race, and their
+ * deliberately-diverse ordering stays v45. 0 = off = v45 node-exact. */
+static int g_root_order = 0;
+static uint64_t g_ro_key = 0;              /* root position the data is for */
+static int g_ro_n = 0;
+static uint16_t g_ro_mv[256];              /* 15-bit move keys */
+static uint64_t g_ro_cnt[256];             /* their subtree node counts */
+void set_root_order(int v) { g_root_order = v; g_ro_key = 0; g_ro_n = 0; }
+
 static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
                                int flag, int ev)
 {
@@ -2749,12 +2769,44 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
         *out_score = in_check(&b) ? -CS_INF : 0;
         return 0;
     }
+    /* FI-06(b): no previous best yet (iteration 1 of a fresh game move)
+     * -> seed the ordering from the persistent TT's stored best move. */
+    if (g_root_order && !g_is_helper && !prev_key && g_use_tt && g_tt) {
+        TTEntry e;
+        if (tt_load(&g_tt[key & TT_MASK], key, &e))
+            prev_key = TT_MOVE(e);
+    }
     order_moves(&b, moves, n, 0, 0, prev_key, 1, NULL);
+
+    /* FI-06(a): same root position as the recorded iteration -> keep the
+     * ordered-first move, stable-sort the rest by prior subtree node
+     * counts descending (unknown moves count 0 and keep their v45
+     * relative order behind the known ones). */
+    if (g_root_order && !g_is_helper && g_ro_key == key && g_ro_n > 0) {
+        uint64_t cnt[256];
+        for (int i = 1; i < n; i++) {
+            uint16_t mk = (uint16_t)(moves[i] & 0x7FFF);
+            cnt[i] = 0;
+            for (int j = 0; j < g_ro_n; j++)
+                if (g_ro_mv[j] == mk) { cnt[i] = g_ro_cnt[j]; break; }
+        }
+        for (int i = 2; i < n; i++) {              /* stable insertion sort */
+            uint32_t m = moves[i]; uint64_t c = cnt[i];
+            int j = i - 1;
+            while (j >= 1 && cnt[j] < c) {
+                moves[j + 1] = moves[j]; cnt[j + 1] = cnt[j]; j--;
+            }
+            moves[j + 1] = m; cnt[j + 1] = c;
+        }
+    }
 
     int best = -CS_INF;
     uint32_t best_move = moves[0];
+    int record = g_root_order && !g_is_helper;     /* FI-06 bookkeeping */
+    uint16_t l_mv[256]; uint64_t l_cnt[256];       /* FI-06: this iteration */
     for (int i = 0; i < n; i++) {
         uint32_t m = moves[i];
+        uint64_t nodes0 = record ? g_nodes : 0;
         int victim = (m >> MV_SHIFT_VICTIM) & 7;
         int mover  = (m >> MV_SHIFT_MOVER) & 7;
         int child_hmc = (victim || mover == PT_PAWN) ? 0 : hmc + 1;
@@ -2776,6 +2828,10 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
         if (g_abort || (g_is_helper && g_hstop))
             break;                                   /* v is garbage */
         (*out_done)++;
+        if (record) {                                /* FI-06: subtree size */
+            l_mv[*out_done - 1] = (uint16_t)(m & 0x7FFF);
+            l_cnt[*out_done - 1] = g_nodes - nodes0;
+        }
         if (v > alpha && v < beta) {                 /* PV-01: root prepend */
             int cl = g_pv_len[1];
             g_root_pv[0] = m;
@@ -2785,6 +2841,17 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
         if (v > best) { best = v; best_move = m; }
         if (v > alpha) alpha = v;
         if (alpha >= beta) break;                    /* aspiration fail-high */
+    }
+
+    /* FI-06: publish this iteration's counts for the next one. A partial
+     * record (aspiration fail-high cuts the loop early) never overwrites a
+     * fuller one for the same position -- the widest recent picture wins. */
+    if (record && *out_done > 0
+            && (g_ro_key != key || *out_done >= g_ro_n)) {
+        g_ro_key = key;
+        g_ro_n = *out_done;
+        memcpy(g_ro_mv, l_mv, (size_t)*out_done * sizeof(uint16_t));
+        memcpy(g_ro_cnt, l_cnt, (size_t)*out_done * sizeof(uint64_t));
     }
 
     /* Root TT store (feeds the next iteration's ordering + the PV walk). */
