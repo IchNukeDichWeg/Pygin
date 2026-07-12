@@ -25,12 +25,13 @@ bench noise). v45 = v44 + FI-25, the TT-value pruning-eval sharpener:
 +13.52 +/-6.8 vs Old Engine/44 @10k 50+0.20 (51.94%, pair ratio 1.22,
 norm +28.34) -- sonnet5's top new idea confirmed at full value, back to
 back with v44's +13.31; snapshotted Old Engine/45. FI-18 SEE pruning of
-losing captures read -1.25 null vs Old Engine/45 (fifteenth campaign)
-and is DORMANT -- SEE_PRUNE=False, mechanism kept. Armed
-candidate: FI-06 = root-move ordering (ROOT_ORDER = True, A/B vs Old
-Engine/45 PENDING -- non-PV root moves ordered by prior-iteration
-subtree node counts, iteration 1 seeded from the warm TT; root-only
-bookkeeping, zero per-node cost, fewer aspiration re-search nodes).
+losing captures read -1.25 null and FI-06 root-move ordering read +2.26
+null (positive lean but the CI covers zero) vs Old Engine/45 -- both
+DORMANT, mechanisms kept (neither is correctness). Armed candidate:
+TT_BITS = 22 (a 96 MB TT, up from v45's 48 MB; A/B vs Old Engine/45
+PENDING -- the memory-size test motivated by a hashfull capture showing
+a single deep search fills half the 48 MB table. RISK is DRAM bandwidth
+under 223-worker load, not RAM capacity; 21 = v45 exact).
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -376,24 +377,28 @@ class Engine:
     # the Elo just wasn't there. False = v45 node-exact.
     SEE_PRUNE = False
 
-    # FI-06 root-move ordering: ARMED (sixteenth 50+0.20-era campaign, A/B
-    # vs Old Engine/45 PENDING). Three root-only refinements, zero per-node
-    # cost: (a) after each completed iteration the C root records every
-    # root move's SUBTREE NODE COUNT; the next iteration keeps the PV/prev
-    # move first and orders the rest by those counts (a fail-low move that
-    # still ate a big tree is the likeliest refutation candidate --
-    # FA-08/opus4.7); (b) iteration 1 of a fresh search seeds its ordering
-    # from the warm persistent TT's best move when the driver has no
-    # prev_key yet (FA-16 -- P-14's asset, one probe); (c) main thread
-    # only, helpers keep v45 ordering (no shared-state race). Better root
-    # order = earlier aspiration cutoffs = fewer re-search nodes.
-    # False = v45 node-exact.
-    ROOT_ORDER = True
+    # FI-06 root-move ordering: DORMANT (sixteenth 50+0.20-era campaign, A/B
+    # vs Old Engine/45 2026-07-13: +2.26 +/-6.8 @10k, 50.32%, pair ratio
+    # 1.02 -- a positive lean landing in the predicted +0-4 band but the CI
+    # covers zero; not correctness => the Q-01/P-04 rule: default False,
+    # mechanism kept). Same magnitude/verdict as FI-04's +2.15: a free-ish
+    # ordering tweak that can't clear the noise floor isn't banked. Three
+    # root-only refinements (subtree-node-count ordering + warm-TT
+    # iteration-1 seed, main thread only). False = v45 node-exact.
+    ROOT_ORDER = False
 
-    # FI-10: TT size in bits (2^bits x 24-byte entries; 21 = 48 MB, the size
-    # the entire ledger was measured at -- leave it for A/B play). The UCI
-    # Hash option (cuci) maps MB onto this; a resize wipes the table.
-    TT_BITS = 21
+    # FI-10: TT size in bits (2^bits x 24-byte entries; 21 = 48 MB). ARMED
+    # at 22 (96 MB) as the seventeenth 50+0.20-era campaign, A/B vs Old
+    # Engine/45 PENDING -- the memory-size test the user's hashfull capture
+    # motivated (a single deep search fills ~half the 48 MB table; the warm
+    # persistent TT then climbs to 950 permille+ within a game). Bigger
+    # table = a different collision/index pattern => a real tree change, so
+    # it needs a slot, not a free pass. RISK is DRAM bandwidth, not RAM
+    # (server has 184 GB free; 223 x 96 MB ~= 21 GB) -- 223 engines striding
+    # a 2x footprint can lose the gain to memory contention, which is why
+    # this MUST be measured at the full 223-worker load. The UCI Hash option
+    # (cuci) maps MB onto this; a resize wipes the table. 21 = v45 exact.
+    TT_BITS = 22
 
     # Simplify-at-500 re-test (user request; v30's use_simplify A/B'd -14 at
     # threshold 200 -- traded into DRAWN endings; a decisive >=500cp gate
