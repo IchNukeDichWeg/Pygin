@@ -15,11 +15,16 @@ measured the removal at +5.18 +/-6.8 vs Old Engine/42 (pair ratio 1.08),
 converging with CB-02's own -2.88 lean -- the insurance cost ~3-5 Elo of
 nodes-to-depth and is DROPPED (modern-engine practice); snapshotted Old
 Engine/43; FI-04 history-LMR read +2.15 null and is DORMANT -- the
-finer-quiet-signal vein is 0-for-3). Armed candidate: FI-26a = the TT
-prefetch, NODE-IDENTICAL (+4.9% NPS median, 3/3 tight pairs; P-45's
-null inverted by FI-01's free child key) -- the ladder is unchanged,
-the timed A/B vs Old Engine/43 prices the speed (the P-22 rule). A
-staged-quiet lazy pick was tried alongside and PARKED (bench noise).
+finer-quiet-signal vein is 0-for-3). v44 = v43 + FI-26a, the unconditional
+TT prefetch after apply_move (node-identical, +4.9% NPS): the timed A/B
+priced it at +13.31 +/-6.8 vs Old Engine/43 @10k 50+0.20 (51.91%, pair
+ratio 1.25, norm +27.85) -- P-45's null INVERTED by FI-01's free child
+key, the biggest single NPS win of the C era in Elo terms; snapshotted
+Old Engine/44 (a staged-quiet lazy pick was tried alongside and PARKED,
+bench noise). Armed candidate: FI-25 = TT-value pruning-eval sharpener
+(TT_EVAL_SHARPEN = True, A/B vs Old Engine/44 PENDING -- sonnet5's top
+new idea: the entry's search value replaces the raw static eval in
+RFP/null-move/futility whenever its bound provably improves it).
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -163,6 +168,14 @@ ON by default (A/B-confirmed, or free by construction):
     +3.27 +/-6.8 @10k 50+0.20 (50.47%, ptnml 257/1115/2159/1215/254, pair
     ratio 1.07, norm +6.98) -- a null KEPT as correctness, the fifth of
     its class.
+  * FI-26a TT prefetch (unconditional TT_PREFETCH(c.key) after apply_move
+    at the three child-recursion sites; CONFIRMED into v44 2026-07-12,
+    snapshotted Old Engine/44; node-identical, no toggle -- deleting the
+    macro line restores v43): FI-01's incremental child key made the
+    prefetch address free, inverting P-45's original null. +4.9% NPS
+    (median, 3/3 warmup-discarded pairs); A/B vs Old Engine/43: +13.31
+    +/-6.8 @10k 50+0.20 (51.91%, ptnml 250/1050/2073/1321/306, pair ratio
+    1.25, norm +27.85) -- the biggest single NPS win of the C era.
 
 DORMANT (default OFF, mechanism kept for longer-TC re-tests):
   * P-43 single-reply / forced-move extension (set_single_reply; +3.5
@@ -324,6 +337,18 @@ class Engine:
     # divisor > 0 enables (adj = hist/div clamped +/-1); 0 = v43 exact.
     LMR_HIST = 0
 
+    # FI-25 TT-value pruning-eval sharpener: ARMED (fourteenth 50+0.20-era
+    # campaign, A/B vs Old Engine/44 PENDING -- sonnet5's top new idea).
+    # FI-03 reuses the cached STATIC eval; the TT entry's SEARCH value is
+    # strictly better information whenever its bound applies (LOWER above /
+    # UPPER below the static eval, EXACT always), so it replaces the raw
+    # eval in RFP / null-move / frontier futility -- prunes both more
+    # accurately and less wrongly at the same depth, Stockfish-family
+    # practice. Non-mate values only; the FI-03 TT cache and the P-04 eval
+    # stack keep the RAW static eval (exactness invariants). False = v44
+    # node-exact.
+    TT_EVAL_SHARPEN = True
+
     # FI-10: TT size in bits (2^bits x 24-byte entries; 21 = 48 MB, the size
     # the entire ledger was measured at -- leave it for A/B play). The UCI
     # Hash option (cuci) maps MB onto this; a resize wipes the table.
@@ -453,7 +478,7 @@ class Engine:
               self.SIMPLIFY_THRESHOLD, self.CHECK_EXT_BUDGET, self.PV_EXACT,
               self.SCORE_HYGIENE, self.EP_FILTER, self.QS_EVICT_MAX,
               self.CB2, self.CANTWIN, self.NULL_VERIFY, self.LMR_HIST,
-              self.TT_BITS, self.TT_KEEP_WARM)
+              self.TT_EVAL_SHARPEN, self.TT_BITS, self.TT_KEEP_WARM)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -485,6 +510,7 @@ class Engine:
         lib.set_cb2(1 if self.CB2 else 0)                      # CB-02
         lib.set_cantwin(1 if self.CANTWIN else 0)              # CW-01
         lib.set_lmr_hist(int(self.LMR_HIST))                   # FI-04
+        lib.set_tt_eval_sharpen(1 if self.TT_EVAL_SHARPEN else 0)  # FI-25
         lib.set_null_verify(1 if self.NULL_VERIFY else 0)      # NV-01
         lib.set_tt_bits(int(self.TT_BITS))                     # FI-10 (Hash)
         # FB-06: cengine is AUTHORITATIVE over every behavioral C toggle --
