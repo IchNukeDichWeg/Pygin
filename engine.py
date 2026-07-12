@@ -612,6 +612,19 @@ benchmark" below.
   +27.85)** -- the biggest single NPS win of the C era in Elo terms.
   Snapshotted as Old Engine/44.
 
+* **v44 -> v45 (2026-07-12, lives in ``cengine.py`` + ``csearch.c``): FI-25,
+  the TT-value pruning-eval sharpener.** The TT hit's SEARCH value replaces
+  the raw static eval in RFP / null-move / frontier futility whenever its
+  bound provably improves the estimate (LOWER above / UPPER below / EXACT
+  always; non-mate values, any entry depth) -- strictly better information
+  the engine already held, Stockfish-family practice. static_eval stays RAW
+  for the FI-03 TT cache and the P-04 eval stack (exactness invariants).
+  A/B: **+13.52 +/-6.8 over 10,000 games @ 50+0.20 vs v44 (51.94%%, ptnml
+  225/1100/2056/1299/320, pair ratio 1.22, normalized +28.34)** -- back to
+  back with v44's +13.31; matetrack rose to 913/783 (baseline 896/767).
+  ``TT_EVAL_SHARPEN=False`` restores v44 exactly. Snapshotted as Old
+  Engine/45.
+
 Cross-version benchmark
 -----------------------
 Sweep (2026-07-02): 24 versions x 8 positions x 6 timed 5s runs (1152 searches).

@@ -21,10 +21,14 @@ priced it at +13.31 +/-6.8 vs Old Engine/43 @10k 50+0.20 (51.91%, pair
 ratio 1.25, norm +27.85) -- P-45's null INVERTED by FI-01's free child
 key, the biggest single NPS win of the C era in Elo terms; snapshotted
 Old Engine/44 (a staged-quiet lazy pick was tried alongside and PARKED,
-bench noise). Armed candidate: FI-25 = TT-value pruning-eval sharpener
-(TT_EVAL_SHARPEN = True, A/B vs Old Engine/44 PENDING -- sonnet5's top
-new idea: the entry's search value replaces the raw static eval in
-RFP/null-move/futility whenever its bound provably improves it).
+bench noise). v45 = v44 + FI-25, the TT-value pruning-eval sharpener:
++13.52 +/-6.8 vs Old Engine/44 @10k 50+0.20 (51.94%, pair ratio 1.22,
+norm +28.34) -- sonnet5's top new idea confirmed at full value, back to
+back with v44's +13.31; snapshotted Old Engine/45. Armed candidate:
+FI-18 = SEE pruning of losing captures (SEE_PRUNE = True, A/B vs Old
+Engine/45 PENDING -- skip SEE-negative captures at non-PV depth <= 3,
+late in the list, not in/giving check; the verdict is free, the staged
+stream's stage-6 emissions ARE the losing captures).
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -176,6 +180,15 @@ ON by default (A/B-confirmed, or free by construction):
     (median, 3/3 warmup-discarded pairs); A/B vs Old Engine/43: +13.31
     +/-6.8 @10k 50+0.20 (51.91%, ptnml 250/1050/2073/1321/306, pair ratio
     1.25, norm +27.85) -- the biggest single NPS win of the C era.
+  * FI-25 TT-value pruning-eval sharpener (set_tt_eval_sharpen /
+    TT_EVAL_SHARPEN class attr; CONFIRMED into v45 2026-07-12, snapshotted
+    Old Engine/45; False = v44 node-exact): the TT hit's SEARCH value
+    replaces the raw static eval in RFP / null-move / frontier futility
+    whenever its bound provably improves the estimate (LOWER above / UPPER
+    below / EXACT always; non-mate values, any entry depth); static_eval
+    stays RAW for the FI-03 cache and the P-04 stack. A/B vs Old
+    Engine/44: +13.52 +/-6.8 @10k 50+0.20 (51.94%, ptnml
+    225/1100/2056/1299/320, pair ratio 1.22, norm +28.34).
 
 DORMANT (default OFF, mechanism kept for longer-TC re-tests):
   * P-43 single-reply / forced-move extension (set_single_reply; +3.5
@@ -346,8 +359,20 @@ class Engine:
     # accurately and less wrongly at the same depth, Stockfish-family
     # practice. Non-mate values only; the FI-03 TT cache and the P-04 eval
     # stack keep the RAW static eval (exactness invariants). False = v44
-    # node-exact.
+    # node-exact. CONFIRMED into v45 (fourteenth 50+0.20-era campaign, A/B
+    # vs Old Engine/44 2026-07-12: +13.52 +/-6.8 @10k, 51.94%, pair ratio
+    # 1.22 -- confirmed at full value, back to back with v44's +13.31).
     TT_EVAL_SHARPEN = True
+
+    # FI-18 SEE pruning of losing captures: ARMED (fifteenth 50+0.20-era
+    # campaign, A/B vs Old Engine/45 PENDING). Bad captures are ordered
+    # last but still fully searched everywhere; the standard prune skips
+    # SEE-negative captures at non-PV, not-in-check, non-check-giving
+    # nodes, depth <= 3, move index >= 3. The SEE verdict costs nothing
+    # new: the staged stream's stage-6 emissions ARE the losing captures,
+    # the array path reads the FI-02.3 tag. Failure mode = tactical
+    # misses (matetrack gate). False = v45 node-exact.
+    SEE_PRUNE = True
 
     # FI-10: TT size in bits (2^bits x 24-byte entries; 21 = 48 MB, the size
     # the entire ledger was measured at -- leave it for A/B play). The UCI
@@ -478,7 +503,8 @@ class Engine:
               self.SIMPLIFY_THRESHOLD, self.CHECK_EXT_BUDGET, self.PV_EXACT,
               self.SCORE_HYGIENE, self.EP_FILTER, self.QS_EVICT_MAX,
               self.CB2, self.CANTWIN, self.NULL_VERIFY, self.LMR_HIST,
-              self.TT_EVAL_SHARPEN, self.TT_BITS, self.TT_KEEP_WARM)
+              self.TT_EVAL_SHARPEN, self.SEE_PRUNE, self.TT_BITS,
+              self.TT_KEEP_WARM)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -511,6 +537,7 @@ class Engine:
         lib.set_cantwin(1 if self.CANTWIN else 0)              # CW-01
         lib.set_lmr_hist(int(self.LMR_HIST))                   # FI-04
         lib.set_tt_eval_sharpen(1 if self.TT_EVAL_SHARPEN else 0)  # FI-25
+        lib.set_see_prune(1 if self.SEE_PRUNE else 0)          # FI-18
         lib.set_null_verify(1 if self.NULL_VERIFY else 0)      # NV-01
         lib.set_tt_bits(int(self.TT_BITS))                     # FI-10 (Hash)
         # FB-06: cengine is AUTHORITATIVE over every behavioral C toggle --
