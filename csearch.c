@@ -2077,6 +2077,19 @@ void set_lmr_hist(int v) { g_lmr_hist = v; }
 static int g_tt_eval_sharpen = 0;
 void set_tt_eval_sharpen(int v) { g_tt_eval_sharpen = v; }
 
+/* FI-18 (armed for the fifteenth 50+0.20 A/B, vs Old Engine/45): SEE
+ * pruning of losing captures at shallow depth. Bad captures are ordered
+ * LAST (ORD_BADCAP band / staged stage 6) but still fully searched at
+ * every depth; the standard prune skips them at non-PV, not-in-check,
+ * non-check-giving, depth <= 3, late in the list. The SEE verdict is
+ * already known -- the staged stream's stage-6 emissions ARE the
+ * SEE-negative captures, and the array path's FI-02.3 tag (bits 22-23,
+ * 2 = SEE < 0) was computed by order_moves -- so ZERO new SEE calls.
+ * Failure mode is tactical misses: matetrack must stay clean.
+ * 0 = off = v45 node-exact. */
+static int g_see_prune = 0;
+void set_see_prune(int v) { g_see_prune = v; }
+
 static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
                                int flag, int ev)
 {
@@ -2519,11 +2532,19 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         if (quiet && best > -MATE_THRESH && nq >= lmp_lim)
             continue;                                /* late-move pruning */
 
+        /* FI-18: SEE-losing capture? (staged: stage 6 emits exactly the
+         * SEE-negative captures; array path: FI-02.3 tag 2 = SEE < 0) */
+        int badcap = staged ? (st.stage == 6) : (((m >> 22) & 3) == 2);
+
         Board c = *b;
         apply_move(&c, m);
         TT_PREFETCH(c.key);                          /* FI-17 */
         g_ctx[ply + 1] = (uint16_t)((mover << 6) | ((m >> 6) & 63));  /* Q-01 */
         int gives_check = in_check(&c);
+
+        if (g_see_prune && badcap && !is_pv && !in_chk && !gives_check
+                && depth <= 3 && i >= 3 && best > -MATE_THRESH)
+            continue;         /* FI-18: skip late losing captures near leaf */
 
         if (g_prune && quiet && !is_pv && !in_chk && !gives_check && depth == 1
                 && best > -MATE_THRESH
