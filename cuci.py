@@ -424,6 +424,7 @@ def main():
                     f" lmr_hist={engine.LMR_HIST}"
                     f" tt_eval_sharpen={int(engine.TT_EVAL_SHARPEN)}"
                     f" see_prune={int(engine.SEE_PRUNE)}"
+                    f" root_order={int(engine.ROOT_ORDER)}"
                     f" qs_evict_max={engine.QS_EVICT_MAX}"
                     f" hash_bits={engine.TT_BITS}"
                     f" threads={engine.smp_workers}")

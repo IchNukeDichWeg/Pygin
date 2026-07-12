@@ -202,13 +202,21 @@ if os.path.exists("csearch.c"):
         # FI-25 TT-value pruning-eval sharpener: CONFIRMED into v45 (+13.52
         # +/-6.8 @10k vs Old Engine/44, 2026-07-12), default ON -- part of
         # the pinned reference search above (ladder re-measured with it).
-        # FI-18 SEE pruning of losing captures (LIVE candidate, fifteenth
-        # 50+0.20 campaign, A/B vs Old Engine/45 pending): the driver arms
-        # SEE_PRUNE=True, so pin it OFF here -- 0 = v45 node-exact.
+        # FI-18 SEE pruning of losing captures is DORMANT (-1.25 null @10k
+        # vs Old Engine/45, 2026-07-13; not correctness => default False,
+        # mechanism kept); the default already reproduces v45, so this pin
+        # is belt-and-braces.
         try:
             ce._lib.set_see_prune(0)
         except AttributeError:
             pass                       # pre-FI-18 csearch.so
+        # FI-06 root-move ordering (LIVE candidate, sixteenth 50+0.20
+        # campaign, A/B vs Old Engine/45 pending): the driver arms
+        # ROOT_ORDER=True, so pin it OFF here -- 0 = v45 node-exact.
+        try:
+            ce._lib.set_root_order(0)
+        except AttributeError:
+            pass                       # pre-FI-06 csearch.so
         # P-47 check-ext budget: raise-to-8 REJECTED (-4.59 +/-6.8 @10k);
         # 5 is the confirmed recipe and the default -- belt-and-braces pin.
         # PV-02 exact PV: CONFIRMED into v37 (+0.17 null = free correctness),
