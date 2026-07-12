@@ -625,6 +625,20 @@ benchmark" below.
   ``TT_EVAL_SHARPEN=False`` restores v44 exactly. Snapshotted as Old
   Engine/45.
 
+* **v45 -> v46 (2026-07-13, lives in ``cengine.py``): TT doubled to 22 bits
+  (96 MB, from 48 MB).** Motivated by a live hashfull capture -- a single
+  deep search fills ~half the 48 MB table, and the warm persistent TT then
+  climbs past 950%% within a game. A/B vs v45 at the full 223-worker load:
+  **+5.94 +/-6.8 over 10,000 games @ 50+0.20 (50.85%%, ptnml
+  264/1157/2014/1274/291, pair ratio 1.10, normalized +12.33)** -- a
+  BORDERLINE-positive (the 95%% CI just touches zero) shipped on the
+  monotonic-low-risk rationale: a bigger table cannot worsen decision
+  quality at fixed nodes, and its only downside vector (DRAM bandwidth) was
+  exercised at the load where it bites hardest = net positive. Between
+  FI-25 and this, FI-18 (SEE pruning, -1.25) and FI-06 (root ordering,
+  +2.26) both read null and are dormant. ``TT_BITS=21`` restores v45's
+  48 MB table. Snapshotted as Old Engine/46.
+
 Cross-version benchmark
 -----------------------
 Sweep (2026-07-02): 24 versions x 8 positions x 6 timed 5s runs (1152 searches).
