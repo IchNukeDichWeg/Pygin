@@ -602,6 +602,16 @@ benchmark" below.
   v42's verifying search. The rest of CB-02 (null-store policy, qsearch
   50-move, fail-high adoption) stays. Snapshotted as Old Engine/43.
 
+* **v43 -> v44 (2026-07-12, lives in ``cengine.py`` + ``csearch.c``):
+  FI-26a, the TT prefetch.** ``TT_PREFETCH(c.key)`` after apply_move at the
+  three child-recursion sites (negamax/qsearch/root) -- FI-01's incremental
+  child key made the prefetch address free, inverting P-45's original null.
+  NODE-IDENTICAL (+4.9%% NPS, median of 3/3 warmup-discarded pairs); the
+  timed A/B priced it at **+13.31 +/-6.8 over 10,000 games @ 50+0.20 vs
+  v43 (51.91%%, ptnml 250/1050/2073/1321/306, pair ratio 1.25, normalized
+  +27.85)** -- the biggest single NPS win of the C era in Elo terms.
+  Snapshotted as Old Engine/44.
+
 Cross-version benchmark
 -----------------------
 Sweep (2026-07-02): 24 versions x 8 positions x 6 timed 5s runs (1152 searches).
