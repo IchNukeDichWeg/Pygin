@@ -136,6 +136,11 @@ if os.path.exists("csearch.c"):
         # Outpost: NULL, OFF (A/B vs v37 2026-07-10: -0.90 +/-6.8) -- the
         # default already reproduces v37; belt-and-braces pin.
         cengine.Engine.USE_OUTPOST = False
+        # TT_BITS is ARMED at 22 (the seventeenth-campaign memory test); the
+        # CE_LADDER was measured at 21 bits (48 MB) and a bigger table has a
+        # different collision/index pattern => different node counts, so pin
+        # the reference engine back to 21 -- 21 = v45 exact.
+        cengine.Engine.TT_BITS = 21
         # CB-01 correctness batch: CONFIRMED into v38 (+1.36 null KEPT as
         # correctness), default ON -- part of the pinned reference search.
         # CB-02 correctness batch #4: CONFIRMED into v41 (-2.88 null KEPT
@@ -210,9 +215,10 @@ if os.path.exists("csearch.c"):
             ce._lib.set_see_prune(0)
         except AttributeError:
             pass                       # pre-FI-18 csearch.so
-        # FI-06 root-move ordering (LIVE candidate, sixteenth 50+0.20
-        # campaign, A/B vs Old Engine/45 pending): the driver arms
-        # ROOT_ORDER=True, so pin it OFF here -- 0 = v45 node-exact.
+        # FI-06 root-move ordering is DORMANT (+2.26 null @10k vs Old
+        # Engine/45, 2026-07-13 -- positive lean but CI covers zero, not
+        # correctness); the default already reproduces v45, so this pin is
+        # belt-and-braces.
         try:
             ce._lib.set_root_order(0)
         except AttributeError:
