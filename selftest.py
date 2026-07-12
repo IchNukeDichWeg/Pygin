@@ -125,10 +125,10 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # quiet developing moves flip between depths without being a regression.
 # Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
 CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3"
-CE_LADDER = {                     # depth -> (nodes, score)  [v44: FI-26a is node-identical, the v43 pins carry over verbatim]
-    1: (102, 126), 2: (189, 126), 3: (749, 126), 4: (1020, 122),
-    5: (8823, 73), 6: (16866, 63), 7: (42298, 74), 8: (80121, 72),
-    9: (130991, 75), 10: (307932, 58), 11: (471981, 70), 12: (828647, 88),
+CE_LADDER = {                     # depth -> (nodes, score)  [v45: FI-25 TT-value pruning-eval sharpener ON -- re-measured 2026-07-12]
+    1: (102, 126), 2: (187, 126), 3: (741, 126), 4: (995, 122),
+    5: (8599, 73), 6: (16266, 63), 7: (41036, 74), 8: (77328, 72),
+    9: (123971, 75), 10: (275059, 48), 11: (437901, 71), 12: (767017, 58),
 }
 if os.path.exists("csearch.c"):
     try:
@@ -197,15 +197,18 @@ if os.path.exists("csearch.c"):
         except AttributeError:
             pass                       # pre-FI-04 csearch.so
         # FI-26a TT prefetch: CONFIRMED into v44 (+13.31 +/-6.8 @10k vs Old
-        # Engine/43, 2026-07-12) -- NODE-IDENTICAL, so the v43 pins above
-        # carry over verbatim and passing UNCHANGED is itself the gate.
-        # FI-25 TT-value pruning-eval sharpener (LIVE candidate, fourteenth
-        # 50+0.20 campaign, A/B vs Old Engine/44 pending): the driver arms
-        # TT_EVAL_SHARPEN=True, so pin it OFF here -- 0 = v44 node-exact.
+        # Engine/43, 2026-07-12) -- NODE-IDENTICAL, the v43 pins carried
+        # over verbatim.
+        # FI-25 TT-value pruning-eval sharpener: CONFIRMED into v45 (+13.52
+        # +/-6.8 @10k vs Old Engine/44, 2026-07-12), default ON -- part of
+        # the pinned reference search above (ladder re-measured with it).
+        # FI-18 SEE pruning of losing captures (LIVE candidate, fifteenth
+        # 50+0.20 campaign, A/B vs Old Engine/45 pending): the driver arms
+        # SEE_PRUNE=True, so pin it OFF here -- 0 = v45 node-exact.
         try:
-            ce._lib.set_tt_eval_sharpen(0)
+            ce._lib.set_see_prune(0)
         except AttributeError:
-            pass                       # pre-FI-25 csearch.so
+            pass                       # pre-FI-18 csearch.so
         # P-47 check-ext budget: raise-to-8 REJECTED (-4.59 +/-6.8 @10k);
         # 5 is the confirmed recipe and the default -- belt-and-braces pin.
         # PV-02 exact PV: CONFIRMED into v37 (+0.17 null = free correctness),
