@@ -125,7 +125,7 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # quiet developing moves flip between depths without being a regression.
 # Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
 CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3"
-CE_LADDER = {                     # depth -> (nodes, score)  [v43: NV-01 verification dropped]
+CE_LADDER = {                     # depth -> (nodes, score)  [v44: FI-26a is node-identical, the v43 pins carry over verbatim]
     1: (102, 126), 2: (189, 126), 3: (749, 126), 4: (1020, 122),
     5: (8823, 73), 6: (16866, 63), 7: (42298, 74), 8: (80121, 72),
     9: (130991, 75), 10: (307932, 58), 11: (471981, 70), 12: (828647, 88),
@@ -196,10 +196,16 @@ if os.path.exists("csearch.c"):
             ce._lib.set_lmr_hist(0)
         except AttributeError:
             pass                       # pre-FI-04 csearch.so
-        # FI-26a (LIVE candidate, thirteenth 50+0.20 campaign, A/B vs Old
-        # Engine/43 pending): the TT prefetch -- NODE-IDENTICAL, so this
-        # ladder needs NO pin and passing UNCHANGED is itself the
-        # correctness gate.
+        # FI-26a TT prefetch: CONFIRMED into v44 (+13.31 +/-6.8 @10k vs Old
+        # Engine/43, 2026-07-12) -- NODE-IDENTICAL, so the v43 pins above
+        # carry over verbatim and passing UNCHANGED is itself the gate.
+        # FI-25 TT-value pruning-eval sharpener (LIVE candidate, fourteenth
+        # 50+0.20 campaign, A/B vs Old Engine/44 pending): the driver arms
+        # TT_EVAL_SHARPEN=True, so pin it OFF here -- 0 = v44 node-exact.
+        try:
+            ce._lib.set_tt_eval_sharpen(0)
+        except AttributeError:
+            pass                       # pre-FI-25 csearch.so
         # P-47 check-ext budget: raise-to-8 REJECTED (-4.59 +/-6.8 @10k);
         # 5 is the confirmed recipe and the default -- belt-and-braces pin.
         # PV-02 exact PV: CONFIRMED into v37 (+0.17 null = free correctness),
