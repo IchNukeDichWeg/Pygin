@@ -446,6 +446,12 @@ class Engine:
     # False restores v36's search.
     PV_EXACT = True
 
+    # FI-09(a): a forced move (exactly one legal reply) is played instantly,
+    # banking the whole time budget -- no tree change, pure clock save. Armed
+    # together with FI-09(b) (easy-move fast-out) as one bundle A/B; False =
+    # shipped v47 clock behavior (the CE_LADDER never sees a single-reply root).
+    SINGLE_REPLY_INSTANT = False
+
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
     ASPIRATION_DELTA = 30                    # centipawns; C scores are cp too
@@ -821,6 +827,22 @@ class Engine:
         legal = list(board.legal_moves)
         if not legal:
             return None
+
+        # FI-09(a): forced move -> play it instantly, bank the whole budget.
+        # A single legal reply cannot be improved by search, book, or TB, so
+        # short-circuit them all. last_score carries the prior verdict forward
+        # (like the book path) so the TB difficulty gate stays armed.
+        if self.SINGLE_REPLY_INSTANT and len(legal) == 1:
+            only = legal[0]
+            self.nodes_searched = self.nodes = 0
+            self.last_depth = 0
+            self.last_score = prev_verdict
+            self.last_pv = only.uci()
+            record = {"depth": 0, "move": only.uci(), "score": 0, "nodes": 0,
+                      "time_ms": 0, "pv": only.uci()}
+            self._emit(record)
+            self._emit(dict(record, final=True), final=True)
+            return only
 
         # Opening book (delegated; instant when it hits, like v30).
         if self.use_book:
