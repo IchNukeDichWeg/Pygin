@@ -2759,7 +2759,7 @@ void cs_search_begin(const uint64_t* hist, int nhist, double budget_sec)
  * root moves fully searched (a stop mid-move leaves it short). */
 static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
                             uint32_t prev_key, int hmc,
-                            int* out_score, int* out_done)
+                            int* out_score, int* out_done, int* out_second)
 {
     Board b = *rb;
     uint64_t key = board_key(&b);
@@ -2783,6 +2783,7 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
     uint32_t moves[256];
     int n = gen_legal(&b, moves);
     *out_done = 0;
+    *out_second = -CS_INF;               /* FI-09(b): no 2nd move yet */
     if (n == 0) {                        /* mate/stalemate at the root */
         *out_score = in_check(&b) ? -CS_INF : 0;
         return 0;
@@ -2818,7 +2819,9 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
         }
     }
 
-    int best = -CS_INF;
+    int best = -CS_INF, best2 = -CS_INF;           /* FI-09(b): best2 = 2nd-best
+                                                    * root score (upper bound
+                                                    * for the failing scouts) */
     uint32_t best_move = 0;                        /* first SEARCHED move below
                                                     * (== moves[0] unless the
                                                     * MultiPV list excludes it) */
@@ -2867,7 +2870,8 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
             memcpy(&g_root_pv[1], g_pv[1], (size_t)cl * sizeof(uint32_t));
             g_root_pv_len = cl + 1;
         }
-        if (v > best) { best = v; best_move = m; }
+        if (v > best) { best2 = best; best = v; best_move = m; }  /* FI-09(b) */
+        else if (v > best2) best2 = v;
         if (v > alpha) alpha = v;
         if (alpha >= beta) break;                    /* aspiration fail-high */
     }
@@ -2894,6 +2898,7 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
                      best_move & 0x7FFF, depth, flag, TT_EVAL_NONE);
     }
     *out_score = best;
+    *out_second = best2;                             /* FI-09(b) */
     return best_move & 0x7FFF;   /* 15-bit move key: from|to<<6|promo<<12 */
 }
 
@@ -2914,9 +2919,9 @@ static void* helper_entry(void* p)
     HelperArg* a = (HelperArg*)p;
     g_is_helper = 1;
     g_nodes = 0;
-    int score, done;
+    int score, done, second;
     root_search(&a->b, a->depth, -CS_INF, CS_INF, a->prev, a->hmc,
-                &score, &done);
+                &score, &done, &second);
     __atomic_fetch_add(&g_helper_nodes, g_nodes, __ATOMIC_RELAXED);
     return NULL;
 }
@@ -2937,7 +2942,7 @@ uint32_t cs_search_root(uint64_t pawns, uint64_t knights, uint64_t bishops,
                         int depth, int alpha, int beta,
                         uint32_t prev_key, int hmc,
                         uint64_t* out_nodes, int* out_score,
-                        int* out_done, int* out_aborted)
+                        int* out_done, int* out_aborted, int* out_second)
 {
     Board b = make_board(pawns, knights, bishops, rooks, queens, kings,
                          occ_w, occ_b, turn, ep, castling);
@@ -2966,9 +2971,9 @@ uint32_t cs_search_root(uint64_t pawns, uint64_t knights, uint64_t bishops,
     }
     pthread_attr_destroy(&attr);
 
-    int score, done;
+    int score, done, second;
     uint32_t mv = root_search(&b, depth, alpha, beta, prev_key, hmc,
-                              &score, &done);
+                              &score, &done, &second);
 
     if (nh) {
         g_hstop = 1;
@@ -2979,6 +2984,7 @@ uint32_t cs_search_root(uint64_t pawns, uint64_t knights, uint64_t bishops,
     *out_aborted = g_abort ? 1 : 0;
     *out_nodes = g_nodes + __atomic_load_n(&g_helper_nodes, __ATOMIC_RELAXED);
     *out_score = score;
+    *out_second = second;                    /* FI-09(b) */
     return mv;
 }
 
@@ -3035,14 +3041,16 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
 {
     cs_search_begin(NULL, 0, 0.0);
     if (g_tt) memset(g_tt, 0, TT_SIZE * sizeof(TTEntry));  /* fresh TT */
-    int done, aborted;
+    int done, aborted, second;
     return cs_search_root(pawns, knights, bishops, rooks, queens, kings,
                           occ_w, occ_b, turn, ep, castling,
                           depth, -CS_INF, CS_INF, 0, 0,
-                          out_nodes, out_score, &done, &aborted);
+                          out_nodes, out_score, &done, &aborted, &second);
 }
 
-int csearch_abi(void) { return 10; }  /* 10 = root_exclude_* (MultiPV);
+int csearch_abi(void) { return 11; }  /* 11 = cs_search_root out_second
+                                       * (FI-09b easy-move 2nd-best score);
+                                       * 10 = root_exclude_* (MultiPV);
                                        * 9 = set_tt_bits (FI-10 Hash);
                                        * 8 = set_score_hygiene (CB-01);
                                        * 7 = set_node_limit + cs_seldepth +
