@@ -137,3 +137,4 @@ dist/
 # worst-move troll wrappers (local only)
 worse_cengine.py
 worstfish.py
+coinflip.py
