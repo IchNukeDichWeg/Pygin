@@ -26,67 +26,72 @@ incremental-Zobrist NPS batch, a TT prefetch, a TT-value pruning sharpener,
 a doubled transposition table, and five correctness releases — exact PV,
 score hygiene, FIDE-exact en-passant hashing, verified-null/50-move/TT-policy
 batch, cannot-win eval clamp).
-Against
-**full-strength** Stockfish 18 it scores **~93%** at rook odds and roughly
-**~70%** at knight odds (knight-odds percentages are hardware/environment-
-dependent — compare only runs from the same machine).
+Against **full-strength** Stockfish 18 (`odds.py`) it scores **100%** (100/100
+games) at queen odds and **93.25%** (400 games) at rook odds — both
+saturated, i.e. no longer sensitive enough to show further progress — and
+**76.75%** (400 games) at knight odds, the current external yardstick since
+queen/rook stopped discriminating. All three were measured on the v31 C-core
+baseline (odds percentages are hardware/environment-dependent — compare only
+runs from the same machine); the C-era ledger has added **≈ +189 Elo** since
+v31, so the true current gap is wider than these numbers show.
 
 ### Version progression
 
 Speed (nodes/s) and search depth reached from the **starting position** in a
-uniform **5 s single-threaded** budget (book off, best of N), for every
-version, plus the A/B Elo gain over the immediately preceding version where
-one was measured. Regenerate with `python3 bench_progress.py`.
+uniform **5 s** budget (book off, best of N), for every version, plus the A/B
+Elo gain over the immediately preceding version where one was measured.
+Regenerate the single-thread column with `python3 bench_progress.py`, the
+4-thread column with `python3 bench_progress_threads.py 4`.
 
-| Ver | NPS (startpos) | Depth | Elo Δ vs prev | Milestone |
-|----:|---------------:|------:|:--------------|:----------|
-| 1  | 17 k | 4  | — | first working engine (naive negamax + material eval) |
-| 2  | 31 k | 7  | ≈ +120 est ⁵ | search + eval build-out: PVS, futility, LMR, aspiration, pawn/mobility/king-safety eval, book |
-| 3  | 31 k | 7  | ≈ +15 est ⁵ | endgame mop-up, contempt draws, counter-moves |
-| 4  | 33 k | 8  | ≈ +20 est ⁵ | SEE move ordering + losing-capture pruning |
-| 5  | 31 k | 8  | ≈ +3 est ⁵ | recapture extension |
-| 6  | 31 k | 9  | ≈ +8 est ⁵ | lone-king endgame eval fix |
-| 7  | 32 k | 8  | ≈ +4 est ⁵ | pin evaluation |
-| 8  | 35 k | 9  | ≈ +12 est ⁵ | quiescence stand-pat, trade-down simplify, PV extraction |
-| 9  | 27 k | 10 | ≈ +12 est ⁵ | late-move pruning, history malus, improving heuristic |
-| 10 | 28 k | 10 | ≈ +8 est ⁵ | TT refactor (two-tier + depth-preferred replacement) |
-| 11 | 30 k | 10 | ≈ +3 est ⁵ | incremental base eval (byte-identical) |
-| 12 | 30 k | 10 | ≈ +4 est ⁵ | check-extension budgeting + max-extensions cap |
-| 13 | 31 k | 10 | ≈ +4 est ⁵ | eval-weight retune |
-| 14 | 35 k | 10 | ≈ +8 est ⁵ | Syzygy TB probe, internal iterative reduction, pawn hash |
-| 15 | 35 k | 10 | ≈ +0 est ⁵ | LMR-divisor tune (tie); probcut tried & removed |
-| 16 | 44 k | 11 | (in ³) | **evaluation ported to C** (`eval_c.c`) |
-| 17 | 58 k | 10 | +69 ±16 ³ | **move generation ported to C** (`movegen.c`) |
-| 18 | 57 k | 10 | ≈ +0 est ⁵ | incremental Zobrist hashing (off by default; SMP infra) |
-| 19 | 57 k | 12 | ≈ +5 est ⁵ | lock-free shared TT, multi-process SMP, packed move word |
-| 20 | 61 k | 12 | +45 ±11 ⁴ | rook-on-7th, mobility area, threats; one-call C eval |
-| 21 | 62 k | 13 | +16 ±10 ⁴ | capture history, SEE capture pruning, LMR losing captures |
-| 22 | 61 k | 12 | ≈ +8 est ² | nine correctness bug fixes + six NPS wins |
-| 23 | 59 k | 13 | ≈ +0 est ² | Zobrist dispatch de-branching (code quality) |
-| 24 | 59 k | 13 | +11.75 ±6.8 ² | TT-dispatch de-branching (± is the v21→v24 span) |
-| 25 | 60 k | 13 | +2.91 ±11.6 | 18-item bug block; Lazy-SMP production fixes |
-| 26 | 72 k | 13 | +41.90 ±5.7 | node-identical speed batch |
-| 27 | 85 k | 13 | +35.17 ±7.7 | node-identical speed batch (+12 %) |
-| 28 | 88 k | 13 | +13.13 ±6.0 | node-identical speed batch (+4 %) |
-| 29 | 89 k | 13 | +38.34 ±6.9 | soft-stop time management (P-35) |
-| 30 | 88 k | 12 | +10.91 ±6.8 | stability-scaled time (U-06); last Python |
-| 31 | 2.7 M | 17 | ≈ +215 ¹ | **C search core** (whole per-node loop in C) |
-| 32 | 2.7 M | 18 | +7.30 ±6.8 | internal iterative reduction |
-| 33 | 2.5 M | 21 | +23.52 ±6.8 | transposition table kept warm across moves |
-| 34 | 2.5 M | 21 | +6.81 ±6.8 | check extensions |
-| 35 | 3.6 M | 20 | ≈ +72 | noisy-only qsearch gen + qsearch TT |
-| 36 | 4.0 M | 22 | +24.67 ±6.8 | staged move ordering |
-| 37 | 4.2 M | 19 | +0.17 ±6.8 | exact PV (correctness) |
-| 38 | 4.1 M | 18 | +1.36 ±6.8 | score-hygiene batch (correctness) |
-| 39 | 4.4 M | 18 | +8.86 ±6.8 | incremental Zobrist + eval-in-TT + NPS batch |
-| 40 | 4.3 M | 18 | +4.31 ±6.8 | FIDE-exact en-passant hashing (correctness) |
-| 41 | 4.3 M | 17 | −2.88 ±6.8 | verified null + 50-move + TT-store policy (correctness) |
-| 42 | 4.3 M | 18 | +3.27 ±6.8 | cannot-win eval clamp (correctness) |
-| 43 | 4.0 M | 18 | +5.18 ±6.8 | verified-null REMOVED (the insurance cost ~1 ply; isolation A/B) |
-| 44 | 4.3 M | 18 | +13.31 ±6.8 | TT prefetch (node-identical, +5–6 % NPS) |
-| 45 | 4.3 M | 18 | +13.52 ±6.8 | TT search value sharpens the pruning eval (same NPS, smarter cuts) |
-| 46 | 4.3 M | 18 | +5.94 ±6.8 | transposition table doubled to 96 MB (borderline; less TT thrash per game) |
-| 47 | 4.3 M | 18 | +3.16 ±6.8 | TT to 192 MB (diminishing) + MultiPV (node-exact off) |
+| Ver | NPS Single Thread | NPS 4 Threads ⁶ | Depth | Elo Δ vs prev | Milestone |
+|----:|------------------:|--------------:|------:|:--------------|:----------|
+| 1 | 17 k | — | 4  | — | first working engine (naive negamax + material eval) |
+| 2 | 31 k | — | 7  | ≈ +120 est ⁵ | search + eval build-out: PVS, futility, LMR, aspiration, pawn/mobility/king-safety eval, book |
+| 3 | 31 k | — | 7  | ≈ +15 est ⁵ | endgame mop-up, contempt draws, counter-moves |
+| 4 | 33 k | — | 8  | ≈ +20 est ⁵ | SEE move ordering + losing-capture pruning |
+| 5 | 31 k | — | 8  | ≈ +3 est ⁵ | recapture extension |
+| 6 | 31 k | — | 9  | ≈ +8 est ⁵ | lone-king endgame eval fix |
+| 7 | 32 k | — | 8  | ≈ +4 est ⁵ | pin evaluation |
+| 8 | 35 k | — | 9  | ≈ +12 est ⁵ | quiescence stand-pat, trade-down simplify, PV extraction |
+| 9 | 27 k | — | 10 | ≈ +12 est ⁵ | late-move pruning, history malus, improving heuristic |
+| 10 | 28 k | — | 10 | ≈ +8 est ⁵ | TT refactor (two-tier + depth-preferred replacement) |
+| 11 | 30 k | — | 10 | ≈ +3 est ⁵ | incremental base eval (byte-identical) |
+| 12 | 30 k | — | 10 | ≈ +4 est ⁵ | check-extension budgeting + max-extensions cap |
+| 13 | 31 k | — | 10 | ≈ +4 est ⁵ | eval-weight retune |
+| 14 | 35 k | — | 10 | ≈ +8 est ⁵ | Syzygy TB probe, internal iterative reduction, pawn hash |
+| 15 | 35 k | — | 10 | ≈ +0 est ⁵ | LMR-divisor tune (tie); probcut tried & removed |
+| 16 | 44 k | — | 11 | (in ³) | **evaluation ported to C** (`eval_c.c`) |
+| 17 | 58 k | — | 10 | +69 ±16 ³ | **move generation ported to C** (`movegen.c`) |
+| 18 | 57 k | — | 10 | ≈ +0 est ⁵ | incremental Zobrist hashing (off by default; SMP infra) |
+| 19 | 57 k | — | 12 | ≈ +5 est ⁵ | lock-free shared TT, multi-process SMP, packed move word |
+| 20 | 61 k | — | 12 | +45 ±11 ⁴ | rook-on-7th, mobility area, threats; one-call C eval |
+| 21 | 62 k | — | 13 | +16 ±10 ⁴ | capture history, SEE capture pruning, LMR losing captures |
+| 22 | 61 k | — | 12 | ≈ +8 est ² | nine correctness bug fixes + six NPS wins |
+| 23 | 59 k | — | 13 | ≈ +0 est ² | Zobrist dispatch de-branching (code quality) |
+| 24 | 59 k | — | 13 | +11.75 ±6.8 ² | TT-dispatch de-branching (± is the v21→v24 span) |
+| 25 | 60 k | 227 k | 13 | +2.91 ±11.6 | 18-item bug block; Lazy-SMP production fixes |
+| 26 | 72 k | 223 k | 13 | +41.90 ±5.7 | node-identical speed batch |
+| 27 | 85 k | 226 k | 13 | +35.17 ±7.7 | node-identical speed batch (+12 %) |
+| 28 | 88 k | 238 k | 13 | +13.13 ±6.0 | node-identical speed batch (+4 %) |
+| 29 | 89 k | 167 k | 13 | +38.34 ±6.9 | soft-stop time management (P-35) |
+| 30 | 88 k | 193 k | 12 | +10.91 ±6.8 | stability-scaled time (U-06); last Python |
+| 31 | 2.7 M | 11.3 M | 17 | ≈ +215 ¹ | **C search core** (whole per-node loop in C) |
+| 32 | 2.7 M | 10.9 M | 18 | +7.30 ±6.8 | internal iterative reduction |
+| 33 | 2.5 M | 10.9 M | 21 | +23.52 ±6.8 | transposition table kept warm across moves |
+| 34 | 2.5 M | 10.5 M | 21 | +6.81 ±6.8 | check extensions |
+| 35 | 3.6 M | 14.0 M | 20 | ≈ +72 | noisy-only qsearch gen + qsearch TT |
+| 36 | 4.0 M | 16.9 M | 22 | +24.67 ±6.8 | staged move ordering |
+| 37 | 4.2 M | 16.6 M | 19 | +0.17 ±6.8 | exact PV (correctness) |
+| 38 | 4.1 M | 16.1 M | 18 | +1.36 ±6.8 | score-hygiene batch (correctness) |
+| 39 | 4.4 M | 18.1 M | 18 | +8.86 ±6.8 | incremental Zobrist + eval-in-TT + NPS batch |
+| 40 | 4.3 M | 16.0 M | 18 | +4.31 ±6.8 | FIDE-exact en-passant hashing (correctness) |
+| 41 | 4.3 M | 16.4 M | 17 | −2.88 ±6.8 | verified null + 50-move + TT-store policy (correctness) |
+| 42 | 4.3 M | 18.6 M | 18 | +3.27 ±6.8 | cannot-win eval clamp (correctness) |
+| 43 | 4.0 M | 16.2 M | 18 | +5.18 ±6.8 | verified-null REMOVED (the insurance cost ~1 ply; isolation A/B) |
+| 44 | 4.3 M | 16.1 M | 18 | +13.31 ±6.8 | TT prefetch (node-identical, +5–6 % NPS) |
+| 45 | 4.3 M | 16.9 M | 18 | +13.52 ±6.8 | TT search value sharpens the pruning eval (same NPS, smarter cuts) |
+| 46 | 4.3 M | 15.3 M | 18 | +5.94 ±6.8 | transposition table doubled to 96 MB (borderline; less TT thrash per game) |
+| 47 | 4.3 M | 14.7 M | 18 | +3.16 ±6.8 | TT to 192 MB (diminishing) + MultiPV (node-exact off) |
 
 ¹ v31 is the C-core arrival: **29–1–0** vs v30 in a smoke match; the ≈ +215
 is an external / odds-derived estimate, **not** a same-time-control A/B.
@@ -102,6 +107,16 @@ deliberately conservative lower-bound guesses at what each change plausibly
 added, shown so every row carries a figure. Only the `±` values are
 measured — the `est` column is not summable into a rating (the real
 absolute anchor is the SF-2450 benchmark: the engine reaches ≈2442 by v25).
+⁶ **NPS 4 Threads** is blank ("—") for v1–18 (no SMP infrastructure existed
+yet) and v19–24 (multi-process SMP existed but predates v25's own "Lazy-SMP
+production fixes" milestone — it degrades unpredictably under a modern
+Python/OS and isn't reliably measurable). v25–30 use the old multi-process
+SMP (separate `Process`es); v31+ use the C core's real Lazy-SMP (`set_threads`,
+pthreads sharing one address space) — the jump from ~200 k to double-digit
+millions across the v30→v31 boundary is partly that methodology change
+(process/IPC overhead vs shared-memory threads), not purely the C-core
+speedup already captured in the single-thread column. Measured with
+`python3 bench_progress_threads.py 4`.
 
 **What moves the NPS** (the load-bearing jumps, up and down):
 
