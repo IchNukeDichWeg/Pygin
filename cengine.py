@@ -494,8 +494,9 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (set_tt_bits is abi 9) -- bump together with csearch_abi.
-        if lib.csearch_abi() < 9:
+        # (root_exclude_* / MultiPV is abi 10) -- bump together with
+        # csearch_abi.
+        if lib.csearch_abi() < 10:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
