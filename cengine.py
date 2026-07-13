@@ -404,12 +404,12 @@ class Engine:
     # 22 = v46 exact.
     TT_BITS = 23
 
-    # Simplify-at-500 re-test (user request; v30's use_simplify A/B'd -14 at
-    # threshold 200 -- traded into DRAWN endings; a decisive >=500cp gate
-    # removes that failure mode). Pushed via csearch_set_simplify; threshold
-    # 0 (off) = v36 eval exactly. CAVEAT: adjudicated matches barely see it
-    # (WDL calls wins near this same band) -- its verdict harness is
-    # MATCH_ADJUDICATE=0 matches and/or odds-vs-Stockfish conversion play.
+    # Simplify-at-500 (v30's use_simplify ported: material-diff bonus past a
+    # >=500cp gate; v30's 200cp version A/B'd -14, traded into drawn endings).
+    # DROPPED FROM THE QUEUE 2026-07-13 -- not on the final_improvements plan
+    # (it survives only as one cheap screen inside FI-14, low-prio). Kept as a
+    # dormant off-by-default toggle: threshold 0 (off) = v36 eval exactly,
+    # node-exact, so it costs nothing to leave. Pushed via csearch_set_simplify.
     USE_SIMPLIFY = False
     SIMPLIFY_THRESHOLD = 500
 
