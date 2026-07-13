@@ -452,6 +452,20 @@ class Engine:
     # shipped v47 clock behavior (the CE_LADDER never sees a single-reply root).
     SINGLE_REPLY_INSTANT = False
 
+    # FI-09(b): easy-move fast-out -- when the best root move leads the 2nd-best
+    # by >= EASY_MARGIN_CP for EASY_ITERS consecutive iterations (depth >=
+    # EASY_MIN_DEPTH), bank the clock by capping the soft-stop at EASY_FRAC.
+    # Scales INTO the U-06 machinery (min with the stability frac), never a new
+    # clock path. second-best = cs_search_root's out_second, an UPPER bound on
+    # the true 2nd-best (failing scouts fail soft), so the test is conservative
+    # -- it never over-claims dominance. False = shipped v47 clock (only affects
+    # TIMED search; the fixed-depth CE_LADDER is untouched).
+    EASY_MOVE = False
+    EASY_MARGIN_CP = 250
+    EASY_ITERS = 3
+    EASY_MIN_DEPTH = 8
+    EASY_FRAC = 0.35
+
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
     ASPIRATION_DELTA = 30                    # centipawns; C scores are cp too
@@ -507,9 +521,9 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (root_exclude_* / MultiPV is abi 10) -- bump together with
-        # csearch_abi.
-        if lib.csearch_abi() < 10:
+        # (cs_search_root's out_second / FI-09b is abi 11) -- bump together
+        # with csearch_abi.
+        if lib.csearch_abi() < 11:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -557,7 +571,7 @@ class Engine:
         lib.cs_search_root.argtypes = BOARD_ARGS + [ctypes.c_int] * 3 + \
             [ctypes.c_uint32, ctypes.c_int, ctypes.POINTER(B),
              ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
-             ctypes.POINTER(ctypes.c_int)]
+             ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)]
         lib.cs_search_root.restype = ctypes.c_uint32
         lib.cs_board_key.argtypes = BOARD_ARGS
         lib.cs_board_key.restype = B
@@ -932,13 +946,14 @@ class Engine:
         stab_prev = None
         stab_iters = 0
         stab_changed = False
+        easy_iters = 0                       # FI-09(b): easy-move streak
 
         for depth in range(1, min(max_depth, self.MAX_DEPTH_CAP) + 1):
             if self._abort:
                 break        # host stop() landed before/between C calls; the
                              # C-side g_abort covers stops DURING a cs_search_
                              # root call -- this covers the gaps around them
-            key, score, nodes, done, aborted = self._root_aspiration(
+            key, score, nodes, done, aborted, second = self._root_aspiration(
                 bargs, depth, best_key, prev_score, hmc)
             if aborted:
                 # v30 partial-iteration rule: the PV move is searched first,
@@ -957,6 +972,13 @@ class Engine:
                     stab_iters = 0
                     stab_changed = True
             stab_prev = key
+            # FI-09(b): easy-move streak -- best clearly ahead of the field
+            if (self.EASY_MOVE and depth >= self.EASY_MIN_DEPTH
+                    and second > -CS_INF
+                    and score - second >= self.EASY_MARGIN_CP):
+                easy_iters += 1
+            else:
+                easy_iters = 0
             best_key = key
             prev_score = score
             reached_depth = depth
@@ -985,6 +1007,10 @@ class Engine:
                         soft = self.SOFT_STOP_UNSTABLE_FRAC
                     elif stab_iters >= self.SOFT_STOP_STABLE_ITERS:
                         soft = self.SOFT_STOP_STABLE_FRAC
+                # FI-09(b): a dominant move banks even more of the clock
+                if (soft is not None and self.EASY_MOVE
+                        and easy_iters >= self.EASY_ITERS):
+                    soft = min(soft, self.EASY_FRAC)
                 if elapsed >= time_limit or (
                         soft is not None and elapsed >= soft * time_limit):
                     break
@@ -1037,7 +1063,7 @@ class Engine:
                     # FB-23a: the re-search died before finishing its first
                     # move -- play the move a completed call PROVED >= beta
                     # this depth, not the previous iteration's refuted one.
-                    return (provisional, res[1], res[2], 1, True)
+                    return (provisional, res[1], res[2], 1, True, res[5])
                 return res
             score = res[1]
             if score <= alpha:               # fail low: widen downward
@@ -1061,11 +1087,13 @@ class Engine:
         score = ctypes.c_int(0)
         done = ctypes.c_int(0)
         aborted = ctypes.c_int(0)
+        second = ctypes.c_int(0)             # FI-09(b): 2nd-best root score
         key = self._lib.cs_search_root(
             *bargs, depth, alpha, beta, prev_key, hmc,
             ctypes.byref(nodes), ctypes.byref(score),
-            ctypes.byref(done), ctypes.byref(aborted))
-        return key, score.value, nodes.value, done.value, aborted.value
+            ctypes.byref(done), ctypes.byref(aborted), ctypes.byref(second))
+        return (key, score.value, nodes.value, done.value, aborted.value,
+                second.value)
 
     def _extract_pv(self, board, first_move, max_len):
         """PV-01: the exact line the search actually proved (the C triangular
