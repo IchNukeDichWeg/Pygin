@@ -133,3 +133,7 @@ dist/
 # are auto-ignored. (User request 2026-07-11.)
 /*/
 !/Old Engine/
+
+# worst-move troll wrappers (local only)
+worse_cengine.py
+worstfish.py
