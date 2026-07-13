@@ -686,14 +686,13 @@ class Engine:
         self.on_final = None
         self.search_log = []
         # P-35/U-06 knobs, same semantics as engine.py.
-        # TIME-POLICY TUNE ARMED (nineteenth 50+0.20 campaign, A/B vs Old
-        # Engine/47): base soft-stop 0.55 -> 0.60 -- normal-stability moves may
-        # start one more ID iteration later into the budget (a touch more depth
-        # per move). Only affects TIMED search, so the fixed-depth CE_LADDER is
-        # unchanged. 0.55 = v47. (cuci.go() also stomps this to 0.55 per move --
-        # FA-02; if 0.60 ships, update that stomp too. The match.py A/B uses
-        # cengine directly, so it sees 0.60.)
-        self.soft_stop_frac = 0.60
+        # TIME-POLICY TUNE RESOLVED 2026-07-13 (nineteenth 50+0.20 campaign vs
+        # Old Engine/47): base soft-stop 0.60 read +1.29 +/-6.8 (norm +2.79,
+        # SPRT LLR -0.009 dead-null) -> REVERTED to 0.55 (v47). Base-frac tuning
+        # is exhausted (P-35 +38 -> U-06 +11 -> X-09 null -> 0.60 null); the
+        # remaining time-policy idea is U-06 refinement (score-drop panic /
+        # second-move gap = FI-22 stage 3), not the base fraction.
+        self.soft_stop_frac = 0.55
         self.use_stability_time = True
         # (reentrancy lock is CLASS-level -- see _SEARCH_LOCK below)
 
