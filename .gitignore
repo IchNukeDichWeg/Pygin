@@ -142,6 +142,7 @@ coinflip.py
 # opening-book output (local only; make_book.py itself is tracked)
 book.bin
 book.log
+patch_book_startpos.py
 # downloaded / converted books -- large binaries, keep out of git
 *.db3
 *.obs.db3.zip
