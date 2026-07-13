@@ -2110,6 +2110,24 @@ static uint16_t g_ro_mv[256];              /* 15-bit move keys */
 static uint64_t g_ro_cnt[256];             /* their subtree node counts */
 void set_root_order(int v) { g_root_order = v; g_ro_key = 0; g_ro_n = 0; }
 
+/* MultiPV support (host-level feature, abi 10): a root-move EXCLUSION list.
+ * The driver finds line 1 normally, then re-searches with the better lines'
+ * first moves excluded to get lines 2..k -- the warm TT makes those
+ * re-searches cheap. Empty list (the default, and everything match play
+ * ever uses) is a single `if (g_rx_n)` that never fires: node-exact, no
+ * toggle needed. While exclusions are active the root TT store and the
+ * FI-06 recorder are suppressed -- a 2nd-best result must never clobber
+ * the root's real TT entry (P-14's warm asset / prev-iteration ordering).
+ * Helpers see the same list (process-wide, set between searches): correct
+ * for MultiPV, inert otherwise. */
+static uint16_t g_rx[16];
+static int g_rx_n = 0;
+void root_exclude_clear(void) { g_rx_n = 0; }
+void root_exclude_add(int key15)
+{
+    if (g_rx_n < 16) g_rx[g_rx_n++] = (uint16_t)(key15 & 0x7FFF);
+}
+
 static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
                                int flag, int ev)
 {
@@ -2801,11 +2819,22 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
     }
 
     int best = -CS_INF;
-    uint32_t best_move = moves[0];
-    int record = g_root_order && !g_is_helper;     /* FI-06 bookkeeping */
+    uint32_t best_move = 0;                        /* first SEARCHED move below
+                                                    * (== moves[0] unless the
+                                                    * MultiPV list excludes it) */
+    int record = g_root_order && !g_is_helper && !g_rx_n;  /* FI-06 bookkeeping */
     uint16_t l_mv[256]; uint64_t l_cnt[256];       /* FI-06: this iteration */
     for (int i = 0; i < n; i++) {
         uint32_t m = moves[i];
+        if (g_rx_n) {                              /* MultiPV: skip excluded */
+            int k15 = m & 0x7FFF, skip = 0;
+            for (int j = 0; j < g_rx_n; j++)
+                if (g_rx[j] == k15) { skip = 1; break; }
+            if (skip) continue;
+        }
+        if (!best_move) best_move = m;             /* abort-fallback = first
+                                                    * searched (= v46 exact
+                                                    * when no exclusions) */
         uint64_t nodes0 = record ? g_nodes : 0;
         int victim = (m >> MV_SHIFT_VICTIM) & 7;
         int mover  = (m >> MV_SHIFT_MOVER) & 7;
@@ -2854,8 +2883,11 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
         memcpy(g_ro_cnt, l_cnt, (size_t)*out_done * sizeof(uint64_t));
     }
 
-    /* Root TT store (feeds the next iteration's ordering + the PV walk). */
-    if (g_use_tt && g_tt && !g_abort && !(g_is_helper && g_hstop) && *out_done > 0) {
+    /* Root TT store (feeds the next iteration's ordering + the PV walk).
+     * Suppressed during a MultiPV exclusion search: a 2nd-best line's move
+     * must never replace the root's true best in the persistent table. */
+    if (g_use_tt && g_tt && !g_abort && !(g_is_helper && g_hstop)
+            && *out_done > 0 && !g_rx_n) {
         int flag = (best <= alpha_orig) ? TT_UPPER
                  : (best >= beta)       ? TT_LOWER : TT_EXACT;
         tt_store_raw(&g_tt[key & TT_MASK], key, best,
@@ -3010,7 +3042,8 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted);
 }
 
-int csearch_abi(void) { return 9; }   /* 9 = set_tt_bits (FI-10 Hash);
+int csearch_abi(void) { return 10; }  /* 10 = root_exclude_* (MultiPV);
+                                       * 9 = set_tt_bits (FI-10 Hash);
                                        * 8 = set_score_hygiene (CB-01);
                                        * 7 = set_node_limit + cs_seldepth +
                                        * cs_hashfull (FB-09/FI-13);
