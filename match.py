@@ -11,6 +11,10 @@ Usage::
     python3 match.py [engine1.py] [engine2.py] [num_positions] [offset] [--workers N] [--engine-smp N]
                      [--book1 book.bin] [--book2 book.bin]   (per-engine opening books; book testing)
                      [--start-pos True]                       (all games from startpos, ignore the FEN file)
+                     [--sprt]                                 (SPRT early-stop: quit as soon as the result is
+                                                               provably good/bad instead of playing the whole
+                                                               budget -- default [0, 4] normalized, a=b=0.05;
+                                                               override --sprt-elo0/elo1/alpha/beta/model)
 
 Arguments (all optional, fall back to CONFIG section below):
   engine1.py      path to engine 1 (default: ENGINE_1)
@@ -153,6 +157,17 @@ import chess.pgn
 
 from battle_worker import engine_worker
 from time_manager import calculate_move_time
+
+# Optional SPRT early-stop (--sprt). Imported defensively so a broken/missing
+# sprt.py can never take a match down -- the feature just goes unavailable.
+try:
+    import sprt as _sprt
+except Exception:
+    _sprt = None
+
+# Don't evaluate the SPRT on a tiny sample (the LLR is meaningless with a
+# handful of pairs and could early-stop on noise); wait for this many pairs.
+SPRT_MIN_PAIRS = 200
 
 
 # ====================================================================== #
@@ -644,7 +659,8 @@ def write_game_block(fh, pgn_fh, g, e1, mode_cfg, tc_label, tpm):
             pass
 
 
-def write_summary(fh, e1, e2, tally, total_games, start_t, stopped, n_workers=None):
+def write_summary(fh, e1, e2, tally, total_games, start_t, stopped,
+                  n_workers=None, sprt_info=None):
     lines = ["", "=== BATTLE SUMMARY ===",
              f"Engine 1: {e1.name}", f"Engine 2: {e2.name}",
              f"Games scored: {tally['completed']:,}  (of {total_games:,} scheduled)",
@@ -682,7 +698,26 @@ def write_summary(fh, e1, e2, tally, total_games, start_t, stopped, n_workers=No
         lines.append(f"Game pair ratio (WW+WD)/(LL+LD): {ratio_s}")
         nelo = normalized_elo(penta)
         lines.append(f"Normalized Elo: {f'{nelo:+.2f}' if nelo is not None else 'n/a'}")
-    if stopped:
+    si = sprt_info
+    sprt_decided = bool(si and si.get("decided"))
+    if si and si.get("cfg") and si.get("llr") is not None:
+        cfg = si["cfg"]
+        lines.append(
+            f"SPRT[{cfg['elo0']:g}, {cfg['elo1']:g}] {cfg['model']} "
+            f"(alpha={cfg['alpha']:g} beta={cfg['beta']:g}): "
+            f"LLR {si['llr']:+.3f} in [{si['lower']:+.3f}, {si['upper']:+.3f}]")
+        dec = si.get("decided")
+        if dec == "H1":
+            lines.append("SPRT verdict: ACCEPT H1 -- change is good (ship); "
+                         "stopped early.")
+        elif dec == "H0":
+            lines.append("SPRT verdict: ACCEPT H0 -- change rejected; "
+                         "stopped early.")
+        else:
+            lines.append("SPRT verdict: no decision within the game budget "
+                         "(inconclusive -- read the Elo / ptnml above).")
+    # An SPRT stop is a CONCLUSION, not an interruption, so don't mislabel it.
+    if stopped and not sprt_decided:
         lines.append("(match was stopped before completion)")
     if start_t is not None:
         elapsed = time.time() - start_t
@@ -790,6 +825,12 @@ def _worker_loop(in_q, out_q, engine1_path, engine2_path, mode_cfg,
         e2.kill()
 
 
+class _SPRTStop(Exception):
+    """Raised from the result loop when the SPRT crosses a bound, so the match
+    unwinds through the SAME finally-block shutdown that Ctrl-C uses (workers
+    told to stop, joined, terminated). A conclusion, not an interruption."""
+
+
 # ====================================================================== #
 # Main
 # ====================================================================== #
@@ -827,6 +868,16 @@ def main():
     argv = sys.argv[1:]
     workers_str = None
     positional = []
+    # SPRT early-stop config (opt-in via --sprt). Defaults = Option 2: a
+    # [0, 4] normalized test, alpha=beta=0.05. Wider than Fishtest's standard
+    # [0, 2] on purpose -- this repo's A/Bs are usually clearly-good or
+    # clearly-null, and [0, 4] decides both far sooner within a 5000-pair
+    # budget (a clear winner stops ~halfway; nothing ever runs longer than
+    # the budget). Override any bound with --sprt-elo0/elo1/alpha/beta/model.
+    sprt_enable = False
+    sprt_elo0, sprt_elo1 = 0.0, 4.0
+    sprt_alpha, sprt_beta = 0.05, 0.05
+    sprt_model = "normalized"
     i = 0
     while i < len(argv):
         if argv[i] == "--workers" and i + 1 < len(argv):
@@ -872,6 +923,24 @@ def main():
             i += 2
         elif argv[i] == "--fen-file" and i + 1 < len(argv):
             FEN_FILE = argv[i + 1]
+            i += 2
+        elif argv[i] == "--sprt":
+            sprt_enable = True
+            i += 1
+        elif argv[i] == "--sprt-elo0" and i + 1 < len(argv):
+            sprt_elo0 = float(argv[i + 1])
+            i += 2
+        elif argv[i] == "--sprt-elo1" and i + 1 < len(argv):
+            sprt_elo1 = float(argv[i + 1])
+            i += 2
+        elif argv[i] == "--sprt-alpha" and i + 1 < len(argv):
+            sprt_alpha = float(argv[i + 1])
+            i += 2
+        elif argv[i] == "--sprt-beta" and i + 1 < len(argv):
+            sprt_beta = float(argv[i + 1])
+            i += 2
+        elif argv[i] == "--sprt-model" and i + 1 < len(argv):
+            sprt_model = argv[i + 1].strip().lower()
             i += 2
         else:
             positional.append(argv[i])
@@ -971,6 +1040,25 @@ def main():
     start_t = time.time()
     stopped = False
 
+    # SPRT early-stop state. cfg is None unless --sprt was passed AND sprt.py
+    # imported; then the result loop evaluates the LLR as pairs complete and
+    # stops the match the moment a bound is crossed.
+    if sprt_enable and _sprt is None:
+        print("!! --sprt requested but sprt.py could not be imported -- "
+              "running the full game budget without early-stop.")
+    sprt_cfg = None
+    if sprt_enable and _sprt is not None:
+        sprt_cfg = {"elo0": sprt_elo0, "elo1": sprt_elo1,
+                    "alpha": sprt_alpha, "beta": sprt_beta, "model": sprt_model}
+        lo, hi = _sprt.bounds(sprt_alpha, sprt_beta)
+        print(f"SPRT early-stop ON: [{sprt_elo0:g}, {sprt_elo1:g}] "
+              f"{sprt_model}, alpha={sprt_alpha:g} beta={sprt_beta:g} "
+              f"(bounds {lo:+.3f} .. {hi:+.3f}); stops as soon as a bound is "
+              f"crossed, else runs the full {total_games:,}-game budget.")
+    # llr/lower/upper/decision refreshed per completed pair; last_n throttles.
+    sprt_state = {"cfg": sprt_cfg, "llr": None, "lower": None, "upper": None,
+                  "decision": None, "decided": None, "last_n": 0}
+
     # Build schedule of (round_no, fen, white_is_e1) tuples once -- same in both
     # paths so each position is played once with E1 White and once with E2 White.
     schedule = []
@@ -1009,6 +1097,7 @@ def main():
             eta_state["first_done"] = played
         since = played - eta_state["first_done"]
         dt = time.time() - eta_state["first_t"]
+        rate = None
         if since > 0 and dt > 0:
             rate = since / dt                       # games per second
             eta_s = _fmt_dur(remaining / rate)
@@ -1016,8 +1105,33 @@ def main():
         else:
             eta_s, rate_s = "estimating...", "--"
         pct = 100 * played / total_games if total_games else 0
-        return (f">> {played}/{total_games} ({pct:.2f}%)  |  "
+        base = (f">> {played}/{total_games} ({pct:.2f}%)  |  "
                 f"elapsed {_fmt_dur(elapsed)}  |  ETA {eta_s}  |  {rate_s}")
+        # --- SPRT segment: current LLR + a projected early-stop ETA ---------
+        # The ETA above is the WORST case (full game budget); the SPRT will
+        # usually stop sooner. LLR grows ~linearly in pairs while the score
+        # holds, so pairs-to-bound ~= n_pairs * bound / LLR -- a rough live
+        # projection of when (and which way) the test will decide.
+        if sprt_state["cfg"] is not None and sprt_state["llr"] is not None:
+            L = sprt_state["llr"]
+            lo_b, hi_b = sprt_state["lower"], sprt_state["upper"]
+            seg = f"  |  SPRT LLR {L:+.2f} [{lo_b:+.2f}, {hi_b:+.2f}]"
+            if sprt_state["decided"]:
+                seg += " -> DECIDED"
+            else:
+                n_pairs = sum(tally["penta"].values())
+                if abs(L) > 1e-6 and n_pairs > 0:
+                    bound = hi_b if L > 0 else lo_b
+                    proj_pairs = n_pairs * bound / L      # same sign as L
+                    side = "accept" if L > 0 else "reject"
+                    if n_pairs < proj_pairs <= total_games / 2:
+                        rem_games = max(0.0, proj_pairs * 2 - played)
+                        proj = (_fmt_dur(rem_games / rate) if rate else "…")
+                        seg += f" -> ~{proj} to {side}"
+                    else:
+                        seg += " -> runs to budget"
+            base += seg
+        return base
 
     def _draw_status():
         """Redraw the pinned status line (TTY only)."""
@@ -1082,6 +1196,31 @@ def main():
             return
         tally["penta"][pentanomial_bucket(s0, s1)] += 1
 
+    def _update_sprt():
+        """Refresh the SPRT LLR from the live pentanomial counts and latch a
+        decision when a bound is crossed. Cheap (a 5-bucket GSPRT), re-run
+        only when a NEW pair has completed and we're past the minimum sample.
+        Any stats hiccup is swallowed -- the match must never die on it."""
+        cfg = sprt_state["cfg"]
+        if cfg is None or sprt_state["decided"] is not None:
+            return
+        n_pairs = sum(tally["penta"].values())
+        if n_pairs < SPRT_MIN_PAIRS or n_pairs == sprt_state["last_n"]:
+            return
+        sprt_state["last_n"] = n_pairs
+        counts = [tally["penta"][k] for k in range(5)]
+        try:
+            r = _sprt.evaluate(counts, cfg["elo0"], cfg["elo1"],
+                               cfg["model"], cfg["alpha"], cfg["beta"])
+        except Exception:
+            return
+        sprt_state["llr"] = r["llr"]
+        sprt_state["lower"] = r["lower"]
+        sprt_state["upper"] = r["upper"]
+        sprt_state["decision"] = r["decision"]
+        if r["decision"] != "continue":
+            sprt_state["decided"] = r["decision"]
+
     def handle_result(g, round_no):
         """Buffer game for in-order file write + update tally + print one line."""
         log_buf["pending"][g["round"]] = g
@@ -1113,6 +1252,7 @@ def main():
             run = "no scored games yet"
         # The counter increments monotonically with completion order, so it
         # never jumps even when games finish out of schedule order in parallel.
+        _update_sprt()             # refresh LLR before the status line redraws
         played = tally["completed"] + tally["errors"]
         line = (f"[{played:>4}/{total_games}] "
                 f"{wn}(W) vs {bn}(B)  ->  {g['result']:>7}  {tag:<34} | {run}")
@@ -1180,6 +1320,13 @@ def main():
                                 "collection (summary so far still written)")
                 g = _unpack_result(r, e1, e2)
                 handle_result(g, g["round"])
+                if sprt_state["decided"]:
+                    # Leave via exception so the finally-block shutdown runs
+                    # and feeder.join() (which would block on a still-filling
+                    # in_q) is skipped -- the feeder is a daemon, it dies with
+                    # the process. (At >32767 games the feeder can fill the
+                    # queue before shutdown; not a concern at A/B budgets.)
+                    raise _SPRTStop()
             feeder.join()
         else:
             e1.start()
@@ -1189,7 +1336,18 @@ def main():
                 black = e2 if white_is_e1 else e1
                 g = play_game(round_no, fen, white, black, e1, mode_cfg)
                 handle_result(g, round_no)
+                if sprt_state["decided"]:
+                    raise _SPRTStop()
 
+    except _SPRTStop:
+        stopped = True
+        _clear_status()
+        dec = sprt_state["decided"]
+        verdict = ("ACCEPT H1 -- change is good (ship)" if dec == "H1"
+                   else "ACCEPT H0 -- change rejected")
+        print(f"\n[SPRT decided: {verdict} @ "
+              f"{sum(tally['penta'].values()):,} pairs, "
+              f"LLR {sprt_state['llr']:+.3f} -- stopping early]")
     except KeyboardInterrupt:
         stopped = True
         _clear_status()
@@ -1202,7 +1360,7 @@ def main():
         _clear_status()        # drop the pinned ETA line before the summary
         _flush_log_remainder()  # emit any games still held by the reorder buffer
         write_summary(fh, e1, e2, tally, total_games, start_t, stopped,
-                      n_workers=n_workers)
+                      n_workers=n_workers, sprt_info=sprt_state)
         if parallel:
             # Tell each worker to shut down, then join.
             if in_q is not None:
