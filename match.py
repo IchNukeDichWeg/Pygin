@@ -165,9 +165,10 @@ try:
 except Exception:
     _sprt = None
 
-# Don't evaluate the SPRT on a tiny sample (the LLR is meaningless with a
-# handful of pairs and could early-stop on noise); wait for this many pairs.
-SPRT_MIN_PAIRS = 200
+# Don't evaluate the SPRT on a tiny sample (the LLR is noisy early and could
+# early-stop on a fluke); wait for this many PAIRS first. 500 pairs = 1000
+# games -- a decision can't fire before then.
+SPRT_MIN_PAIRS = 500
 
 
 # ====================================================================== #
