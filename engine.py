@@ -639,6 +639,17 @@ benchmark" below.
   +2.26) both read null and are dormant. ``TT_BITS=21`` restores v45's
   48 MB table. Snapshotted as Old Engine/46.
 
+* **v46 -> v47 (2026-07-13, lives in ``cengine.py``): TT to 23 bits (192 MB)
+  + MultiPV.** The 96->192 MB increment: A/B vs v46 at the full 223-worker
+  load **+3.16 +/-6.8 over 10,000 games @ 50+0.20 (50.46%%, ptnml
+  258/1211/2018/1208/305, normalized +6.54)** -- net-positive so DRAM
+  bandwidth had not bitten, shipped on the same monotonic-low-risk rule.
+  The diminishing +5.94 -> +3.16 (halving per doubling) closes memory
+  scaling -- 24 bits would be sub-noise. v47 also adds **MultiPV** (UCI
+  spin 1..5, a C root-move exclusion list, abi 10; node-exact when off, so
+  =1 and all match play are byte-identical). ``TT_BITS=22`` restores v46.
+  Snapshotted as Old Engine/47.
+
 Cross-version benchmark
 -----------------------
 Sweep (2026-07-02): 24 versions x 8 positions x 6 timed 5s runs (1152 searches).

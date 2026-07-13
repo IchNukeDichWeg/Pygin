@@ -125,10 +125,10 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # quiet developing moves flip between depths without being a regression.
 # Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
 CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3"
-CE_LADDER = {                     # depth -> (nodes, score)  [v46: TT_BITS=22 (96 MB) -- re-measured 2026-07-13; diverges from the 21-bit v45 ladder at d8+ (more slots = fewer index collisions)]
+CE_LADDER = {                     # depth -> (nodes, score)  [v47: TT_BITS=23 (192 MB) -- re-measured 2026-07-13; diverges from the 22-bit v46 ladder at d6+ (more slots = fewer index collisions)]
     1: (102, 126), 2: (187, 126), 3: (741, 126), 4: (995, 122),
-    5: (8599, 73), 6: (16266, 63), 7: (41036, 74), 8: (77323, 72),
-    9: (123966, 75), 10: (286075, 49), 11: (659878, 80), 12: (1116494, 57),
+    5: (8599, 73), 6: (16263, 63), 7: (41029, 74), 8: (77314, 72),
+    9: (123944, 75), 10: (286607, 49), 11: (563714, 71), 12: (832777, 64),
 }
 if os.path.exists("csearch.c"):
     try:
@@ -136,12 +136,14 @@ if os.path.exists("csearch.c"):
         # Outpost: NULL, OFF (A/B vs v37 2026-07-10: -0.90 +/-6.8) -- the
         # default already reproduces v37; belt-and-braces pin.
         cengine.Engine.USE_OUTPOST = False
-        # TT_BITS: CONFIRMED into v46 at 22 (96 MB, +5.94 +/-6.8 @10k vs Old
-        # Engine/45 -- a borderline-positive on the monotonic-low-risk memory
-        # lever; the CE_LADDER above is the 22-bit measurement). 23 is ARMED
-        # as the eighteenth campaign, so pin the reference back to the v46
-        # default 22 -- 22 = v46 exact.
-        cengine.Engine.TT_BITS = 22
+        # TT_BITS: CONFIRMED into v47 at 23 (192 MB, +3.16 +/-6.8 @10k vs Old
+        # Engine/46 -- the 96->192 MB increment; monotonic-low-risk lever,
+        # net-positive at full load, RAM free). Diminishing (+5.94 then
+        # +3.16) so memory-scaling CLOSES here -- no 24 probe. The CE_LADDER
+        # above is the 23-bit measurement; 23 is the shipped default so this
+        # pin is belt-and-braces. MultiPV (abi 10) is node-exact off (empty
+        # exclusion list), so it needs no pin.
+        cengine.Engine.TT_BITS = 23
         # CB-01 correctness batch: CONFIRMED into v38 (+1.36 null KEPT as
         # correctness), default ON -- part of the pinned reference search.
         # CB-02 correctness batch #4: CONFIRMED into v41 (-2.88 null KEPT
