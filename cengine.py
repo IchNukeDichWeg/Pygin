@@ -36,8 +36,17 @@ snapshotted Old Engine/46. v47 = v46 with the TT at 23 bits (192 MB):
 96->192 MB increment, net-positive at full load (same monotonic-low-risk
 ship); the diminishing +5.94->+3.16 CLOSES memory-scaling (no 24 probe).
 v47 also carries MultiPV (UCI spin 1..5, node-exact off). Snapshotted Old
-Engine/47. Armed candidate: (none pinned -- memory vein done; next is a
-search/NPS feature, see final_improvements.md queue).
+Engine/47. Since v47: the time-policy vein closed on two more nulls --
+soft_stop_frac 0.60 (+1.29 +/-6.8, nineteenth campaign) and the FI-09 bundle
+(SINGLE_REPLY_INSTANT + EASY_MOVE, +0.69 +/-6.8, twentieth campaign vs Old
+Engine/47) -- both reverted to their v47 defaults, dormant. Armed candidate:
+FI-23 history-driven quiet pruning (``HIST_PRUNE = 256`` -- the LMP
+count-based prune's signal sibling, skips quiets the existing butterfly
+history has punished below -threshold; C setter ``set_hist_prune``, no ABI
+change; retuned down from the spec's suggested 8192, which measured as a
+dead gate -- see the class-attr comment for the engagement sweep), queued as
+the twenty-first 50+0.20 campaign vs Old Engine/47. 0 = v47 node-exact. See
+final_improvements.md queue.
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -447,11 +456,14 @@ class Engine:
     PV_EXACT = True
 
     # FI-09(a): a forced move (exactly one legal reply) is played instantly,
-    # banking the whole time budget -- no tree change, pure clock save. Armed
-    # together with FI-09(b) (easy-move fast-out) as one bundle A/B; False =
-    # shipped v47 clock behavior (the CE_LADDER never sees a single-reply root).
-    # FI-09 BUNDLE ARMED 2026-07-13 (twentieth 50+0.20 campaign vs Old Engine/47).
-    SINGLE_REPLY_INSTANT = True
+    # banking the whole time budget -- no tree change, pure clock save.
+    # FI-09 BUNDLE RESOLVED 2026-07-14 (twentieth 50+0.20 campaign vs Old
+    # Engine/47, 10k games): +0.69 +/-6.8 (norm +1.49, SPRT LLR -0.314, no
+    # decision within budget) -- dead-null, single-reply/easy-move roots are too
+    # rare at this TC to move the needle. REVERTED to False (shipped v47 clock
+    # behavior; the CE_LADDER never saw a single-reply root either way). Kept as
+    # dormant infrastructure, not deleted -- do-not-retry at this TC.
+    SINGLE_REPLY_INSTANT = False
 
     # FI-09(b): easy-move fast-out -- when the best root move leads the 2nd-best
     # by >= EASY_MARGIN_CP for EASY_ITERS consecutive iterations (depth >=
@@ -459,13 +471,34 @@ class Engine:
     # Scales INTO the U-06 machinery (min with the stability frac), never a new
     # clock path. second-best = cs_search_root's out_second, an UPPER bound on
     # the true 2nd-best (failing scouts fail soft), so the test is conservative
-    # -- it never over-claims dominance. False = shipped v47 clock (only affects
-    # TIMED search; the fixed-depth CE_LADDER is untouched).
-    EASY_MOVE = True                         # FI-09 BUNDLE ARMED (see above)
+    # -- it never over-claims dominance. NULL alongside FI-09(a) in the same
+    # bundle A/B (see above) -- REVERTED to False 2026-07-14 (shipped v47 clock;
+    # only affects TIMED search, the fixed-depth CE_LADDER is untouched).
+    EASY_MOVE = False                        # FI-09 BUNDLE NULL, do-not-retry
     EASY_MARGIN_CP = 250
     EASY_ITERS = 3
     EASY_MIN_DEPTH = 8
     EASY_FRAC = 0.35
+
+    # FI-23: history-driven quiet pruning -- LMP prunes by move-count only;
+    # this adds the signal sibling, skipping quiets the EXISTING butterfly
+    # history has consistently punished (same shallow/non-PV/not-in-check/
+    # non-check-giving gate as LMP/FI-18). Reuses g_history read-only, no new
+    # bookkeeping or ABI change. 0 = off = v47 node-exact; threshold is a
+    # magnitude on the +-HIST_MAX=16384 scale (final_improvements.md's own
+    # pseudocode suggested HIST_MAX/2=8192 as a starting point). RETUNED
+    # 2026-07-14, P-33 lesson (verify engagement before spending a campaign
+    # on a config that barely runs): swept 8192/4096/2048/1024/768/512/384/256
+    # against 3 positions at depth 15 -- 8192 through 512 were BIT-IDENTICAL
+    # to off (dead gate, single-move history rarely swings that hard within
+    # one search since cs_search_begin zeroes g_history every move); first
+    # engagement at 384-256. 256 changes nodes/score on 2/3 probe positions
+    # and passed a 4-tactic spot-check (back-rank mate, hanging-queen capture,
+    # a fork reply -- all identical best move on vs off at depth 12).
+    # FI-23 ARMED 2026-07-14 at 256 (twenty-first 50+0.20 campaign vs Old
+    # Engine/47) -- NOT the spec's 8192, which would have been a disguised
+    # no-op A/B.
+    HIST_PRUNE = 256
 
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
@@ -558,7 +591,7 @@ class Engine:
               self.SCORE_HYGIENE, self.EP_FILTER, self.QS_EVICT_MAX,
               self.CB2, self.CANTWIN, self.NULL_VERIFY, self.LMR_HIST,
               self.TT_EVAL_SHARPEN, self.SEE_PRUNE, self.ROOT_ORDER,
-              self.TT_BITS, self.TT_KEEP_WARM)
+              self.TT_BITS, self.TT_KEEP_WARM, self.HIST_PRUNE)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -595,6 +628,7 @@ class Engine:
         lib.set_root_order(1 if self.ROOT_ORDER else 0)        # FI-06
         lib.set_null_verify(1 if self.NULL_VERIFY else 0)      # NV-01
         lib.set_tt_bits(int(self.TT_BITS))                     # FI-10 (Hash)
+        lib.set_hist_prune(int(self.HIST_PRUNE))               # FI-23
         # FB-06: cengine is AUTHORITATIVE over every behavioral C toggle --
         # a stale .so or drifted compiled-in default must not silently change
         # the search. Values = the confirmed ledger state (all defaults, so
