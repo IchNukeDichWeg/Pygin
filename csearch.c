@@ -2128,6 +2128,20 @@ void root_exclude_add(int key15)
     if (g_rx_n < 16) g_rx[g_rx_n++] = (uint16_t)(key15 & 0x7FFF);
 }
 
+/* FI-23 (armed for the twenty-first 50+0.20 A/B, vs Old Engine/47):
+ * history-driven quiet pruning. LMP prunes by COUNT only; this adds the
+ * signal sibling -- skip quiets the EXISTING butterfly history has
+ * consistently punished (below -threshold), at the same shallow/non-PV/
+ * not-in-check/non-check-giving nodes LMP and SEE-prune already gate.
+ * Reuses g_history read-only, no new bookkeeping. 0 = off = v47 node-exact;
+ * threshold is a magnitude on the +-HIST_MAX=16384 scale. Armed at 256, NOT
+ * the spec's suggested HIST_MAX/2=8192 -- that measured as a dead gate (see
+ * cengine.py's HIST_PRUNE comment for the engagement sweep); g_history is
+ * zeroed every move by cs_search_begin, so within one move's search it
+ * rarely swings past a few hundred. */
+static int g_hist_prune = 0;
+void set_hist_prune(int v) { g_hist_prune = v; }
+
 static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
                                int flag, int ev)
 {
@@ -2583,6 +2597,11 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         if (g_see_prune && badcap && !is_pv && !in_chk && !gives_check
                 && depth <= 3 && i >= 3 && best > -MATE_THRESH)
             continue;         /* FI-18: skip late losing captures near leaf */
+
+        if (g_hist_prune && quiet && !is_pv && !in_chk && !gives_check
+                && depth <= 3 && best > -MATE_THRESH
+                && g_history[color][fromto] < -g_hist_prune)
+            continue;         /* FI-23: skip history-punished quiets */
 
         if (g_prune && quiet && !is_pv && !in_chk && !gives_check && depth == 1
                 && best > -MATE_THRESH

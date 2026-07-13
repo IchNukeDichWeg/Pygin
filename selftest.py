@@ -218,6 +218,16 @@ if os.path.exists("csearch.c"):
             ce._lib.set_see_prune(0)
         except AttributeError:
             pass                       # pre-FI-18 csearch.so
+        # FI-23 history-driven quiet pruning is ARMED (HIST_PRUNE=8192,
+        # queued as the twenty-first 50+0.20 campaign vs Old Engine/47) --
+        # unlike the dormant toggles above this one's class default is ON,
+        # so this pin is load-bearing, not belt-and-braces: without it the
+        # ladder would measure the experimental config instead of the v47
+        # reference.
+        try:
+            ce._lib.set_hist_prune(0)
+        except AttributeError:
+            pass                       # pre-FI-23 csearch.so
         # FI-06 root-move ordering is DORMANT (+2.26 null @10k vs Old
         # Engine/45, 2026-07-13 -- positive lean but CI covers zero, not
         # correctness); the default already reproduces v45, so this pin is
