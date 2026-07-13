@@ -450,7 +450,8 @@ class Engine:
     # banking the whole time budget -- no tree change, pure clock save. Armed
     # together with FI-09(b) (easy-move fast-out) as one bundle A/B; False =
     # shipped v47 clock behavior (the CE_LADDER never sees a single-reply root).
-    SINGLE_REPLY_INSTANT = False
+    # FI-09 BUNDLE ARMED 2026-07-13 (twentieth 50+0.20 campaign vs Old Engine/47).
+    SINGLE_REPLY_INSTANT = True
 
     # FI-09(b): easy-move fast-out -- when the best root move leads the 2nd-best
     # by >= EASY_MARGIN_CP for EASY_ITERS consecutive iterations (depth >=
@@ -460,7 +461,7 @@ class Engine:
     # the true 2nd-best (failing scouts fail soft), so the test is conservative
     # -- it never over-claims dominance. False = shipped v47 clock (only affects
     # TIMED search; the fixed-depth CE_LADDER is untouched).
-    EASY_MOVE = False
+    EASY_MOVE = True                         # FI-09 BUNDLE ARMED (see above)
     EASY_MARGIN_CP = 250
     EASY_ITERS = 3
     EASY_MIN_DEPTH = 8
