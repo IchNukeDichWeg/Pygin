@@ -31,8 +31,13 @@ TT doubled to 22 bits (96 MB): +5.94 +/-6.8 vs Old Engine/45 @10k 50+0.20
 (50.85%, pair ratio 1.10, norm +12.33) -- a borderline-positive (CI just
 touches zero) shipped on the monotonic-low-risk rationale, motivated by a
 hashfull capture showing a single deep search fills half the 48 MB table;
-snapshotted Old Engine/46. Armed candidate: TT_BITS = 23 (192 MB, A/B vs
-Old Engine/46 PENDING -- does bigger compound or does bandwidth bite?).
+snapshotted Old Engine/46. v47 = v46 with the TT at 23 bits (192 MB):
++3.16 +/-6.8 vs Old Engine/46 @10k 50+0.20 (50.46%, norm +6.54) -- the
+96->192 MB increment, net-positive at full load (same monotonic-low-risk
+ship); the diminishing +5.94->+3.16 CLOSES memory-scaling (no 24 probe).
+v47 also carries MultiPV (UCI spin 1..5, node-exact off). Snapshotted Old
+Engine/47. Armed candidate: (none pinned -- memory vein done; next is a
+search/NPS feature, see final_improvements.md queue).
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -396,12 +401,14 @@ class Engine:
     # cannot worsen decision quality at fixed nodes and its only downside
     # (DRAM bandwidth) was exercised at the full 223-worker load = net +).
     # Motivated by the user's hashfull capture (a single deep search fills
-    # ~half the 48 MB table). ARMED at 23 (192 MB) as the eighteenth
-    # campaign, A/B vs Old Engine/46 PENDING -- does going bigger compound,
-    # or does 223 engines striding a 4x footprint start losing to memory
-    # bandwidth? RAM fine (223 x 192 MB ~= 43 GB, server has 184 free). The
-    # UCI Hash option (cuci) maps MB onto this; a resize wipes the table.
-    # 22 = v46 exact.
+    # ~half the 48 MB table). CONFIRMED into v47 at 23 (192 MB, eighteenth
+    # campaign, A/B vs Old Engine/46 2026-07-13: +3.16 +/-6.8 @10k, 50.46%,
+    # pair ratio 1.03, norm +6.54 -- the 96->192 MB increment; net-positive
+    # at full load = bandwidth hasn't bitten, so same monotonic-low-risk
+    # ship as v46). MEMORY-SCALING CLOSES HERE: +5.94 then +3.16 is halving
+    # each doubling, so 24 (384 MB) would gain ~+1.5 = sub-noise; not worth
+    # a campaign (RAM would still fit at ~85 GB). The UCI Hash option (cuci)
+    # maps MB onto this; a resize wipes the table. 22 = v46 exact.
     TT_BITS = 23
 
     # Simplify-at-500 (v30's use_simplify ported: material-diff bonus past a
