@@ -78,8 +78,97 @@ else
 fi
 CC="$(command -v clang || command -v cc || command -v gcc)"
 
-# --- 3. stockfish (optional: absolute-strength / odds testing) -------- #
-ensure stockfish stockfish || true
+# --- 3. stockfish (absolute-strength / odds testing) ------------------ #
+# The VM's yardstick/adjudication Stockfish should be the CURRENT DEV build
+# (latest official-stockfish master), not the old STABLE release a package
+# manager ships. On Linux we compare the installed build's commit against
+# master and rebuild from source only when it has actually moved on (so a
+# same-day re-run of setup.sh doesn't rebuild); other OSes just ensure some
+# stockfish exists (manage the dev build there via `brew install --HEAD`).
+
+sf_installed_hash() {          # commit hash embedded in the installed SF, or ""
+    have stockfish || { echo ""; return 0; }
+    # id name is like "Stockfish dev-20260713-1a2b3c4d" (dev) or "... 18" (stable)
+    local idn
+    idn="$(printf 'uci\nquit\n' | stockfish 2>/dev/null \
+           | sed -n 's/^id name //p' | head -1 || true)"
+    case "$idn" in
+        *dev-*) echo "${idn##*-}" ;;   # last '-' field = the short commit hash
+        *)      echo "" ;;             # a stable release => "not the dev build"
+    esac
+}
+
+sf_latest_master_sha() {       # full 40-char SHA of official-stockfish master, or ""
+    have curl || { echo ""; return 0; }
+    curl -fsSL "https://api.github.com/repos/official-stockfish/Stockfish/commits/master" \
+        2>/dev/null | sed -n 's/.*"sha": *"\([0-9a-f]\{40\}\)".*/\1/p' | head -1 || true
+}
+
+sf_pick_arch() {               # best Stockfish ARCH for THIS x86 CPU (avoid SIGILL)
+    local f=/proc/cpuinfo
+    if   grep -qm1 'avx512'  "$f" 2>/dev/null; then echo x86-64-avx512
+    elif grep -qm1 'bmi2'    "$f" 2>/dev/null && grep -qm1 'avx2' "$f" 2>/dev/null; then echo x86-64-bmi2
+    elif grep -qm1 'avx2'    "$f" 2>/dev/null; then echo x86-64-avx2
+    elif grep -qm1 'sse4_1'  "$f" 2>/dev/null && grep -qm1 'popcnt' "$f" 2>/dev/null; then echo x86-64-sse41-popcnt
+    else echo x86-64
+    fi
+}
+
+build_stockfish_dev() {        # clone master, PGO-build (net embedded), install on PATH
+    have git || ensure git git
+    have git || { echo "   (git missing -- cannot build dev stockfish)"; return 1; }
+    local tmp arch jobs
+    tmp="$(mktemp -d)" || return 1
+    echo "   cloning official-stockfish master ..."
+    if ! git clone --depth 1 "https://github.com/official-stockfish/Stockfish" \
+            "$tmp/SF" >/dev/null 2>&1; then
+        echo "   (clone failed)"; rm -rf "$tmp"; return 1
+    fi
+    arch="$(sf_pick_arch)"
+    jobs="$(nproc 2>/dev/null || echo 4)"
+    echo "   building (ARCH=$arch, -j$jobs, profile-build; downloads+embeds the NNUE net) ..."
+    if ! ( cd "$tmp/SF/src" && make -j"$jobs" profile-build ARCH="$arch" >/dev/null 2>&1 ); then
+        echo "   (build failed for ARCH=$arch)"; rm -rf "$tmp"; return 1
+    fi
+    if cp "$tmp/SF/src/stockfish" /usr/local/bin/stockfish 2>/dev/null \
+       || sudo cp "$tmp/SF/src/stockfish" /usr/local/bin/stockfish; then
+        rm -rf "$tmp"; hash -r 2>/dev/null || true; return 0
+    fi
+    echo "   (install to /usr/local/bin failed)"; rm -rf "$tmp"; return 1
+}
+
+if [ "$OS" = "Linux" ]; then
+    echo "-> Stockfish: ensuring the current dev (master) build ..."
+    _sf_have="$(sf_installed_hash)"
+    _sf_master="$(sf_latest_master_sha)"
+    _sf_current="no"
+    if [ -n "$_sf_have" ] && [ -n "$_sf_master" ]; then
+        case "$_sf_master" in "$_sf_have"*) _sf_current="yes" ;; esac
+    fi
+    if [ "$_sf_current" = "yes" ]; then
+        echo "   up to date (dev build $_sf_have matches master)"
+    elif [ -z "$_sf_master" ]; then
+        echo "   (could not reach GitHub to check master -- leaving stockfish as-is)"
+        have stockfish || ensure stockfish stockfish || true
+    else
+        echo "   installed=${_sf_have:-none/stable}, master=$(printf '%.8s' "$_sf_master") -> building dev ..."
+        if build_stockfish_dev; then
+            echo "   now: $(printf 'uci\nquit\n' | stockfish 2>/dev/null | sed -n 's/^id name //p' | head -1)"
+        else
+            echo "   dev build failed -- falling back to the package stockfish"
+            have stockfish || ensure stockfish stockfish || true
+        fi
+    fi
+else
+    # macOS/other: keep whatever's here; the dev build is a Homebrew concern
+    #   brew uninstall stockfish; brew install --HEAD stockfish
+    if [ -z "$(sf_installed_hash)" ]; then
+        ensure stockfish stockfish || true
+        echo "   (for the DEV build on macOS: brew uninstall stockfish; brew install --HEAD stockfish)"
+    else
+        echo "-> Stockfish: dev build present ($(sf_installed_hash))"
+    fi
+fi
 
 # --- 4. python deps --------------------------------------------------- #
 have pip3 || ensure pip3 python3-pip
