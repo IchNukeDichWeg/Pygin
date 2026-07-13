@@ -12,6 +12,9 @@ same budgets the internal harnesses use.
 
 Options:
     Threads       (spin 1..64, default 1)  -- Lazy-SMP helper threads in C
+    MultiPV       (spin 1..5, default 1)   -- k best lines per go (analysis;
+                                              =1 is byte-identical to before,
+                                              match play never sets it)
     OwnBook       (check, default true)    -- engine's own Polyglot book
     UseTB         (check, default false)   -- root Lichess-Syzygy probe
                                               (difficulty-gated; needs network)
@@ -46,8 +49,10 @@ def out(line):
     print(line, flush=True)
 
 
-def info_line(rec, white_to_move, engine):
-    """Map a cengine record dict (White-POV, v30 mate convention) to UCI."""
+def info_line(rec, white_to_move, engine, multipv=None):
+    """Map a cengine record dict (White-POV, v30 mate convention) to UCI.
+    `multipv` (int) tags the line for MultiPV consumers; None = untagged
+    (identical to the pre-MultiPV output)."""
     score = rec.get("score", 0)
     stm = score if white_to_move else -score
     if abs(stm) >= engine.MATE_THRESHOLD:
@@ -63,6 +68,7 @@ def info_line(rec, white_to_move, engine):
     booky = bool(rec.get("book") or rec.get("tb"))   # FB-25: no search ran;
     parts = [f"info depth {rec.get('depth', 0)}",     # the C counters still
              f"seldepth {0 if booky else engine._lib.cs_seldepth()}",  # hold
+             *([f"multipv {multipv}"] if multipv is not None else []),
              f"score {score_str}",                    # the PREVIOUS search's
              f"nodes {nodes}", f"nps {int(nodes * 1000 / t)}",  # values
              f"hashfull {0 if booky else engine._lib.cs_hashfull()}",
@@ -99,6 +105,53 @@ def run_bench(engine, depth=11):
         out(f"{total} nodes {int(total / dt)} nps")
     finally:
         engine.use_book, engine.use_tb = saved
+
+
+def _emit_multipv(engine, board, best_mv, k, budget, white_to_move, stop_evt):
+    """MultiPV k>1 (analysis feature, never active in match play): line 1 is
+    the just-finished main search; lines 2..k re-search with the better
+    lines' first moves EXCLUDED at the C root (root_exclude_*, abi 10) --
+    the warm TT makes those re-searches cheap. Emits one
+    `info ... multipv i ...` line per line, best first, BEFORE bestmove.
+    The engine's last_* snapshot is restored afterwards so PM-01's premove
+    certification (and the GUI-facing state) still see line 1."""
+    import time as _t
+    lib = engine._lib
+    depth = engine.last_depth or 1
+    lines = [(engine.last_score, engine.last_pv, depth,
+              engine.nodes_searched, 0.0)]
+    excl = [best_mv]
+    sv = (engine.last_score, engine.last_pv, engine.last_depth,
+          engine.nodes_searched, engine.use_book, engine.on_depth,
+          engine.on_final)
+    engine.use_book = False              # book replies would shadow line 2+
+    engine.on_depth = engine.on_final = None   # no per-depth spam for extras
+    per = max(0.05, min(1.0, (budget or 1.0) * 0.25))  # per extra line
+    try:
+        for _ in range(k - 1):
+            if stop_evt.is_set() or engine._abort:
+                break
+            lib.root_exclude_clear()
+            for m in excl:               # 15-bit key: from|to<<6|promo<<12
+                lib.root_exclude_add(m.from_square | (m.to_square << 6)
+                                     | ((m.promotion or 0) << 12))
+            t0 = _t.perf_counter()
+            mv = engine.get_best_move_timed(board, per, depth)
+            dt = _t.perf_counter() - t0
+            if mv is None:               # fewer legal moves than k
+                break
+            lines.append((engine.last_score, engine.last_pv,
+                          engine.last_depth, engine.nodes_searched, dt))
+            excl.append(mv)
+    finally:
+        lib.root_exclude_clear()         # NEVER leak exclusions into play
+        (engine.last_score, engine.last_pv, engine.last_depth,
+         engine.nodes_searched, engine.use_book, engine.on_depth,
+         engine.on_final) = sv
+    for i, (score, pv, d, nodes, dt) in enumerate(lines, 1):
+        rec = {"depth": d, "score": score, "pv": pv, "nodes": nodes,
+               "time_ms": max(1, int(dt * 1000))}
+        out(info_line(rec, white_to_move, engine, multipv=i))
 
 
 # --------------------------------------------------------------------------- #
@@ -327,6 +380,14 @@ def main():
                 else:
                     mv = engine.get_best_move_timed(search_board, budget,
                                                     max_depth)
+                # MultiPV: extra lines only when the option is >1 AND a real
+                # search ran (book/tb hits and stopped searches are skipped);
+                # =1 is byte-identical to the pre-MultiPV path.
+                if (getattr(engine, "multipv", 1) > 1 and mv is not None
+                        and engine.last_pv and not stop_evt.is_set()
+                        and not engine._abort):
+                    _emit_multipv(engine, search_board, mv, engine.multipv,
+                                  budget, white_to_move, stop_evt)
             except Exception as ex:
                 print(f"cuci: search error: {ex!r}", file=sys.stderr)
             finally:
@@ -390,6 +451,7 @@ def main():
                 out(f"id name {NAME}")
                 out(f"id author {AUTHOR}")
                 out("option name Threads type spin default 1 min 1 max 256")
+                out("option name MultiPV type spin default 1 min 1 max 5")
                 out("option name OwnBook type check default true")
                 out("option name UseTB type check default false")
                 # P-26 tuning knobs (chess-tuning-tools): defaults = shipped
@@ -445,6 +507,8 @@ def main():
                     value = ""
                 if name == "threads":
                     engine.smp_workers = max(1, min(256, int(value)))
+                elif name == "multipv":
+                    engine.multipv = max(1, min(5, int(value)))
                 elif name == "ownbook":
                     engine.use_book = value.lower() == "true"
                 elif name == "usetb":
