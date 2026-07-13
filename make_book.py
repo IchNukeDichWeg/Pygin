@@ -31,7 +31,7 @@ import chess.polyglot
 OUR_SIDE = "white"         # default for --side
 OUR_TOPN = 5               # candidates kept on our move (branching)  --our-topn
 THEIR_TOPN = 2             # replies kept on the opponent's move     --their-topn
-MARGIN_CP = 40             # drop kept moves this far below best (cp)  --margin
+MARGIN_CP = 50             # drop kept moves this far below best (cp)  --margin
 MAX_PLIES = 12             # book depth in half-moves                 --plies
 SEED_FIRST_MOVES = ["a3", "Nc3", "b3", "c3", "c4", "d3", "d4",
                     "e3", "e4", "f3", "f4", "g3", "Nf3", "h3", "h4"]
