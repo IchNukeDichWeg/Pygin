@@ -294,7 +294,7 @@ python3 odds.py
 | `perft.py` | Move-generator correctness gate vs the published Perft results (`--deep` for the full 1.5 B-node suite). |
 | `profile_bench.py` | Real NPS + a per-function bottleneck breakdown in one pass (`--graph` for an HTML report). |
 | `nps_history_bench.py` | NPS / depth benchmark across the `Old Engine/` snapshots. |
-| `cbench.py` | NPS benchmark for the C search core. |
+| `benchmark.py` | NPS / depth / nodes benchmark for the C search core (`--type`, `--threads`, `--hash`, averaged over `--runs`). |
 | `cuci.py` | UCI host for the C search core (`Threads` / `OwnBook` / `UseTB` options). |
 | `fit_wdl_model.py` | Fit the win/draw/loss model from match logs (`wdl_model.json`; `wdl.py` reads it). |
 

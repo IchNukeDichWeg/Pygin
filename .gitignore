@@ -114,6 +114,16 @@ final_improvements.md
 # attic/: dead code archived out of the root (was individually gitignored before the move)
 attic/
 
+# --- decluttered from GitHub 2026-07-13 (kept LOCAL, untracked): one-off A/B
+# artifacts, orphaned tuner configs, a superseded bench, alt opening books, and
+# an accidental nested project dump inside snapshot 12. (.bin already covered
+# by *.bin above.) ---
+engine_qtt_off.py
+cbench.py
+tune_config.json
+tune_smoke.json
+/Old Engine/12/everything/
+
 # PyInstaller output (build_exe.sh); build/ is ignored above
 dist/
 
