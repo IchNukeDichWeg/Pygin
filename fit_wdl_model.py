@@ -130,9 +130,11 @@ NEAR_EQUAL_BASES = {
     # cengine-vs-engine 29-1-0 gate log (a ~700-Elo-gap pairing that would
     # otherwise qualify once "cengine" is listed).
     "cengine", "engine31", "engine32",  "engine33", "engine34", "engine35",
-    "engine36", "engine37", "engine38", "engine39", "engine_qtt_off"
-    # Python era (kept for reference; re-add ONLY for a deliberate
-    # mixed-era fit): "engine", "engine24" ... "engine30".
+    "engine36", "engine37", "engine38", "engine39", "engine_qtt_off", 
+    "engine40", "engine41", "engine42", "engine43", "engine44", "engine45",
+    "engine46", "engine47", "engine48", "engine49", "engine50", "engine51", 
+    "engine52", "engine53", "engine54", "engine55", "engine56", "engine57", 
+    "engine58", "engine59", "engine60", 
 }
 
 # Specific Stockfish match logs where Stockfish was configured within a few
