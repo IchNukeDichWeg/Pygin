@@ -17,6 +17,7 @@ import argparse
 import os
 import signal
 import struct
+import sys
 import time
 import multiprocessing as mp
 
@@ -120,6 +121,43 @@ def _write_polyglot(path, entries):
 
 
 # ---- reporting helpers -----------------------------------------------------
+def _fmt_dur(secs):
+    """Seconds -> '1h 03m' / '4m 12s' / '9s' (same shape as match.py's)."""
+    secs = max(0, int(secs))
+    h, rem = divmod(secs, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}h {m:02d}m"
+    if m:
+        return f"{m}m {s:02d}s"
+    return f"{s}s"
+
+
+def _project_run_eta(ply_hist, next_size, next_side):
+    """Rough seconds-to-finish for the REMAINING plies. Uses the per-side
+    wall-time-per-position and the per-side frontier growth measured so far
+    (white plies fan by ~our-topn, black by ~their-topn), then walks the
+    alternating tree out to MAX_PLIES. It's a live version of the by-hand
+    projection -- back-loaded and speculative early, so it's shown with a '~'.
+    Returns None until there's at least one white AND one black ply to learn
+    both multipliers from."""
+    ms, mult = {}, {}
+    for s in (chess.WHITE, chess.BLACK):
+        pos = sum(sz for sd, sz, _, _ in ply_hist if sd == s)
+        wall = sum(t for sd, _, t, _ in ply_hist if sd == s)
+        ratios = [nxt / sz for sd, sz, _, nxt in ply_hist if sd == s and sz]
+        if not pos or not ratios:
+            return None
+        ms[s] = wall / pos
+        mult[s] = sum(ratios) / len(ratios)
+    total, f, s = 0.0, float(next_size), next_side
+    for _ in range(len(ply_hist), MAX_PLIES):
+        total += f * ms[s]
+        f *= mult[s]
+        s = not s
+    return total
+
+
 def _white_pov_cp(board, cp):
     """A python-chess relative score is from the side-to-move's POV; flip it to
     White's POV so evals read consistently (+ = good for White)."""
@@ -205,7 +243,25 @@ def build(args):
     entries = []
     best_by_key = {}                 # key -> (best_uci, best_cp) for the report
     total_pos = 0
+    ply_hist = []                    # (side, size, wall_s, next_size) per ply
     t0 = time.perf_counter()
+    # match.py-style pinned status line: a live line redrawn in place (TTY only,
+    # so nohup/tee logs don't get \r spam -- they still get the per-ply lines).
+    _is_tty = sys.stdout.isatty()
+    shown = [False]
+
+    def _draw(text):
+        if _is_tty:
+            sys.stdout.write("\r\033[K" + text)
+            sys.stdout.flush()
+            shown[0] = True
+
+    def _clear():
+        if _is_tty and shown[0]:
+            sys.stdout.write("\r\033[K")
+            sys.stdout.flush()
+            shown[0] = False
+
     # Ctrl+C = save early. A SIGINT just sets _ABORT (below); we poll imap with
     # a 1s timeout so the main thread is never blocked uninterruptibly, then
     # break and fall through to the write with whatever's collected. Doing it
@@ -224,8 +280,12 @@ def build(args):
                             if chess.polyglot.zobrist_hash(chess.Board(f)) not in seen]
                 if not frontier or _ABORT:
                     break
+                cur_side = chess.Board(frontier[0]).turn   # uniform within a ply
+                tot = len(frontier)
+                # whole-run ETA, fixed at ply start; the live line counts it down
+                run_eta = _project_run_eta(ply_hist, tot, cur_side)
                 t_ply = time.perf_counter()
-                nxt, done = [], 0
+                nxt, done, last_draw = [], 0, 0.0
                 it = pool.imap_unordered(_analyse, frontier)
                 while True:
                     try:
@@ -253,15 +313,35 @@ def build(args):
                         child = board.copy()
                         child.push(move)
                         nxt.append(child.fen())
+                    now = time.perf_counter()
+                    if _is_tty and now - last_draw > 0.2:      # throttle redraws
+                        last_draw = now
+                        el = now - t_ply
+                        r = done / el if el > 0 else 0.0
+                        seg = [f">> ply {ply+1}/{MAX_PLIES}  {done}/{tot} "
+                               f"({100*done/tot:.0f}%)",
+                               f"elapsed {_fmt_dur(now - t0)}",
+                               f"ply ETA {_fmt_dur((tot - done) / r) if r else '--'}"]
+                        if run_eta is not None:
+                            seg.append(f"run ETA ~{_fmt_dur(max(0, run_eta - el))}")
+                        seg += [f"{r:.1f} pos/s", f"{len(entries)} entries"]
+                        _draw("  |  ".join(seg))
                     if _ABORT:
                         break
                 dt = time.perf_counter() - t_ply
                 total_pos += done
                 rate = done / dt if dt > 0 else 0.0
+                next_size = len(set(nxt))
+                if done:
+                    ply_hist.append((cur_side, done, dt, next_size))
+                _clear()
+                # per-ply summary line (also the ETA the log shows under nohup)
+                rem = _project_run_eta(ply_hist, next_size, not cur_side)
+                eta_txt = f" | run ETA ~{_fmt_dur(rem)}" if rem is not None else ""
                 print(f"ply {ply+1:>2}/{MAX_PLIES}: {done:>6} positions | "
                       f"{dt:7.1f}s | {rate:6.1f} pos/s | "
                       f"{1000*dt/done if done else 0:6.0f} ms/pos | "
-                      f"{len(entries):>7} entries")
+                      f"{len(entries):>7} entries{eta_txt}")
                 if _ABORT:
                     print(f"[Ctrl+C] stopping early after ply {ply+1} -- "
                           f"saving {len(entries)} entries to {args.out}...")
@@ -269,6 +349,7 @@ def build(args):
                     break
                 frontier = nxt
     finally:
+        _clear()
         signal.signal(signal.SIGINT, prev)   # restore default handler
 
     _write_polyglot(args.out, entries)
