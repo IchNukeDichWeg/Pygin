@@ -15,6 +15,7 @@ building is embarrassingly parallel across positions.
 
 import argparse
 import os
+import signal
 import struct
 import time
 import multiprocessing as mp
@@ -29,11 +30,11 @@ import chess.polyglot
 #   that side and their-topn on the opponent.
 OUR_SIDE = "white"         # default for --side
 OUR_TOPN = 5               # candidates kept on our move (branching)  --our-topn
-THEIR_TOPN = 1             # replies kept on the opponent's move     --their-topn
+THEIR_TOPN = 2             # replies kept on the opponent's move     --their-topn
 MARGIN_CP = 40             # drop kept moves this far below best (cp)  --margin
-MAX_PLIES = 10             # book depth in half-moves                 --plies
-SEED_FIRST_MOVES = ["Nc3", "b3", "c3", "c4", "d3", "d4",
-                    "e3", "e4", "f3", "f4", "g3", "Nf3"]
+MAX_PLIES = 12             # book depth in half-moves                 --plies
+SEED_FIRST_MOVES = ["a3", "Nc3", "b3", "c3", "c4", "d3", "d4",
+                    "e3", "e4", "f3", "f4", "g3", "Nf3", "h3", "h4"]
 
 _SIDES = {"white": chess.WHITE, "black": chess.BLACK, "both": None}
 
@@ -41,12 +42,30 @@ _SIDES = {"white": chess.WHITE, "black": chess.BLACK, "both": None}
 _ENGINE = None
 _CFG = {}
 
+# ---- Ctrl+C save-early flag (main process only) ----------------------------
+_ABORT = False
+
+
+def _request_stop(signum, frame):
+    """SIGINT handler for the MAIN process: just flip the flag. The build loop
+    polls it and saves what it has -- no exception is thrown into the Pool."""
+    global _ABORT
+    if not _ABORT:
+        print("\n[Ctrl+C] finishing in-flight results, then saving early "
+              "(Ctrl+C again to abort hard)...", flush=True)
+    _ABORT = True
+
 
 def _worker_init(sf_path, threads, hash_mb, depth, side, our_topn,
                  their_topn, margin):
     # NOTE: the branching knobs MUST be passed in here, not read from module
     # globals -- macOS spawns workers by re-importing this module, so a global
     # mutated in __main__ never reaches them. _CFG is per-process, so it does.
+    # Workers IGNORE SIGINT so Ctrl+C is handled only by the main process --
+    # otherwise the signal races into the pool and terminate() deadlocks on the
+    # outstanding imap tasks. terminate() then SIGTERMs the workers cleanly, and
+    # each worker's Stockfish exits on its own when its stdin pipe closes.
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
     global _ENGINE, _CFG
     _ENGINE = chess.engine.SimpleEngine.popen_uci(sf_path)
     _ENGINE.configure({"Threads": threads, "Hash": hash_mb})
@@ -187,42 +206,70 @@ def build(args):
     best_by_key = {}                 # key -> (best_uci, best_cp) for the report
     total_pos = 0
     t0 = time.perf_counter()
-    with mp.Pool(args.workers, _worker_init,
-                 (args.stockfish, args.threads, args.hash, args.depth,
-                  side, args.our_topn, args.their_topn, args.margin)) as pool:
-        for ply in range(MAX_PLIES):
-            frontier = [f for f in frontier
-                        if chess.polyglot.zobrist_hash(chess.Board(f)) not in seen]
-            if not frontier:
-                break
-            t_ply = time.perf_counter()
-            nxt, done = [], 0
-            for fen, kept in pool.imap_unordered(_analyse, frontier):
-                board = chess.Board(fen)
-                key = chess.polyglot.zobrist_hash(board)
-                if key in seen:
-                    continue
-                seen.add(key)
-                done += 1
-                if kept:
-                    best_by_key[key] = (kept[0][0], kept[0][1])
-                best = kept[0][1] if kept else 0
-                for uci, cp in kept:
-                    move = chess.Move.from_uci(uci)
-                    # ponytail: weight = linear falloff from best, best->1000
-                    weight = max(1, min(65535, 1000 - (best - cp)))
-                    entries.append((key, _encode_move(board, move), weight))
-                    child = board.copy()
-                    child.push(move)
-                    nxt.append(child.fen())
-            dt = time.perf_counter() - t_ply
-            total_pos += done
-            rate = done / dt if dt > 0 else 0.0
-            print(f"ply {ply+1:>2}/{MAX_PLIES}: {done:>6} positions | "
-                  f"{dt:7.1f}s | {rate:6.1f} pos/s | "
-                  f"{1000*dt/done if done else 0:6.0f} ms/pos | "
-                  f"{len(entries):>7} entries")
-            frontier = nxt
+    # Ctrl+C = save early. A SIGINT just sets _ABORT (below); we poll imap with
+    # a 1s timeout so the main thread is never blocked uninterruptibly, then
+    # break and fall through to the write with whatever's collected. Doing it
+    # via a flag (not by letting KeyboardInterrupt tear through the Pool's
+    # internals) is what avoids the terminate()-deadlock. Every entry is a
+    # complete (key, move, weight), so a partial run is a valid, shallower book.
+    global _ABORT
+    _ABORT = False
+    prev = signal.signal(signal.SIGINT, _request_stop)
+    try:
+        with mp.Pool(args.workers, _worker_init,
+                     (args.stockfish, args.threads, args.hash, args.depth,
+                      side, args.our_topn, args.their_topn, args.margin)) as pool:
+            for ply in range(MAX_PLIES):
+                frontier = [f for f in frontier
+                            if chess.polyglot.zobrist_hash(chess.Board(f)) not in seen]
+                if not frontier or _ABORT:
+                    break
+                t_ply = time.perf_counter()
+                nxt, done = [], 0
+                it = pool.imap_unordered(_analyse, frontier)
+                while True:
+                    try:
+                        fen, kept = it.next(timeout=1.0)
+                    except mp.TimeoutError:
+                        if _ABORT:
+                            break
+                        continue
+                    except StopIteration:
+                        break
+                    board = chess.Board(fen)
+                    key = chess.polyglot.zobrist_hash(board)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    done += 1
+                    if kept:
+                        best_by_key[key] = (kept[0][0], kept[0][1])
+                    best = kept[0][1] if kept else 0
+                    for uci, cp in kept:
+                        move = chess.Move.from_uci(uci)
+                        # ponytail: weight = linear falloff from best, best->1000
+                        weight = max(1, min(65535, 1000 - (best - cp)))
+                        entries.append((key, _encode_move(board, move), weight))
+                        child = board.copy()
+                        child.push(move)
+                        nxt.append(child.fen())
+                    if _ABORT:
+                        break
+                dt = time.perf_counter() - t_ply
+                total_pos += done
+                rate = done / dt if dt > 0 else 0.0
+                print(f"ply {ply+1:>2}/{MAX_PLIES}: {done:>6} positions | "
+                      f"{dt:7.1f}s | {rate:6.1f} pos/s | "
+                      f"{1000*dt/done if done else 0:6.0f} ms/pos | "
+                      f"{len(entries):>7} entries")
+                if _ABORT:
+                    print(f"[Ctrl+C] stopping early after ply {ply+1} -- "
+                          f"saving {len(entries)} entries to {args.out}...")
+                    pool.terminate()
+                    break
+                frontier = nxt
+    finally:
+        signal.signal(signal.SIGINT, prev)   # restore default handler
 
     _write_polyglot(args.out, entries)
 
@@ -269,9 +316,9 @@ def _selftest():
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--stockfish", default="stockfish")
-    p.add_argument("--out", default="book.bin")
-    p.add_argument("--depth", type=int, default=20)
+    p.add_argument("--stockfish", default="stockfish", help="path to stockfish binary")
+    p.add_argument("--out", default="book.bin", help="output Polyglot .bin path")
+    p.add_argument("--depth", type=int, default=22, help="search depth for each position")
     p.add_argument("--workers", type=int, default=8,
                    help="parallel SF instances (NOT cores)")
     p.add_argument("--threads", type=int, default=28,
