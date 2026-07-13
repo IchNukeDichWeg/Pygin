@@ -103,8 +103,8 @@ def engine_worker(conn, engine_path, use_book, pv_uci=False, book_path=None):
     while True:
         try:
             msg = conn.recv()
-        except (EOFError, KeyboardInterrupt):
-            break
+        except (EOFError, KeyboardInterrupt, BrokenPipeError, OSError):
+            break                        # parent closed the pipe -- exit quietly
         if not msg or msg[0] == "quit":
             break
         if msg[0] != "move":
@@ -154,7 +154,7 @@ def engine_worker(conn, engine_path, use_book, pv_uci=False, book_path=None):
                 score_cp = None
 
             pv = str(getattr(engine, "last_pv", "") or "")
-            conn.send(("ok", {
+            result = ("ok", {
                 "uci": move.uci() if move is not None else None,
                 "depth": depth,
                 "nodes": nodes,
@@ -164,9 +164,17 @@ def engine_worker(conn, engine_path, use_book, pv_uci=False, book_path=None):
                 "mate": mate,
                 "pv": pv,
                 "info": _format_info(depth, score_cp, mate, nodes, nps, time_ms),
-            }))
+            })
         except Exception:
-            conn.send(("error", traceback.format_exc()))
+            result = ("error", traceback.format_exc())
+        # Send OUTSIDE the compute try: a real engine error becomes an ("error",
+        # ...) row, but a dead pipe (parent ended the match / SPRT early-stop /
+        # Ctrl-C) must exit quietly -- NOT get caught above and re-sent, which
+        # cascaded into the BrokenPipeError double-traceback spam.
+        try:
+            conn.send(result)
+        except (BrokenPipeError, OSError, EOFError):
+            break
 
     # #13: shut down the engine's lazy SMP pool (if it created one) so its
     # shared-memory segment is unlinked rather than leaked when this worker exits.
