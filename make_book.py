@@ -352,6 +352,25 @@ def build(args):
         _clear()
         signal.signal(signal.SIGINT, prev)   # restore default handler
 
+    # startpos -> the seed first moves. The seeds are White's move-1 repertoire,
+    # played BEFORE the frontier, so without this the book has no entry for the
+    # initial position and an engine is "out of book" on move 1. Weight each by
+    # the White-POV eval of the position it leads to (best reply already scored
+    # in ply 1), so e4/d4 outweigh a3/h3 -- same falloff-from-best scheme as the
+    # rest of the book.
+    root = chess.Board()
+    root_key = chess.polyglot.zobrist_hash(root)
+    seed_evals = []
+    for sb in seed_boards:
+        k = chess.polyglot.zobrist_hash(sb)
+        cp_w = _white_pov_cp(sb, best_by_key[k][1]) if k in best_by_key else 0
+        seed_evals.append((sb.move_stack[0], cp_w))
+    if seed_evals:
+        best_w = max(cp for _, cp in seed_evals)
+        for mv, cp in seed_evals:
+            weight = max(1, min(65535, 1000 - (best_w - cp)))
+            entries.append((root_key, _encode_move(root, mv), weight))
+
     _write_polyglot(args.out, entries)
 
     # --- summary / perf report ---
