@@ -138,6 +138,7 @@ dist/
 worse_cengine.py
 worstfish.py
 coinflip.py
+drawfish.py
 
 # opening-book output (local only; make_book.py itself is tracked)
 book.bin
