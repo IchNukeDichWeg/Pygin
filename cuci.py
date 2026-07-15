@@ -40,6 +40,39 @@ import chess
 
 import cengine
 from time_manager import calculate_move_time
+import math
+
+# WDL model -- fitted by fit_wdl_model.py (coefficients from wdl_model.json). Converts pygin's own
+# cp score + game phase into Stockfish-style win/draw/loss permille, so the extension's WDL readout
+# works on pygin too. Local-only (pygin is not in the public fork). Refit via fit_wdl_model.py; do
+# not hand-edit the coefficients.
+_WDL_AS = [-87.97208294703432, 380.03545014378545, -477.7206161483052, 283.39847152616846]
+_WDL_BS = [84.62507602853566, 19.692294277658906, -120.28047404451574, 117.98128155910875]
+_WDL_PHASE_MAX = 24
+_WDL_PHASE_CLAMP_MIN = 6
+
+def _win_rate_model(cp, phase):
+    """P(win) for a score of `cp` centipawns (side-to-move POV) at game `phase` (0..24)."""
+    cp = max(-1000, min(1000, cp))                       # match the fit's cp clamp
+    m = min(max(phase, _WDL_PHASE_CLAMP_MIN), _WDL_PHASE_MAX) / _WDL_PHASE_MAX
+    a = ((_WDL_AS[0] * m + _WDL_AS[1]) * m + _WDL_AS[2]) * m + _WDL_AS[3]
+    b = ((_WDL_BS[0] * m + _WDL_BS[1]) * m + _WDL_BS[2]) * m + _WDL_BS[3]
+    z = max(-60.0, min(60.0, (a - cp) / b))              # guard math.exp overflow
+    return 1.0 / (1.0 + math.exp(z))
+
+def _wdl_permille(cp, phase):
+    """(win, draw, loss) permille ints summing to 1000 -- Stockfish's UCI `wdl` convention."""
+    w = _win_rate_model(cp, phase)
+    l = _win_rate_model(-cp, phase)
+    d = max(0.0, 1.0 - w - l)
+    vals = [round(w * 1000), round(d * 1000), round(l * 1000)]
+    vals[vals.index(max(vals))] += 1000 - sum(vals)       # rounding can miss 1000 by +/-1
+    return vals[0], vals[1], vals[2]
+
+def _board_phase(board):
+    """Mirror engine.py's tapered-eval phase: N/B weight 1, R weight 2, Q weight 4, capped at 24."""
+    return min(24, bin(board.knights).count("1") + bin(board.bishops).count("1")
+               + bin(board.rooks).count("1") * 2 + bin(board.queens).count("1") * 4)
 
 NAME = "Pygin C-core"   # version-neutral: the old "Pygin C31" went stale
 AUTHOR = "Sam"          # the moment v32 landed; snapshots carry the number
@@ -49,10 +82,11 @@ def out(line):
     print(line, flush=True)
 
 
-def info_line(rec, white_to_move, engine, multipv=None):
+def info_line(rec, white_to_move, engine, multipv=None, board=None):
     """Map a cengine record dict (White-POV, v30 mate convention) to UCI.
     `multipv` (int) tags the line for MultiPV consumers; None = untagged
-    (identical to the pre-MultiPV output)."""
+    (identical to the pre-MultiPV output). `board` (when given) adds a `wdl`
+    token from the fitted model so the extension can show win/draw/loss."""
     score = rec.get("score", 0)
     stm = score if white_to_move else -score
     if abs(stm) >= engine.MATE_THRESHOLD:
@@ -73,6 +107,10 @@ def info_line(rec, white_to_move, engine, multipv=None):
              f"nodes {nodes}", f"nps {int(nodes * 1000 / t)}",  # values
              f"hashfull {0 if booky else engine._lib.cs_hashfull()}",
              f"time {t}"]
+    # WDL (permille, side-to-move POV) for real cp scores only -- not mate/book/tb positions.
+    if board is not None and not booky and abs(stm) < engine.MATE_THRESHOLD:
+        win, draw, loss = _wdl_permille(stm, _board_phase(board))
+        parts.append(f"wdl {win} {draw} {loss}")
     pv = rec.get("pv", "")
     if pv:
         parts.append(f"pv {pv}")
@@ -151,7 +189,7 @@ def _emit_multipv(engine, board, best_mv, k, budget, white_to_move, stop_evt):
     for i, (score, pv, d, nodes, dt) in enumerate(lines, 1):
         rec = {"depth": d, "score": score, "pv": pv, "nodes": nodes,
                "time_ms": max(1, int(dt * 1000))}
-        out(info_line(rec, white_to_move, engine, multipv=i))
+        out(info_line(rec, white_to_move, engine, multipv=i, board=board))
 
 
 # --------------------------------------------------------------------------- #
@@ -356,17 +394,21 @@ def main():
         holding = threading.Event()          # FB-14: search DONE, only holding
 
         white_to_move = board.turn == chess.WHITE
+        # FB-13d: snapshot the position NOW -- a `position` command racing
+        # the thread's startup must not change what gets searched. on_depth
+        # reads the SNAPSHOT too: it derives the WDL phase from the board, and
+        # main's live `board` can be reassigned by a `position` command while
+        # the search is still streaming info lines (same race FB-13d closed
+        # for the search itself).
+        search_board = board.copy()
         def on_depth(rec):
             if rec.get("book"):
                 out(f"info string book move {rec['move']}")
             elif rec.get("tb"):
                 out(f"info string tablebase move {rec['move']} wdl {rec['wdl']}")
-            out(info_line(rec, white_to_move, engine))
+            out(info_line(rec, white_to_move, engine, board=search_board))
         engine.on_depth = on_depth
         engine.on_final = None               # final info == last depth line
-        # FB-13d: snapshot the position NOW -- a `position` command racing
-        # the thread's startup must not change what gets searched.
-        search_board = board.copy()
 
         def run():
             # FB-02: an unhandled exception here used to kill the thread
