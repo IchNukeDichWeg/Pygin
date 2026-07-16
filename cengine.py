@@ -44,8 +44,10 @@ history-driven quiet pruning REJECTED 2026-07-16 (twenty-first campaign vs
 Old Engine/47: -5.23 +/-7.1, SPRT ACCEPT H0 stopped early at 9,243 games --
 a real negative; HIST_PRUNE reverted to 0, dormant, do-not-retry; the
 shallow quiet/capture-prune vein is 0-for-2 with FI-18). Armed candidate:
-none pinned -- next queue slot is FI-30, the qsearch TT-quality batch
-(FI-25's twin at the node majority). See final_improvements.md queue.
+FI-30, the qsearch TT-quality batch (``QS_TT_SHARPEN`` -- FI-25's rule at
+qsearch's stand-pat -- plus the ``QS_KEEP_MOVE`` store rider; both False =
+v47 node-exact; abi 11->12), queued as the twenty-second 50+0.20 campaign
+vs Old Engine/47. See final_improvements.md queue.
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -497,6 +499,21 @@ class Engine:
     # REVERTED to 0 (dormant, do-not-retry at this TC); mechanism kept.
     HIST_PRUNE = 0
 
+    # FI-30 (armed 2026-07-16, twenty-second 50+0.20 campaign vs Old
+    # Engine/47): (a) QS_TT_SHARPEN -- FI-25's rule applied at qsearch's
+    # stand-pat: on a TT hit whose bound didn't cut, the entry's SEARCH
+    # value replaces the static eval as the stand-pat wherever the bound
+    # provably improves it (LOWER above / UPPER below / EXACT; non-mate).
+    # Feeds the stand-pat beta cutoff, best-init/alpha raise, and the
+    # delta-pruning base at the tree's most populous node type; the FI-03
+    # TT-eval cache keeps the RAW eval (raw_stand split, exactness
+    # invariant). FI-25 -- the same rule one level up -- paid +13.52.
+    # (b) QS_KEEP_MOVE -- a stand-pat (move-0) store no longer deletes a
+    # same-key entry's best move (FB-22's rule applied to qs_tt_store).
+    # Both False = v47 node-exact (the selftest ladder pins them off).
+    QS_TT_SHARPEN = True
+    QS_KEEP_MOVE = True
+
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
     ASPIRATION_DELTA = 30                    # centipawns; C scores are cp too
@@ -552,9 +569,9 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (cs_search_root's out_second / FI-09b is abi 11) -- bump together
-        # with csearch_abi.
-        if lib.csearch_abi() < 11:
+        # (FI-30's set_qs_tt_sharpen/set_qs_keep_move are abi 12) -- bump
+        # together with csearch_abi.
+        if lib.csearch_abi() < 12:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -588,7 +605,8 @@ class Engine:
               self.SCORE_HYGIENE, self.EP_FILTER, self.QS_EVICT_MAX,
               self.CB2, self.CANTWIN, self.NULL_VERIFY, self.LMR_HIST,
               self.TT_EVAL_SHARPEN, self.SEE_PRUNE, self.ROOT_ORDER,
-              self.TT_BITS, self.TT_KEEP_WARM, self.HIST_PRUNE)
+              self.TT_BITS, self.TT_KEEP_WARM, self.HIST_PRUNE,
+              self.QS_TT_SHARPEN, self.QS_KEEP_MOVE)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -626,6 +644,8 @@ class Engine:
         lib.set_null_verify(1 if self.NULL_VERIFY else 0)      # NV-01
         lib.set_tt_bits(int(self.TT_BITS))                     # FI-10 (Hash)
         lib.set_hist_prune(int(self.HIST_PRUNE))               # FI-23
+        lib.set_qs_tt_sharpen(1 if self.QS_TT_SHARPEN else 0)  # FI-30(a)
+        lib.set_qs_keep_move(1 if self.QS_KEEP_MOVE else 0)    # FI-30(b)
         # FB-06: cengine is AUTHORITATIVE over every behavioral C toggle --
         # a stale .so or drifted compiled-in default must not silently change
         # the search. Values = the confirmed ledger state (all defaults, so
