@@ -227,11 +227,11 @@ if os.path.exists("csearch.c"):
             ce._lib.set_hist_prune(0)
         except AttributeError:
             pass                       # pre-FI-23 csearch.so
-        # FI-30 qsearch TT-quality batch is ARMED (QS_TT_SHARPEN +
-        # QS_KEEP_MOVE, twenty-second 50+0.20 campaign vs Old Engine/47) --
-        # class defaults are ON, so these pins are LOAD-BEARING: without
-        # them the ladder would measure the experimental config instead of
-        # the v47 reference.
+        # FI-30 qsearch TT-quality batch: INCONCLUSIVE-POSITIVE, reverted
+        # to dormant 2026-07-16 (+4.84 +/-5.55 pooled @15k, GSPRT LLR
+        # +2.479 < +2.944 accept; strongest dormant on the books, re-arm
+        # condition recorded in cengine.py); defaults reproduce v47, so
+        # these pins are belt-and-braces.
         try:
             ce._lib.set_qs_tt_sharpen(0)
             ce._lib.set_qs_keep_move(0)
