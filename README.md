@@ -28,14 +28,14 @@ The engine exists in two forms:
 - **Python engine:** ~**2440–2450 Elo** single-threaded (level with
   Stockfish 18 capped at UCI_Elo 2450, 2,500 games).
 - **C search core:** beat the Python engine **29–1–0** on arrival; the
-  C-era ledger has since added **≈ +194 Elo** of A/B-confirmed gains
-  (v31 → v48 — IIR, TT persistence, check extensions, qsearch-TT, staged
+  C-era ledger has since added **≈ +195 Elo** of A/B-confirmed gains
+  (v31 → v49 — IIR, TT persistence, check extensions, qsearch-TT, staged
   move generation, incremental Zobrist, TT prefetch, two TT-value
-  sharpeners, a 192 MB table, five correctness releases).
+  sharpeners, a 192 MB table, six correctness releases).
 - **vs full-strength Stockfish 18** (`odds.py`, v31 baseline): **100%** at
   queen odds (100 games) and **93.25%** at rook odds (400) — both
   saturated — **76.75%** at knight odds (400), the live external
-  yardstick. Odds numbers are machine-dependent; with +194 ledger Elo
+  yardstick. Odds numbers are machine-dependent; with +195 ledger Elo
   since v31, the true current gap is wider than these show.
 - **vs Stockfish 18 capped at UCI_Elo 2700:** **71.3%** over 2,000 games
   at 50s+0.2 (**+157.9 ± 18.6**, pair ratio 9.2, 2026-07-17, v47 tree).
@@ -100,6 +100,7 @@ Regenerate the single-thread column with `python3 bench_progress.py`, the
 |  46 |             4.3 M |          15.3 M |    18 | +5.94 ±6.8    | transposition table doubled to 96 MB (borderline; less TT thrash per game) |
 |  47 |             4.3 M |          14.7 M |    18 | +3.16 ±6.8    | TT to 192 MB (diminishing) + MultiPV (node-exact off) |
 |  48 |             4.3 M |          14.7 M |    18 | +4.73 ±3.2    | qsearch TT-quality batch (TT value sharpens stand-pat; first SPRT accept, 21.6k games) |
+|  49 |             4.3 M |          14.7 M |    18 | +0.97 ±6.8    | cuckoo upcoming-repetition (forcible draw scored one ply early; null kept as correctness) |
 
 **Table notes**
 

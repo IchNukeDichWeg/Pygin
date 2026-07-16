@@ -125,10 +125,10 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # quiet developing moves flip between depths without being a regression.
 # Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
 CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3"
-CE_LADDER = {                     # depth -> (nodes, score)  [v48: FI-30 qsearch TT sharpen+keep-move ON -- re-measured 2026-07-16; same score as the v47 ladder at every depth, slightly fewer nodes (sharper stand-pat cuts). TT_BITS=23 (192 MB) unchanged]
-    1: (95, 126), 2: (180, 126), 3: (734, 126), 4: (988, 122),
-    5: (8590, 73), 6: (16252, 63), 7: (41003, 74), 8: (77168, 72),
-    9: (123877, 75), 10: (286549, 49), 11: (563584, 71), 12: (832328, 64),
+CE_LADDER = {                     # depth -> (nodes, score)  [v49: FI-29 cuckoo cycle detection ON -- re-measured 2026-07-17; the upcoming-repetition draw bound reshapes the deep tree (d12 -16% nodes vs the v48 ladder, scores drift at d10+). TT_BITS=23 (192 MB) unchanged]
+    1: (95, 126), 2: (180, 126), 3: (730, 126), 4: (984, 122),
+    5: (8539, 73), 6: (16157, 63), 7: (40863, 74), 8: (76928, 72),
+    9: (123308, 75), 10: (266797, 58), 11: (422918, 71), 12: (700627, 68),
 }
 if os.path.exists("csearch.c"):
     try:
@@ -237,13 +237,13 @@ if os.path.exists("csearch.c"):
             ce._lib.set_qs_keep_move(1)
         except AttributeError:
             pass                       # pre-FI-30 csearch.so
-        # FI-29 cuckoo upcoming-repetition: ARMED 2026-07-16 (twenty-third
-        # campaign vs Old Engine/48 pending, correctness-class,
-        # keep-on-null). Pinned OFF here: the CE_LADDER above is the v48
-        # reference and this is the load-bearing pin that keeps it valid
-        # while the candidate is live (CYCLE_DETECT=True in cengine).
+        # FI-29 cuckoo upcoming-repetition: KEPT-ON-NULL into v49
+        # 2026-07-17 (+0.97 +/-6.8 @10k vs Old Engine/48, GSPRT LLR -0.19
+        # -- the sixth correctness release of its class). ON is the
+        # shipped default; pinned 1 so the v49 ladder below survives any
+        # future re-toggle experiment (load-bearing).
         try:
-            ce._lib.set_cycle(0)
+            ce._lib.set_cycle(1)
         except AttributeError:
             pass                       # pre-FI-29 csearch.so
         # FI-06 root-move ordering is DORMANT (+2.26 null @10k vs Old

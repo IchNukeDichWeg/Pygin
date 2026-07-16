@@ -53,10 +53,14 @@ stores). CONFIRMED 2026-07-16 over the longest campaign on the books
 GSPRT[0,4] LLR +3.475 crossing the +2.944 accept -- the C era's first
 sequential-test ACCEPT, reached after a premature 10k-cap revert was
 walked back and the test ran to its own stopping rule. Snapshotted Old
-Engine/48. Armed candidate: FI-29 cuckoo upcoming-repetition
-(CYCLE_DETECT, twenty-third campaign vs Old Engine/48 PENDING --
-correctness-class, KEEP-ON-NULL; CYCLE_VERIFY differential clean, see the
-toggle comment). See final_improvements.md queue.
+Engine/48. v49 = v48 + FI-29, cuckoo upcoming-repetition (CYCLE_DETECT):
+the side to move can force a repetition with one reversible move -> the
+node takes the contempt draw a search earlier. KEPT-ON-NULL 2026-07-17
+(+0.97 +/-6.8 @10k vs Old Engine/48, GSPRT LLR -0.19) -- the sixth
+correctness release of its class; CYCLE_VERIFY differential 13,272/0,
+paired matetrack noise-flat. Snapshotted Old Engine/49. Armed candidate:
+none pinned -- next queue slot is FI-24d (zero-code NullBase/NullDiv
+sweep first, then the null batch). See final_improvements.md queue.
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -534,14 +538,14 @@ class Engine:
     # lost shuffle subtrees and banking perpetual half-points sooner.
     # In-tree only, never in check, alpha-raise (not hard return); a match
     # that would strip castling rights is rejected (key-soundness beyond
-    # SF's envelope). ARMED 2026-07-16 (twenty-third campaign vs Old
-    # Engine/48): correctness-class (EP-01/CB-01/CB-02 precedent),
-    # KEEP-ON-NULL. Gates passed: CYCLE_VERIFY differential 13,272 claims /
-    # 0 mismatches over 1.1M nodes; False = v48 node-exact (ladder pin);
-    # blocked-pawn fortress d16 collapses 11,893 -> 4,310 nodes with the
-    # score snapping to 0; short-mate spot check no regress; paired timed
-    # matetrack (2k mates @0.5s, same conditions) ON 899/773 vs OFF
-    # 905/774 -- noise-flat, gate passed.
+    # SF's envelope). KEPT-ON-NULL => v49 2026-07-17 (twenty-third
+    # campaign vs Old Engine/48, 10,000 games @ 50+0.20): +0.97 +/-6.8
+    # (50.14%, pair ratio 1.02, norm +2.01, GSPRT[0,4] LLR -0.19) -- the
+    # pre-registered correctness-class rule ships the null, the sixth of
+    # its class (EP-01/CB-01/CB-02/PV-02/CW-01 precedent). Build gates:
+    # CYCLE_VERIFY 13,272 claims / 0 mismatches over 1.1M nodes; paired
+    # matetrack noise-flat (899/773 on vs 905/774 off); blocked-pawn
+    # fortress d16 11,893 -> 4,310 nodes, score snaps to 0.
     CYCLE_DETECT = True
 
     # v30 time-management / aspiration constants (ports, same values)
