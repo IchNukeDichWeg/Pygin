@@ -38,8 +38,14 @@ saturated, i.e. no longer sensitive enough to show further progress — and
 **76.75%** (400 games) at knight odds, the current external yardstick since
 queen/rook stopped discriminating. All three were measured on the v31 C-core
 baseline (odds percentages are hardware/environment-dependent — compare only
-runs from the same machine); the C-era ledger has added **≈ +189 Elo** since
+runs from the same machine); the C-era ledger has added **≈ +194 Elo** since
 v31, so the true current gap is wider than these numbers show.
+Against Stockfish 18 **capped at UCI_Elo 2700** it scores **71.3%** over
+2,000 games at 50s+0.2 (**+157.9 ± 18.6**, game-pair ratio 9.2, measured
+2026-07-17 on the v47 tree) — a class bracket rather than a precise rating:
+the UCI_Elo limiter injects errors at a calibrated rate, which compresses
+real strength differences, so odds games remain the honest external
+yardstick.
 
 ### Version progression
 
