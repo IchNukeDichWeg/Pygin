@@ -50,8 +50,8 @@ ENGINE_1 = "engine.py"                       # path to engine 1
 ENGINE_2 = "Old Engine/34/engine34.py"       # path to engine 2
 FEN_FILE = "UHO_4060_v4.epd"                 # positions (plain FEN or EPD, one per line). UHO_4060_v4.epd (16 MB, balanced Stockfish openings) is the default. fen.txt (447 KB) is also bundled as a small fallback; a bigger book (UHO_Lichess_4852_v1.epd, 174 MB) is at https://github.com/official-stockfish/books
 
-other_elo = 2600
-stockfish_elo = 2600
+other_elo = 2800
+stockfish_elo = 2800
 
 NUM_GAMES = 5000            # number of starting POSITIONS to play (default when
                             #   no arg passed). Each position is played twice --
