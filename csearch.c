@@ -2077,6 +2077,24 @@ void set_lmr_hist(int v) { g_lmr_hist = v; }
 static int g_tt_eval_sharpen = 0;
 void set_tt_eval_sharpen(int v) { g_tt_eval_sharpen = v; }
 
+/* FI-30 (armed for the twenty-second 50+0.20 A/B, vs Old Engine/47):
+ * (a) qsearch TT-value stand-pat sharpener -- FI-25's exact rule applied at
+ * the tree's most populous node type. When the qsearch TT probe hits but the
+ * bound does not cut, the entry's SEARCH value replaces the static eval as
+ * the stand-pat wherever the bound provably improves it (LOWER above /
+ * UPPER below / EXACT always; non-mate values only). Feeds the stand-pat
+ * beta cutoff, the best-init/alpha raise, and the delta-pruning base. The
+ * FI-03 TT-eval cache keeps the RAW static eval (raw_stand -- the same
+ * exactness split FI-25 uses for static_eval vs prune_eval).
+ * (b) keep-move rider: a stand-pat cutoff stores move 0; the same-key
+ * replace rule then deletes a stored best move for zero information gain --
+ * FB-22's shipped keep-the-move rule (negamax null store) applied to
+ * qs_tt_store. 0/0 = off = v47 node-exact. */
+static int g_qs_tt_sharpen = 0;
+void set_qs_tt_sharpen(int v) { g_qs_tt_sharpen = v; }
+static int g_qs_keep_move = 0;
+void set_qs_keep_move(int v) { g_qs_keep_move = v; }
+
 /* FI-18 (armed for the fifteenth 50+0.20 A/B, vs Old Engine/45): SEE
  * pruning of losing captures at shallow depth. Bad captures are ordered
  * LAST (ORD_BADCAP band / staged stage 6) but still fully searched at
@@ -2157,7 +2175,13 @@ static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
     int sv = val;
     if (sv >= MATE_THRESH) sv += ply;                /* node -> ply-relative */
     else if (sv <= -MATE_THRESH) sv -= ply;
-    tt_store_raw(t, key, sv, move & 0x7FFF, 0, flag, ev);
+    uint32_t mv = move & 0x7FFF;
+    if (g_qs_keep_move && mv == 0 && ck == key)      /* FI-30(b): a move-0
+                                                      * store must not delete
+                                                      * a same-key entry's
+                                                      * ordering asset */
+        mv = TT_MOVE(cur) & 0x7FFF;
+    tt_store_raw(t, key, sv, mv, 0, flag, ev);
 }
 
 static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
@@ -2196,6 +2220,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
             return draw_score(b);            /* perpetual-check lines */
     }
     int tt_eval = TT_EVAL_NONE;      /* FI-03: cached static eval, if any */
+    int qs_sh_flag = -1, qs_sh_val = 0;  /* FI-30(a): hit's flag+value */
     if (use_qtt) {
         if (!key) key = board_key(b);
         TTEntry e;
@@ -2205,6 +2230,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
             if (v >= MATE_THRESH) v -= ply;
             else if (v <= -MATE_THRESH) v += ply;
             int fl = TT_FLAG(e);
+            qs_sh_flag = fl; qs_sh_val = v;          /* FI-30(a) */
             if (!(g_pv_exact && is_pv)) {            /* PV-02: PV nodes walk on */
                 if (fl == TT_EXACT) return v;
                 if (fl == TT_LOWER && v >= beta) return v;
@@ -2221,7 +2247,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
                                   * below must never label a value that only
                                   * beat the PRE-narrow alpha as EXACT */
 
-    int color = b->turn, best, stand = 0;
+    int color = b->turn, best, stand = 0, raw_stand = 0;
     uint32_t moves[256];
     int n;
     if (in_chk) {
@@ -2238,10 +2264,18 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
          * VALUE-IDENTICAL to the v35 path at every node => node-identical. */
         stand = (tt_eval != TT_EVAL_NONE) ? tt_eval    /* FI-03: exact cache */
                                           : eval_full_stm(b);
+        raw_stand = stand;               /* FI-30: the FI-03 store stays RAW */
+        if (g_qs_tt_sharpen && qs_sh_flag >= 0
+                && qs_sh_val > -MATE_THRESH && qs_sh_val < MATE_THRESH) {
+            if (qs_sh_flag == TT_EXACT
+                || (qs_sh_flag == TT_LOWER && qs_sh_val > stand)
+                || (qs_sh_flag == TT_UPPER && qs_sh_val < stand))
+                stand = qs_sh_val;       /* FI-30(a): proven bound beats eval */
+        }
         if (stand >= beta) {                         /* fail-soft stand-pat */
             if (has_legal_quiet(b) || gen_noisy(b, moves) > 0) {
                 if (use_qtt && !CS_UNWINDING())      /* P-44: cache the cutoff */
-                    qs_tt_store(key, stand, ply, 0, TT_LOWER, stand);
+                    qs_tt_store(key, stand, ply, 0, TT_LOWER, raw_stand);
                 return stand;
             }
             return 0;                                /* stalemate: draw, not eval */
@@ -2260,9 +2294,17 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
             return 0;                                /* stalemate: draw, not eval */
         stand = (tt_eval != TT_EVAL_NONE) ? tt_eval    /* FI-03: exact cache */
                                           : eval_full_stm(b);
+        raw_stand = stand;               /* FI-30: the FI-03 store stays RAW */
+        if (g_qs_tt_sharpen && qs_sh_flag >= 0
+                && qs_sh_val > -MATE_THRESH && qs_sh_val < MATE_THRESH) {
+            if (qs_sh_flag == TT_EXACT
+                || (qs_sh_flag == TT_LOWER && qs_sh_val > stand)
+                || (qs_sh_flag == TT_UPPER && qs_sh_val < stand))
+                stand = qs_sh_val;       /* FI-30(a): proven bound beats eval */
+        }
         if (stand >= beta) {                         /* fail-soft stand-pat */
             if (use_qtt && !CS_UNWINDING())          /* P-44: cache the cutoff */
-                qs_tt_store(key, stand, ply, 0, TT_LOWER, stand);
+                qs_tt_store(key, stand, ply, 0, TT_LOWER, raw_stand);
             return stand;
         }
         if (stand > alpha) alpha = stand;
@@ -2330,7 +2372,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         int flag = (best <= alpha_orig) ? TT_UPPER
                  : (best >= beta)       ? TT_LOWER : TT_EXACT;
         qs_tt_store(key, best, ply, bm, flag,
-                    in_chk ? TT_EVAL_NONE : stand);   /* FI-03 */
+                    in_chk ? TT_EVAL_NONE : raw_stand);  /* FI-03: RAW eval */
     }
     return best;
 }
@@ -3067,7 +3109,7 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted, &second);
 }
 
-int csearch_abi(void) { return 11; }  /* 11 = cs_search_root out_second
+int csearch_abi(void) { return 12; }  /* 12 = FI-30 set_qs_tt_sharpen/set_qs_keep_move; 11 = cs_search_root out_second
                                        * (FI-09b easy-move 2nd-best score);
                                        * 10 = root_exclude_* (MultiPV);
                                        * 9 = set_tt_bits (FI-10 Hash);
