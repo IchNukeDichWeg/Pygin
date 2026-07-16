@@ -150,3 +150,6 @@ patch_book_startpos.py
 # downloaded / converted books -- large binaries, keep out of git
 *.db3
 *.obs.db3.zip
+
+# local security/bug audit of the Mephisto extension -- contains the unpacked ext-id; this repo is PUBLIC
+fixes_Mephisto.md
