@@ -533,6 +533,12 @@ def main():
                     f" see_prune={int(engine.SEE_PRUNE)}"
                     f" root_order={int(engine.ROOT_ORDER)}"
                     f" qs_evict_max={engine.QS_EVICT_MAX}"
+                    f" hist_prune={engine.HIST_PRUNE}"
+                    f" qs_tt_sharpen={int(engine.QS_TT_SHARPEN)}"
+                    f" qs_keep_move={int(engine.QS_KEEP_MOVE)}"
+                    f" king_shelter={int(engine.USE_KING_SHELTER)}"
+                    f" tt_keep_warm={int(engine.TT_KEEP_WARM)}"
+                    f" simplify_threshold={engine.SIMPLIFY_THRESHOLD}"
                     f" hash_bits={engine.TT_BITS}"
                     f" threads={engine.smp_workers}")
                 out("uciok")
@@ -601,7 +607,9 @@ def main():
                     if not searching():                 # resize = realloc;
                         mb = max(2, min(6144, int(value)))   # never mid-search
                         entries = mb * 1024 * 1024 // 24
-                        engine._lib.set_tt_bits(entries.bit_length() - 1)
+                        bits = entries.bit_length() - 1
+                        engine._lib.set_tt_bits(bits)
+                        engine.TT_BITS = bits   # FB-30: fingerprint honesty
                         pending_hash_mb = None
                     else:                               # FB-25: defer, don't
                         pending_hash_mb = int(value)    # silently drop
@@ -648,7 +656,9 @@ def main():
                 if pending_hash_mb is not None and not searching():
                     mb = max(2, min(6144, pending_hash_mb))   # FB-25: apply
                     entries = mb * 1024 * 1024 // 24          # deferred Hash
-                    engine._lib.set_tt_bits(entries.bit_length() - 1)
+                    bits = entries.bit_length() - 1
+                    engine._lib.set_tt_bits(bits)
+                    engine.TT_BITS = bits       # FB-30: fingerprint honesty
                     pending_hash_mb = None
                 if searching():
                     # FB-14: a self-terminated `go infinite` (mate break /
