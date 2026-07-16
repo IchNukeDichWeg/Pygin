@@ -599,6 +599,7 @@ def main():
                     f" hist_prune={engine.HIST_PRUNE}"
                     f" qs_tt_sharpen={int(engine.QS_TT_SHARPEN)}"
                     f" qs_keep_move={int(engine.QS_KEEP_MOVE)}"
+                    f" cycle={int(engine.CYCLE_DETECT)}"
                     f" king_shelter={int(engine.USE_KING_SHELTER)}"
                     f" tt_keep_warm={int(engine.TT_KEEP_WARM)}"
                     f" simplify_threshold={engine.SIMPLIFY_THRESHOLD}"
