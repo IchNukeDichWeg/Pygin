@@ -273,6 +273,9 @@ GUI options:
 | `UseTB` | check | false | — | Probe the online Lichess Syzygy tablebase at the root (needs network; no local path) |
 | `Move Overhead` | spin | 40 | 0–5000 | Clock margin (ms) for GUI/network lag |
 | `Premove` | check | false | — | Emit certified instant-reply premoves (opt-in) |
+| `UCI_ShowWDL` | check | true | — | Emit `wdl` on info lines (opt-out for strict arenas) |
+| `Clear Hash` | button | — | — | Wipe the transposition table without `ucinewgame` |
+| `Contempt` | spin | 50 | −100–100 | Draw score bias (cp) when ahead/behind |
 
 Search-tuning knobs (P-26) — defaults are the shipped values; exposed for
 automated tuning (chess-tuning-tools), most users should leave them alone:
