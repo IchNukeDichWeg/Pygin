@@ -147,6 +147,7 @@ import datetime
 import math
 import multiprocessing as mp
 import os
+import signal
 import sys
 import threading
 import time
@@ -790,6 +791,22 @@ def _worker_loop(in_q, out_q, engine1_path, engine2_path, mode_cfg,
     ONCE per worker, not per game -- crucial since loading an engine .py file
     + its weights can take seconds."""
     import multiprocessing as wmp           # nested mp inside the worker
+    import signal
+
+    # Ctrl-C hits the whole process group, and KeyboardInterrupt is a
+    # BaseException -- it sails past the `except Exception` below and made every
+    # worker dump a traceback. The parent owns interrupt handling; this worker
+    # shuts down only via the in_q sentinel or terminate():
+    #   SIGINT  -> ignored.
+    #   SIGTERM -> SystemExit, so the `finally` still runs and this worker's TWO
+    #              engine grandchildren get killed instead of being orphaned
+    #              (terminate()'s default handler would skip the finally).
+    try:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    except (ValueError, OSError):
+        pass
+
     # Propagate the toggles play_game / write_game_block read off the module
     # globals (kept simple instead of threading every flag through call sites).
     global ENGINE_USE_BOOK, PV_UCI
@@ -830,6 +847,78 @@ class _SPRTStop(Exception):
     """Raised from the result loop when the SPRT crosses a bound, so the match
     unwinds through the SAME finally-block shutdown that Ctrl-C uses (workers
     told to stop, joined, terminated). A conclusion, not an interruption."""
+
+
+# How the run ended, for the interrupt message. Set by the SIGTERM handler;
+# Ctrl-C leaves it None (Python raises KeyboardInterrupt on its own).
+_signal_name = None
+
+
+def _install_signal_handlers():
+    """Make SIGTERM behave exactly like Ctrl-C in the MAIN process: raise
+    KeyboardInterrupt so the result loop unwinds into the finally block that
+    writes the summary + Ptnml. Without this, `kill`/`pkill` (and any job
+    scheduler that stops a run politely) hit Python's default SIGTERM handler,
+    which exits immediately and silently -- losing the summary of a run that
+    may have taken hours."""
+    def _on_sigterm(signum, _frame):
+        global _signal_name
+        _signal_name = signal.Signals(signum).name
+        raise KeyboardInterrupt
+    try:
+        signal.signal(signal.SIGTERM, _on_sigterm)
+    except (ValueError, OSError):
+        pass                     # non-main thread / unsupported platform
+
+
+def _shutdown_workers(workers, in_q, out_q, graceful):
+    """Stop every worker within a bounded wall-clock budget.
+
+    `graceful` (the schedule ran out) -> sentinel; each worker returns after its
+    current game. Otherwise (Ctrl-C / SIGTERM / SPRT / engine error) a sentinel
+    would sit behind the whole un-consumed backlog on in_q, so terminate()
+    instead -- the worker's SIGTERM handler turns that into a clean unwind.
+
+    The joins share ONE deadline: joining each worker with its own 3s timeout
+    serialised into 3s x n_workers (24s on an 8-worker box) before the first
+    SIGKILL ever landed."""
+    if graceful and in_q is not None:
+        for _ in workers:
+            try:
+                in_q.put(None)
+            except Exception:
+                pass
+    else:
+        # A Queue hands its items to a background feeder thread, and the
+        # interpreter joins that thread at exit. With the workers about to die,
+        # nothing drains in_q -- so once the un-consumed backlog exceeds the
+        # ~64KB pipe buffer the feeder blocks forever and match.py never exits
+        # (a Ctrl-C at 5,000 positions = 10,000 queued jobs is well past it).
+        # The jobs are being abandoned anyway; drop them.
+        for q in (in_q, out_q):
+            try:
+                if q is not None:
+                    q.cancel_join_thread()
+            except Exception:
+                pass
+        for w in workers:
+            try:
+                w.terminate()
+            except Exception:
+                pass
+    deadline = time.time() + 6.0
+    for w in workers:
+        try:
+            w.join(timeout=max(0.1, deadline - time.time()))
+        except Exception:
+            pass
+    for w in workers:                # last resort: a worker wedged in C code
+        try:
+            if w.is_alive():
+                w.kill()
+                w.join(timeout=1.0)
+        except Exception:
+            pass
 
 
 # ====================================================================== #
@@ -1040,6 +1129,8 @@ def main():
               "penta": {0: 0, 1: 0, 2: 0, 3: 0, 4: 0}, "penta_incomplete": 0}
     start_t = time.time()
     stopped = False
+    interrupted = False        # Ctrl-C / SIGTERM: skip the in_q sentinel dance
+    _install_signal_handlers()
 
     # SPRT early-stop state. cfg is None unless --sprt was passed AND sprt.py
     # imported; then the result loop evaluates the LLR as pairs complete and
@@ -1351,35 +1442,30 @@ def main():
               f"LLR {sprt_state['llr']:+.3f} -- stopping early]")
     except KeyboardInterrupt:
         stopped = True
+        interrupted = True
         _clear_status()
-        print("\n[interrupted -- writing summary so far]")
+        why = f"{_signal_name} received" if _signal_name else "interrupted"
+        print(f"\n[{why} -- writing summary so far]")
     except EngineError as ex:
         stopped = True
         _clear_status()
         print(f"\nENGINE LOAD/RUN ERROR: {ex}")
     finally:
+        # The summary IS the point of the run -- a second Ctrl-C while it is
+        # being written (or while workers wind down) must not throw away hours
+        # of games. Everything below is bounded (~7s worst case), so refusing
+        # to be interrupted here cannot hang the process.
+        try:
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        except (ValueError, OSError):
+            pass
         _clear_status()        # drop the pinned ETA line before the summary
         _flush_log_remainder()  # emit any games still held by the reorder buffer
         write_summary(fh, e1, e2, tally, total_games, start_t, stopped,
                       n_workers=n_workers, sprt_info=sprt_state)
         if parallel:
-            # Tell each worker to shut down, then join.
-            if in_q is not None:
-                for _ in workers:
-                    try:
-                        in_q.put(None)
-                    except Exception:
-                        pass
-            for w in workers:
-                try:
-                    w.join(timeout=3)
-                except Exception:
-                    pass
-                if w.is_alive():
-                    try:
-                        w.terminate()
-                    except Exception:
-                        pass
+            _shutdown_workers(workers, in_q, out_q, graceful=not interrupted)
         else:
             for eng in (e1, e2):
                 if hasattr(eng, "kill"):
