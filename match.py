@@ -55,6 +55,7 @@ other_elo = 2800
 # stockfish_engine.py's SF_ELO so the tag can't drift from what the
 # limiter is actually set to -- the 2026-07-16 run played at 2700 while
 # a stale hardcoded 2600 here went into every PGN header.
+import os                   # config-time env read; harmlessly re-imported below
 stockfish_elo = int(os.environ.get("STOCKFISH_ELO", "2700"))
 
 NUM_GAMES = 5000            # number of starting POSITIONS to play (default when
