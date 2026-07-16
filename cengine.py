@@ -539,8 +539,9 @@ class Engine:
     # KEEP-ON-NULL. Gates passed: CYCLE_VERIFY differential 13,272 claims /
     # 0 mismatches over 1.1M nodes; False = v48 node-exact (ladder pin);
     # blocked-pawn fortress d16 collapses 11,893 -> 4,310 nodes with the
-    # score snapping to 0; short-mate spot check no regress (full timed
-    # matetrack deferred -- load-sensitive, a match was running).
+    # score snapping to 0; short-mate spot check no regress; paired timed
+    # matetrack (2k mates @0.5s, same conditions) ON 899/773 vs OFF
+    # 905/774 -- noise-flat, gate passed.
     CYCLE_DETECT = True
 
     # v30 time-management / aspiration constants (ports, same values)
