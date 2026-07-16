@@ -112,7 +112,8 @@ def info_line(rec, white_to_move, engine, multipv=None, board=None):
              f"hashfull {0 if booky else engine._lib.cs_hashfull()}",
              f"time {t}"]
     # WDL (permille, side-to-move POV) for real cp scores only -- not mate/book/tb positions.
-    if board is not None and not booky and abs(stm) < engine.MATE_THRESHOLD:
+    if (board is not None and not booky and getattr(engine, "show_wdl", True)
+            and abs(stm) < engine.MATE_THRESHOLD):
         win, draw, loss = _wdl_permille(stm, _board_phase(board))
         parts.append(f"wdl {win} {draw} {loss}")
     pv = rec.get("pv", "")
@@ -320,6 +321,9 @@ def main():
     board = chess.Board()
     search_thread = None
     pending_hash_mb = None                   # FB-25: Hash sent mid-search
+    engine.show_wdl = True                   # FI-45: UCI_ShowWDL default
+    dbg = {"on": False}                      # FI-45: `debug on` channels
+    hf_ring = []                             # FI-45: hashfull trajectory
 
     def searching():
         return search_thread is not None and search_thread.is_alive()
@@ -334,6 +338,18 @@ def main():
                                              # the search thread starts is
                                              # LIVE, not stale
         params = {}
+        # FI-45: `searchmoves m1 m2 ...` -- collect the whitelist (tokens up
+        # to the next keyword), strip it, invert to the C exclusion list at
+        # search time (the MultiPV root_exclude_* infra, g_rx now 256-wide).
+        if "searchmoves" in tokens:
+            kw = {"wtime", "btime", "winc", "binc", "movestogo", "movetime",
+                  "depth", "nodes", "mate", "infinite", "ponder"}
+            i = tokens.index("searchmoves")
+            j = i + 1
+            while j < len(tokens) and tokens[j] not in kw:
+                j += 1
+            params["searchmoves"] = tokens[i + 1:j]
+            tokens = tokens[:i] + tokens[j:]
         it = iter(tokens)
         for tok in it:
             if tok in ("wtime", "btime", "winc", "binc", "movestogo",
@@ -406,12 +422,19 @@ def main():
         # the search is still streaming info lines (same race FB-13d closed
         # for the search itself).
         search_board = board.copy()
+        prev_nodes = [0]                     # FI-45: per-go EBF tracking
         def on_depth(rec):
             if rec.get("book"):
                 out(f"info string book move {rec['move']}")
             elif rec.get("tb"):
                 out(f"info string tablebase move {rec['move']} wdl {rec['wdl']}")
             out(info_line(rec, white_to_move, engine, board=search_board))
+            if dbg["on"]:                    # FI-45: `debug on` observability
+                n = rec.get("nodes", 0)
+                if prev_nodes[0] > 0 and n > prev_nodes[0]:
+                    out(f"info string ebf={n / prev_nodes[0]:.2f}"
+                        f" depth={rec.get('depth', 0)}")
+                prev_nodes[0] = n
         engine.on_depth = on_depth
         engine.on_final = None               # final info == last depth line
 
@@ -421,7 +444,28 @@ def main():
             # Always emit a bestmove; 0000 on error (arbiter-visible, not
             # a hang).
             mv = None
+            sm_active = False
             try:
+                # FI-45: searchmoves -> exclude every legal move NOT listed
+                # (root TT store + FI-06 recorder auto-suppressed while the
+                # exclusion list is non-empty, per the MultiPV design).
+                if params.get("searchmoves"):
+                    want = set()
+                    for u in params["searchmoves"]:
+                        try:
+                            m = chess.Move.from_uci(u)
+                            if m in search_board.legal_moves:
+                                want.add(m)
+                        except ValueError:
+                            pass
+                    if want:
+                        engine._lib.root_exclude_clear()
+                        for m in search_board.legal_moves:
+                            if m not in want:
+                                engine._lib.root_exclude_add(
+                                    m.from_square | (m.to_square << 6)
+                                    | ((m.promotion or 0) << 12))
+                        sm_active = True
                 if budget is None:
                     mv = engine.get_best_move(search_board, max_depth)
                 else:
@@ -431,6 +475,7 @@ def main():
                 # search ran (book/tb hits and stopped searches are skipped);
                 # =1 is byte-identical to the pre-MultiPV path.
                 if (getattr(engine, "multipv", 1) > 1 and mv is not None
+                        and not sm_active
                         and engine.last_pv and not stop_evt.is_set()
                         and not engine._abort):
                     _emit_multipv(engine, search_board, mv, engine.multipv,
@@ -438,6 +483,8 @@ def main():
             except Exception as ex:
                 print(f"cuci: search error: {ex!r}", file=sys.stderr)
             finally:
+                if sm_active:                # FI-45: NEVER leak exclusions
+                    engine._lib.root_exclude_clear()
                 engine.node_limit = None     # FB-09: per-go, don't leak
                 holding.set()                # FB-14/FI-27: set BEFORE the
                                              # hold-wait AND as early as the
@@ -446,7 +493,17 @@ def main():
                                              # off, not dropped. Release
                 if hold:                     # is instant -- no search running
                     stop_evt.wait()          # B-03: hold until `stop`
-                out(f"bestmove {mv.uci() if mv is not None else '0000'}")
+                bm_str = mv.uci() if mv is not None else "0000"
+                pv = (engine.last_pv or "").split()
+                if mv is not None and len(pv) >= 2 and pv[0] == bm_str:
+                    out(f"bestmove {bm_str} ponder {pv[1]}")   # FI-45: GUIs
+                else:                        # display it; real go-ponder
+                    out(f"bestmove {bm_str}")  # semantics stay FI-13e
+                if ("mate" in params and mv is not None
+                        and abs(engine.last_score) < engine.MATE_THRESHOLD):
+                    out(f"info string no mate found in <={params['mate']}")
+                hf_ring.append(engine._lib.cs_hashfull())   # FI-45: per-move
+                del hf_ring[:-64]            # trajectory, dumped on quit
                 # PM-01: certified premoves, computed on the OPPONENT'S clock
                 # (we are idle after bestmove). Not for held searches (a new
                 # position is coming) or after a stop.
@@ -517,6 +574,9 @@ def main():
                 out("option name SoftStable type spin default 40 min 20 max 70")
                 out("option name SoftUnstable type spin default 80 min 50 max 130")
                 out("option name Premove type check default false")
+                out("option name UCI_ShowWDL type check default true")
+                out("option name Clear Hash type button")
+                out("option name Contempt type spin default 50 min -100 max 100")
                 out("option name Move Overhead type spin default 40 min 0 max 5000")
                 out("option name Hash type spin default 192 min 2 max 6144")
                 # FI-13d: self-identifying config line (A/B forensics: PGN
@@ -604,6 +664,16 @@ def main():
                     engine.SOFT_STOP_UNSTABLE_FRAC = int(value) / 100.0
                 elif name == "premove":                 # PM-01
                     engine.premove_on = value.lower() == "true"
+                elif name == "uci_showwdl":             # FI-45: some arenas
+                    engine.show_wdl = value.lower() == "true"   # reject
+                                                        # unknown info fields
+                elif name == "clearhash":               # FI-45: standard GUI
+                    if not searching():                 # button; ignored
+                        engine._lib.cs_tt_reset()       # mid-search
+                elif name == "contempt":                # FI-45: C support
+                    engine._lib.csearch_set_draw(       # existed unexposed;
+                        max(-100, min(100, int(value))), 200)  # 50/200 =
+                                                        # compiled default
                 elif name == "moveoverhead":            # FI-13b
                     engine.move_overhead_ms = max(0, int(value))
                 elif name == "hash":                    # FI-10: MB -> bits
@@ -702,6 +772,9 @@ def main():
                     if search_thread.is_alive():     # search must not brick
                         print("cuci: search thread failed to stop in 30s",
                               file=sys.stderr)       # the whole host slot
+            elif cmd == "debug":                 # FI-45: spec conformance;
+                dbg["on"] = (len(tokens) > 1     # gates the ebf channel
+                             and tokens[1] == "on")
             elif cmd == "ponderhit":
                 pass                     # FB-32: no ponder search yet
                                          # (FI-13e); accepting the standard
@@ -711,6 +784,10 @@ def main():
                     engine.stop()
                     search_thread.stop_evt.set()
                     search_thread.join()
+                if hf_ring:                  # FI-45: saturation evidence for
+                    out("info string hashfull trajectory (last "
+                        f"{len(hf_ring)} moves): "
+                        + " ".join(str(v) for v in hf_ring))   # the FI-20 gate
                 break
         except Exception:
             err = traceback.format_exc().splitlines()[-1]

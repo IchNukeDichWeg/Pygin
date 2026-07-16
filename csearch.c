@@ -2142,12 +2142,14 @@ void set_root_order(int v) { g_root_order = v; g_ro_key = 0; g_ro_n = 0; }
  * the root's real TT entry (P-14's warm asset / prev-iteration ordering).
  * Helpers see the same list (process-wide, set between searches): correct
  * for MultiPV, inert otherwise. */
-static uint16_t g_rx[16];
+static uint16_t g_rx[256];      /* FI-45: searchmoves inverts a whitelist,
+                                 * so exclusions can approach the legal-move
+                                 * count -- 16 was sized for MultiPV only */
 static int g_rx_n = 0;
 void root_exclude_clear(void) { g_rx_n = 0; }
 void root_exclude_add(int key15)
 {
-    if (g_rx_n < 16) g_rx[g_rx_n++] = (uint16_t)(key15 & 0x7FFF);
+    if (g_rx_n < 256) g_rx[g_rx_n++] = (uint16_t)(key15 & 0x7FFF);
 }
 
 /* FI-23 (armed for the twenty-first 50+0.20 A/B, vs Old Engine/47):
