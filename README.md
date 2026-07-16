@@ -258,6 +258,40 @@ python3 odds.py
 
 ---
 
+## UCI options
+
+`cuci.py` is the UCI engine (`setoption name <Option> value <x>`). Standard
+GUI options:
+
+| Option | Type | Default | Range | Purpose |
+|:-------|:-----|--------:|:------|:--------|
+| `Threads` | spin | 1 | 1–256 | Lazy-SMP search threads |
+| `Hash` | spin | 48 | 2–3072 | Transposition-table size (MB) |
+| `MultiPV` | spin | 1 | 1–5 | PV lines reported |
+| `OwnBook` | check | true | — | Use the built-in opening book |
+| `UseTB` | check | false | — | Probe Syzygy tablebases |
+| `Move Overhead` | spin | 40 | 0–5000 | Clock margin (ms) for GUI/network lag |
+| `Premove` | check | false | — | Emit certified instant-reply premoves (opt-in) |
+
+Search-tuning knobs (P-26) — defaults are the shipped values; exposed for
+automated tuning (chess-tuning-tools), most users should leave them alone:
+
+| Option | Type | Default | Range | Purpose |
+|:-------|:-----|--------:|:------|:--------|
+| `RFPMargin` | spin | 80 | 20–300 | Reverse-futility margin (cp) |
+| `RFPDepth` | spin | 6 | 2–12 | Reverse-futility max depth |
+| `FutMargin` | spin | 150 | 40–400 | Futility-pruning margin (cp) |
+| `DeltaMargin` | spin | 200 | 50–500 | Quiescence delta-pruning margin (cp) |
+| `LMPScale` | spin | 100 | 40–250 | Late-move-pruning count scale (%) |
+| `LMRDiv` | spin | 200 | 120–350 | Late-move-reduction divisor (×100) |
+| `NullBase` | spin | 2 | 1–4 | Null-move base reduction |
+| `NullDiv` | spin | 6 | 3–12 | Null-move depth divisor |
+| `AspDelta` | spin | 30 | 10–120 | Aspiration window delta (cp) |
+| `SoftStable` | spin | 40 | 20–70 | Soft-stop time fraction, stable best move (%) |
+| `SoftUnstable` | spin | 80 | 50–130 | Soft-stop time fraction, best move flips (%) |
+
+---
+
 ## Tooling
 
 | Script | Purpose |
