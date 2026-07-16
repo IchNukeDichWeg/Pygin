@@ -29,7 +29,7 @@ _SF_PATHS = [
     "/opt/homebrew/bin/stockfish", "/usr/local/bin/stockfish",
     "/usr/games/stockfish", "/usr/bin/stockfish", "stockfish",
 ]
-SF_ELO = int(os.environ.get("STOCKFISH_ELO", "2500"))
+SF_ELO = int(os.environ.get("STOCKFISH_ELO", "2700"))
 SF_SKILL = os.environ.get("STOCKFISH_SKILL")          # if set, used instead of Elo
 SF_THREADS = int(os.environ.get("STOCKFISH_THREADS", "1"))
 SF_HASH = int(os.environ.get("STOCKFISH_HASH", "64"))
