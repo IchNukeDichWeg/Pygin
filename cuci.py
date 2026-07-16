@@ -23,8 +23,10 @@ Options:
     Move Overhead (spin 0..5000, default 40) -- per-move clock slack, ms
     Hash          (spin 2..6144 MB, default 192) -- C TT size (FI-10;
                                               resize wipes the table)
-    (+ the P-26 tuning spins; `bench` prints the OpenBench nodes signature;
-    `go nodes N` is honored via a C-side node budget)
+    (+ the P-26 tuning spins; `bench [depth]` prints the OpenBench nodes
+    signature -- CONFIG-RELATIVE: it re-baselines after every tree-changing
+    ship, so compare only within one confirmed version; `go nodes N` is
+    honored via a C-side node budget)
 
 `stop` aborts the search via engine.stop() -- the host-owned `_abort` flag
 plus cs_stop(); the search thread then prints the bestmove found so far
