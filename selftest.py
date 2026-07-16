@@ -255,6 +255,8 @@ if os.path.exists("csearch.c"):
             pass                       # pre-P-47 csearch.so
         print("\nC core ladder (cold TT per depth):")
         ok_all, mv_final = True, None
+        recompute = "--recompute-ladder" in sys.argv   # FI-45: paste-ready
+        rows = []                                      # re-pin output
         for d in range(1, 13):
             ce._lib.cs_tt_reset()          # cold TT => reproducible count
             mv_final = ce.get_best_move(chess.Board(CE_LADDER_FEN), d)
@@ -266,6 +268,16 @@ if os.path.exists("csearch.c"):
             exp_s = "" if match else f"  != expected {exp}"
             print(f"  {flag} d{d:2d}  {str(mv_final):6s} score={sc:6d} "
                   f"nodes={n:>7,}{exp_s}")
+            rows.append((d, n, sc))
+        if recompute:
+            # FI-45: every confirm re-pins the ladder by hand -- print the
+            # block paste-ready instead. NOTE: values reflect the CURRENT
+            # pin set above; only paste after a CONFIRMED tree change.
+            print("\n# paste into CE_LADDER (selftest.py):")
+            print("CE_LADDER = {")
+            for d, n, sc in rows:
+                print(f"    {d}: ({n}, {sc}),")
+            print("}")
         check("C core ladder to depth 12 (nodes+score pinned)", ok_all,
               "search reached d12, all values match CE_LADDER"
               if ok_all else "a value changed -- confirmed C-search change? "
