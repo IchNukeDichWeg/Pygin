@@ -10,42 +10,37 @@ board representation, move generation and legality checking.
 > C port, the evaluation, and the whole regimen of A/B-tested improvements
 > were designed, implemented, and tuned with Claude Code.
 
-The engine exists in two forms. `engine.py` is the reference implementation —
-a full Python engine whose evaluation and move generation are ported to C
-(`eval_c.c`, `movegen.c`). The current strongest engine is the **C search
-core** (`cengine.py` + `csearch.c`): the *entire* per-node search loop — board,
-ordering, transposition table, pruning, quiescence and a bit-exact port of the
-evaluation — runs in C, with Python keeping only the root layer (iterative
-deepening, time management, opening book). It reaches ~4.3M nodes/s, roughly
-50× the Python core, and searches several plies deeper at the same time
-control. `engine.py` remains the single source of truth for evaluation: the C
-core syncs every eval parameter from it at startup.
+The engine exists in two forms:
 
-**Strength:** the Python engine (`engine.py`) measures around **2440–2450 Elo**
-single-threaded (level with Stockfish 18 capped at UCI_Elo 2450 over 2,500
-games). The **C search core** is far stronger and still climbing: it beat the
-Python engine **29–1–0** on arrival, and the C-era ledger has since added
-**≈ +194 Elo** of A/B-confirmed gains (v31 → v48: IIR, TT persistence, check
-extensions, qsearch-TT, noisy-only + staged move generation, an
-incremental-Zobrist NPS batch, a TT prefetch, a TT-value pruning sharpener,
-a qsearch TT-quality batch,
-a doubled transposition table, and five correctness releases — exact PV,
-score hygiene, FIDE-exact en-passant hashing, verified-null/50-move/TT-policy
-batch, cannot-win eval clamp).
-Against **full-strength** Stockfish 18 (`odds.py`) it scores **100%** (100/100
-games) at queen odds and **93.25%** (400 games) at rook odds — both
-saturated, i.e. no longer sensitive enough to show further progress — and
-**76.75%** (400 games) at knight odds, the current external yardstick since
-queen/rook stopped discriminating. All three were measured on the v31 C-core
-baseline (odds percentages are hardware/environment-dependent — compare only
-runs from the same machine); the C-era ledger has added **≈ +194 Elo** since
-v31, so the true current gap is wider than these numbers show.
-Against Stockfish 18 **capped at UCI_Elo 2700** it scores **71.3%** over
-2,000 games at 50s+0.2 (**+157.9 ± 18.6**, game-pair ratio 9.2, measured
-2026-07-17 on the v47 tree) — a class bracket rather than a precise rating:
-the UCI_Elo limiter injects errors at a calibrated rate, which compresses
-real strength differences, so odds games remain the honest external
-yardstick.
+- **`engine.py`** — the reference implementation: a full Python engine, with
+  evaluation and move generation ported to C (`eval_c.c`, `movegen.c`). It
+  stays the single source of truth for evaluation — the C core syncs every
+  eval parameter from it at startup.
+- **`cengine.py` + `csearch.c`** — the **C search core**, the current
+  strongest engine: the *entire* per-node search loop (board, ordering,
+  transposition table, pruning, quiescence, bit-exact eval port) runs in C;
+  Python keeps only the root layer (iterative deepening, time management,
+  opening book). ~4.3M nodes/s ≈ 50× the Python core, several plies deeper
+  at the same time control.
+
+**Strength:**
+
+- **Python engine:** ~**2440–2450 Elo** single-threaded (level with
+  Stockfish 18 capped at UCI_Elo 2450, 2,500 games).
+- **C search core:** beat the Python engine **29–1–0** on arrival; the
+  C-era ledger has since added **≈ +194 Elo** of A/B-confirmed gains
+  (v31 → v48 — IIR, TT persistence, check extensions, qsearch-TT, staged
+  move generation, incremental Zobrist, TT prefetch, two TT-value
+  sharpeners, a 192 MB table, five correctness releases).
+- **vs full-strength Stockfish 18** (`odds.py`, v31 baseline): **100%** at
+  queen odds (100 games) and **93.25%** at rook odds (400) — both
+  saturated — **76.75%** at knight odds (400), the live external
+  yardstick. Odds numbers are machine-dependent; with +194 ledger Elo
+  since v31, the true current gap is wider than these show.
+- **vs Stockfish 18 capped at UCI_Elo 2700:** **71.3%** over 2,000 games
+  at 50s+0.2 (**+157.9 ± 18.6**, pair ratio 9.2, 2026-07-17, v47 tree).
+  A class bracket, not a rating — the UCI_Elo limiter compresses real
+  strength differences; odds games remain the honest yardstick.
 
 ### Version progression
 
