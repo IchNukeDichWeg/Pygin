@@ -43,11 +43,13 @@ Engine/47) -- both reverted to their v47 defaults, dormant. FI-23
 history-driven quiet pruning REJECTED 2026-07-16 (twenty-first campaign vs
 Old Engine/47: -5.23 +/-7.1, SPRT ACCEPT H0 stopped early at 9,243 games --
 a real negative; HIST_PRUNE reverted to 0, dormant, do-not-retry; the
-shallow quiet/capture-prune vein is 0-for-2 with FI-18). Armed candidate:
-FI-30, the qsearch TT-quality batch (``QS_TT_SHARPEN`` -- FI-25's rule at
-qsearch's stand-pat -- plus the ``QS_KEEP_MOVE`` store rider; both False =
-v47 node-exact; abi 11->12), queued as the twenty-second 50+0.20 campaign
-vs Old Engine/47. See final_improvements.md queue.
+shallow quiet/capture-prune vein is 0-for-2 with FI-18). FI-30 qsearch
+TT-quality batch: INCONCLUSIVE-POSITIVE 2026-07-16 (+4.84 +/-5.55 pooled
+over 15k games, GSPRT LLR +2.479 vs +2.944 accept) -- reverted to dormant
+per the pre-registered rule, with a written re-arm condition (deepened
+TT-quality stack or longer TC). Armed candidate: none pinned -- next queue
+slot is FI-29 (cuckoo upcoming-repetition, correctness-class). See
+final_improvements.md queue.
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -499,20 +501,24 @@ class Engine:
     # REVERTED to 0 (dormant, do-not-retry at this TC); mechanism kept.
     HIST_PRUNE = 0
 
-    # FI-30 (armed 2026-07-16, twenty-second 50+0.20 campaign vs Old
-    # Engine/47): (a) QS_TT_SHARPEN -- FI-25's rule applied at qsearch's
+    # FI-30: (a) QS_TT_SHARPEN -- FI-25's rule applied at qsearch's
     # stand-pat: on a TT hit whose bound didn't cut, the entry's SEARCH
     # value replaces the static eval as the stand-pat wherever the bound
-    # provably improves it (LOWER above / UPPER below / EXACT; non-mate).
-    # Feeds the stand-pat beta cutoff, best-init/alpha raise, and the
-    # delta-pruning base at the tree's most populous node type; the FI-03
-    # TT-eval cache keeps the RAW eval (raw_stand split, exactness
-    # invariant). FI-25 -- the same rule one level up -- paid +13.52.
-    # (b) QS_KEEP_MOVE -- a stand-pat (move-0) store no longer deletes a
-    # same-key entry's best move (FB-22's rule applied to qs_tt_store).
-    # Both False = v47 node-exact (the selftest ladder pins them off).
-    QS_TT_SHARPEN = True
-    QS_KEEP_MOVE = True
+    # provably improves it (LOWER above / UPPER below / EXACT; non-mate);
+    # the FI-03 TT-eval cache keeps the RAW eval (raw_stand split).
+    # (b) QS_KEEP_MOVE -- a stand-pat (move-0) store keeps a same-key
+    # entry's best move (FB-22's rule applied to qs_tt_store).
+    # VERDICT 2026-07-16 (twenty-second campaign vs Old Engine/47, run as
+    # 10k + 5k pooled = 15,000 games): +4.84 +/-5.55, pair ratio 1.09,
+    # pooled GSPRT[0,4] LLR +2.479 vs the +2.944 accept bound -- the
+    # STRONGEST inconclusive on the books, but the pre-registered rule
+    # (no CI-clear, no LLR-accept, not correctness-class, no third
+    # tranche) says revert => both False (dormant, mechanisms kept).
+    # RE-ARM CONDITION (P-45 precedent): revisit after the TT-quality
+    # stack deepens (FI-29 cuckoo / FI-31 pawn-key infra raising hit
+    # quality) or at a longer TC -- the lean was real at every read.
+    QS_TT_SHARPEN = False
+    QS_KEEP_MOVE = False
 
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
