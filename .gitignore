@@ -140,6 +140,9 @@ worstfish.py
 coinflip.py
 drawfish.py
 
+# lichess bot userscript (local only; talks to a local 127.0.0.1 bridge)
+lichess_bot_pygin.js
+
 # opening-book output (local only; make_book.py itself is tracked)
 book.bin
 book.log
