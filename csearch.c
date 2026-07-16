@@ -1276,7 +1276,7 @@ void cs_tt_reset(void)
 void set_tt_bits(int bits)
 {
     if (bits < 16) bits = 16;
-    if (bits > 27) bits = 27;                /* 27 = 3 GB of 24B entries */
+    if (bits > 28) bits = 28;                /* 28 = 6 GB of 24B entries */
     size_t n = (size_t)1 << bits;
     if (n == g_tt_size && g_tt) return;
     size_t old_size = g_tt_size;             /* FB-26: the comment promised */

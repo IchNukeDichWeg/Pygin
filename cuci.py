@@ -19,7 +19,7 @@ Options:
     UseTB         (check, default false)   -- root Lichess-Syzygy probe
                                               (difficulty-gated; needs network)
     Move Overhead (spin 0..5000, default 40) -- per-move clock slack, ms
-    Hash          (spin 2..3072 MB, default 48) -- C TT size (FI-10;
+    Hash          (spin 2..6144 MB, default 192) -- C TT size (FI-10;
                                               resize wipes the table)
     (+ the P-26 tuning spins; `bench` prints the OpenBench nodes signature;
     `go nodes N` is honored via a C-side node budget)
@@ -495,6 +495,7 @@ def main():
                 out("option name Threads type spin default 1 min 1 max 256")
                 out("option name MultiPV type spin default 1 min 1 max 5")
                 out("option name OwnBook type check default true")
+                out("option name BookFile type string default <empty>")
                 out("option name UseTB type check default false")
                 # P-26 tuning knobs (chess-tuning-tools): defaults = shipped
                 # v34 values; percent-scaled where the native value is
@@ -512,7 +513,7 @@ def main():
                 out("option name SoftUnstable type spin default 80 min 50 max 130")
                 out("option name Premove type check default false")
                 out("option name Move Overhead type spin default 40 min 0 max 5000")
-                out("option name Hash type spin default 48 min 2 max 3072")
+                out("option name Hash type spin default 192 min 2 max 6144")
                 # FI-13d: self-identifying config line (A/B forensics: PGN
                 # headers grep this to know exactly what was playing).
                 out(f"info string abi={engine._lib.csearch_abi()}"
@@ -553,8 +554,13 @@ def main():
                     engine.multipv = max(1, min(5, int(value)))
                 elif name == "ownbook":
                     engine.use_book = value.lower() == "true"
+                elif name == "bookfile":
+                    # Point at a custom Polyglot .bin; empty/<empty> restores
+                    # the auto-discovered bundled book (Perfect2023.bin ...).
+                    engine.book_path = None if value in ("", "<empty>") else value
                 elif name == "usetb":
-                    engine.use_tb = value.lower() == "true"
+                    engine.use_tb = value.lower() == "true"   # online Lichess
+                                                              # Syzygy; no path
                 # P-26 tuning knobs. C-side setters take effect on the next
                 # search; Python-side ones are plain instance attributes.
                 elif name == "rfpmargin":
@@ -591,7 +597,7 @@ def main():
                     engine.move_overhead_ms = max(0, int(value))
                 elif name == "hash":                    # FI-10: MB -> bits
                     if not searching():                 # resize = realloc;
-                        mb = max(2, min(3072, int(value)))   # never mid-search
+                        mb = max(2, min(6144, int(value)))   # never mid-search
                         entries = mb * 1024 * 1024 // 24
                         engine._lib.set_tt_bits(entries.bit_length() - 1)
                         pending_hash_mb = None
@@ -638,7 +644,7 @@ def main():
                           file=sys.stderr)
             elif cmd == "go":
                 if pending_hash_mb is not None and not searching():
-                    mb = max(2, min(3072, pending_hash_mb))   # FB-25: apply
+                    mb = max(2, min(6144, pending_hash_mb))   # FB-25: apply
                     entries = mb * 1024 * 1024 // 24          # deferred Hash
                     engine._lib.set_tt_bits(entries.bit_length() - 1)
                     pending_hash_mb = None
