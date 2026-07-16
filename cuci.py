@@ -16,6 +16,8 @@ Options:
                                               =1 is byte-identical to before,
                                               match play never sets it)
     OwnBook       (check, default true)    -- engine's own Polyglot book
+    BookFile      (string, default empty)  -- path to a custom Polyglot .bin
+                                              (empty = bundled Perfect2023.bin)
     UseTB         (check, default false)   -- root Lichess-Syzygy probe
                                               (difficulty-gated; needs network)
     Move Overhead (spin 0..5000, default 40) -- per-move clock slack, ms

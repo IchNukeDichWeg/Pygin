@@ -268,8 +268,8 @@ GUI options:
 | `Threads` | spin | 1 | 1–256 | Lazy-SMP search threads |
 | `Hash` | spin | 192 | 2–6144 | Transposition-table size (MB); resize wipes the table |
 | `MultiPV` | spin | 1 | 1–5 | PV lines reported |
-| `OwnBook` | check | true | — | Use the opening book |
-| `BookFile` | string | *(bundled)* | — | Path to a custom Polyglot `.bin` book (empty = bundled `Perfect2023.bin`) |
+| `OwnBook` | check | true | — | Use opening book |
+| `BookFile` | string |  | — | Path to Polyglot `.bin` book (empty ⇒ bundled `Perfect2023.bin`) |
 | `UseTB` | check | false | — | Probe the online Lichess Syzygy tablebase at the root (needs network; no local path) |
 | `Move Overhead` | spin | 40 | 0–5000 | Clock margin (ms) for GUI/network lag |
 | `Premove` | check | false | — | Emit certified instant-reply premoves (opt-in) |
