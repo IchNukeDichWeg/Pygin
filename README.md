@@ -37,10 +37,11 @@ The engine exists in two forms:
   saturated — **76.75%** at knight odds (400), the live external
   yardstick. Odds numbers are machine-dependent; with +195 ledger Elo
   since v31, the true current gap is wider than these show.
-- **vs Stockfish 18 capped at UCI_Elo 2700:** **71.3%** over 2,000 games
-  at 50s+0.2 (**+157.9 ± 18.6**, pair ratio 9.2, 2026-07-17, v47 tree).
-  A class bracket, not a rating — the UCI_Elo limiter compresses real
-  strength differences; odds games remain the honest yardstick.
+- **vs Stockfish (dev build 2026-07-11) capped at UCI_Elo 2700:** **71.3%**
+  over 2,000 games at 50s+0.2 (**+157.9 ± 18.6**, pair ratio 9.2,
+  2026-07-17, v47 tree). A class bracket, not a rating — the UCI_Elo
+  limiter compresses real strength differences (and calibrates differently
+  across SF versions); odds games remain the honest yardstick.
 
 ### Version progression
 
