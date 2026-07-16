@@ -53,9 +53,10 @@ stores). CONFIRMED 2026-07-16 over the longest campaign on the books
 GSPRT[0,4] LLR +3.475 crossing the +2.944 accept -- the C era's first
 sequential-test ACCEPT, reached after a premature 10k-cap revert was
 walked back and the test ran to its own stopping rule. Snapshotted Old
-Engine/48. Armed candidate: none pinned -- next queue slot is FI-29
-(cuckoo upcoming-repetition, correctness-class). See
-final_improvements.md queue.
+Engine/48. Armed candidate: FI-29 cuckoo upcoming-repetition
+(CYCLE_DETECT, twenty-third campaign vs Old Engine/48 PENDING --
+correctness-class, KEEP-ON-NULL; CYCLE_VERIFY differential clean, see the
+toggle comment). See final_improvements.md queue.
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -525,6 +526,23 @@ class Engine:
     QS_TT_SHARPEN = True
     QS_KEEP_MOVE = True
 
+    # FI-29: cuckoo upcoming-repetition (van Kervinck / SF has_game_cycle).
+    # is_repetition only sees repetitions already ON the path; the cuckoo
+    # table (8192 slots, one Zobrist delta per reversible non-pawn move)
+    # detects that the side to move can FORCE one with a single move, so
+    # the node scores the contempt draw a full search earlier -- pruning
+    # lost shuffle subtrees and banking perpetual half-points sooner.
+    # In-tree only, never in check, alpha-raise (not hard return); a match
+    # that would strip castling rights is rejected (key-soundness beyond
+    # SF's envelope). ARMED 2026-07-16 (twenty-third campaign vs Old
+    # Engine/48): correctness-class (EP-01/CB-01/CB-02 precedent),
+    # KEEP-ON-NULL. Gates passed: CYCLE_VERIFY differential 13,272 claims /
+    # 0 mismatches over 1.1M nodes; False = v48 node-exact (ladder pin);
+    # blocked-pawn fortress d16 collapses 11,893 -> 4,310 nodes with the
+    # score snapping to 0; short-mate spot check no regress (full timed
+    # matetrack deferred -- load-sensitive, a match was running).
+    CYCLE_DETECT = True
+
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
     ASPIRATION_DELTA = 30                    # centipawns; C scores are cp too
@@ -580,9 +598,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (FI-30's set_qs_tt_sharpen/set_qs_keep_move are abi 12) -- bump
-        # together with csearch_abi.
-        if lib.csearch_abi() < 12:
+        # (FI-29's set_cycle is abi 13) -- bump together with csearch_abi.
+        if lib.csearch_abi() < 13:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -617,7 +634,7 @@ class Engine:
               self.CB2, self.CANTWIN, self.NULL_VERIFY, self.LMR_HIST,
               self.TT_EVAL_SHARPEN, self.SEE_PRUNE, self.ROOT_ORDER,
               self.TT_BITS, self.TT_KEEP_WARM, self.HIST_PRUNE,
-              self.QS_TT_SHARPEN, self.QS_KEEP_MOVE)
+              self.QS_TT_SHARPEN, self.QS_KEEP_MOVE, self.CYCLE_DETECT)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -657,6 +674,7 @@ class Engine:
         lib.set_hist_prune(int(self.HIST_PRUNE))               # FI-23
         lib.set_qs_tt_sharpen(1 if self.QS_TT_SHARPEN else 0)  # FI-30(a)
         lib.set_qs_keep_move(1 if self.QS_KEEP_MOVE else 0)    # FI-30(b)
+        lib.set_cycle(1 if self.CYCLE_DETECT else 0)           # FI-29
         # FB-06: cengine is AUTHORITATIVE over every behavioral C toggle --
         # a stale .so or drifted compiled-in default must not silently change
         # the search. Values = the confirmed ledger state (all defaults, so
