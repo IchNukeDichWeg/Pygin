@@ -129,6 +129,7 @@ CE_LADDER = {                     # depth -> (nodes, score)  [v49: FI-29 cuckoo 
     1: (95, 126), 2: (180, 126), 3: (730, 126), 4: (984, 122),
     5: (8539, 73), 6: (16157, 63), 7: (40863, 74), 8: (76928, 72),
     9: (123308, 75), 10: (266797, 58), 11: (422918, 71), 12: (700627, 68),
+    13: (1082729, 84), 14: (2092281, 71),
 }
 if os.path.exists("csearch.c"):
     try:
@@ -266,7 +267,7 @@ if os.path.exists("csearch.c"):
         ok_all, mv_final = True, None
         recompute = "--recompute-ladder" in sys.argv   # FI-45: paste-ready
         rows = []                                      # re-pin output
-        for d in range(1, 13):
+        for d in range(1, 15):
             ce._lib.cs_tt_reset()          # cold TT => reproducible count
             mv_final = ce.get_best_move(chess.Board(CE_LADDER_FEN), d)
             n, sc = ce.nodes_searched, ce.last_score
@@ -287,8 +288,8 @@ if os.path.exists("csearch.c"):
             for d, n, sc in rows:
                 print(f"    {d}: ({n}, {sc}),")
             print("}")
-        check("C core ladder to depth 12 (nodes+score pinned)", ok_all,
-              "search reached d12, all values match CE_LADDER"
+        check("C core ladder to depth 14 (nodes+score pinned)", ok_all,
+              "search reached d14, all values match CE_LADDER"
               if ok_all else "a value changed -- confirmed C-search change? "
               "re-measure CE_LADDER; else regression")
 
@@ -308,9 +309,96 @@ if os.path.exists("csearch.c"):
         check("C core NPS above disaster floor", nps > 300_000,
               f"{nps:,.0f} nps (floor 300k; expected ~1M+; "
               "below floor = unoptimized build or Python eval fallback)")
+
+        # --- 5d. determinism: cold-TT double run must be bit-identical --- #
+        # Catches uninitialized memory, stray thread state, and any hidden
+        # nondeterminism the pinned ladder would only see as a one-off.
+        runs = []
+        for _ in range(2):
+            ce._lib.cs_tt_reset()
+            ce.get_best_move(chess.Board(CE_LADDER_FEN), 10)
+            runs.append((ce.nodes_searched, ce.last_score))
+        check("C core deterministic (cold-TT d10 double run)",
+              runs[0] == runs[1], f"{runs[0]} vs {runs[1]}")
+
+        # --- 5e. mate minisuite: mate scores AND full PVs end in mate ---- #
+        # PV-02 guarantees the exact line; a truncated or illegal mate PV
+        # here means PV extraction or the mate-score plumbing regressed.
+        MATES = [  # (fen, depth, max plies to mate)
+            ("6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1", 4, 1),   # back rank
+            ("r6k/5ppp/8/8/8/8/1R3PPP/1R4K1 w - - 0 1", 6, 3), # ladder M2
+        ]
+        mates_ok, mate_why = True, "scores mate and PV ends in checkmate"
+        for fen, d, plies in MATES:
+            ce._lib.cs_tt_reset()
+            ce.get_best_move(chess.Board(fen), d)
+            if ce.last_score < ce.MATE_THRESHOLD:
+                mates_ok, mate_why = False, f"no mate score on {fen}"
+                break
+            bd = chess.Board(fen)
+            for u in ce.last_pv.split()[:plies]:
+                mvp = chess.Move.from_uci(u)
+                if mvp not in bd.legal_moves:
+                    mates_ok, mate_why = False, f"illegal PV move {u} on {fen}"
+                    break
+                bd.push(mvp)
+            else:
+                if not bd.is_checkmate():
+                    mates_ok, mate_why = False, f"PV does not mate on {fen}"
+            if not mates_ok:
+                break
+        check("C core mate minisuite (score + exact PV)", mates_ok, mate_why)
+
+        # --- 5f. draw machinery: cycle bound + dead material ------------- #
+        # Blocked pawn wall: only reversible shuffles exist; FI-29's cycle
+        # bound must collapse it to an exact 0 (this is also the cheap
+        # engagement canary for CYCLE_DETECT). KNvK: insufficient-material
+        # rule answers inside the contempt draw band without a real search.
+        ce._lib.cs_tt_reset()
+        ce.get_best_move(chess.Board("k7/8/8/p1p1p1p1/P1P1P1P1/8/8/K7 w - - 0 1"), 16)
+        check("draw machinery: blocked-wall fortress scores exactly 0",
+              ce.last_score == 0, f"score {ce.last_score} (cycle bound engaged?)")
+        ce._lib.cs_tt_reset()
+        ce.get_best_move(chess.Board("8/8/8/4k3/8/2N5/8/4K3 w - - 0 1"), 8)
+        check("draw machinery: KNvK inside the contempt draw band",
+              abs(ce.last_score) <= 60 and ce.nodes_searched < 5000,
+              f"score {ce.last_score}, {ce.nodes_searched} nodes")
+
+        # --- 5g. SMP smoke: helper threads search without corruption ----- #
+        # Lazy-SMP is opt-in for matches but load-bearing for GUI/analysis
+        # use; a half-second 4-thread search catches crashes and garbage
+        # moves (scores are nondeterministic under SMP -- only legality
+        # and liveness are asserted).
+        ce.smp_workers = 4
+        mv_smp = ce.get_best_move_timed(chess.Board(), 0.5, max_depth=99)
+        ce.smp_workers = 1
+        check("C core SMP smoke (4 threads, 0.5s)",
+              mv_smp is not None and mv_smp in chess.Board().legal_moves,
+              f"depth {ce.last_depth}, move {mv_smp}")
     except Exception as ex:
         check("C core (cengine) searches", False,
               f"{type(ex).__name__}: {ex} -- rebuild csearch.so via ./setup.sh")
+
+# --- 5h. cuci UCI host: protocol round-trip ------------------------------ #
+# The UCI host carries every external consumer (GUIs, Mephisto, matetrack,
+# a future OpenBench); a broken handshake or a silent bestmove regression
+# must fail here, not in the field.
+if os.path.exists("cuci.py"):
+    r = subprocess.run(
+        [sys.executable, "cuci.py"],
+        input="uci\nisready\nposition startpos moves e2e4\ngo depth 6\nquit\n",
+        capture_output=True, text=True, timeout=120)
+    out = r.stdout
+    uci_ok = ("uciok" in out and "readyok" in out and "bestmove " in out)
+    bm = next((l for l in out.splitlines() if l.startswith("bestmove ")), "")
+    try:
+        bmv = chess.Move.from_uci(bm.split()[1]) if bm else None
+        bd = chess.Board(); bd.push_uci("e2e4")
+        uci_ok = uci_ok and bmv in bd.legal_moves
+    except Exception:
+        uci_ok = False
+    check("cuci UCI round-trip (uciok/readyok/legal bestmove)", uci_ok,
+          bm if bm else "no bestmove line -- see `python3 cuci.py` by hand")
 
 # --- 6. optional pieces: report, don't fail ------------------------------ #
 print("\noptional:")
