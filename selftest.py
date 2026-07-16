@@ -125,10 +125,10 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # quiet developing moves flip between depths without being a regression.
 # Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
 CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3"
-CE_LADDER = {                     # depth -> (nodes, score)  [v47: TT_BITS=23 (192 MB) -- re-measured 2026-07-13; diverges from the 22-bit v46 ladder at d6+ (more slots = fewer index collisions)]
-    1: (102, 126), 2: (187, 126), 3: (741, 126), 4: (995, 122),
-    5: (8599, 73), 6: (16263, 63), 7: (41029, 74), 8: (77314, 72),
-    9: (123944, 75), 10: (286607, 49), 11: (563714, 71), 12: (832777, 64),
+CE_LADDER = {                     # depth -> (nodes, score)  [v48: FI-30 qsearch TT sharpen+keep-move ON -- re-measured 2026-07-16; same score as the v47 ladder at every depth, slightly fewer nodes (sharper stand-pat cuts). TT_BITS=23 (192 MB) unchanged]
+    1: (95, 126), 2: (180, 126), 3: (734, 126), 4: (988, 122),
+    5: (8590, 73), 6: (16252, 63), 7: (41003, 74), 8: (77168, 72),
+    9: (123877, 75), 10: (286549, 49), 11: (563584, 71), 12: (832328, 64),
 }
 if os.path.exists("csearch.c"):
     try:
@@ -227,14 +227,14 @@ if os.path.exists("csearch.c"):
             ce._lib.set_hist_prune(0)
         except AttributeError:
             pass                       # pre-FI-23 csearch.so
-        # FI-30 qsearch TT-quality batch: INCONCLUSIVE-POSITIVE, reverted
-        # to dormant 2026-07-16 (+4.84 +/-5.55 pooled @15k, GSPRT LLR
-        # +2.479 < +2.944 accept; strongest dormant on the books, re-arm
-        # condition recorded in cengine.py); defaults reproduce v47, so
-        # these pins are belt-and-braces.
+        # FI-30 qsearch TT-quality batch: CONFIRMED into v48 2026-07-16
+        # (+4.73 +/-3.19 pooled @21,605 games vs Old Engine/47, GSPRT[0,4]
+        # LLR +3.475 ACCEPT -- the C era's first sequential-test accept).
+        # ON is the shipped default; pinned 1 so the v48 ladder below
+        # survives any future re-toggle experiment (load-bearing).
         try:
-            ce._lib.set_qs_tt_sharpen(0)
-            ce._lib.set_qs_keep_move(0)
+            ce._lib.set_qs_tt_sharpen(1)
+            ce._lib.set_qs_keep_move(1)
         except AttributeError:
             pass                       # pre-FI-30 csearch.so
         # FI-06 root-move ordering is DORMANT (+2.26 null @10k vs Old
