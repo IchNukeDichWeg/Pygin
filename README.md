@@ -5,6 +5,11 @@ evaluation are hand-written (no NNUE, no external engine); the
 [`python-chess`](https://pypi.org/project/chess/) library is used **only** for
 board representation, move generation and legality checking.
 
+> **Built with the help of [Claude Code](https://claude.com/claude-code).**
+> Pygin is developed through human–AI collaboration: the search core, the
+> C port, the evaluation, and the whole regimen of A/B-tested improvements
+> were designed, implemented, and tuned with Claude Code.
+
 The engine exists in two forms. `engine.py` is the reference implementation —
 a full Python engine whose evaluation and move generation are ported to C
 (`eval_c.c`, `movegen.c`). The current strongest engine is the **C search
