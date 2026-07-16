@@ -132,8 +132,18 @@ method) — NOT TD-leaf on a weak player, which is what sat the old MLP at
 -200 Elo. `quiet-labeled.v7.epd` can seed a first warmstart, but the bulk
 of training data should come from v47/v48 self-play (millions of positions
 target, filtered to quiet non-capture/non-check positions the same way
-qsearch already identifies them). **Gate:** a labeled dataset of >=5-10M
-positions, holdout split, sanity-checked score distribution.
+qsearch already identifies them). **Label amendment (fable5 F5-19, v47+
+audit wave 2026-07-16):** EXCLUDE positions where score-shaping fired
+(cantwin_clamp, the mop-up shortcut, draw_score/contempt shaping — all
+detectable at label time); keep those mechanisms POST-network at inference,
+exactly as they wrap `eval_white` today. Letting the net learn clamp and
+contempt artifacts wastes capacity and pollutes the regression target, and
+a bad-label finding in Phase 3 costs a full dataset regeneration. Any
+drawishness terms shipped from the eval-sweep menu (scale factor, winnable)
+also stay outside the net, preserving the twin-oracle structure through the
+NNUE transition. **Gate:** a labeled dataset of >=5-10M positions, holdout
+split, sanity-checked score distribution, and a label-set audit showing
+zero shaped positions.
 
 **Phase 3 — trainer.** Python/PyTorch (or numpy if avoiding the new
 dependency matters more than convenience — CPU-only training of a net this
