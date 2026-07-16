@@ -52,6 +52,10 @@ Usage:
 
     python3 nps_history_bench.py --report nps_history_results_123.json
         Print tables from a specific results file.
+
+    python3 nps_history_bench.py --report --md [report.md]
+        Write a shareable Markdown report FILE (metadata header + HTML
+        tables) instead of printing. Default path: <results>.md.
 """
 import argparse
 import concurrent.futures as cf
@@ -586,6 +590,11 @@ def parse_args():
                     metavar="FILE",
                     help="Print tables from an existing results file (default: most "
                          "recently modified one) instead of running anything.")
+    p.add_argument("--md", nargs="?", const="__default__", default=None,
+                    metavar="OUT",
+                    help="With --report: write a Markdown report FILE (metadata "
+                         "header + HTML tables) instead of printing to the "
+                         "terminal. Optional path; default = <results>.md.")
     p.add_argument("--resume", metavar="FILE",
                     help="Continue an existing (possibly interrupted) results file "
                          "instead of starting a fresh timestamped one.")
@@ -605,6 +614,51 @@ def parse_args():
     return p.parse_args()
 
 
+def build_markdown(results, source_path):
+    """A shareable Markdown report: metadata header (source, versions,
+    positions, run config, cell/error counts) + the full HTML breakdown
+    tables. Used by `--report --md`."""
+    versions = versions_in(results)
+    position_names = positions_in(results)
+    n_errors = sum(1 for c in results.values() if "error" in c)
+    cfg = infer_run_config(results)
+    generated = datetime.now().strftime("%Y-%m-%d %H:%M")
+    src_mtime = (datetime.fromtimestamp(os.path.getmtime(source_path)).strftime("%Y-%m-%d %H:%M")
+                 if os.path.exists(source_path) else "unknown")
+
+    lines = ["# NPS / Depth Benchmark Report\n"]
+    lines.append(f"- **Source file:** `{os.path.basename(source_path)}` (created {src_mtime})")
+    lines.append(f"- **Report generated:** {generated}")
+    if versions:
+        lines.append(f"- **Versions covered:** v{versions[0]}-v{versions[-1]} "
+                      f"({len(versions)} version{'s' if len(versions) != 1 else ''})")
+    else:
+        lines.append("- **Versions covered:** none")
+    # Positions actually found in THIS file, not the live default list --
+    # those can differ if a position was swapped out after this file was made.
+    lines.append(f"- **Positions:** {len(position_names)} "
+                 f"({', '.join(position_names)})")
+    if cfg["runs_per_position"] is not None:
+        lines.append(f"- **Runs per position:** {cfg['runs_per_position']}")
+    # Seconds/run and max_depth are what make a depth number interpretable
+    # (depth 20 in 5s != depth 20 in 60s; depth == max_depth means the tree
+    # fully solved rather than being time-limited) -- see run_config_line.
+    if cfg["seconds_per_run"] is not None:
+        lines.append(f"- **Seconds per run:** {cfg['seconds_per_run']}")
+    if cfg["max_depth"] is not None:
+        lines.append(f"- **Max depth (hard cap):** {cfg['max_depth']}")
+    if cfg["seconds_per_run"] is None and cfg["max_depth"] is None:
+        lines.append("- **Run config:** not recorded in this file (pre-dates "
+                      "config tracking -- don't compare its depth numbers "
+                      "across files without checking how it was actually run)")
+    lines.append(f"- **Total cells:** {len(results)} "
+                 f"({n_errors} error{'s' if n_errors != 1 else ''})")
+    lines.append("")
+    lines.append(build_tables(results, versions, position_names, fmt="html"))
+    lines.append("")
+    return "\n".join(lines)
+
+
 def main():
     args = parse_args()
 
@@ -618,9 +672,16 @@ def main():
             print(f"No results file found ({path or 'none saved yet'}).")
             return
         results = load_results(path)
-        print(f"Reporting from {path}")
-        print(run_config_line(results) + "\n")
-        print(build_tables(results))
+        if args.md is not None:
+            out_path = (os.path.splitext(path)[0] + ".md"
+                        if args.md == "__default__" else args.md)
+            with open(out_path, "w") as f:
+                f.write(build_markdown(results, path))
+            print(f"Wrote {out_path}")
+        else:
+            print(f"Reporting from {path}")
+            print(run_config_line(results) + "\n")
+            print(build_tables(results))
         return
 
     versions = parse_versions(args.versions) if args.versions else discover_versions()
