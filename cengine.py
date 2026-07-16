@@ -722,7 +722,7 @@ class Engine:
         # not yet A/B-measured, so multi-threading is strictly opt-in (set
         # this attr, or the Threads option in cuci.py). CLAUDECHESS_SMP env
         # honored like engine.py.
-        # FB-13c: clamp to the C-side ceiling (set_threads clamps at 64
+        # FB-13c: clamp to the C-side ceiling (set_threads clamps at 256
         # silently -- the Python attr must not misrepresent the real count).
         self.smp_workers = min(256, max(1, int(os.environ.get(
             "CLAUDECHESS_SMP", "1"))))
@@ -779,6 +779,13 @@ class Engine:
     @book_path.setter
     def book_path(self, value):
         self._py.book_path = value
+        # FB-28: engine.py's _resolve_book latches _book_resolved on the
+        # first probe; without this reset a BookFile setoption arriving
+        # after any `go` silently keeps serving the OLD book (and <empty>
+        # could never restore the bundled scan). Invalidate on assignment
+        # so every host gets live switching.
+        self._py._book_resolved = False
+        self._py._book_reader = None
 
     def _emit(self, record, final=False):
         self.search_log.append(record)
@@ -967,7 +974,12 @@ class Engine:
             h.pop()
             hist.append(self._lib.cs_board_key(*self._bargs(h)))
         arr = (ctypes.c_uint64 * max(1, len(hist)))(*hist)
-        self._lib.set_threads(int(self.smp_workers))     # Lazy SMP
+        # FB-29: node-limited searches force 1 thread HERE (the C budget
+        # counts main-thread nodes only, and `go nodes` exists for
+        # determinism) -- cuci's guard at go-parse time was dead code, this
+        # push used to clobber it when the search started.
+        self._lib.set_threads(1 if self.node_limit
+                              else int(self.smp_workers))  # Lazy SMP
         # FB-09: node budget (0 = unlimited); node-identical when unset.
         self._lib.set_node_limit(
             ctypes.c_uint64(int(self.node_limit) if self.node_limit else 0))

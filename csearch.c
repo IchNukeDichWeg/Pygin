@@ -1005,15 +1005,15 @@ static int pawn_structure(uint64_t wp, uint64_t bp, int phase)
 
 static int g_simp_thresh = 0, g_simp_weight = 10;   /* v30 simplify port;
                                                      * 0 = off (default) */
-/* CW-01 (QUEUED tenth campaign; DORMANT until CB-02 resolves -- one tree
- * change at a time): cannot-win clamp. If the side the eval favors has no
+/* CW-01 (CONFIRMED into v42, tenth campaign: +3.27 +/-6.8 null KEPT as
+ * correctness; driver default ON): cannot-win clamp. If the side the eval favors has no
  * pawns, no rooks/queens, and at most a lone minor (or two knights), it
  * cannot force mate -- the position's true upper bound is a draw, so the
  * score clamps to 0. Fixes the GUI/practical blindness where the engine
  * shuffles at "+2.6" with a lone bishop vs pawns, actively AVOIDING the
  * capture that would reveal the draw (horizon-effect draw-avoidance).
  * Mirrored bit-exactly in engine.py's _evaluate_static (use_cantwin) --
- * the oracle differential covers both. 0 = v40 eval exactly. */
+ * the oracle differential covers both. 0 = tip minus CW-01 (v41's eval). */
 static int g_cantwin = 0;
 void set_cantwin(int v) { g_cantwin = v; }
 static inline int cantwin_clamp(const Board* b, int s)
@@ -1164,7 +1164,7 @@ static __thread uint32_t g_counter[4096];
  * history: g_cont1 keyed by the PREVIOUS move (the opponent move that led
  * here), g_cont2 by the move TWO back (our own previous move); both indexed
  * by (mover_pt<<6 | to) of predecessor and candidate -- the compact
- * piece-to form (448x448 int16 per table, ~800KB __thread each) instead of
+ * piece-to form (448x448 int16 per table, 392 KiB __thread each) instead of
  * v30's sparse from-to dicts. g_ctx[ply] holds the (pt<<6|to) of the move
  * that ENTERED ply (0 = none: root, null-move children). Same gravity rule
  * and HIST_MAX as butterfly history; updated at quiet beta cutoffs with the
@@ -1301,7 +1301,9 @@ int cs_hashfull(void)
     if (g_tt == NULL) return 0;
     int used = 0;
     for (int i = 0; i < 1000; i++) {
-        const TTEntry* t = &g_tt[(uint64_t)i * (TT_SIZE / 1000)];
+        const TTEntry* t = &g_tt[(uint64_t)i * (TT_SIZE - 1) / 999];  /* FB-32:
+                                     * spans 0..TT_SIZE-1; the old TT_SIZE/1000
+                                     * stride never sampled the table tail */
         if (t->key_x | t->d1 | t->d2) used++;
     }
     return used;
@@ -1849,7 +1851,9 @@ void set_check_ext_budget(int v)
 static int g_score_hyg = 0;
 void set_score_hygiene(int v) { g_score_hyg = v ? 1 : 0; }
 /* (a): max(MG,EG) of the synced Texel values, rounded up -- must COVER the
- * eval swing of capturing the piece; PIECE_VAL stays for MVV-LVA ordering. */
+ * eval swing of capturing the piece. (FB-33: MVV-LVA never reads PIECE_VAL;
+ * its only live consumer is the !g_score_hyg delta arm -- dead in the
+ * shipped config, kept as pin-support for set_score_hygiene(0).) */
 static const int DELTA_VAL[7] = {0, 100, 360, 360, 520, 1150, 0};
 
 /* PV-01: triangular PV table -- the PV is collected DURING the search (each
@@ -2158,7 +2162,7 @@ void root_exclude_add(int key15)
  * zeroed every move by cs_search_begin, so within one move's search it
  * rarely swings past a few hundred. */
 static int g_hist_prune = 0;
-void set_hist_prune(int v) { g_hist_prune = v; }
+void set_hist_prune(int v) { g_hist_prune = v < 0 ? 0 : v; }  /* FB-31 */
 
 static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
                                int flag, int ev)
@@ -2791,7 +2795,7 @@ void cs_search_begin(const uint64_t* hist, int nhist, double budget_sec)
     memset(g_killers, 0, sizeof(g_killers));
     memset(g_counter, 0, sizeof(g_counter));
     if (g_cont_hist) {                       /* Q-01: same per-move lifecycle
-                                              * (dormant: skip the ~1.6MB
+                                              * (dormant: skip the ~784KiB
                                               * clear, the tables are unread) */
         memset(g_cont1, 0, sizeof(g_cont1));
         memset(g_cont2, 0, sizeof(g_cont2));
