@@ -73,6 +73,10 @@ static uint64_t SUPPORT_MASK[2][64];   /* own pawns adjacent, at-or-behind */
 static uint64_t STOPATK_MASK[2][64];   /* enemy pawns attacking the stop square */
 static int CENTER_MANH[64];            /* centre Manhattan distance, 0..6 */
 
+static void cuckoo_build(void);        /* FI-29: defined with the repetition
+                                        * machinery (needs the sliders below);
+                                        * called once Z_PSQ/Z_TURN are set. */
+
 /* C-06: runs once at .so load (constructor) -- see eval_c.c's note; the
  * exported generators no longer pay an init call + branch per invocation. */
 __attribute__((constructor))
@@ -128,6 +132,7 @@ static void init_tables(void)
     for (int i = 1; i < 65; i++) Z_EP[i] = splitmix64(&seed);
     for (int i = 0; i < 64; i++) Z_CR[i] = splitmix64(&seed);
     Z_TURN = splitmix64(&seed);
+    cuckoo_build();                     /* FI-29: reversible-move deltas */
     tables_ready = 1;
 }
 
@@ -1798,6 +1803,130 @@ static inline int is_repetition(uint64_t key, int ply, int hmc)
     return 0;
 }
 
+/* --- FI-29: cuckoo upcoming-repetition (van Kervinck / SF has_game_cycle) --
+ * is_repetition only sees repetitions already ON the path; this detects that
+ * the side to move can FORCE one with a single reversible move, so the node
+ * scores the contempt draw a full search earlier (prunes lost shuffle
+ * subtrees, banks half points from perpetuals one ply sooner).
+ *
+ * Table: one Zobrist delta per unordered reversible non-pawn move
+ * (Z_PSQ[c][pt][s1] ^ Z_PSQ[c][pt][s2] ^ Z_TURN), cuckoo-hashed into 8192
+ * slots by two hash functions (SF's exact scheme; 3668 entries, 45% load).
+ * Probe: at odd distances k = 3,5,... within the reversible window, if
+ * key ^ past_key(k) equals a tabled delta AND the mover really sits on one
+ * endpoint with the path between clear, playing that move recreates the
+ * past key -> upcoming repetition. hmc bounds k, and a null move passes
+ * hmc = 0 down, so the window never spans a null (no key continuity there).
+ *
+ * Soundness envelope (matches Stockfish, gated by the CYCLE_VERIFY
+ * differential): the claimed move may be pin-illegal -- SF accepts this,
+ * the key still repeats, and making the "move" on a copy reproduces the
+ * past key exactly, so the differential stays clean. Two classes SF
+ * accepts that would break KEY-level exactness are excluded here: probes
+ * from in-check nodes are skipped at the call site (a quiet shuffle move
+ * rarely answers check), and a match whose move would strip castling
+ * rights is rejected below (the real key would gain Z_CR terms and NOT
+ * repeat). ep never interferes: an ep right implies a just-played double
+ * push, i.e. hmc == 0, and the probe needs hmc >= 3. */
+static uint64_t g_cuckoo[8192];
+static uint16_t g_cuckoo_mv[8192];     /* from | to<<6 | pt<<12 (pt 2..6) */
+static int g_cycle = 0;                /* 0 = off = v48 node-exact */
+void set_cycle(int v) { g_cycle = v ? 1 : 0; }
+#define CUCKOO_H1(k) ((int)((k) & 0x1FFF))
+#define CUCKOO_H2(k) ((int)(((k) >> 16) & 0x1FFF))
+
+#ifdef CYCLE_VERIFY                    /* differential gate: every true     */
+static long g_cyc_hits = 0;            /* return is re-proven by making the */
+static long g_cyc_bad  = 0;            /* claimed move -- see selftest      */
+void cs_cycle_stats(long* hits, long* bad) { *hits = g_cyc_hits; *bad = g_cyc_bad; }
+#endif
+
+static void cuckoo_build(void)
+{
+    int count = 0;
+    for (int c = 0; c < 2; c++)
+        for (int pt = PT_KNIGHT; pt <= PT_KING; pt++)
+            for (int s1 = 0; s1 < 64; s1++) {
+                uint64_t att =
+                    pt == PT_KNIGHT ? KNIGHT_ATT[s1] :
+                    pt == PT_KING   ? KING_ATT[s1]   :
+                    pt == PT_BISHOP ? bishop_attacks(s1, 0) :
+                    pt == PT_ROOK   ? rook_attacks(s1, 0)   :
+                    bishop_attacks(s1, 0) | rook_attacks(s1, 0);
+                for (uint64_t t = att & ~((1ULL << (s1 + 1)) - 1); t; t &= t - 1) {
+                    int s2 = __builtin_ctzll(t);
+                    uint64_t key = Z_PSQ[c][pt][s1] ^ Z_PSQ[c][pt][s2] ^ Z_TURN;
+                    uint16_t mv = (uint16_t)(s1 | (s2 << 6) | (pt << 12));
+                    int j = CUCKOO_H1(key);
+                    for (int kick = 0; ; kick++) {   /* SF's insertion loop */
+                        uint64_t tk = g_cuckoo[j]; g_cuckoo[j] = key; key = tk;
+                        uint16_t tm = g_cuckoo_mv[j]; g_cuckoo_mv[j] = mv; mv = tm;
+                        if (key == 0) break;
+                        j = (j == CUCKOO_H1(key)) ? CUCKOO_H2(key) : CUCKOO_H1(key);
+                        if (kick > 8192) { g_cuckoo[0] = 0; return; }  /* cannot
+                            happen at 45% load; poisoning slot 0 keeps a
+                            broken build fail-safe (probe never matches 0) */
+                    }
+                    count++;
+                }
+            }
+    (void)count;                       /* 3668, the SF-identical census */
+}
+
+/* Can the side to move force a repetition with one reversible move?
+ * Same walk as is_repetition (path first, then game history), but at ODD
+ * distances (those positions had the OTHER side to move -- one move of
+ * ours away): a delta match means playing the tabled move reproduces the
+ * past key exactly. Call with hmc >= 3 and not in check. */
+static inline int upcoming_repetition(const Board* b, uint64_t key,
+                                      int ply, int hmc)
+{
+    uint64_t occ = b->occ[0] | b->occ[1];
+    uint64_t own = b->occ[b->turn];
+    for (int k = 3; k <= hmc; k += 2) {
+        uint64_t past;
+        if (k <= ply)                        past = g_path[ply - k];
+        else if (k - ply - 1 < g_nhist)      past = g_hist[k - ply - 1];
+        else                                 break;
+        uint64_t delta = key ^ past;
+        int j = CUCKOO_H1(delta);
+        if (g_cuckoo[j] != delta) {
+            j = CUCKOO_H2(delta);
+            if (g_cuckoo[j] != delta) continue;
+        }
+        int s1 = g_cuckoo_mv[j] & 63;
+        int s2 = (g_cuckoo_mv[j] >> 6) & 63;
+        int pt = g_cuckoo_mv[j] >> 12;
+        uint64_t b1 = 1ULL << s1, b2 = 1ULL << s2;
+        /* exactly one endpoint holds a piece -- ours, of the delta's type */
+        uint64_t on = occ & (b1 | b2);
+        if (!on || (on & (on - 1)) || !(on & own)) continue;
+        int from = (on & b1) ? s1 : s2, to = (on & b1) ? s2 : s1;
+        if (board_piece_type_at(b, from) != pt) continue;
+        if (INBETWEEN_BITBOARDS[from][to] & occ & ~(1ULL << to)) continue;
+        /* key-soundness: the move must not strip castling rights (the real
+         * post-move key would differ from `past` by Z_CR terms) */
+        uint64_t crh = b->castling & (b1 | b2);
+        if (pt == PT_KING)
+            crh |= b->castling & (b->turn == WHITE
+                                  ? ((1ULL << 0) | (1ULL << 7))
+                                  : ((1ULL << 56) | (1ULL << 63)));
+        if (crh) continue;
+#ifdef CYCLE_VERIFY
+        {   /* differential: really make the claimed move; the child key
+             * must equal the matched past key, byte for byte. apply_move
+             * needs the mover PT packed (FI-02.2); victim 0 = quiet. */
+            Board c2 = *b;
+            apply_move(&c2, (uint32_t)(from | (to << 6)
+                                       | (pt << MV_SHIFT_MOVER)));
+            if (c2.key == past) g_cyc_hits++; else g_cyc_bad++;
+        }
+#endif
+        return 1;
+    }
+    return 0;
+}
+
 /* --- Phase-3 step 3: pruning ------------------------------------------ */
 #include <math.h>
 static int g_prune = 1;                 /* 0 = no pruning (verification) */
@@ -2412,6 +2541,18 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     g_path[ply] = key;
     if (hmc >= 4 && is_repetition(key, ply, hmc))
         return draw_score(b);
+    /* FI-29: the side to move can FORCE a repetition with one reversible
+     * move -- bound the node by the contempt draw one search earlier.
+     * In-tree only (never the root), never in check (the shuffle move
+     * would rarely be a legal evasion), alpha-raise not hard return (a
+     * PV node keeps searching for better than the draw). */
+    if (g_cycle && ply > 0 && !in_chk && hmc >= 3) {
+        int d = draw_score(b);
+        if (alpha < d && upcoming_repetition(b, key, ply, hmc)) {
+            alpha = d;
+            if (alpha >= beta) return alpha;
+        }
+    }
 
     /* CB-01 (f): mate-distance pruning -- no line from here can beat a mate
      * already forced at a shallower ply; two compares, prunes whole
@@ -3115,7 +3256,8 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted, &second);
 }
 
-int csearch_abi(void) { return 12; }  /* 12 = FI-30 set_qs_tt_sharpen/set_qs_keep_move; 11 = cs_search_root out_second
+int csearch_abi(void) { return 13; }  /* 13 = FI-29 set_cycle (cuckoo upcoming-repetition);
+                                       * 12 = FI-30 set_qs_tt_sharpen/set_qs_keep_move; 11 = cs_search_root out_second
                                        * (FI-09b easy-move 2nd-best score);
                                        * 10 = root_exclude_* (MultiPV);
                                        * 9 = set_tt_bits (FI-10 Hash);
