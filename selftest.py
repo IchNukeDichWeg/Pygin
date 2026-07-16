@@ -237,6 +237,15 @@ if os.path.exists("csearch.c"):
             ce._lib.set_qs_keep_move(1)
         except AttributeError:
             pass                       # pre-FI-30 csearch.so
+        # FI-29 cuckoo upcoming-repetition: ARMED 2026-07-16 (twenty-third
+        # campaign vs Old Engine/48 pending, correctness-class,
+        # keep-on-null). Pinned OFF here: the CE_LADDER above is the v48
+        # reference and this is the load-bearing pin that keeps it valid
+        # while the candidate is live (CYCLE_DETECT=True in cengine).
+        try:
+            ce._lib.set_cycle(0)
+        except AttributeError:
+            pass                       # pre-FI-29 csearch.so
         # FI-06 root-move ordering is DORMANT (+2.26 null @10k vs Old
         # Engine/45, 2026-07-13 -- positive lean but CI covers zero, not
         # correctness); the default already reproduces v45, so this pin is
