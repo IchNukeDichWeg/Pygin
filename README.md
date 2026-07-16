@@ -11,7 +11,7 @@ a full Python engine whose evaluation and move generation are ported to C
 core** (`cengine.py` + `csearch.c`): the *entire* per-node search loop — board,
 ordering, transposition table, pruning, quiescence and a bit-exact port of the
 evaluation — runs in C, with Python keeping only the root layer (iterative
-deepening, time management, opening book). It reaches ~4.5M nodes/s, roughly
+deepening, time management, opening book). It reaches ~4.3M nodes/s, roughly
 50× the Python core, and searches several plies deeper at the same time
 control. `engine.py` remains the single source of truth for evaluation: the C
 core syncs every eval parameter from it at startup.
@@ -44,54 +44,54 @@ Regenerate the single-thread column with `python3 bench_progress.py`, the
 4-thread column with `python3 bench_progress_threads.py 4`.
 
 | Ver | NPS Single Thread | NPS 4 Threads ⁶ | Depth | Elo Δ vs prev | Milestone |
-|----:|------------------:|--------------:|------:|:--------------|:----------|
-| 1 | 17 k | — | 4  | — | first working engine (naive negamax + material eval) |
-| 2 | 31 k | — | 7  | ≈ +120 est ⁵ | search + eval build-out: PVS, futility, LMR, aspiration, pawn/mobility/king-safety eval, book |
-| 3 | 31 k | — | 7  | ≈ +15 est ⁵ | endgame mop-up, contempt draws, counter-moves |
-| 4 | 33 k | — | 8  | ≈ +20 est ⁵ | SEE move ordering + losing-capture pruning |
-| 5 | 31 k | — | 8  | ≈ +3 est ⁵ | recapture extension |
-| 6 | 31 k | — | 9  | ≈ +8 est ⁵ | lone-king endgame eval fix |
-| 7 | 32 k | — | 8  | ≈ +4 est ⁵ | pin evaluation |
-| 8 | 35 k | — | 9  | ≈ +12 est ⁵ | quiescence stand-pat, trade-down simplify, PV extraction |
-| 9 | 27 k | — | 10 | ≈ +12 est ⁵ | late-move pruning, history malus, improving heuristic |
-| 10 | 28 k | — | 10 | ≈ +8 est ⁵ | TT refactor (two-tier + depth-preferred replacement) |
-| 11 | 30 k | — | 10 | ≈ +3 est ⁵ | incremental base eval (byte-identical) |
-| 12 | 30 k | — | 10 | ≈ +4 est ⁵ | check-extension budgeting + max-extensions cap |
-| 13 | 31 k | — | 10 | ≈ +4 est ⁵ | eval-weight retune |
-| 14 | 35 k | — | 10 | ≈ +8 est ⁵ | Syzygy TB probe, internal iterative reduction, pawn hash |
-| 15 | 35 k | — | 10 | ≈ +0 est ⁵ | LMR-divisor tune (tie); probcut tried & removed |
-| 16 | 44 k | — | 11 | (in ³) | **evaluation ported to C** (`eval_c.c`) |
-| 17 | 58 k | — | 10 | +69 ±16 ³ | **move generation ported to C** (`movegen.c`) |
-| 18 | 57 k | — | 10 | ≈ +0 est ⁵ | incremental Zobrist hashing (off by default; SMP infra) |
-| 19 | 57 k | — | 12 | ≈ +5 est ⁵ | lock-free shared TT, multi-process SMP, packed move word |
-| 20 | 61 k | — | 12 | +45 ±11 ⁴ | rook-on-7th, mobility area, threats; one-call C eval |
-| 21 | 62 k | — | 13 | +16 ±10 ⁴ | capture history, SEE capture pruning, LMR losing captures |
-| 22 | 61 k | — | 12 | ≈ +8 est ² | nine correctness bug fixes + six NPS wins |
-| 23 | 59 k | — | 13 | ≈ +0 est ² | Zobrist dispatch de-branching (code quality) |
-| 24 | 59 k | — | 13 | +11.75 ±6.8 ² | TT-dispatch de-branching (± is the v21→v24 span) |
-| 25 | 60 k | 227 k | 13 | +2.91 ±11.6 | 18-item bug block; Lazy-SMP production fixes |
-| 26 | 72 k | 223 k | 13 | +41.90 ±5.7 | node-identical speed batch |
-| 27 | 85 k | 226 k | 13 | +35.17 ±7.7 | node-identical speed batch (+12 %) |
-| 28 | 88 k | 238 k | 13 | +13.13 ±6.0 | node-identical speed batch (+4 %) |
-| 29 | 89 k | 167 k | 13 | +38.34 ±6.9 | soft-stop time management (P-35) |
-| 30 | 88 k | 193 k | 12 | +10.91 ±6.8 | stability-scaled time (U-06); last Python |
-| 31 | 2.7 M | 11.3 M | 17 | ≈ +215 ¹ | **C search core** (whole per-node loop in C) |
-| 32 | 2.7 M | 10.9 M | 18 | +7.30 ±6.8 | internal iterative reduction |
-| 33 | 2.5 M | 10.9 M | 21 | +23.52 ±6.8 | transposition table kept warm across moves |
-| 34 | 2.5 M | 10.5 M | 21 | +6.81 ±6.8 | check extensions |
-| 35 | 3.6 M | 14.0 M | 20 | ≈ +72 | noisy-only qsearch gen + qsearch TT |
-| 36 | 4.0 M | 16.9 M | 22 | +24.67 ±6.8 | staged move ordering |
-| 37 | 4.2 M | 16.6 M | 19 | +0.17 ±6.8 | exact PV (correctness) |
-| 38 | 4.1 M | 16.1 M | 18 | +1.36 ±6.8 | score-hygiene batch (correctness) |
-| 39 | 4.4 M | 18.1 M | 18 | +8.86 ±6.8 | incremental Zobrist + eval-in-TT + NPS batch |
-| 40 | 4.3 M | 16.0 M | 18 | +4.31 ±6.8 | FIDE-exact en-passant hashing (correctness) |
-| 41 | 4.3 M | 16.4 M | 17 | −2.88 ±6.8 | verified null + 50-move + TT-store policy (correctness) |
-| 42 | 4.3 M | 18.6 M | 18 | +3.27 ±6.8 | cannot-win eval clamp (correctness) |
-| 43 | 4.0 M | 16.2 M | 18 | +5.18 ±6.8 | verified-null REMOVED (the insurance cost ~1 ply; isolation A/B) |
-| 44 | 4.3 M | 16.1 M | 18 | +13.31 ±6.8 | TT prefetch (node-identical, +5–6 % NPS) |
-| 45 | 4.3 M | 16.9 M | 18 | +13.52 ±6.8 | TT search value sharpens the pruning eval (same NPS, smarter cuts) |
-| 46 | 4.3 M | 15.3 M | 18 | +5.94 ±6.8 | transposition table doubled to 96 MB (borderline; less TT thrash per game) |
-| 47 | 4.3 M | 14.7 M | 18 | +3.16 ±6.8 | TT to 192 MB (diminishing) + MultiPV (node-exact off) |
+| --: | ----------------: | --------------: | ----: | :------------ | :-------- |
+|   1 |              17 k |               — |     4 | —             | first working engine (naive negamax + material eval) |
+|   2 |              31 k |               — |     7 | ≈ +120 est ⁵  | search + eval build-out: PVS, futility, LMR, aspiration, pawn/mobility/king-safety eval, book |
+|   3 |              31 k |               — |     7 | ≈ +15 est ⁵   | endgame mop-up, contempt draws, counter-moves |
+|   4 |              33 k |               — |     8 | ≈ +20 est ⁵   | SEE move ordering + losing-capture pruning |
+|   5 |              31 k |               — |     8 | ≈ +3 est ⁵    | recapture extension |
+|   6 |              31 k |               — |     9 | ≈ +8 est ⁵    | lone-king endgame eval fix |
+|   7 |              32 k |               — |     8 | ≈ +4 est ⁵    | pin evaluation |
+|   8 |              35 k |               — |     9 | ≈ +12 est ⁵   | quiescence stand-pat, trade-down simplify, PV extraction |
+|   9 |              27 k |               — |    10 | ≈ +12 est ⁵   | late-move pruning, history malus, improving heuristic |
+|  10 |              28 k |               — |    10 | ≈ +8 est ⁵    | TT refactor (two-tier + depth-preferred replacement) |
+|  11 |              30 k |               — |    10 | ≈ +3 est ⁵    | incremental base eval (byte-identical) |
+|  12 |              30 k |               — |    10 | ≈ +4 est ⁵    | check-extension budgeting + max-extensions cap |
+|  13 |              31 k |               — |    10 | ≈ +4 est ⁵    | eval-weight retune |
+|  14 |              35 k |               — |    10 | ≈ +8 est ⁵    | Syzygy TB probe, internal iterative reduction, pawn hash |
+|  15 |              35 k |               — |    10 | ≈ +0 est ⁵    | LMR-divisor tune (tie); probcut tried & removed |
+|  16 |              44 k |               — |    11 | (in ³)        | **evaluation ported to C** (`eval_c.c`) |
+|  17 |              58 k |               — |    10 | +69 ±16 ³     | **move generation ported to C** (`movegen.c`) |
+|  18 |              57 k |               — |    10 | ≈ +0 est ⁵    | incremental Zobrist hashing (off by default; SMP infra) |
+|  19 |              57 k |               — |    12 | ≈ +5 est ⁵    | lock-free shared TT, multi-process SMP, packed move word |
+|  20 |              61 k |               — |    12 | +45 ±11 ⁴     | rook-on-7th, mobility area, threats; one-call C eval |
+|  21 |              62 k |               — |    13 | +16 ±10 ⁴     | capture history, SEE capture pruning, LMR losing captures |
+|  22 |              61 k |               — |    12 | ≈ +8 est ²    | nine correctness bug fixes + six NPS wins |
+|  23 |              59 k |               — |    13 | ≈ +0 est ²    | Zobrist dispatch de-branching (code quality) |
+|  24 |              59 k |               — |    13 | +11.75 ±6.8 ² | TT-dispatch de-branching (± is the v21→v24 span) |
+|  25 |              60 k |           227 k |    13 | +2.91 ±11.6   | 18-item bug block; Lazy-SMP production fixes |
+|  26 |              72 k |           223 k |    13 | +41.90 ±5.7   | node-identical speed batch |
+|  27 |              85 k |           226 k |    13 | +35.17 ±7.7   | node-identical speed batch (+12 %) |
+|  28 |              88 k |           238 k |    13 | +13.13 ±6.0   | node-identical speed batch (+4 %) |
+|  29 |              89 k |           167 k |    13 | +38.34 ±6.9   | soft-stop time management (P-35) |
+|  30 |              88 k |           193 k |    12 | +10.91 ±6.8   | stability-scaled time (U-06); last Python |
+|  31 |             2.7 M |          11.3 M |    17 | ≈ +215 ¹      | **C search core** (whole per-node loop in C) |
+|  32 |             2.7 M |          10.9 M |    18 | +7.30 ±6.8    | internal iterative reduction |
+|  33 |             2.5 M |          10.9 M |    21 | +23.52 ±6.8   | transposition table kept warm across moves |
+|  34 |             2.5 M |          10.5 M |    21 | +6.81 ±6.8    | check extensions |
+|  35 |             3.6 M |          14.0 M |    20 | ≈ +72         | noisy-only qsearch gen + qsearch TT |
+|  36 |             4.0 M |          16.9 M |    22 | +24.67 ±6.8   | staged move ordering |
+|  37 |             4.2 M |          16.6 M |    19 | +0.17 ±6.8    | exact PV (correctness) |
+|  38 |             4.1 M |          16.1 M |    18 | +1.36 ±6.8    | score-hygiene batch (correctness) |
+|  39 |             4.4 M |          18.1 M |    18 | +8.86 ±6.8    | incremental Zobrist + eval-in-TT + NPS batch |
+|  40 |             4.3 M |          16.0 M |    18 | +4.31 ±6.8    | FIDE-exact en-passant hashing (correctness) |
+|  41 |             4.3 M |          16.4 M |    17 | −2.88 ±6.8    | verified null + 50-move + TT-store policy (correctness) |
+|  42 |             4.3 M |          18.6 M |    18 | +3.27 ±6.8    | cannot-win eval clamp (correctness) |
+|  43 |             4.0 M |          16.2 M |    18 | +5.18 ±6.8    | verified-null REMOVED (the insurance cost ~1 ply; isolation A/B) |
+|  44 |             4.3 M |          16.1 M |    18 | +13.31 ±6.8   | TT prefetch (node-identical, +5–6 % NPS) |
+|  45 |             4.3 M |          16.9 M |    18 | +13.52 ±6.8   | TT search value sharpens the pruning eval (same NPS, smarter cuts) |
+|  46 |             4.3 M |          15.3 M |    18 | +5.94 ±6.8    | transposition table doubled to 96 MB (borderline; less TT thrash per game) |
+|  47 |             4.3 M |          14.7 M |    18 | +3.16 ±6.8    | TT to 192 MB (diminishing) + MultiPV (node-exact off) |
 
 ¹ v31 is the C-core arrival: **29–1–0** vs v30 in a smoke match; the ≈ +215
 is an external / odds-derived estimate, **not** a same-time-control A/B.
@@ -134,18 +134,23 @@ speedup already captured in the single-thread column. Measured with
   board, move ordering, transposition table, pruning, quiescence and the
   eval — now runs in C, so there is no Python-interpreter cost and no ctypes
   crossing per node. The single largest jump in the project.
-- **v34 → v35, ↑ 2.7M → 3.6M:** quiescence generates only noisy moves
+- **v34 → v35, ↑ 2.5M → 3.6M:** quiescence generates only noisy moves
   (captures/promotions) directly instead of generating all legal moves and
   filtering.
-- **v35 → v36, ↑ 3.6M → 3.9M:** staged (lazy) move ordering — each move class
+- **v35 → v36, ↑ 3.6M → 4.0M:** staged (lazy) move ordering — each move class
   is generated only when the search actually reaches it.
-- **v38 → v39, ↑ 4.1M → 4.5M:** incremental Zobrist hashing (the position
+- **v38 → v39, ↑ 4.1M → 4.4M:** incremental Zobrist hashing (the position
   key is XOR-updated per move instead of recomputed per node), the static eval
   cached in spare TT bits, and a batch of micro-optimisations.
-- **v39 → v40, ↑ 4.5M → 4.7M:** FIDE-exact en-passant hashing — phantom-ep
-  positions now share one hash key, so their TT entries merge and the same
-  depth costs fewer nodes (d12 ladder −21%). A correctness fix that happens
-  to speed things up.
+- **v39 → v40, NPS ~flat (4.4M → 4.3M):** FIDE-exact en-passant hashing —
+  phantom-ep positions now share one hash key, so their TT entries merge and
+  the same depth costs fewer *nodes* (d12 ladder −21%). A nodes-to-depth win,
+  not an NPS one — raw speed is unchanged within noise.
+- **v40 → v41, NPS ~flat (4.3M) / d18 → d17:** the verified-null correctness
+  batch. Raw speed is identical (4.28M vs 4.29M in a paired same-session run);
+  what the verification re-searches cost is NODES-TO-DEPTH — ~one ply in a
+  fixed budget. The A/B priced that at −2.88 ±6.8 (noise-level) and the batch
+  is kept as correctness.
 - **v41 → v43, d17 → d18:** the verified-null re-searches were isolated
   (NV-01) and REMOVED — the recovered ply converted to +5.18 in the
   isolation A/B, retroactively pricing v41's insurance at ~3-5 Elo.
@@ -154,14 +159,6 @@ speedup already captured in the single-thread column. Measured with
   so a one-line `__builtin_prefetch` hides the TT probe's cache miss behind
   the make-move work. Node-identical; +13.31 ±6.8 in the timed A/B, the
   biggest single NPS win of the C era in Elo terms (~2.7 Elo per 1 % NPS).
-- **v40 → v41, NPS unchanged / d18 → d17:** the verified-null correctness
-  batch. Raw speed is identical (4.28M vs 4.29M in a paired same-session
-  run — an earlier cross-session reading of "4.7M → 4.1M" was measurement
-  conditions, not the engine); what the verification re-searches really
-  cost is NODES-TO-DEPTH: ~one ply in a fixed budget. The A/B priced that
-  at −2.88 ±6.8 (noise-level) and the batch is kept as correctness. The
-  whole C-era block of this table was re-measured in one uniform session
-  (2026-07-11) for comparability.
 
 Each Elo figure is an A/B match vs the immediately previous version (the
 C-era ones are 10,000 games each; cumulative **≈ +189** over v31, and the
@@ -169,11 +166,16 @@ v25→v30 adjacent chain alone sums to **≈ +139** — a direct v25→v28 re-ma
 read **+80.56 ±10.2**, confirming the adjacent gains compose). **Time control
 is not uniform** (the early spans ran at various fast TCs ⁴; v32–v36 at
 45 s + 0.10, v37–v47 at 50 s + 0.20), so Elo is comparable only within a
-matching-TC run, never summed across the whole column as a single rating. **NPS is the clean speed axis; depth reached in a fixed budget
-also reflects selectivity** — v37/v38 search more nodes per ply (exact PV
-re-searches PV nodes, the correctness batch adds quiescence draw checks), so
-their depth dips even as raw NPS keeps climbing. Absolute NPS is
-hardware-dependent (an Apple-Silicon reading); the trend is the signal.
+matching-TC run, never summed across the whole column as a single rating.
+
+**NPS is the clean speed axis; depth reached in a fixed budget also reflects
+selectivity** — v37/v38 search more nodes per ply (exact PV re-searches PV
+nodes, the correctness batch adds quiescence draw checks), so their depth
+dips even as raw NPS keeps climbing. Absolute NPS is hardware-dependent (an
+Apple-Silicon reading); the trend is the signal, not the raw number. The
+whole C-era block (v31+) was re-measured in one uniform session so those rows
+are comparable to each other — cross-session readings drift with machine load
+and are not reliable to a fraction of a percent.
 
 ---
 
@@ -194,7 +196,7 @@ hardware-dependent (an Apple-Silicon reading); the trend is the signal.
 - **C search core** (`csearch.c`, driven by `cengine.py`): the whole per-node
   loop in C — board, staged move ordering, array TT (kept warm across moves,
   probed in quiescence), pruning, quiescence and a bit-exact port of the
-  evaluation (verified over 3M positions) — at ~4.5M nodes/s.
+  evaluation (verified over 3M positions) — at ~4.3M nodes/s.
   `cuci.py` exposes it as a UCI engine.
 - **Lazy SMP:** the C core uses pthreads with a lock-free shared TT (opt-in
   via the UCI `Threads` option); the Python engine has a multi-process
