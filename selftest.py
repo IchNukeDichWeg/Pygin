@@ -227,6 +227,16 @@ if os.path.exists("csearch.c"):
             ce._lib.set_hist_prune(0)
         except AttributeError:
             pass                       # pre-FI-23 csearch.so
+        # FI-30 qsearch TT-quality batch is ARMED (QS_TT_SHARPEN +
+        # QS_KEEP_MOVE, twenty-second 50+0.20 campaign vs Old Engine/47) --
+        # class defaults are ON, so these pins are LOAD-BEARING: without
+        # them the ladder would measure the experimental config instead of
+        # the v47 reference.
+        try:
+            ce._lib.set_qs_tt_sharpen(0)
+            ce._lib.set_qs_keep_move(0)
+        except AttributeError:
+            pass                       # pre-FI-30 csearch.so
         # FI-06 root-move ordering is DORMANT (+2.26 null @10k vs Old
         # Engine/45, 2026-07-13 -- positive lean but CI covers zero, not
         # correctness); the default already reproduces v45, so this pin is
