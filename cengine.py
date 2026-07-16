@@ -39,14 +39,13 @@ v47 also carries MultiPV (UCI spin 1..5, node-exact off). Snapshotted Old
 Engine/47. Since v47: the time-policy vein closed on two more nulls --
 soft_stop_frac 0.60 (+1.29 +/-6.8, nineteenth campaign) and the FI-09 bundle
 (SINGLE_REPLY_INSTANT + EASY_MOVE, +0.69 +/-6.8, twentieth campaign vs Old
-Engine/47) -- both reverted to their v47 defaults, dormant. Armed candidate:
-FI-23 history-driven quiet pruning (``HIST_PRUNE = 256`` -- the LMP
-count-based prune's signal sibling, skips quiets the existing butterfly
-history has punished below -threshold; C setter ``set_hist_prune``, no ABI
-change; retuned down from the spec's suggested 8192, which measured as a
-dead gate -- see the class-attr comment for the engagement sweep), queued as
-the twenty-first 50+0.20 campaign vs Old Engine/47. 0 = v47 node-exact. See
-final_improvements.md queue.
+Engine/47) -- both reverted to their v47 defaults, dormant. FI-23
+history-driven quiet pruning REJECTED 2026-07-16 (twenty-first campaign vs
+Old Engine/47: -5.23 +/-7.1, SPRT ACCEPT H0 stopped early at 9,243 games --
+a real negative; HIST_PRUNE reverted to 0, dormant, do-not-retry; the
+shallow quiet/capture-prune vein is 0-for-2 with FI-18). Armed candidate:
+none pinned -- next queue slot is FI-30, the qsearch TT-quality batch
+(FI-25's twin at the node majority). See final_improvements.md queue.
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -485,20 +484,18 @@ class Engine:
     # history has consistently punished (same shallow/non-PV/not-in-check/
     # non-check-giving gate as LMP/FI-18). Reuses g_history read-only, no new
     # bookkeeping or ABI change. 0 = off = v47 node-exact; threshold is a
-    # magnitude on the +-HIST_MAX=16384 scale (final_improvements.md's own
-    # pseudocode suggested HIST_MAX/2=8192 as a starting point). RETUNED
-    # 2026-07-14, P-33 lesson (verify engagement before spending a campaign
-    # on a config that barely runs): swept 8192/4096/2048/1024/768/512/384/256
-    # against 3 positions at depth 15 -- 8192 through 512 were BIT-IDENTICAL
-    # to off (dead gate, single-move history rarely swings that hard within
-    # one search since cs_search_begin zeroes g_history every move); first
-    # engagement at 384-256. 256 changes nodes/score on 2/3 probe positions
-    # and passed a 4-tactic spot-check (back-rank mate, hanging-queen capture,
-    # a fork reply -- all identical best move on vs off at depth 12).
-    # FI-23 ARMED 2026-07-14 at 256 (twenty-first 50+0.20 campaign vs Old
-    # Engine/47) -- NOT the spec's 8192, which would have been a disguised
-    # no-op A/B.
-    HIST_PRUNE = 256
+    # magnitude on the +-HIST_MAX=16384 scale. Armed at 256 after an
+    # engagement sweep (8192 through 512 measured bit-identical to off --
+    # cs_search_begin zeroes g_history every move, so one search's history
+    # rarely swings a slot past a few hundred; see git history for the sweep).
+    # FI-23 REJECTED 2026-07-16 (twenty-first 50+0.20 campaign vs Old
+    # Engine/47): -5.23 +/-7.1 @9,243 games, pair ratio 0.92, norm -10.89,
+    # SPRT[0,4] LLR -2.955 ACCEPT H0 (stopped early) -- a real negative, not
+    # a null. With FI-18's -1.25 the shallow quiet/capture-prune vein is
+    # 0-for-2 in the C era: within-search history is too thin a signal at
+    # depth <= 3 to beat the ordering that already buried those moves.
+    # REVERTED to 0 (dormant, do-not-retry at this TC); mechanism kept.
+    HIST_PRUNE = 0
 
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
