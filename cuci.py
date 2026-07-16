@@ -11,7 +11,7 @@ time_manager.calculate_move_time, so `go wtime/btime/winc/binc` gets the
 same budgets the internal harnesses use.
 
 Options:
-    Threads       (spin 1..64, default 1)  -- Lazy-SMP helper threads in C
+    Threads       (spin 1..256, default 1) -- Lazy-SMP helper threads in C
     MultiPV       (spin 1..5, default 1)   -- k best lines per go (analysis;
                                               =1 is byte-identical to before,
                                               match play never sets it)
@@ -133,9 +133,10 @@ BENCH_FENS = [
 
 def run_bench(engine, depth=11):
     import time as _time
-    saved = engine.use_book, engine.use_tb    # FB-20: the signature must not
-    engine.use_book = engine.use_tb = False   # depend on which .bin files
-    try:                                      # exist (a book hit = 0 nodes)
+    saved = engine.use_book, engine.use_tb, engine.smp_workers
+    engine.use_book = engine.use_tb = False   # FB-20: the signature must not
+    engine.smp_workers = 1                    # depend on .bin files -- nor on
+    try:                                      # Threads (FB-32): 1-thread only
         total, t0 = 0, _time.perf_counter()
         for fen in BENCH_FENS:
             engine._lib.cs_tt_reset()
@@ -144,7 +145,7 @@ def run_bench(engine, depth=11):
         dt = max(1e-9, _time.perf_counter() - t0)
         out(f"{total} nodes {int(total / dt)} nps")
     finally:
-        engine.use_book, engine.use_tb = saved
+        engine.use_book, engine.use_tb, engine.smp_workers = saved
 
 
 def _emit_multipv(engine, board, best_mv, k, budget, white_to_move, stop_evt):
@@ -614,8 +615,10 @@ def main():
                     else:                               # FB-25: defer, don't
                         pending_hash_mb = int(value)    # silently drop
             elif cmd == "bench":                        # FI-13c: OpenBench
-                if not searching():
-                    run_bench(engine)
+                if not searching():                     # FB-32: depth arg
+                    d = (int(tokens[1]) if len(tokens) > 1
+                         and tokens[1].isdigit() else 11)
+                    run_bench(engine, depth=d)
             elif cmd == "ucinewgame":
                 if searching():
                     engine.stop()
@@ -625,6 +628,13 @@ def main():
                     # ucinewgame mid-analysis.
                     search_thread.stop_evt.set()
                     search_thread.join()
+                if pending_hash_mb is not None:      # FB-32: resize BEFORE the
+                    mb = max(2, min(6144, pending_hash_mb))   # reset, so the
+                    entries = mb * 1024 * 1024 // 24  # new game starts at the
+                    bits = entries.bit_length() - 1   # requested size
+                    engine._lib.set_tt_bits(bits)
+                    engine.TT_BITS = bits
+                    pending_hash_mb = None
                 engine._lib.cs_tt_reset()
                 engine.last_score = 0        # reset the TB difficulty gate
                 board = chess.Board()
@@ -670,6 +680,13 @@ def main():
                     # the old behavior (UCI says the GUI must stop first).
                     if search_thread.holding.is_set():
                         search_thread.stop_evt.set()
+                        engine.stop()    # FB-32: a PM-01 certification
+                                         # sub-search polls stop_evt only
+                                         # BETWEEN searches -- abort the
+                                         # in-flight one or this join blocks
+                                         # up to a full d9/d10 search. The
+                                         # stray _abort is cleared by go()
+                                         # before the next search (FB-21).
                         search_thread.join()
                     else:
                         continue             # actively searching; ignore
@@ -683,6 +700,10 @@ def main():
                     if search_thread.is_alive():     # search must not brick
                         print("cuci: search thread failed to stop in 30s",
                               file=sys.stderr)       # the whole host slot
+            elif cmd == "ponderhit":
+                pass                     # FB-32: no ponder search yet
+                                         # (FI-13e); accepting the standard
+                                         # command kills the GUI error spam
             elif cmd == "quit":
                 if searching():
                     engine.stop()
