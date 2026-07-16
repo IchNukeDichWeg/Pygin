@@ -25,9 +25,10 @@ core syncs every eval parameter from it at startup.
 single-threaded (level with Stockfish 18 capped at UCI_Elo 2450 over 2,500
 games). The **C search core** is far stronger and still climbing: it beat the
 Python engine **29–1–0** on arrival, and the C-era ledger has since added
-**≈ +189 Elo** of A/B-confirmed gains (v31 → v47: IIR, TT persistence, check
+**≈ +194 Elo** of A/B-confirmed gains (v31 → v48: IIR, TT persistence, check
 extensions, qsearch-TT, noisy-only + staged move generation, an
 incremental-Zobrist NPS batch, a TT prefetch, a TT-value pruning sharpener,
+a qsearch TT-quality batch,
 a doubled transposition table, and five correctness releases — exact PV,
 score hygiene, FIDE-exact en-passant hashing, verified-null/50-move/TT-policy
 batch, cannot-win eval clamp).
@@ -97,6 +98,7 @@ Regenerate the single-thread column with `python3 bench_progress.py`, the
 |  45 |             4.3 M |          16.9 M |    18 | +13.52 ±6.8   | TT search value sharpens the pruning eval (same NPS, smarter cuts) |
 |  46 |             4.3 M |          15.3 M |    18 | +5.94 ±6.8    | transposition table doubled to 96 MB (borderline; less TT thrash per game) |
 |  47 |             4.3 M |          14.7 M |    18 | +3.16 ±6.8    | TT to 192 MB (diminishing) + MultiPV (node-exact off) |
+|  48 |             4.3 M |          14.7 M |    18 | +4.73 ±3.2    | qsearch TT-quality batch (TT value sharpens stand-pat; first SPRT accept, 21.6k games) |
 
 **Table notes**
 

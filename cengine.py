@@ -43,12 +43,18 @@ Engine/47) -- both reverted to their v47 defaults, dormant. FI-23
 history-driven quiet pruning REJECTED 2026-07-16 (twenty-first campaign vs
 Old Engine/47: -5.23 +/-7.1, SPRT ACCEPT H0 stopped early at 9,243 games --
 a real negative; HIST_PRUNE reverted to 0, dormant, do-not-retry; the
-shallow quiet/capture-prune vein is 0-for-2 with FI-18). FI-30 qsearch
-TT-quality batch: INCONCLUSIVE-POSITIVE 2026-07-16 (+4.84 +/-5.55 pooled
-over 15k games, GSPRT LLR +2.479 vs +2.944 accept) -- reverted to dormant
-per the pre-registered rule, with a written re-arm condition (deepened
-TT-quality stack or longer TC). Armed candidate: none pinned -- next queue
-slot is FI-29 (cuckoo upcoming-repetition, correctness-class). See
+shallow quiet/capture-prune vein is 0-for-2 with FI-18). v48 = v47 +
+FI-30, the qsearch TT-quality batch: QS_TT_SHARPEN (FI-25's bound rule at
+both qsearch stand-pat sites, raw_stand split keeping the FI-03 cache
+exact) + QS_KEEP_MOVE (FB-22's keep-move rule for qs_tt_store move-0
+stores). CONFIRMED 2026-07-16 over the longest campaign on the books
+(twenty-second, vs Old Engine/47, four pooled tranches = 21,605 games @
+50+0.20): +4.73 +/-3.19 (50.68%, pair ratio 1.08, norm +9.70), pooled
+GSPRT[0,4] LLR +3.475 crossing the +2.944 accept -- the C era's first
+sequential-test ACCEPT, reached after a premature 10k-cap revert was
+walked back and the test ran to its own stopping rule. Snapshotted Old
+Engine/48. Armed candidate: none pinned -- next queue slot is FI-29
+(cuckoo upcoming-repetition, correctness-class). See
 final_improvements.md queue.
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
@@ -508,17 +514,16 @@ class Engine:
     # the FI-03 TT-eval cache keeps the RAW eval (raw_stand split).
     # (b) QS_KEEP_MOVE -- a stand-pat (move-0) store keeps a same-key
     # entry's best move (FB-22's rule applied to qs_tt_store).
-    # VERDICT 2026-07-16 (twenty-second campaign vs Old Engine/47, run as
-    # 10k + 5k pooled = 15,000 games): +4.84 +/-5.55, pair ratio 1.09,
-    # pooled GSPRT[0,4] LLR +2.479 vs the +2.944 accept bound -- the
-    # STRONGEST inconclusive on the books, but the pre-registered rule
-    # (no CI-clear, no LLR-accept, not correctness-class, no third
-    # tranche) says revert => both False (dormant, mechanisms kept).
-    # RE-ARM CONDITION (P-45 precedent): revisit after the TT-quality
-    # stack deepens (FI-29 cuckoo / FI-31 pawn-key infra raising hit
-    # quality) or at a longer TC -- the lean was real at every read.
-    QS_TT_SHARPEN = False
-    QS_KEEP_MOVE = False
+    # CONFIRMED 2026-07-16 => v48 (twenty-second campaign vs Old
+    # Engine/47, four pooled tranches = 21,605 games @ 50+0.20):
+    # +4.73 +/-3.19 (50.68%, ptnml 606/2518/4309/2714/655, pair ratio
+    # 1.08, norm +9.70), pooled GSPRT[0,4] LLR +3.475 crossing the
+    # +2.944 accept bound -- the C era's first sequential-test ACCEPT.
+    # A premature revert at the 10k cap was walked back: the SPRT said
+    # CONTINUE, and extensions ran until it decided (never cap a
+    # sequential test at a fixed budget again).
+    QS_TT_SHARPEN = True
+    QS_KEEP_MOVE = True
 
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
