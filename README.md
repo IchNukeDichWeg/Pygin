@@ -98,89 +98,37 @@ Regenerate the single-thread column with `python3 bench_progress.py`, the
 |  46 |             4.3 M |          15.3 M |    18 | +5.94 ±6.8    | transposition table doubled to 96 MB (borderline; less TT thrash per game) |
 |  47 |             4.3 M |          14.7 M |    18 | +3.16 ±6.8    | TT to 192 MB (diminishing) + MultiPV (node-exact off) |
 
-¹ v31 is the C-core arrival: **29–1–0** vs v30 in a smoke match; the ≈ +215
-is an external / odds-derived estimate, **not** a same-time-control A/B.
-² v22–v24 were tested as one span vs v21 = **+11.75 ±6.8** (10,000 games);
-the per-version v22/v23 figures inside it are estimates (⁵).
-³ v16 and v17 (the eval and movegen C ports) were A/B'd together vs v15:
-**+69 ±16** (2,000 games); the v16 row's gain lives in that bundle.
-⁴ Early Python-era A/Bs ran at assorted fast time controls (0.65+0.1,
-0.75+0.25, 45+0.15, 45+0.1 — see `engine.py`'s version history).
-⁵ **`est` = a pessimistic, feature-based estimate, NOT an A/B.** The
-pre-systematic-testing versions were never matched head-to-head; these are
-deliberately conservative lower-bound guesses at what each change plausibly
-added, shown so every row carries a figure. Only the `±` values are
-measured — the `est` column is not summable into a rating (the real
-absolute anchor is the SF-2450 benchmark: the engine reaches ≈2442 by v25).
-⁶ **NPS 4 Threads** is blank ("—") for v1–18 (no SMP infrastructure existed
-yet) and v19–24 (multi-process SMP existed but predates v25's own "Lazy-SMP
-production fixes" milestone — it degrades unpredictably under a modern
-Python/OS and isn't reliably measurable). v25–30 use the old multi-process
-SMP (separate `Process`es); v31+ use the C core's real Lazy-SMP (`set_threads`,
-pthreads sharing one address space) — the jump from ~200 k to double-digit
-millions across the v30→v31 boundary is partly that methodology change
-(process/IPC overhead vs shared-memory threads), not purely the C-core
-speedup already captured in the single-thread column. Measured with
-`python3 bench_progress_threads.py 4`.
+**Table notes**
 
-**What moves the NPS** (the load-bearing jumps, up and down):
+- **Elo Δ** — each figure is an A/B vs the previous version (C-era = 10,000
+  games). Cumulative **≈ +189** over v31. **Not summable across the whole
+  column:** TCs differ (early Python-era at assorted fast TCs ⁴, v32–36 at
+  45+0.10, v37–47 at 50+0.20), so only same-TC spans are comparable.
+- **`est`** ⁵ — a feature-based estimate, not an A/B; shown so every row
+  carries a figure. Never summed into a rating. The real anchor is ≈2442 by
+  v25 (vs SF-2450).
+- **Bundled A/Bs** — v16+v17 vs v15 = **+69 ±16** ³; v22–24 vs v21 =
+  **+11.75 ±6.8** ²; v31 arrival = **29–1–0** smoke match, ≈+215 is
+  odds-derived, not an A/B ¹.
+- **NPS 4 Threads** ⁶ — "—" for v1–24 (no reliable SMP: none before v19,
+  fragile multi-process before v25). v25–30 = old multi-process SMP; v31+ =
+  the C core's pthread Lazy-SMP, so the ~200k→millions jump at v30→v31 is
+  partly that methodology change, not pure speedup.
+- **Measurement** — absolute NPS is hardware-dependent (Apple Silicon); the
+  C-era block (v31+) was re-measured in one uniform session so its rows are
+  mutually comparable. Regenerate: `bench_progress.py` / `bench_progress_threads.py 4`.
 
-- **v8 → v9, ↓ 35k → 27k:** late-move pruning added — more work per node, but
-  it skips near-leaf quiets so the search still reaches *deeper* per second (a
-  deliberate speed-for-depth trade, not a regression).
-- **v15 → v16, ↑ 35k → 44k:** the evaluation moved from Python into C
-  (`eval_c.c`), byte-identical play.
-- **v16 → v17, ↑ 44k → 58k:** move generation moved into C (`movegen.c`),
-  reproducing python-chess's move order exactly.
-- **v25 → v28, ↑ 60k → 88k:** three node-identical speed batches — hoisting
-  invariants out of the hot loop, `Move` interning, fewer allocations,
-  reused capture tags in quiescence. Same tree, less overhead per node.
-- **v30 → v31, ↑↑ 88k → 2.7M (~30×):** the entire per-node search loop —
-  board, move ordering, transposition table, pruning, quiescence and the
-  eval — now runs in C, so there is no Python-interpreter cost and no ctypes
-  crossing per node. The single largest jump in the project.
-- **v34 → v35, ↑ 2.5M → 3.6M:** quiescence generates only noisy moves
-  (captures/promotions) directly instead of generating all legal moves and
-  filtering.
-- **v35 → v36, ↑ 3.6M → 4.0M:** staged (lazy) move ordering — each move class
-  is generated only when the search actually reaches it.
-- **v38 → v39, ↑ 4.1M → 4.4M:** incremental Zobrist hashing (the position
-  key is XOR-updated per move instead of recomputed per node), the static eval
-  cached in spare TT bits, and a batch of micro-optimisations.
-- **v39 → v40, NPS ~flat (4.4M → 4.3M):** FIDE-exact en-passant hashing —
-  phantom-ep positions now share one hash key, so their TT entries merge and
-  the same depth costs fewer *nodes* (d12 ladder −21%). A nodes-to-depth win,
-  not an NPS one — raw speed is unchanged within noise.
-- **v40 → v41, NPS ~flat (4.3M) / d18 → d17:** the verified-null correctness
-  batch. Raw speed is identical (4.28M vs 4.29M in a paired same-session run);
-  what the verification re-searches cost is NODES-TO-DEPTH — ~one ply in a
-  fixed budget. The A/B priced that at −2.88 ±6.8 (noise-level) and the batch
-  is kept as correctness.
-- **v41 → v43, d17 → d18:** the verified-null re-searches were isolated
-  (NV-01) and REMOVED — the recovered ply converted to +5.18 in the
-  isolation A/B, retroactively pricing v41's insurance at ~3-5 Elo.
-- **v43 → v44, ↑ 4.0M → 4.3M:** the TT prefetch — the incremental Zobrist
-  key (v39) made the CHILD's hash key available before the recursive call,
-  so a one-line `__builtin_prefetch` hides the TT probe's cache miss behind
-  the make-move work. Node-identical; +13.31 ±6.8 in the timed A/B, the
-  biggest single NPS win of the C era in Elo terms (~2.7 Elo per 1 % NPS).
+**The load-bearing NPS jumps**
 
-Each Elo figure is an A/B match vs the immediately previous version (the
-C-era ones are 10,000 games each; cumulative **≈ +189** over v31, and the
-v25→v30 adjacent chain alone sums to **≈ +139** — a direct v25→v28 re-match
-read **+80.56 ±10.2**, confirming the adjacent gains compose). **Time control
-is not uniform** (the early spans ran at various fast TCs ⁴; v32–v36 at
-45 s + 0.10, v37–v47 at 50 s + 0.20), so Elo is comparable only within a
-matching-TC run, never summed across the whole column as a single rating.
+- **v15→v17, 35k → 58k** — eval then movegen ported to C (`eval_c.c`, `movegen.c`), byte-identical play.
+- **v25→v28, 60k → 88k** — node-identical speed batches (hoisted invariants, fewer allocations).
+- **v30→v31, 88k → 2.7M (~30×)** — the whole per-node loop moves to C: no interpreter cost, no per-node ctypes crossing. The single largest jump.
+- **v34→v36, 2.5M → 4.0M** — noisy-only qsearch generation + staged (lazy) move ordering.
+- **v38→v39, 4.1M → 4.4M** — incremental Zobrist hashing + eval cached in spare TT bits.
+- **v43→v44, 4.0M → 4.3M** — TT prefetch (the v39 child key hides the probe's cache miss); +13.31 Elo, the biggest NPS win of the C era (~2.7 Elo per 1% NPS).
 
-**NPS is the clean speed axis; depth reached in a fixed budget also reflects
-selectivity** — v37/v38 search more nodes per ply (exact PV re-searches PV
-nodes, the correctness batch adds quiescence draw checks), so their depth
-dips even as raw NPS keeps climbing. Absolute NPS is hardware-dependent (an
-Apple-Silicon reading); the trend is the signal, not the raw number. The
-whole C-era block (v31+) was re-measured in one uniform session so those rows
-are comparable to each other — cross-session readings drift with machine load
-and are not reliable to a fraction of a percent.
+Some wins don't show as NPS: v39→v40 (ep-key merge) and the v41→v43
+verified-null removal are **nodes-to-depth** gains at flat speed.
 
 ---
 
