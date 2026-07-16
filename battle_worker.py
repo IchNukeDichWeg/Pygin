@@ -71,6 +71,19 @@ def _format_info(depth, score_cp, mate, nodes, nps, time_ms):
 def engine_worker(conn, engine_path, use_book, pv_uci=False, book_path=None):
     """Process entry point: load the engine, then serve move requests forever."""
     import chess  # imported only in the child process
+    import signal
+
+    # Ctrl-C reaches the whole foreground process GROUP, so this child gets a
+    # SIGINT of its own. Handling it here is pure noise: KeyboardInterrupt is a
+    # BaseException, so the `except Exception` around the search below does NOT
+    # catch it -- an interrupt landing mid-search escaped engine_worker and
+    # multiprocessing printed a full traceback per engine process. Ignore it and
+    # let the parent drive shutdown (quit message / terminate()), which is the
+    # only shutdown path that also frees the SMP pool at the bottom of this file.
+    try:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+    except (ValueError, OSError):
+        pass                     # not the main thread / platform without SIGINT
 
     try:
         engine = _load_engine(engine_path)
