@@ -247,6 +247,17 @@ if os.path.exists("csearch.c"):
             ce._lib.set_cycle(1)
         except AttributeError:
             pass                       # pre-FI-29 csearch.so
+        # FI-50/51/52 qsearch-TT batch: ARMED (twenty-fourth A/B vs Old
+        # Engine/49) but NOT yet confirmed -- v49 has all three OFF, so the
+        # ladder pins them off here (LOAD-BEARING: cengine's class defaults
+        # are ON for match play). Flip to set_..(1) and re-pin CE_LADDER only
+        # on CONFIRM, exactly as FI-30/FI-29 did.
+        try:
+            ce._lib.set_qs_beta_narrow(0)
+            ce._lib.set_qs_ttm_exempt(0)
+            ce._lib.set_qs_chk_d1(0)
+        except AttributeError:
+            pass                       # pre-FI-50/51/52 csearch.so
         # FI-06 root-move ordering is DORMANT (+2.26 null @10k vs Old
         # Engine/45, 2026-07-13 -- positive lean but CI covers zero, not
         # correctness); the default already reproduces v45, so this pin is
