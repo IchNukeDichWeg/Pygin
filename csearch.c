@@ -2295,17 +2295,36 @@ void root_exclude_add(int key15)
 static int g_hist_prune = 0;
 void set_hist_prune(int v) { g_hist_prune = v < 0 ? 0 : v; }  /* FB-31 */
 
+/* FI-50/51/52 (qsearch-TT batch, armed for the twenty-fourth 50+0.20 A/B vs
+ * Old Engine/49 -- the FI-30 lineage, three non-overlapping toggles ganged as
+ * one campaign per the grouped-toggle precedent FI-30 set):
+ *   FI-50 g_qs_beta_narrow -- narrow beta from a TT_UPPER qsearch hit, the
+ *         CB-01(e) alpha-narrow's mirror (negamax has done both since 2597-98).
+ *   FI-51 g_qs_ttm_exempt  -- the qsearch TT move is immune to the losing-SEE
+ *         skip and delta pruning: a nonzero stored bm beat stand-pat at store
+ *         time, so the search-proven refutation must not be statically tossed.
+ *   FI-52 g_qs_chk_d1      -- in-check RESOLVED qsearch stores tagged depth 1
+ *         (structurally the same node a depth-1 in-check negamax node searches),
+ *         so negamax's TT_DEPTH>=depth gate can cut directly from them.
+ * All three 0 = off = v49 node-exact. */
+static int g_qs_beta_narrow = 0;
+void set_qs_beta_narrow(int v) { g_qs_beta_narrow = v ? 1 : 0; }
+static int g_qs_ttm_exempt = 0;
+void set_qs_ttm_exempt(int v) { g_qs_ttm_exempt = v ? 1 : 0; }
+static int g_qs_chk_d1 = 0;
+void set_qs_chk_d1(int v) { g_qs_chk_d1 = v ? 1 : 0; }
+
 static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
-                               int flag, int ev)
+                               int flag, int ev, int depth)  /* FI-52: depth */
 {
     TTEntry* t = &g_tt[key & TT_MASK];
     TTEntry cur = *t;
     uint64_t ck = cur.key_x ^ cur.d1 ^ cur.d2;
     int replace = (ck == key)
-                ? (TT_DEPTH(cur) <= 0)
+                ? (TT_DEPTH(cur) <= depth)           /* was <= 0; == at depth 0 */
                 : (TT_GEN(cur) != (int)(uint16_t)g_gen
                        ? (g_qs_evict_max < 0 || TT_DEPTH(cur) <= g_qs_evict_max)
-                       : TT_DEPTH(cur) <= 0);
+                       : TT_DEPTH(cur) <= depth);
     if (!replace) return;
     int sv = val;
     if (sv >= MATE_THRESH) sv += ply;                /* node -> ply-relative */
@@ -2316,7 +2335,7 @@ static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
                                                       * a same-key entry's
                                                       * ordering asset */
         mv = TT_MOVE(cur) & 0x7FFF;
-    tt_store_raw(t, key, sv, mv, 0, flag, ev);
+    tt_store_raw(t, key, sv, mv, depth, flag, ev);
 }
 
 static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
@@ -2373,6 +2392,11 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
                 if (g_score_hyg && fl == TT_LOWER && v > alpha)
                     alpha = v;               /* CB-01 (e): proven lower bound
                                               * sharpens delta pruning below */
+                else if (g_qs_beta_narrow && fl == TT_UPPER && v < beta)
+                    beta = v;                /* FI-50: proven ceiling, mirror of
+                                              * (e); v > alpha here (2372
+                                              * returned otherwise) so the
+                                              * window never collapses */
             }
             tt_move = TT_MOVE(e);
         }
@@ -2410,7 +2434,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         if (stand >= beta) {                         /* fail-soft stand-pat */
             if (has_legal_quiet(b) || gen_noisy(b, moves) > 0) {
                 if (use_qtt && !CS_UNWINDING())      /* P-44: cache the cutoff */
-                    qs_tt_store(key, stand, ply, 0, TT_LOWER, raw_stand);
+                    qs_tt_store(key, stand, ply, 0, TT_LOWER, raw_stand, 0);
                 return stand;
             }
             return 0;                                /* stalemate: draw, not eval */
@@ -2439,7 +2463,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         }
         if (stand >= beta) {                         /* fail-soft stand-pat */
             if (use_qtt && !CS_UNWINDING())          /* P-44: cache the cutoff */
-                qs_tt_store(key, stand, ply, 0, TT_LOWER, raw_stand);
+                qs_tt_store(key, stand, ply, 0, TT_LOWER, raw_stand, 0);
             return stand;
         }
         if (stand > alpha) alpha = stand;
@@ -2457,6 +2481,8 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         uint32_t m = pick_next(moves, msc, i, n);
         int victim   = (m >> MV_SHIFT_VICTIM) & 7;
         int is_promo = (m >> 12) & 7;
+        /* FI-51: the search-proven TT move dodges the qsearch skips below. */
+        int is_ttm = g_qs_ttm_exempt && tt_move && (m & 0x7FFF) == tt_move;
         if (!in_chk) {
             if (!victim && !is_promo) continue;      /* quiets: not in qsearch */
             if (victim && !is_promo) {               /* pure capture */
@@ -2466,7 +2492,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
                  * skip below can never fire. Node-identical; the ordering's
                  * SEE (order_moves / Stager) uses the same gate. */
                 int mover = (m >> MV_SHIFT_MOVER) & 7;
-                if (mover > victim) {
+                if (mover > victim && !is_ttm) {       /* FI-51: exempt TT move */
                     /* FI-02.3: ordering already ran this exact SEE -- read
                      * its tag (bits 22-23); fall back only if untagged. */
                     int tag = (m >> 22) & 3;
@@ -2483,9 +2509,10 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
                 /* CB-01 (a): the margin must cover the TEXEL value the
                  * synced eval actually awards (queen 1148), not the classic
                  * 900 -- else a saving queen recapture can be pruned. */
-                if (stand + (g_score_hyg ? DELTA_VAL[victim]
-                                         : PIECE_VAL[victim])
-                          + g_delta_margin <= alpha)
+                if (!is_ttm                          /* FI-51: exempt TT move */
+                    && stand + (g_score_hyg ? DELTA_VAL[victim]
+                                            : PIECE_VAL[victim])
+                             + g_delta_margin <= alpha)
                     continue;                        /* delta pruning */
             }
         }
@@ -2507,7 +2534,8 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         int flag = (best <= alpha_orig) ? TT_UPPER
                  : (best >= beta)       ? TT_LOWER : TT_EXACT;
         qs_tt_store(key, best, ply, bm, flag,
-                    in_chk ? TT_EVAL_NONE : raw_stand);  /* FI-03: RAW eval */
+                    in_chk ? TT_EVAL_NONE : raw_stand,   /* FI-03: RAW eval */
+                    (g_qs_chk_d1 && in_chk) ? 1 : 0);    /* FI-52: depth-1 tag */
     }
     return best;
 }
@@ -3256,7 +3284,9 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted, &second);
 }
 
-int csearch_abi(void) { return 13; }  /* 13 = FI-29 set_cycle (cuckoo upcoming-repetition);
+int csearch_abi(void) { return 14; }  /* 14 = FI-50/51/52 qsearch-TT batch
+                                       * (set_qs_beta_narrow/set_qs_ttm_exempt/set_qs_chk_d1);
+                                       * 13 = FI-29 set_cycle (cuckoo upcoming-repetition);
                                        * 12 = FI-30 set_qs_tt_sharpen/set_qs_keep_move; 11 = cs_search_root out_second
                                        * (FI-09b easy-move 2nd-best score);
                                        * 10 = root_exclude_* (MultiPV);
