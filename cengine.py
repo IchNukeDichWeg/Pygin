@@ -59,8 +59,13 @@ node takes the contempt draw a search earlier. KEPT-ON-NULL 2026-07-17
 (+0.97 +/-6.8 @10k vs Old Engine/48, GSPRT LLR -0.19) -- the sixth
 correctness release of its class; CYCLE_VERIFY differential 13,272/0,
 paired matetrack noise-flat. Snapshotted Old Engine/49. Armed candidate:
-none pinned -- next queue slot is FI-24d (zero-code NullBase/NullDiv
-sweep first, then the null batch). See final_improvements.md queue.
+the FI-50/51/52 qsearch-TT batch (abi 14) -- FI-30's direct descendant,
+three non-overlapping toggles ganged as one 10k GSPRT[0,4] campaign vs Old
+Engine/49: QS_BETA_NARROW (beta-narrow from a TT_UPPER qsearch hit, CB-01(e)
+mirror) + QS_TTM_EXEMPT (TT move immune to the qsearch losing-SEE skip and
+delta pruning) + QS_CHK_D1 (in-check RESOLVED qsearch stores tagged depth 1,
+visible to negamax's depth gate). All three off = v49 node-exact. PENDING:
+paired matetrack then the uncapped 10k. See improvements.md (R1 head).
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -548,6 +553,22 @@ class Engine:
     # fortress d16 11,893 -> 4,310 nodes, score snaps to 0.
     CYCLE_DETECT = True
 
+    # FI-50/51/52: the qsearch-TT batch -- FI-30's direct descendant, three
+    # non-overlapping toggles ganged as one campaign (the grouped-toggle
+    # precedent FI-30 set). ARMED for the twenty-fourth 50+0.20 A/B vs Old
+    # Engine/49; each is 0=off=v49 node-exact so the batch is one 10k GSPRT[0,4]
+    # slot, never capped at a fixed budget (the FI-30 lesson).
+    #  (50) QS_BETA_NARROW -- narrow beta from a TT_UPPER qsearch hit (the
+    #       CB-01(e) alpha-narrow's mirror; negamax has done both all along).
+    #  (51) QS_TTM_EXEMPT  -- the qsearch TT move dodges the losing-SEE skip and
+    #       delta pruning (a nonzero stored bm beat stand-pat at store time).
+    #  (52) QS_CHK_D1      -- in-check RESOLVED qsearch stores tagged depth 1 so
+    #       negamax's TT_DEPTH>=depth gate can cut directly from them.
+    # PENDING: paired matetrack (tactical + PV-integrity oracle) then the 10k.
+    QS_BETA_NARROW = True
+    QS_TTM_EXEMPT = True
+    QS_CHK_D1 = True
+
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
     ASPIRATION_DELTA = 30                    # centipawns; C scores are cp too
@@ -603,8 +624,9 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (FI-29's set_cycle is abi 13) -- bump together with csearch_abi.
-        if lib.csearch_abi() < 13:
+        # (FI-50/51/52's qsearch-TT setters are abi 14) -- bump together with
+        # csearch_abi.
+        if lib.csearch_abi() < 14:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -639,7 +661,8 @@ class Engine:
               self.CB2, self.CANTWIN, self.NULL_VERIFY, self.LMR_HIST,
               self.TT_EVAL_SHARPEN, self.SEE_PRUNE, self.ROOT_ORDER,
               self.TT_BITS, self.TT_KEEP_WARM, self.HIST_PRUNE,
-              self.QS_TT_SHARPEN, self.QS_KEEP_MOVE, self.CYCLE_DETECT)
+              self.QS_TT_SHARPEN, self.QS_KEEP_MOVE, self.CYCLE_DETECT,
+              self.QS_BETA_NARROW, self.QS_TTM_EXEMPT, self.QS_CHK_D1)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -680,6 +703,9 @@ class Engine:
         lib.set_qs_tt_sharpen(1 if self.QS_TT_SHARPEN else 0)  # FI-30(a)
         lib.set_qs_keep_move(1 if self.QS_KEEP_MOVE else 0)    # FI-30(b)
         lib.set_cycle(1 if self.CYCLE_DETECT else 0)           # FI-29
+        lib.set_qs_beta_narrow(1 if self.QS_BETA_NARROW else 0)  # FI-50
+        lib.set_qs_ttm_exempt(1 if self.QS_TTM_EXEMPT else 0)    # FI-51
+        lib.set_qs_chk_d1(1 if self.QS_CHK_D1 else 0)            # FI-52
         # FB-06: cengine is AUTHORITATIVE over every behavioral C toggle --
         # a stale .so or drifted compiled-in default must not silently change
         # the search. Values = the confirmed ledger state (all defaults, so
