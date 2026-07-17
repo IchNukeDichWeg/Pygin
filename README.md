@@ -33,12 +33,13 @@ The engine exists in two forms:
   move generation, incremental Zobrist, TT prefetch, two TT-value
   sharpeners, a 192 MB table, six correctness releases).
 - **vs full-strength Stockfish 18** (`odds.py`): **100%** at queen odds
-  (100 games) and **93.25%** at rook odds (400) — both saturated — and at
-  knight odds, the live external yardstick, **76.75%** on the v31
-  baseline (400 games) → **79.05%** on v49 (1,000 games, +230.7 ± 32.7,
-  2026-07-17). The modest external step for ≈ +195 internal Elo shows
-  knight odds compressing toward saturation too. Odds numbers are
-  machine-dependent — compare only runs from the same machine.
+  (100 games, saturated); rook odds **93.25%** on v31 → **95.50%** on v49
+  (400 games each — draws collapsed 18 → 4; a ~4% swindle floor remains);
+  knight odds, the live external yardstick, **76.75%** on v31 →
+  **79.05%** on v49 (1,000 games, 2026-07-17). Both re-runs moved ~+2.3pp
+  for ≈ +195 internal Elo — the odds formats compress toward saturation
+  as the engine outgrows them. Odds numbers are machine-dependent —
+  compare only runs from the same machine.
 - **vs Stockfish (dev build 2026-07-11) capped at UCI_Elo 2700:** **71.3%**
   over 2,000 games at 50s+0.2 (**+157.9 ± 18.6**, pair ratio 9.2,
   2026-07-17, v47 tree). A class bracket, not a rating — the UCI_Elo
