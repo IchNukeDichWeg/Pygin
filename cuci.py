@@ -13,6 +13,8 @@ same budgets the internal harnesses use.
 Options:
     Threads       (spin 1..256, default 1) -- Lazy-SMP helper threads in C
     MultiPV       (spin 1..5, default 1)   -- k best lines per go (analysis;
+                                              >1 bypasses the opening book,
+                                              else book hits show no lines;
                                               =1 is byte-identical to before,
                                               match play never sets it)
     OwnBook       (check, default true)    -- engine's own Polyglot book
@@ -445,6 +447,7 @@ def main():
             # a hang).
             mv = None
             sm_active = False
+            mpv_book = None
             try:
                 # FI-45: searchmoves -> exclude every legal move NOT listed
                 # (root TT store + FI-06 recorder auto-suppressed while the
@@ -466,6 +469,13 @@ def main():
                                     m.from_square | (m.to_square << 6)
                                     | ((m.promotion or 0) << 12))
                         sm_active = True
+                # MultiPV > 1 = analysis: bypass the opening book for the
+                # MAIN search too -- a book hit returns a bare bestmove with
+                # no PV, so every book position would show ZERO lines in the
+                # GUI (the gate below needs a real search). =1 keeps the
+                # book path byte-identical (match play never sets MultiPV).
+                if getattr(engine, "multipv", 1) > 1 and engine.use_book:
+                    mpv_book, engine.use_book = engine.use_book, False
                 if budget is None:
                     mv = engine.get_best_move(search_board, max_depth)
                 else:
@@ -483,6 +493,8 @@ def main():
             except Exception as ex:
                 print(f"cuci: search error: {ex!r}", file=sys.stderr)
             finally:
+                if mpv_book is not None:     # restore the book setting the
+                    engine.use_book = mpv_book   # MultiPV bypass overrode
                 if sm_active:                # FI-45: NEVER leak exclusions
                     engine._lib.root_exclude_clear()
                 engine.node_limit = None     # FB-09: per-go, don't leak
