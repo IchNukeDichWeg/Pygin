@@ -81,7 +81,7 @@ def _board_phase(board):
                + bin(board.rooks).count("1") * 2 + bin(board.queens).count("1") * 4)
 
 NAME = "Pygin C-core"   # version-neutral: the old "Pygin C31" went stale
-AUTHOR = "Sam"          # the moment v32 landed; snapshots carry the number
+AUTHOR = "Nuke"         # version-neutral pseudonym; snapshots carry the number
 
 
 def out(line):
