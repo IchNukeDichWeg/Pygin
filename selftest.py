@@ -446,6 +446,25 @@ if os.path.exists("cuci.py"):
     check("cuci UCI round-trip (uciok/readyok/legal bestmove)", uci_ok,
           bm if bm else "no bestmove line -- see `python3 cuci.py` by hand")
 
+# --- 5i. NNUE unit checks (FI-15, dormant build-out) --------------------- #
+# Runs in a SUBPROCESS: cengine's FB-04 one-process-one-config rule forbids
+# a second, differently-configured Engine in this process. Exit 42 = no net
+# file on disk = SKIP (the build is dormant until a net is trained); the
+# pinned ladder above is never touched (USE_NNUE stays False here).
+if os.path.exists(os.path.join("NNUE", "selftest_nnue.py")):
+    try:
+        r = subprocess.run(
+            [sys.executable, os.path.join("NNUE", "selftest_nnue.py")],
+            capture_output=True, text=True, timeout=600)
+        if r.returncode == 42:
+            print("\n  skip  NNUE checks (no net file -- dormant FI-15 build)")
+        else:
+            tail = (r.stdout.strip().splitlines() or ["(no output)"])[-1]
+            check("NNUE unit checks (toy net, subprocess)",
+                  r.returncode == 0, tail)
+    except subprocess.TimeoutExpired:
+        check("NNUE unit checks (toy net, subprocess)", False, "timeout")
+
 # --- 6. optional pieces: report, don't fail ------------------------------ #
 print("\noptional:")
 print(f"  {'ok  ' if os.path.exists('wdl_model.json') else 'none'}  wdl_model.json "
