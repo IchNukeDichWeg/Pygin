@@ -642,6 +642,20 @@ class Engine:
     TERM_STORE = True
     TT_MATE_CUT = True
 
+    # FI-56: root-move LMR, BUILT-DORMANT 2026-07-18 (the FI-53/54 campaign
+    # is in flight; one live tree change at a time). Late (i>=4) quiet
+    # non-promotion root moves that neither respond to nor give check are
+    # scouted at depth-1-R (R = g_lmr[d][i]/2, cap depth-2, depth>=3), with
+    # a full-depth zero-window verify before the full-window re-search --
+    # negamax's standard cascade, now at the root. Deliberately overturns
+    # the "no reductions at root" design stance; 3/4-convergent,
+    # SF-standard. ARM after the FI-53/54 verdict: flip True + selftest
+    # comment LOAD-BEARING + the MANDATORY 2k screen (design-stance
+    # reversal) + paired matetrack (root mate finds must not slip), then
+    # the uncapped 10k. False = v49 node-exact. NOT correctness-class:
+    # revert on null.
+    ROOT_LMR = False
+
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
     ASPIRATION_DELTA = 30                    # centipawns; C scores are cp too
@@ -697,8 +711,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (FI-53/54's setters are abi 17) -- bump together with csearch_abi.
-        if lib.csearch_abi() < 17:
+        # (FI-56's set_root_lmr is abi 18) -- bump together with csearch_abi.
+        if lib.csearch_abi() < 18:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -736,7 +750,7 @@ class Engine:
               self.QS_TT_SHARPEN, self.QS_KEEP_MOVE, self.CYCLE_DETECT,
               self.QS_BETA_NARROW, self.QS_TTM_EXEMPT, self.QS_CHK_D1,
               self.TT_KEEP_EXACT, self.TT_FH_TIGHT, self.TT_R50,
-              self.TERM_STORE, self.TT_MATE_CUT)
+              self.TERM_STORE, self.TT_MATE_CUT, self.ROOT_LMR)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -785,6 +799,7 @@ class Engine:
         lib.set_tt_r50(1 if self.TT_R50 else 0)                  # FI-53
         lib.set_term_store(1 if self.TERM_STORE else 0)          # FI-54
         lib.set_tt_mate_cut(1 if self.TT_MATE_CUT else 0)        # FI-54
+        lib.set_root_lmr(1 if self.ROOT_LMR else 0)              # FI-56
         # FB-06: cengine is AUTHORITATIVE over every behavioral C toggle --
         # a stale .so or drifted compiled-in default must not silently change
         # the search. Values = the confirmed ledger state (all defaults, so
