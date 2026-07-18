@@ -58,14 +58,14 @@ the side to move can force a repetition with one reversible move -> the
 node takes the contempt draw a search earlier. KEPT-ON-NULL 2026-07-17
 (+0.97 +/-6.8 @10k vs Old Engine/48, GSPRT LLR -0.19) -- the sixth
 correctness release of its class; CYCLE_VERIFY differential 13,272/0,
-paired matetrack noise-flat. Snapshotted Old Engine/49. Armed candidate:
-the FI-50/51/52 qsearch-TT batch (abi 14) -- FI-30's direct descendant,
-three non-overlapping toggles ganged as one 10k GSPRT[0,4] campaign vs Old
-Engine/49: QS_BETA_NARROW (beta-narrow from a TT_UPPER qsearch hit, CB-01(e)
-mirror) + QS_TTM_EXEMPT (TT move immune to the qsearch losing-SEE skip and
-delta pruning) + QS_CHK_D1 (in-check RESOLVED qsearch stores tagged depth 1,
-visible to negamax's depth gate). All three off = v49 node-exact. PENDING:
-paired matetrack then the uncapped 10k. See improvements.md (R1 head).
+paired matetrack noise-flat. Snapshotted Old Engine/49. Twenty-fourth
+campaign (2026-07-18, vs Old Engine/49): the FI-50/51/52 qsearch-TT batch
+(abi 14; QS_BETA_NARROW + QS_TTM_EXEMPT + QS_CHK_D1) read a dead NULL --
+-0.28 +/-6.8 @10k, pair ratio 1.00, GSPRT LLR -0.797 flat -- all three
+REVERTED to False (dormant, not correctness-class; matetrack had passed
+907/778 vs 900/773). Defaults reproduce v49 node-exact. Armed candidate:
+none pinned -- next queue slot is FI-48 (flag-aware TT replacement, R1's
+second entry, 3/4-convergent coin-flip). See improvements.md (R1).
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -555,19 +555,29 @@ class Engine:
 
     # FI-50/51/52: the qsearch-TT batch -- FI-30's direct descendant, three
     # non-overlapping toggles ganged as one campaign (the grouped-toggle
-    # precedent FI-30 set). ARMED for the twenty-fourth 50+0.20 A/B vs Old
-    # Engine/49; each is 0=off=v49 node-exact so the batch is one 10k GSPRT[0,4]
-    # slot, never capped at a fixed budget (the FI-30 lesson).
+    # precedent FI-30 set):
     #  (50) QS_BETA_NARROW -- narrow beta from a TT_UPPER qsearch hit (the
     #       CB-01(e) alpha-narrow's mirror; negamax has done both all along).
     #  (51) QS_TTM_EXEMPT  -- the qsearch TT move dodges the losing-SEE skip and
     #       delta pruning (a nonzero stored bm beat stand-pat at store time).
     #  (52) QS_CHK_D1      -- in-check RESOLVED qsearch stores tagged depth 1 so
     #       negamax's TT_DEPTH>=depth gate can cut directly from them.
-    # PENDING: paired matetrack (tactical + PV-integrity oracle) then the 10k.
-    QS_BETA_NARROW = True
-    QS_TTM_EXEMPT = True
-    QS_CHK_D1 = True
+    # NULL 2026-07-18 (twenty-fourth campaign vs Old Engine/49, 10,000 games
+    # @ 50+0.20): -0.28 +/-6.8 (49.96%, ptnml 295/1177/2055/1187/286, pair
+    # ratio 1.00, norm -0.57, GSPRT[0,4] LLR -0.797 no decision, trend flat)
+    # -- a dead null, NOT correctness-class => all three REVERTED to False
+    # (dormant, mechanisms kept). The never-cap doctrine wasn't triggered:
+    # it protects tests trending toward a bound (FI-30's LLR climbed and
+    # never reversed); this one sat flat-to-negative. Not split for
+    # attribution (~$54 to price three likely-zeros against symmetric
+    # ptnml); FI-50 alone stays a cheap solo re-run candidate (its entry
+    # priced it keep-on-null-adjacent, unexercisable from a batch verdict).
+    # Paired matetrack had PASSED pre-verdict (ON 907/778 vs OFF 900/773
+    # found/best mates on mates2000 @0.5s -- noise-flat, no tactical or
+    # PV-integrity regression; the mechanisms are safe, just not worth Elo).
+    QS_BETA_NARROW = False
+    QS_TTM_EXEMPT = False
+    QS_CHK_D1 = False
 
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
