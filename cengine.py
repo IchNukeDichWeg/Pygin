@@ -69,9 +69,12 @@ DEAD GATE pre-A/B: instrumented engagement ~0.001% of nodes at both
 levels under the production config -- the probe-side EXACT cutoff
 structurally prevents the overwrites the shield guards against, and the
 192MB TT does not saturate at this TC (FI-08/FI-20 context). No slot
-spent. Mechanism kept at 0 = v49 node-exact. Armed candidate: none
-pinned -- next queue slot per R1 is the FI-49+FI-53+FI-54 store/probe
-policy batch. See improvements.md (R1).
+spent. Mechanism kept at 0 = v49 node-exact. Armed candidate: FI-49
+TT fail-high depth tightening (TT_FH_TIGHT=True, abi 16) -- an equal-depth
+TT_LOWER that would cut needs one ply more stored depth (SF-standard);
+solo slot per the FI-50/51/52 attribution lesson. False = v49 node-exact.
+Revert on null. Twenty-fifth campaign vs Old Engine/49. PENDING: paired
+matetrack, then the uncapped 10k. See improvements.md (R1).
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -602,6 +605,17 @@ class Engine:
     # TC lengthens, or FI-20's hashfull gate ever shows saturation.
     TT_KEEP_EXACT = 0
 
+    # FI-49: TT fail-high depth tightening (SF-standard) -- an equal-depth
+    # TT_LOWER whose value would cut (v >= beta, non-mate) needs TT_DEPTH >=
+    # depth+1 before the negamax cutoff/narrowing block fires; fail-high
+    # scores are unstable at equal depth. EXACT entries, narrowing-only
+    # LOWER hits, and PV nodes (PV-02) are untouched. ARMED for the
+    # twenty-fifth 50+0.20 A/B vs Old Engine/49 -- solo slot (the
+    # FI-50/51/52 batch-null attribution lesson), uncapped 10k GSPRT[0,4].
+    # False = v49 node-exact. NOT correctness-class: revert on null.
+    # PENDING: paired matetrack, then the 10k.
+    TT_FH_TIGHT = True
+
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
     ASPIRATION_DELTA = 30                    # centipawns; C scores are cp too
@@ -657,9 +671,9 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (FI-48's set_tt_keep_exact is abi 15) -- bump together with
+        # (FI-49's set_tt_fh_tight is abi 16) -- bump together with
         # csearch_abi.
-        if lib.csearch_abi() < 15:
+        if lib.csearch_abi() < 16:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -696,7 +710,7 @@ class Engine:
               self.TT_BITS, self.TT_KEEP_WARM, self.HIST_PRUNE,
               self.QS_TT_SHARPEN, self.QS_KEEP_MOVE, self.CYCLE_DETECT,
               self.QS_BETA_NARROW, self.QS_TTM_EXEMPT, self.QS_CHK_D1,
-              self.TT_KEEP_EXACT)
+              self.TT_KEEP_EXACT, self.TT_FH_TIGHT)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -741,6 +755,7 @@ class Engine:
         lib.set_qs_ttm_exempt(1 if self.QS_TTM_EXEMPT else 0)    # FI-51
         lib.set_qs_chk_d1(1 if self.QS_CHK_D1 else 0)            # FI-52
         lib.set_tt_keep_exact(int(self.TT_KEEP_EXACT))           # FI-48
+        lib.set_tt_fh_tight(1 if self.TT_FH_TIGHT else 0)        # FI-49
         # FB-06: cengine is AUTHORITATIVE over every behavioral C toggle --
         # a stale .so or drifted compiled-in default must not silently change
         # the search. Values = the confirmed ledger state (all defaults, so

@@ -265,6 +265,15 @@ if os.path.exists("csearch.c"):
             ce._lib.set_tt_keep_exact(0)
         except AttributeError:
             pass                       # pre-FI-48 csearch.so
+        # FI-49 fail-high depth tightening: ARMED (twenty-fifth A/B vs Old
+        # Engine/49) but NOT yet confirmed -- v49 has it OFF, so the ladder
+        # pins it off here (LOAD-BEARING: cengine's class default is True
+        # for match play). Flip to set_tt_fh_tight(1) and re-pin CE_LADDER
+        # only on CONFIRM.
+        try:
+            ce._lib.set_tt_fh_tight(0)
+        except AttributeError:
+            pass                       # pre-FI-49 csearch.so
         # FI-06 root-move ordering is DORMANT (+2.26 null @10k vs Old
         # Engine/45, 2026-07-13 -- positive lean but CI covers zero, not
         # correctness); the default already reproduces v45, so this pin is
