@@ -125,11 +125,11 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # quiet developing moves flip between depths without being a regression.
 # Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
 CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3"
-CE_LADDER = {                     # depth -> (nodes, score)  [v50: FI-53 rule50 TT guard + FI-54 terminal-store/mate-cut ON -- re-measured 2026-07-18; tiny deltas vs v49 (d8+ a few nodes fewer: terminal stores + rule50 fallthrough barely touch this quiet middlegame). TT_BITS=23 (192 MB) unchanged]
-    1: (95, 126), 2: (180, 126), 3: (730, 126), 4: (984, 122),
-    5: (8539, 73), 6: (16157, 63), 7: (40863, 74), 8: (76927, 72),
-    9: (123306, 75), 10: (266794, 58), 11: (422914, 71), 12: (700615, 68),
-    13: (1082722, 84), 14: (2092261, 71),
+CE_LADDER = {                     # depth -> (nodes, score)  [v51: FI-56 root LMR ON -- re-measured 2026-07-18; the late-root reduced scouts reshape the whole tree (d14 -32% nodes vs the v50 ladder, scores drift at d11+). TT_BITS=23 (192 MB) unchanged]
+    1: (95, 126), 2: (180, 126), 3: (378, 126), 4: (921, 122),
+    5: (6110, 73), 6: (11726, 73), 7: (20446, 74), 8: (48581, 72),
+    9: (77104, 75), 10: (173683, 58), 11: (277259, 82), 12: (451299, 67),
+    13: (952414, 82), 14: (1421746, 79),
 }
 if os.path.exists("csearch.c"):
     try:
@@ -285,12 +285,13 @@ if os.path.exists("csearch.c"):
             ce._lib.set_tt_mate_cut(1)
         except AttributeError:
             pass                       # pre-FI-53/54 csearch.so
-        # FI-56 root LMR: ARMED (twenty-seventh campaign vs Old Engine/50)
-        # but NOT yet confirmed -- v50 has it OFF, so the ladder pins it off
-        # here (LOAD-BEARING: cengine's class default is True for match
-        # play). Flip to 1 + re-pin CE_LADDER only on CONFIRM.
+        # FI-56 root LMR: CONFIRMED into v51 2026-07-18 (pooled +11.12
+        # +/-5.3 @9,343 games vs Old Engine/50, pooled GSPRT[0,4] LLR
+        # +4.549 -- the C era's second SPRT accept). ON is the shipped
+        # default; pinned 1 so the v51 ladder below survives any future
+        # re-toggle experiment (load-bearing).
         try:
-            ce._lib.set_root_lmr(0)
+            ce._lib.set_root_lmr(1)
         except AttributeError:
             pass                       # pre-FI-56 csearch.so
         # FI-06 root-move ordering is DORMANT (+2.26 null @10k vs Old
