@@ -860,6 +860,8 @@ class Engine:
         )
         # 3. contempt draw scoring.
         lib.csearch_set_draw(eng.CONTEMPT, eng.DRAW_AVOID_MARGIN)
+        self.contempt = eng.CONTEMPT     # FB-34: fingerprint honesty (cuci
+                                         # echoes this; setoption updates it)
         # 4. simplify-at-500 (threshold 0 = off = v36 eval exactly).
         lib.csearch_set_simplify(
             int(self.SIMPLIFY_THRESHOLD) if self.USE_SIMPLIFY else 0,
