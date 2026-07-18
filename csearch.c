@@ -2440,6 +2440,24 @@ static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
     tt_store_raw(t, key, sv, mv, depth, flag, ev);
 }
 
+/* FB-40: the FI-30(a) stand-pat sharpen rule, shared by both qsearch
+ * branches (lazy P-46 path and the set_qs_lazy(0) ladder-pin path) -- the
+ * two copies previously had to be edited in lockstep, and the non-lazy one
+ * is exercised only in ladder node-exact runs, where a missed edit would
+ * silently break value-identity instead of failing match play. */
+static inline int qs_sharpen_stand(int stand, int qs_sh_flag, int qs_sh_val)
+{
+    /* FI-30(a): proven TT bound beats static eval for stand-pat. */
+    if (g_qs_tt_sharpen && qs_sh_flag >= 0
+            && qs_sh_val > -MATE_THRESH && qs_sh_val < MATE_THRESH) {
+        if (qs_sh_flag == TT_EXACT
+            || (qs_sh_flag == TT_LOWER && qs_sh_val > stand)
+            || (qs_sh_flag == TT_UPPER && qs_sh_val < stand))
+            return qs_sh_val;
+    }
+    return stand;
+}
+
 static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
                    int hmc)
 {
@@ -2533,13 +2551,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         stand = (tt_eval != TT_EVAL_NONE) ? tt_eval    /* FI-03: exact cache */
                                           : eval_full_stm(b);
         raw_stand = stand;               /* FI-30: the FI-03 store stays RAW */
-        if (g_qs_tt_sharpen && qs_sh_flag >= 0
-                && qs_sh_val > -MATE_THRESH && qs_sh_val < MATE_THRESH) {
-            if (qs_sh_flag == TT_EXACT
-                || (qs_sh_flag == TT_LOWER && qs_sh_val > stand)
-                || (qs_sh_flag == TT_UPPER && qs_sh_val < stand))
-                stand = qs_sh_val;       /* FI-30(a): proven bound beats eval */
-        }
+        stand = qs_sharpen_stand(stand, qs_sh_flag, qs_sh_val);   /* FB-40 */
         if (stand >= beta) {                         /* fail-soft stand-pat */
             if (has_legal_quiet(b) || gen_noisy(b, moves) > 0) {
                 if (use_qtt && !CS_UNWINDING())      /* P-44: cache the cutoff */
@@ -2563,13 +2575,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         stand = (tt_eval != TT_EVAL_NONE) ? tt_eval    /* FI-03: exact cache */
                                           : eval_full_stm(b);
         raw_stand = stand;               /* FI-30: the FI-03 store stays RAW */
-        if (g_qs_tt_sharpen && qs_sh_flag >= 0
-                && qs_sh_val > -MATE_THRESH && qs_sh_val < MATE_THRESH) {
-            if (qs_sh_flag == TT_EXACT
-                || (qs_sh_flag == TT_LOWER && qs_sh_val > stand)
-                || (qs_sh_flag == TT_UPPER && qs_sh_val < stand))
-                stand = qs_sh_val;       /* FI-30(a): proven bound beats eval */
-        }
+        stand = qs_sharpen_stand(stand, qs_sh_flag, qs_sh_val);   /* FB-40 */
         if (stand >= beta) {                         /* fail-soft stand-pat */
             if (use_qtt && !CS_UNWINDING())          /* P-44: cache the cutoff */
                 qs_tt_store(key, stand, ply, 0, TT_LOWER, raw_stand, 0);
