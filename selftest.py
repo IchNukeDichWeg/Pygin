@@ -257,6 +257,14 @@ if os.path.exists("csearch.c"):
             ce._lib.set_qs_chk_d1(0)
         except AttributeError:
             pass                       # pre-FI-50/51/52 csearch.so
+        # FI-48 flag-aware TT replacement: CLOSED AS DEAD GATE 2026-07-18
+        # pre-A/B (instrumented engagement ~0.001% of nodes at both levels;
+        # the probe-side EXACT cutoff structurally prevents the guarded
+        # overwrites). Default is 0, so this pin is belt-and-braces.
+        try:
+            ce._lib.set_tt_keep_exact(0)
+        except AttributeError:
+            pass                       # pre-FI-48 csearch.so
         # FI-06 root-move ordering is DORMANT (+2.26 null @10k vs Old
         # Engine/45, 2026-07-13 -- positive lean but CI covers zero, not
         # correctness); the default already reproduces v45, so this pin is

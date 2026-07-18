@@ -63,9 +63,15 @@ campaign (2026-07-18, vs Old Engine/49): the FI-50/51/52 qsearch-TT batch
 (abi 14; QS_BETA_NARROW + QS_TTM_EXEMPT + QS_CHK_D1) read a dead NULL --
 -0.28 +/-6.8 @10k, pair ratio 1.00, GSPRT LLR -0.797 flat -- all three
 REVERTED to False (dormant, not correctness-class; matetrack had passed
-907/778 vs 900/773). Defaults reproduce v49 node-exact. Armed candidate:
-none pinned -- next queue slot is FI-48 (flag-aware TT replacement, R1's
-second entry, 3/4-convergent coin-flip). See improvements.md (R1).
+907/778 vs 900/773). Defaults reproduce v49 node-exact. FI-48 flag-aware
+TT replacement (TT_KEEP_EXACT, abi 15) built 2026-07-18 and CLOSED AS A
+DEAD GATE pre-A/B: instrumented engagement ~0.001% of nodes at both
+levels under the production config -- the probe-side EXACT cutoff
+structurally prevents the overwrites the shield guards against, and the
+192MB TT does not saturate at this TC (FI-08/FI-20 context). No slot
+spent. Mechanism kept at 0 = v49 node-exact. Armed candidate: none
+pinned -- next queue slot per R1 is the FI-49+FI-53+FI-54 store/probe
+policy batch. See improvements.md (R1).
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -579,6 +585,23 @@ class Engine:
     QS_TTM_EXEMPT = False
     QS_CHK_D1 = False
 
+    # FI-48: flag-aware TT replacement -- shield same-key EXACT entries from
+    # equal-depth bound-only overwrites; level 2 adds a +2 cross-key
+    # effective-depth bonus for EXACT incumbents. CLOSED AS DEAD GATE
+    # 2026-07-18 pre-A/B (FI-23/P-33 doctrine: never spend a 10k on a config
+    # that barely runs). Instrumented count under the full production config
+    # (PV-02 on, warm TT): level 1 fired 26x over ~4M+ nodes of bench +
+    # timed search (577k same-key store checks -> 26 qualified); level 2
+    # added ~170 cross-key blocks per ~20M timed nodes -- ~0.001% either
+    # way. STRUCTURAL cause, not tuning: a node that would overwrite an
+    # equal/deeper same-key EXACT entry is cut off by that very entry at
+    # its own probe before it can store (only PV-02-skipped PV nodes
+    # escape), and cross-key pressure is starved because the 192MB table
+    # does not saturate at 50+0.2 (same reason FI-08 nulled / FI-20 is
+    # gated). Mechanism kept for a cheap re-measure if the TT shrinks, the
+    # TC lengthens, or FI-20's hashfull gate ever shows saturation.
+    TT_KEEP_EXACT = 0
+
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
     ASPIRATION_DELTA = 30                    # centipawns; C scores are cp too
@@ -634,9 +657,9 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (FI-50/51/52's qsearch-TT setters are abi 14) -- bump together with
+        # (FI-48's set_tt_keep_exact is abi 15) -- bump together with
         # csearch_abi.
-        if lib.csearch_abi() < 14:
+        if lib.csearch_abi() < 15:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -672,7 +695,8 @@ class Engine:
               self.TT_EVAL_SHARPEN, self.SEE_PRUNE, self.ROOT_ORDER,
               self.TT_BITS, self.TT_KEEP_WARM, self.HIST_PRUNE,
               self.QS_TT_SHARPEN, self.QS_KEEP_MOVE, self.CYCLE_DETECT,
-              self.QS_BETA_NARROW, self.QS_TTM_EXEMPT, self.QS_CHK_D1)
+              self.QS_BETA_NARROW, self.QS_TTM_EXEMPT, self.QS_CHK_D1,
+              self.TT_KEEP_EXACT)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -716,6 +740,7 @@ class Engine:
         lib.set_qs_beta_narrow(1 if self.QS_BETA_NARROW else 0)  # FI-50
         lib.set_qs_ttm_exempt(1 if self.QS_TTM_EXEMPT else 0)    # FI-51
         lib.set_qs_chk_d1(1 if self.QS_CHK_D1 else 0)            # FI-52
+        lib.set_tt_keep_exact(int(self.TT_KEEP_EXACT))           # FI-48
         # FB-06: cengine is AUTHORITATIVE over every behavioral C toggle --
         # a stale .so or drifted compiled-in default must not silently change
         # the search. Values = the confirmed ledger state (all defaults, so
