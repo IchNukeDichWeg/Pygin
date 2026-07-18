@@ -274,6 +274,17 @@ if os.path.exists("csearch.c"):
             ce._lib.set_tt_fh_tight(0)
         except AttributeError:
             pass                       # pre-FI-49 csearch.so
+        # FI-53/FI-54 store/probe pair: BUILT-DORMANT (defaults False, not
+        # yet armed -- pending the FI-49 verdict), so these pins are
+        # belt-and-braces. They become LOAD-BEARING the day the pair is
+        # armed (class defaults flip True); flip to 1 + re-pin only on
+        # CONFIRM.
+        try:
+            ce._lib.set_tt_r50(0)
+            ce._lib.set_term_store(0)
+            ce._lib.set_tt_mate_cut(0)
+        except AttributeError:
+            pass                       # pre-FI-53/54 csearch.so
         # FI-06 root-move ordering is DORMANT (+2.26 null @10k vs Old
         # Engine/45, 2026-07-13 -- positive lean but CI covers zero, not
         # correctness); the default already reproduces v45, so this pin is

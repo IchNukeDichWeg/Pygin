@@ -616,6 +616,27 @@ class Engine:
     # PENDING: paired matetrack, then the 10k.
     TT_FH_TIGHT = True
 
+    # FI-53 + FI-54: the store/probe-policy pair, BUILT-DORMANT 2026-07-18 --
+    # code is in csearch.c behind three toggles, NOT armed (the FI-49 solo
+    # campaign is in flight; one live tree change at a time). Flip all three
+    # True + docstring + selftest comments when arming as the twenty-sixth
+    # campaign after the FI-49 verdict lands. Both items are
+    # correctness-flavored keep-on-null candidates (pre-registered).
+    #  FI-53 TT_R50      -- at hmc>=90 refuse TT cutoffs/narrowing for
+    #       decisive-but-non-mate stored values (|v|>=500cp): the promised
+    #       win may not be convertible before the rule draw. Mates and
+    #       quiet values still cut (mate finds never lost by construction).
+    #  FI-54 TERM_STORE  -- terminal mate/stalemate returns write a
+    #       permanent TT_EXACT entry at sentinel depth 200 (a forced mate
+    #       is depth-invariant); provably safe half.
+    #  FI-54 TT_MATE_CUT -- negamax probe cuts on mate-range TT values
+    #       regardless of stored depth (GHI exposure = SF's accepted
+    #       tradeoff; if matetrack shows wrong mates, arm TERM_STORE alone).
+    # All False = v49 node-exact.
+    TT_R50 = False
+    TERM_STORE = False
+    TT_MATE_CUT = False
+
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
     ASPIRATION_DELTA = 30                    # centipawns; C scores are cp too
@@ -671,9 +692,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (FI-49's set_tt_fh_tight is abi 16) -- bump together with
-        # csearch_abi.
-        if lib.csearch_abi() < 16:
+        # (FI-53/54's setters are abi 17) -- bump together with csearch_abi.
+        if lib.csearch_abi() < 17:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -710,7 +730,8 @@ class Engine:
               self.TT_BITS, self.TT_KEEP_WARM, self.HIST_PRUNE,
               self.QS_TT_SHARPEN, self.QS_KEEP_MOVE, self.CYCLE_DETECT,
               self.QS_BETA_NARROW, self.QS_TTM_EXEMPT, self.QS_CHK_D1,
-              self.TT_KEEP_EXACT, self.TT_FH_TIGHT)
+              self.TT_KEEP_EXACT, self.TT_FH_TIGHT, self.TT_R50,
+              self.TERM_STORE, self.TT_MATE_CUT)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -756,6 +777,9 @@ class Engine:
         lib.set_qs_chk_d1(1 if self.QS_CHK_D1 else 0)            # FI-52
         lib.set_tt_keep_exact(int(self.TT_KEEP_EXACT))           # FI-48
         lib.set_tt_fh_tight(1 if self.TT_FH_TIGHT else 0)        # FI-49
+        lib.set_tt_r50(1 if self.TT_R50 else 0)                  # FI-53
+        lib.set_term_store(1 if self.TERM_STORE else 0)          # FI-54
+        lib.set_tt_mate_cut(1 if self.TT_MATE_CUT else 0)        # FI-54
         # FB-06: cengine is AUTHORITATIVE over every behavioral C toggle --
         # a stale .so or drifted compiled-in default must not silently change
         # the search. Values = the confirmed ledger state (all defaults, so
