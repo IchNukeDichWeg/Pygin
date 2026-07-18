@@ -94,7 +94,14 @@ TC_INCREMENT = 0.20         # used when MODE == "clock": seconds added per move
 import os                   # config-time env read; harmlessly re-imported below
 ADJUDICATE = (os.environ.get("MATCH_ADJUDICATE", "1") != "0")
 ADJ_WIN_P = 0.99            # per-phase cp threshold = model's P(win) 99% point
-ADJ_WIN_COUNT = 8           # consecutive own moves (each side) for a win call
+ADJ_WIN_COUNT = 4           # consecutive own moves (each side) for a win call.
+                            # 8 -> 4 (2026-07-18): the two-sided 99%-agreement
+                            # rule below (leader >= +thr AND loser <= -thr) is
+                            # what makes a false win near-impossible; the move
+                            # debounce is only anti-blip. 4 ends decided games
+                            # ~8 plies sooner, outcome-identical on real wins
+                            # (cutechess resign defaults are 3-4). Draw params
+                            # left conservative on purpose (FI-28 endgame-mask).
 ADJ_DRAW_CP = 10            # |cp| <= this from both sides...
 ADJ_DRAW_COUNT = 16          # ...for this many consecutive plies...
 ADJ_DRAW_MIN_PLY = 100       # ...never before this game ply
