@@ -16,9 +16,12 @@ Label: u = LAMBDA * clamp(score, +/-2000)/400
 flipped to stm POV to match the net's output convention).
 
 The dataloader pre-extracts features ONCE into memory (int64 [N,32] x 2 +
-threat bytes): 100k positions ~ 50 MB. For the 50M real run the same code
-streams per-epoch from the mmap in chunks (--chunked), trading a little
-speed for memory.
+threat bytes): 100k positions ~ 50 MB. For the 50M real run pass
+--chunk 2000000: each epoch streams the mmap'd records in chunks (chunk
+order + within-chunk order shuffled per epoch -- the standard approximate
+shuffle; generation already interleaves games across worker shards), and
+features are re-extracted per chunk (~20 s per 2M chunk) instead of held
+in RAM (50M in-memory would need ~25 GB of index tensors).
 """
 
 import argparse
@@ -111,18 +114,35 @@ def main():
     ap.add_argument("--val-frac", type=float, default=0.05)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--limit", type=int, help="use only the first N records")
+    ap.add_argument("--chunk", type=int, default=0,
+                    help="stream the train split in chunks of N records "
+                         "(0 = all in memory; use ~2000000 for 50M-scale)")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
-    recs = np.asarray(read_pygdata(args.dataset))
+    recs = read_pygdata(args.dataset)              # mmap, read-only
     if args.limit:
         recs = recs[:args.limit]
     rng = np.random.default_rng(args.seed)
-    order = rng.permutation(len(recs))
     nval = max(1, int(len(recs) * args.val_frac))
-    val, train = recs[order[:nval]], recs[order[nval:]]
-    print(f"dataset {args.dataset}: {len(train)} train / {len(val)} val")
-    train_t = prepare(train)
+    if args.chunk:
+        # streaming mode: val = a fixed random sample (in memory), train =
+        # the remaining record RANGE streamed per epoch (approximate
+        # shuffle: chunk order + within-chunk order re-drawn per epoch).
+        val_idx = np.sort(rng.choice(len(recs), nval, replace=False))
+        val = np.asarray(recs[val_idx])
+        val_mask_note = f"{len(recs) - nval} train (streamed) / {nval} val"
+        train_view = recs                     # val overlap: nval/N ~ 0.1%,
+        ntrain = len(recs)                    # negligible for a stream
+    else:
+        order = rng.permutation(len(recs))
+        val = np.asarray(recs[np.sort(order[:nval])])
+        train = np.asarray(recs[np.sort(order[nval:])])
+        val_mask_note = f"{len(train)} train / {nval} val"
+        ntrain = len(train)
+    print(f"dataset {args.dataset}: {val_mask_note}")
+    if not args.chunk:
+        train_t = prepare(train)
     val_t = prepare(val)
 
     model = NNUEModel()
@@ -131,14 +151,21 @@ def main():
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     curve_path = os.path.join(CHECKPOINTS_DIR, "loss_curve.csv")
     best_val, best_epoch = float("inf"), -1
-    with open(curve_path, "w", newline="") as cf:
-        cw = csv.writer(cf)
-        cw.writerow(["epoch", "train_mse", "val_mse"])
-        for ep in range(args.epochs):
-            model.train()
-            t0, tot, n = time.time(), 0.0, 0
-            for iu, it, th, y in batches(train_t, args.batch,
-                                         seed=args.seed + ep):
+
+    def train_one_epoch(ep):
+        model.train()
+        tot, n = 0.0, 0
+        if args.chunk:
+            erng = np.random.default_rng(args.seed * 7919 + ep)
+            starts = np.arange(0, ntrain, args.chunk)
+            erng.shuffle(starts)
+            sources = ((prepare(np.asarray(
+                train_view[s:s + args.chunk]), log=lambda *a: None),
+                int(erng.integers(1 << 30))) for s in starts)
+        else:
+            sources = ((train_t, args.seed + ep),)
+        for tensors, bseed in sources:
+            for iu, it, th, y in batches(tensors, args.batch, seed=bseed):
                 opt.zero_grad()
                 loss = torch.nn.functional.mse_loss(model(iu, it, th), y)
                 loss.backward()
@@ -146,7 +173,14 @@ def main():
                 model.clip_weights()          # QAT: stay in-range always
                 tot += loss.item() * len(y)
                 n += len(y)
-            tr = tot / n
+        return tot / n
+
+    with open(curve_path, "w", newline="") as cf:
+        cw = csv.writer(cf)
+        cw.writerow(["epoch", "train_mse", "val_mse"])
+        for ep in range(args.epochs):
+            t0 = time.time()
+            tr = train_one_epoch(ep)
             va = evaluate(model, val_t, args.batch)
             cw.writerow([ep, f"{tr:.6f}", f"{va:.6f}"])
             cf.flush()
