@@ -2314,6 +2314,29 @@ void set_qs_ttm_exempt(int v) { g_qs_ttm_exempt = v ? 1 : 0; }
 static int g_qs_chk_d1 = 0;
 void set_qs_chk_d1(int v) { g_qs_chk_d1 = v ? 1 : 0; }
 
+/* FI-48 (armed for the twenty-fifth 50+0.20 A/B, vs Old Engine/49):
+ * flag-aware TT replacement. All three same-key store sites are flag-blind,
+ * so an equal-depth bound-only store (qsearch stand-pat LOWERs, unproven
+ * CB-02 null LOWERs, negamax UPPER/LOWER results) overwrites a fully
+ * resolved EXACT entry of the same position -- FI-30(b) rescues only the
+ * move, not the flag and value. Level 1: same-key shield -- keep the
+ * incumbent when it is EXACT, at least as deep, and the incoming flag is a
+ * bound. Level 2 rider (not armed): +2 effective-depth bonus for EXACT
+ * incumbents in the cross-key current-gen replace test. Skipping a store
+ * never changes a returned value, so 0 = off = v49 node-exact. NOT
+ * correctness-class (SF's tuned policy is the opposite -- recency wins):
+ * revert on null. */
+static int g_tt_keep_exact = 0;
+void set_tt_keep_exact(int v) { g_tt_keep_exact = v < 0 ? 0 : v; }
+
+static inline int tt_exact_shield(TTEntry cur, int new_depth, int new_flag)
+{   /* same-key path only */
+    return g_tt_keep_exact && TT_FLAG(cur) == TT_EXACT
+        && new_flag != TT_EXACT && TT_DEPTH(cur) >= new_depth;
+}
+static inline int tt_exact_bonus(TTEntry cur)
+{   return (g_tt_keep_exact >= 2 && TT_FLAG(cur) == TT_EXACT) ? 2 : 0; }
+
 static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
                                int flag, int ev, int depth)  /* FI-52: depth */
 {
@@ -2321,10 +2344,11 @@ static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
     TTEntry cur = *t;
     uint64_t ck = cur.key_x ^ cur.d1 ^ cur.d2;
     int replace = (ck == key)
-                ? (TT_DEPTH(cur) <= depth)           /* was <= 0; == at depth 0 */
+                ? (TT_DEPTH(cur) <= depth            /* was <= 0; == at depth 0 */
+                   && !tt_exact_shield(cur, depth, flag))   /* FI-48 */
                 : (TT_GEN(cur) != (int)(uint16_t)g_gen
                        ? (g_qs_evict_max < 0 || TT_DEPTH(cur) <= g_qs_evict_max)
-                       : TT_DEPTH(cur) <= depth);
+                       : TT_DEPTH(cur) + tt_exact_bonus(cur) <= depth);
     if (!replace) return;
     int sv = val;
     if (sv >= MATE_THRESH) sv += ply;                /* node -> ply-relative */
@@ -2712,13 +2736,16 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                             TTEntry cur = *tte;
                             uint64_t ck = cur.key_x ^ cur.d1 ^ cur.d2;
                             if (ck == key) {
-                                if (depth >= TT_DEPTH(cur))
+                                if (depth >= TT_DEPTH(cur)
+                                    && !tt_exact_shield(cur, depth,
+                                                        TT_LOWER))  /* FI-48 */
                                     tt_store_raw(tte, key, ns,
                                                  TT_MOVE(cur) & 0x7FFF,
                                                  depth, TT_LOWER,
                                                  static_eval);
                             } else if (TT_GEN(cur) != (int)(uint16_t)g_gen
-                                       || depth >= TT_DEPTH(cur)) {
+                                       || depth >= TT_DEPTH(cur)
+                                                   + tt_exact_bonus(cur)) {
                                 tt_store_raw(tte, key, ns, 0, depth,
                                              TT_LOWER, static_eval);
                             }
@@ -2920,13 +2947,15 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     if (g_use_tt && tte && !CS_UNWINDING()) {   /* FB-13b: tte NULL when TT-less */
         TTEntry cur = *tte;
         uint64_t cur_key = cur.key_x ^ cur.d1 ^ cur.d2;
+        /* FI-48: flag hoisted above the replace test (the shield needs it). */
+        int flag = (best <= alpha_orig) ? TT_UPPER
+                 : (best >= beta)       ? TT_LOWER : TT_EXACT;
         int replace = (cur_key == key)
-                    ? (TT_DEPTH(cur) <= depth)
+                    ? (TT_DEPTH(cur) <= depth
+                       && !tt_exact_shield(cur, depth, flag))   /* FI-48 */
                     : (TT_GEN(cur) != (int)(uint16_t)g_gen
-                       || TT_DEPTH(cur) <= depth);
+                       || TT_DEPTH(cur) + tt_exact_bonus(cur) <= depth);
         if (replace) {
-            int flag = (best <= alpha_orig) ? TT_UPPER
-                     : (best >= beta)       ? TT_LOWER : TT_EXACT;
             int sv = best;
             if (sv >= MATE_THRESH) sv += ply;
             else if (sv <= -MATE_THRESH) sv -= ply;
@@ -3284,7 +3313,8 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted, &second);
 }
 
-int csearch_abi(void) { return 14; }  /* 14 = FI-50/51/52 qsearch-TT batch
+int csearch_abi(void) { return 15; }  /* 15 = FI-48 set_tt_keep_exact (flag-aware TT replacement);
+                                       * 14 = FI-50/51/52 qsearch-TT batch
                                        * (set_qs_beta_narrow/set_qs_ttm_exempt/set_qs_chk_d1);
                                        * 13 = FI-29 set_cycle (cuckoo upcoming-repetition);
                                        * 12 = FI-30 set_qs_tt_sharpen/set_qs_keep_move; 11 = cs_search_root out_second
