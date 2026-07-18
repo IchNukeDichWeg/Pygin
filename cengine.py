@@ -73,11 +73,14 @@ spent. Mechanism kept at 0 = v49 node-exact. Twenty-fifth campaign
 (2026-07-18, vs Old Engine/49): FI-49 fail-high tightening REJECTED --
 -3.65 +/-6.8 @10k, ratio 0.94, LLR -2.403 (reject-lean; the +28% node
 cost never paid, as the matetrack dip predicted) -- reverted to dormant.
-Armed candidate: the FI-53+FI-54 store/probe pair (TT_R50 + TERM_STORE +
-TT_MATE_CUT all True, abi 17) -- rule50 TT staleness guard + permanent
-terminal stores/mate-range probe cuts; correctness-flavored keep-on-null
-pair. All False = v49 node-exact. Twenty-sixth campaign vs Old Engine/49
-on SUBSET_SEED 50. PENDING: paired matetrack, then the uncapped 10k.
+v50 = v49 + FI-53/54 (KEPT-ON-NULL 2026-07-18, twenty-sixth campaign vs
+Old Engine/49 on rotated seed 50: +1.60 +/-6.8 @10k, LLR +0.117 flat --
+seventh+eighth correctness-class releases; TT_R50/TERM_STORE/TT_MATE_CUT
+= True are the shipped defaults, abi 17; matetrack had leaned positive
+905/777 vs 893/768). Snapshotted Old Engine/50. Armed candidate: FI-56
+root-move LMR (ROOT_LMR=True, abi 18) -- the search/pruning lane pivot;
+MANDATORY 2k screen before the 10k (design-stance reversal), then the
+uncapped twenty-seventh campaign vs Old Engine/50.
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -622,11 +625,15 @@ class Engine:
     # do-not-retry at this TC); mechanism kept.
     TT_FH_TIGHT = False
 
-    # FI-53 + FI-54: the store/probe-policy pair, ARMED 2026-07-18 for the
-    # twenty-sixth 50+0.20 A/B vs Old Engine/49 (first campaign on the
-    # rotated SUBSET_SEED 50), one uncapped 10k GSPRT[0,4] slot. Both items
-    # are correctness-flavored keep-on-null candidates (pre-registered);
-    # a real NEGATIVE splits for attribution before any revert-for-good.
+    # FI-53 + FI-54: the store/probe-policy pair. KEPT-ON-NULL => v50
+    # 2026-07-18 (twenty-sixth campaign vs Old Engine/49, 10,000 games @
+    # 50+0.20, first on rotated SUBSET_SEED 50): +1.60 +/-6.8 (50.23%,
+    # ptnml 278/1155/2106/1165/296, pair ratio 1.02, norm +3.33, GSPRT[0,4]
+    # LLR +0.117 flat) -- the pre-registered correctness-class rule ships
+    # the null, the seventh and eighth releases of the class (EP-01/CB-01/
+    # CB-02/PV-02/CW-01/FI-29 precedent). Build gates had leaned positive:
+    # paired matetrack ON 905/777 vs OFF 893/768 (the mate machinery
+    # visibly helps mate-finding), KQvK@hmc95 correctly scored 0.
     #  FI-53 TT_R50      -- at hmc>=90 refuse TT cutoffs/narrowing for
     #       decisive-but-non-mate stored values (|v|>=500cp): the promised
     #       win may not be convertible before the rule draw. Mates and

@@ -125,11 +125,11 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # quiet developing moves flip between depths without being a regression.
 # Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
 CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3"
-CE_LADDER = {                     # depth -> (nodes, score)  [v49: FI-29 cuckoo cycle detection ON -- re-measured 2026-07-17; the upcoming-repetition draw bound reshapes the deep tree (d12 -16% nodes vs the v48 ladder, scores drift at d10+). TT_BITS=23 (192 MB) unchanged]
+CE_LADDER = {                     # depth -> (nodes, score)  [v50: FI-53 rule50 TT guard + FI-54 terminal-store/mate-cut ON -- re-measured 2026-07-18; tiny deltas vs v49 (d8+ a few nodes fewer: terminal stores + rule50 fallthrough barely touch this quiet middlegame). TT_BITS=23 (192 MB) unchanged]
     1: (95, 126), 2: (180, 126), 3: (730, 126), 4: (984, 122),
-    5: (8539, 73), 6: (16157, 63), 7: (40863, 74), 8: (76928, 72),
-    9: (123308, 75), 10: (266797, 58), 11: (422918, 71), 12: (700627, 68),
-    13: (1082729, 84), 14: (2092281, 71),
+    5: (8539, 73), 6: (16157, 63), 7: (40863, 74), 8: (76927, 72),
+    9: (123306, 75), 10: (266794, 58), 11: (422914, 71), 12: (700615, 68),
+    13: (1082722, 84), 14: (2092261, 71),
 }
 if os.path.exists("csearch.c"):
     try:
@@ -274,20 +274,21 @@ if os.path.exists("csearch.c"):
             ce._lib.set_tt_fh_tight(0)
         except AttributeError:
             pass                       # pre-FI-49 csearch.so
-        # FI-53/FI-54 store/probe pair: ARMED (twenty-sixth A/B vs Old
-        # Engine/49) but NOT yet confirmed -- v49 has all three OFF, so the
-        # ladder pins them off here (LOAD-BEARING: cengine's class defaults
-        # are True for match play). Flip to 1 + re-pin CE_LADDER only on
-        # CONFIRM/KEEP.
+        # FI-53/FI-54 store/probe pair: KEPT-ON-NULL into v50 2026-07-18
+        # (+1.60 +/-6.8 @10k vs Old Engine/49, GSPRT LLR +0.117 -- the
+        # seventh+eighth correctness releases of the class). ON is the
+        # shipped default; pinned 1 so the v50 ladder below survives any
+        # future re-toggle experiment (load-bearing).
         try:
-            ce._lib.set_tt_r50(0)
-            ce._lib.set_term_store(0)
-            ce._lib.set_tt_mate_cut(0)
+            ce._lib.set_tt_r50(1)
+            ce._lib.set_term_store(1)
+            ce._lib.set_tt_mate_cut(1)
         except AttributeError:
             pass                       # pre-FI-53/54 csearch.so
-        # FI-56 root LMR: BUILT-DORMANT (default False, not yet armed --
-        # pending the FI-53/54 verdict), so this pin is belt-and-braces;
-        # LOAD-BEARING the day it is armed.
+        # FI-56 root LMR: ARMED (twenty-seventh campaign vs Old Engine/50)
+        # but NOT yet confirmed -- v50 has it OFF, so the ladder pins it off
+        # here (LOAD-BEARING: cengine's class default is True for match
+        # play). Flip to 1 + re-pin CE_LADDER only on CONFIRM.
         try:
             ce._lib.set_root_lmr(0)
         except AttributeError:
