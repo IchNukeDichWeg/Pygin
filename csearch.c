@@ -871,6 +871,13 @@ static void apply_move(Board* b, uint32_t mv)
  * the full core cannot either. Move ordering: MVV-LVA from the victim tag
  * already packed into the move word by gen_legal (bits 18-20).
  * ====================================================================== */
+/* FB-41: classic-scale piece values, by PT. Consumers: qsearch delta
+ * (g_score_hyg=0 pin path), draw_score margin, mop-up npm, simplify _npm.
+ * Retuning this array moves contempt/draw-avoidance and mop-up thresholds
+ * too. NOT the real eval scale (that's the Texel g_mg_val/g_eg_val);
+ * DELTA_VAL is a third, deliberately separate scale -- see FB-33 note
+ * there. engine.py's _draw_score/_npm mirrors hand-type the same numbers:
+ * keep them in lockstep or the bit-exact eval oracle splits. */
 static const int PIECE_VAL[7] = {0, 100, 320, 330, 500, 900, 0};  /* by PT */
 
 static int eval_material_stm(const Board* b)
@@ -1065,14 +1072,15 @@ static int eval_white(const Board* b)
     int lone_w = (occ_w & ~b->kings & ~b->pawns) == 0;
     int lone_b = (occ_b & ~b->kings & ~b->pawns) == 0;
     if (lone_w != lone_b && wk && bk) {
-        int npm_w = 320 * __builtin_popcountll(b->knights & occ_w)
-                  + 330 * __builtin_popcountll(b->bishops & occ_w)
-                  + 500 * __builtin_popcountll(b->rooks   & occ_w)
-                  + 900 * __builtin_popcountll(b->queens  & occ_w);
-        int npm_b = 320 * __builtin_popcountll(b->knights & occ_b)
-                  + 330 * __builtin_popcountll(b->bishops & occ_b)
-                  + 500 * __builtin_popcountll(b->rooks   & occ_b)
-                  + 900 * __builtin_popcountll(b->queens  & occ_b);
+        /* FB-41: same-integer PIECE_VAL substitution (classic scale). */
+        int npm_w = PIECE_VAL[PT_KNIGHT] * __builtin_popcountll(b->knights & occ_w)
+                  + PIECE_VAL[PT_BISHOP] * __builtin_popcountll(b->bishops & occ_w)
+                  + PIECE_VAL[PT_ROOK]   * __builtin_popcountll(b->rooks   & occ_w)
+                  + PIECE_VAL[PT_QUEEN]  * __builtin_popcountll(b->queens  & occ_w);
+        int npm_b = PIECE_VAL[PT_KNIGHT] * __builtin_popcountll(b->knights & occ_b)
+                  + PIECE_VAL[PT_BISHOP] * __builtin_popcountll(b->bishops & occ_b)
+                  + PIECE_VAL[PT_ROOK]   * __builtin_popcountll(b->rooks   & occ_b)
+                  + PIECE_VAL[PT_QUEEN]  * __builtin_popcountll(b->queens  & occ_b);
         int adv = npm_w - npm_b;
         if ((adv < 0 ? -adv : adv) >= g_mopup_min) {
             int wks = __builtin_ctzll(wk), bks = __builtin_ctzll(bk);
@@ -1095,16 +1103,17 @@ static int eval_white(const Board* b)
      * pawns at the classic 100..900 values (_npm), reward the leader per
      * minor/major already traded off. */
     if (g_simp_thresh > 0) {
-        int mw = 100 * __builtin_popcountll(b->pawns   & occ_w)
-               + 320 * __builtin_popcountll(b->knights & occ_w)
-               + 330 * __builtin_popcountll(b->bishops & occ_w)
-               + 500 * __builtin_popcountll(b->rooks   & occ_w)
-               + 900 * __builtin_popcountll(b->queens  & occ_w);
-        int mb = 100 * __builtin_popcountll(b->pawns   & occ_b)
-               + 320 * __builtin_popcountll(b->knights & occ_b)
-               + 330 * __builtin_popcountll(b->bishops & occ_b)
-               + 500 * __builtin_popcountll(b->rooks   & occ_b)
-               + 900 * __builtin_popcountll(b->queens  & occ_b);
+        /* FB-41: same-integer PIECE_VAL substitution (classic scale). */
+        int mw = PIECE_VAL[PT_PAWN]   * __builtin_popcountll(b->pawns   & occ_w)
+               + PIECE_VAL[PT_KNIGHT] * __builtin_popcountll(b->knights & occ_w)
+               + PIECE_VAL[PT_BISHOP] * __builtin_popcountll(b->bishops & occ_w)
+               + PIECE_VAL[PT_ROOK]   * __builtin_popcountll(b->rooks   & occ_w)
+               + PIECE_VAL[PT_QUEEN]  * __builtin_popcountll(b->queens  & occ_w);
+        int mb = PIECE_VAL[PT_PAWN]   * __builtin_popcountll(b->pawns   & occ_b)
+               + PIECE_VAL[PT_KNIGHT] * __builtin_popcountll(b->knights & occ_b)
+               + PIECE_VAL[PT_BISHOP] * __builtin_popcountll(b->bishops & occ_b)
+               + PIECE_VAL[PT_ROOK]   * __builtin_popcountll(b->rooks   & occ_b)
+               + PIECE_VAL[PT_QUEEN]  * __builtin_popcountll(b->queens  & occ_b);
         int diff = mw - mb;
         if ((diff < 0 ? -diff : diff) >= g_simp_thresh) {
             int pieces = __builtin_popcountll(b->knights | b->bishops
@@ -1754,16 +1763,17 @@ static int draw_score(const Board* b)
     int us = b->turn, them = us ^ 1;
     uint64_t mine = b->occ[us], theirs = b->occ[them];
     int diff = 0;
-    diff += 100 * (__builtin_popcountll(b->pawns & mine)
-                 - __builtin_popcountll(b->pawns & theirs));
-    diff += 320 * (__builtin_popcountll(b->knights & mine)
-                 - __builtin_popcountll(b->knights & theirs));
-    diff += 330 * (__builtin_popcountll(b->bishops & mine)
-                 - __builtin_popcountll(b->bishops & theirs));
-    diff += 500 * (__builtin_popcountll(b->rooks & mine)
-                 - __builtin_popcountll(b->rooks & theirs));
-    diff += 900 * (__builtin_popcountll(b->queens & mine)
-                 - __builtin_popcountll(b->queens & theirs));
+    /* FB-41: same-integer PIECE_VAL substitution (classic scale). */
+    diff += PIECE_VAL[PT_PAWN]   * (__builtin_popcountll(b->pawns & mine)
+                                  - __builtin_popcountll(b->pawns & theirs));
+    diff += PIECE_VAL[PT_KNIGHT] * (__builtin_popcountll(b->knights & mine)
+                                  - __builtin_popcountll(b->knights & theirs));
+    diff += PIECE_VAL[PT_BISHOP] * (__builtin_popcountll(b->bishops & mine)
+                                  - __builtin_popcountll(b->bishops & theirs));
+    diff += PIECE_VAL[PT_ROOK]   * (__builtin_popcountll(b->rooks & mine)
+                                  - __builtin_popcountll(b->rooks & theirs));
+    diff += PIECE_VAL[PT_QUEEN]  * (__builtin_popcountll(b->queens & mine)
+                                  - __builtin_popcountll(b->queens & theirs));
     if (diff >= g_draw_margin)  return -g_contempt;
     if (diff <= -g_draw_margin) return g_contempt;
     return 0;
