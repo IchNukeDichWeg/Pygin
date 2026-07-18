@@ -77,10 +77,19 @@ v50 = v49 + FI-53/54 (KEPT-ON-NULL 2026-07-18, twenty-sixth campaign vs
 Old Engine/49 on rotated seed 50: +1.60 +/-6.8 @10k, LLR +0.117 flat --
 seventh+eighth correctness-class releases; TT_R50/TERM_STORE/TT_MATE_CUT
 = True are the shipped defaults, abi 17; matetrack had leaned positive
-905/777 vs 893/768). Snapshotted Old Engine/50. Armed candidate: FI-56
-root-move LMR (ROOT_LMR=True, abi 18) -- the search/pruning lane pivot;
-MANDATORY 2k screen before the 10k (design-stance reversal), then the
-uncapped twenty-seventh campaign vs Old Engine/50. FI-15 NNUE Phases 1-5
+905/777 vs 893/768). Snapshotted Old Engine/50. v51 = v50 + FI-56
+root-move LMR (ROOT_LMR=True, abi 18) -- the search/pruning lane's opening
+statement and the C era's SECOND SPRT ACCEPT: twenty-seventh campaign vs
+Old Engine/50 on seed 50, 2k screen +17.56 +/-15.3 (CI excluding zero, the
+strongest screen on the books) then the offset-1000 main tranche ACCEPTED
+H1 at 7,343 games (+9.37 +/-8.0, LLR +2.957, stopped early); pooled
+verdict 9,343 games: **+11.12 +/-5.3** (51.60%, ptnml 220/996/1988/1173/
+282, pair ratio 1.20, pooled GSPRT[0,4] LLR +4.549) -- the biggest
+single-feature gain since FI-25. Matetrack had passed strongly positive
+(924/794 vs 896/769). Snapshotted Old Engine/51; campaigns now run vs Old
+Engine/51 on SUBSET_SEED 51. Armed candidate: none pinned -- the
+search/pruning lane continues (R5: FI-57, FI-58/59/60 killers-malus
+batch, FI-61-64, FI-55, FI-24a/b). FI-15 NNUE Phases 1-5
 BUILT-DORMANT 2026-07-18 (abi 19): the full NN-eval infrastructure --
 KA8T king-bucketed features + T16 threats, quantized int16/int8 net,
 F49-31 accumulator stack, hybrid nn_eval-in-negamax/HCE-in-qsearch with
@@ -656,16 +665,20 @@ class Engine:
     TERM_STORE = True
     TT_MATE_CUT = True
 
-    # FI-56: root-move LMR, ARMED 2026-07-18 for the twenty-seventh
-    # campaign vs Old Engine/50 (2k screen MANDATORY first -- design-stance
-    # reversal -- then the uncapped 10k GSPRT[0,4]). Late (i>=4) quiet
+    # FI-56: root-move LMR -- late (i>=4) quiet
     # non-promotion root moves that neither respond to nor give check are
     # scouted at depth-1-R (R = g_lmr[d][i]/2, cap depth-2, depth>=3), with
     # a full-depth zero-window verify before the full-window re-search --
-    # negamax's standard cascade, now at the root. Deliberately overturns
+    # negamax's standard cascade, now at the root. Deliberately overturned
     # the "no reductions at root" design stance; 3/4-convergent,
-    # SF-standard. False = v50 node-exact. NOT correctness-class: revert
-    # on null. PENDING: 2k screen + paired matetrack, then the 10k.
+    # SF-standard. CONFIRMED => v51 2026-07-18 (twenty-seventh campaign vs
+    # Old Engine/50, seed 50): 2k screen +17.56 +/-15.3 (CI > 0), main
+    # tranche (offset 1000) ACCEPT H1 at 7,343 games (+9.37 +/-8.0, LLR
+    # +2.957 > +2.944, stopped early) -- the C era's SECOND SPRT accept;
+    # pooled 9,343 games: +11.12 +/-5.3 (51.60%, ptnml 220/996/1988/1173/
+    # 282, ratio 1.20, pooled LLR +4.549). The -28% fixed-depth node cut
+    # converted to depth at fixed time (matetrack +28 mates presaged it).
+    # False = v50 node-exact.
     ROOT_LMR = True
 
     # FI-15 NNUE (Phases 1-5 BUILT-DORMANT 2026-07-18): hybrid NN eval --
