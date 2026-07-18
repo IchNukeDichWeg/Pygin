@@ -128,12 +128,21 @@ tune_smoke.json
 # PyInstaller output (build_exe.sh); build/ is ignored above
 dist/
 
-# --- Only "Old Engine/" is a tracked folder; ignore every other top-level
-# directory (side projects, logs, build output, caches, GUIs). Root-level
-# source files stay tracked -- this matches directories only. New folders
-# are auto-ignored. (User request 2026-07-11.)
+# --- Only "Old Engine/" and "NNUE/" are tracked folders; ignore every other
+# top-level directory (side projects, logs, build output, caches, GUIs).
+# Root-level source files stay tracked -- this matches directories only. New
+# folders are auto-ignored. (User request 2026-07-11; NNUE added 2026-07-18.)
 /*/
 !/Old Engine/
+!/NNUE/
+# FI-15: NNUE code/docs are tracked; datasets, checkpoints, weight files and
+# the training venv are local-only (large binaries, PUBLIC repo).
+NNUE/datasets/
+NNUE/checkpoints/
+NNUE/nets/
+NNUE/venv/
+*.nnue
+*.pygdata
 
 # worst-move troll wrappers (local only)
 worse_cengine.py

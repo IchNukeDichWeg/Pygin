@@ -223,8 +223,11 @@ done
 # csearch.so (C search core, phase 3 -- cengine.py's engine): multi-source
 # build (links eval_c.c) with -lm, so it gets its own rule here.
 if [ -f csearch.c ]; then
+    # FI-15: csearch.c single-TU-includes NNUE/nnue.c -- it is a real
+    # dependency of the staleness check (missing file = always rebuild).
     if [ csearch.so -nt csearch.c ] && [ csearch.so -nt eval_c.c ] \
-        && [ csearch.so -nt Constants.c ] && [ csearch.so -nt Constants.h ]; then
+        && [ csearch.so -nt Constants.c ] && [ csearch.so -nt Constants.h ] \
+        && [ -f NNUE/nnue.c ] && [ csearch.so -nt NNUE/nnue.c ]; then
         echo "   csearch.so up to date"
     else
         "$CC" $CFLAGS -o csearch.so csearch.c eval_c.c Constants.c -lm -lpthread

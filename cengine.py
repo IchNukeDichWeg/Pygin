@@ -661,6 +661,19 @@ class Engine:
     # on null. PENDING: 2k screen + paired matetrack, then the 10k.
     ROOT_LMR = True
 
+    # FI-15 NNUE (Phases 1-5 BUILT-DORMANT 2026-07-18): hybrid NN eval --
+    # nn_eval replaces the HCE as negamax's static eval, qsearch stand-pat
+    # stays HCE (the old MLP project's -203/-273 lesson), the FI-03 TT eval
+    # cache is depth-gated per F49-B02 so the two scales never cross.
+    # Architecture: KA8T king-bucketed features + T16 threat vector,
+    # 6144->2x256->528->32->32->1 quantized int16/int8 (DESIGN_nnue.md
+    # "Phase 1 spec" is the frozen contract; NNUE/README.md has every
+    # command). False = v50+armed-defaults BYTE-EXACT (bench 1,083,772 /
+    # 1,508,415 ROOT_LMR-off); no real net exists yet -- Phases 6-8 (50M
+    # dataset, bootstrap, 2k screen -> 10k A/B) decide if this ever flips.
+    USE_NNUE = False
+    NNUE_FILE = os.path.join("NNUE", "nets", "toy.nnue")
+
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
     ASPIRATION_DELTA = 30                    # centipawns; C scores are cp too
@@ -716,8 +729,9 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (FI-56's set_root_lmr is abi 18) -- bump together with csearch_abi.
-        if lib.csearch_abi() < 18:
+        # (FI-15's set_use_nnue/nnue_load are abi 19) -- bump together with
+        # csearch_abi.
+        if lib.csearch_abi() < 19:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -755,7 +769,8 @@ class Engine:
               self.QS_TT_SHARPEN, self.QS_KEEP_MOVE, self.CYCLE_DETECT,
               self.QS_BETA_NARROW, self.QS_TTM_EXEMPT, self.QS_CHK_D1,
               self.TT_KEEP_EXACT, self.TT_FH_TIGHT, self.TT_R50,
-              self.TERM_STORE, self.TT_MATE_CUT, self.ROOT_LMR)
+              self.TERM_STORE, self.TT_MATE_CUT, self.ROOT_LMR,
+              self.USE_NNUE, self.NNUE_FILE)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -805,6 +820,21 @@ class Engine:
         lib.set_term_store(1 if self.TERM_STORE else 0)          # FI-54
         lib.set_tt_mate_cut(1 if self.TT_MATE_CUT else 0)        # FI-54
         lib.set_root_lmr(1 if self.ROOT_LMR else 0)              # FI-56
+        # FI-15 NNUE (abi 19): load-then-arm. A load failure with USE_NNUE
+        # on raises loudly -- a missing/corrupt net must never silently
+        # fall back to HCE (the A/B would be mislabeled). set_use_nnue(0)
+        # is pushed unconditionally per the FB-06 authority rule.
+        lib.nnue_load.argtypes = [ctypes.c_char_p]
+        if self.USE_NNUE:
+            _np = (self.NNUE_FILE if os.path.isabs(self.NNUE_FILE)
+                   else os.path.join(_DIR, self.NNUE_FILE))
+            _rc = lib.nnue_load(_np.encode())
+            if _rc != 0:
+                raise RuntimeError(
+                    f"nnue_load({_np!r}) failed (rc={_rc}) -- USE_NNUE "
+                    "needs a valid .nnue file (NNUE/README.md: train or "
+                    "regenerate the toy net)")
+        lib.set_use_nnue(1 if self.USE_NNUE else 0)              # FI-15
         # FB-06: cengine is AUTHORITATIVE over every behavioral C toggle --
         # a stale .so or drifted compiled-in default must not silently change
         # the search. Values = the confirmed ledger state (all defaults, so
