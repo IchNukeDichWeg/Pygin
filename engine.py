@@ -3189,7 +3189,10 @@ class Engine:
         desync hazard at the next material retune). Sourced from
         PIECE_VALUES so a retune propagates everywhere. Pass pawns=0 for the
         non-pawn-material (mop-up gate) callers. Value-identical to the old
-        hard-coded 100/320/330/500/900."""
+        hard-coded 100/320/330/500/900. FB-41: csearch.c's PIECE_VAL is the
+        C-side twin of this scale (draw_score margin, mop-up npm, simplify)
+        -- retune PIECE_VALUES and PIECE_VAL in lockstep or the bit-exact
+        eval oracle splits."""
         PV = self.PIECE_VALUES
         return (PV[1] * (pawns & occ).bit_count()
                 + PV[2] * (knights & occ).bit_count()
