@@ -323,6 +323,16 @@ def certify_premoves(engine, board, my_move, stop_evt):
 
 def main():
     engine = cengine.Engine()
+    # FB-42: _board_phase (wdl display) and time_manager._phase_24 hand-type
+    # the 1/1/2/4/24 taper weights. If PHASE_WEIGHTS is ever retuned, fail
+    # loudly here instead of letting the wdl field and the moves-to-go guess
+    # drift silently. Explicit raise, not assert: python -O must not strip it.
+    _pw = engine._py.PHASE_WEIGHTS
+    if ((_pw[chess.KNIGHT], _pw[chess.BISHOP], _pw[chess.ROOK],
+         _pw[chess.QUEEN], engine._py.PHASE_MAX) != (1, 1, 2, 4, 24)):
+        raise SystemExit(
+            "PHASE_WEIGHTS retuned: update cuci._board_phase, "
+            "cuci._WDL_PHASE_MAX and time_manager._phase_24 to match")
     engine.pv_uci = True                     # UCI pv format
     engine.move_overhead_ms = 40             # FI-13b: UCI Move Overhead
     # P-26: shadow copies of the paired C-side tuning values (set_rfp and
