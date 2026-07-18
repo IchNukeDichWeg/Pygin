@@ -624,6 +624,7 @@ def main():
                     f" king_shelter={int(engine.USE_KING_SHELTER)}"
                     f" tt_keep_warm={int(engine.TT_KEEP_WARM)}"
                     f" simplify_threshold={engine.SIMPLIFY_THRESHOLD}"
+                    f" contempt={engine.contempt}"
                     f" hash_bits={engine.TT_BITS}"
                     f" threads={engine.smp_workers}")
                 out("uciok")
@@ -693,9 +694,11 @@ def main():
                     if not searching():                 # button; ignored
                         engine._lib.cs_tt_reset()       # mid-search
                 elif name == "contempt":                # FI-45: C support
-                    engine._lib.csearch_set_draw(       # existed unexposed;
-                        max(-100, min(100, int(value))), 200)  # 50/200 =
-                                                        # compiled default
+                    engine.contempt = max(-100, min(100, int(value)))
+                    engine._lib.csearch_set_draw(       # FB-34: margin stays
+                        engine.contempt,                # authoritative in
+                        engine._py.DRAW_AVOID_MARGIN)   # engine.py -- never
+                                                        # hardcode 200 here
                 elif name == "moveoverhead":            # FI-13b
                     engine.move_overhead_ms = max(0, int(value))
                 elif name == "hash":                    # FI-10: MB -> bits
