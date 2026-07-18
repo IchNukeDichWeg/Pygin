@@ -615,6 +615,7 @@ def main():
                     f" qs_beta_narrow={int(engine.QS_BETA_NARROW)}"
                     f" qs_ttm_exempt={int(engine.QS_TTM_EXEMPT)}"
                     f" qs_chk_d1={int(engine.QS_CHK_D1)}"
+                    f" tt_keep_exact={engine.TT_KEEP_EXACT}"
                     f" king_shelter={int(engine.USE_KING_SHELTER)}"
                     f" tt_keep_warm={int(engine.TT_KEEP_WARM)}"
                     f" simplify_threshold={engine.SIMPLIFY_THRESHOLD}"
