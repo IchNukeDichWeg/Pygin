@@ -80,7 +80,14 @@ seventh+eighth correctness-class releases; TT_R50/TERM_STORE/TT_MATE_CUT
 905/777 vs 893/768). Snapshotted Old Engine/50. Armed candidate: FI-56
 root-move LMR (ROOT_LMR=True, abi 18) -- the search/pruning lane pivot;
 MANDATORY 2k screen before the 10k (design-stance reversal), then the
-uncapped twenty-seventh campaign vs Old Engine/50.
+uncapped twenty-seventh campaign vs Old Engine/50. FI-15 NNUE Phases 1-5
+BUILT-DORMANT 2026-07-18 (abi 19): the full NN-eval infrastructure --
+KA8T king-bucketed features + T16 threats, quantized int16/int8 net,
+F49-31 accumulator stack, hybrid nn_eval-in-negamax/HCE-in-qsearch with
+the F49-B02 depth-gated FI-03 cache -- behind USE_NNUE (default False =
+v50+armed-defaults BYTE-EXACT; every gate in NNUE/README.md passed:
+forward 100k/0 mismatches, increment 1.02M/0, NPS -37.8% with the toy
+net on). Waits on Phases 6-8: real 50M dataset, bootstrap, screens.
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,

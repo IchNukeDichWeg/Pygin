@@ -179,7 +179,9 @@ def main():
         qs.append(q.forward(iw, ib, r["threat"], int(r["stm"])))
     mae = float(np.mean(np.abs(fl - np.asarray(qs))))
     print(f"quantization check: float-vs-int MAE {mae:.2f} cp over "
-          f"{len(sample)} positions (expected: single-digit)")
+          f"{len(sample)} positions (expected ~10-20 cp: three layers of "
+          "QA=127/QB=64 rounding noise; the C side matches the INT pipeline "
+          "exactly, this number is float-model drift only)")
 
 
 if __name__ == "__main__":

@@ -13,6 +13,8 @@
  * Apple Silicon, -march=native on x86):
  *   clang -O3 -mcpu=native -shared -fPIC -w -I. \
  *         -o csearch.so csearch.c eval_c.c Constants.c -lm -lpthread
+ * (csearch.c single-TU-includes NNUE/nnue.c -- the FI-15 NNUE build-out,
+ * dormant behind set_use_nnue/cengine.USE_NNUE, default 0 = byte-exact.)
  *
  * History: born 2026-07-08 as an isolated phase-1/2 prototype (roadmap
  * #29/#30) measuring the per-node NPS ceiling for the GO/NO-GO gate --
