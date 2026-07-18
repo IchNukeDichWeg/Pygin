@@ -2118,6 +2118,16 @@ static inline int has_non_pawn(const Board* b, int side)
     return (b->knights | b->bishops | b->rooks | b->queens) & b->occ[side] ? 1 : 0;
 }
 
+/* FI-15 NNUE (Phases 1-5 BUILT-DORMANT 2026-07-18): the entire NNUE side --
+ * weight loader, KA8T feature extraction, T16 threat encoding, F49-31
+ * per-thread ply-indexed accumulator stack, NEON+scalar quantized forward --
+ * lives in NNUE/nnue.c, single-TU-included here (no build change, full
+ * cross-inlining; snapshots' csearch.c predates the include and is
+ * untouched). Everything is behind g_use_nnue (set_use_nnue, default 0 =
+ * v50 byte-exact; the driver attr is cengine.USE_NNUE). Hybrid rules and
+ * the frozen architecture: DESIGN_nnue.md "Phase 1 spec". */
+#include "NNUE/nnue.c"
+
 /* --- Phase-3 step 4: quiescence --------------------------------------- *
  * Resolve noisy moves (captures + promotions) at the leaves so the static
  * eval isn't fooled by a pending exchange. Stand-pat, SEE-pruned losing
@@ -2510,6 +2520,10 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         TTEntry e;
         if (tt_load(&g_tt[key & TT_MASK], key, &e)) {
             tt_eval = TT_EVAL(e);
+            if (g_use_nnue && TT_DEPTH(e) != 0)
+                tt_eval = TT_EVAL_NONE;  /* F49-B02: depth>=1 store = NN
+                                          * origin -- an HCE stand-pat must
+                                          * not consume the NN scale */
             int v = TT_VALUE(e);                     /* ply-relative -> node */
             if (v >= MATE_THRESH) v -= ply;
             else if (v <= -MATE_THRESH) v += ply;
@@ -2681,7 +2695,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
      * future extensions may push ply past the root depth. g_killers is
      * sized [CS_MAXPLY] and g_path [CS_MAXPLY+8]; stop strictly below. */
     if (ply >= CS_MAXPLY)
-        return in_chk ? 0 : eval_full_stm(b);
+        return in_chk ? 0 : (g_use_nnue ? nn_eval(b, ply) : eval_full_stm(b));
 
     /* --- step 6: game-state draws (v30 order: before the TT probe) --- */
     if (!(b->pawns | b->rooks | b->queens) && insufficient_material(b))
@@ -2736,6 +2750,10 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         if (tt_load(tte, key, &e)) {
             tt_move = TT_MOVE(e);
             tt_eval = TT_EVAL(e);
+            if (g_use_nnue && TT_DEPTH(e) < 1)
+                tt_eval = TT_EVAL_NONE;  /* F49-B02: depth-0 store = HCE
+                                          * origin -- negamax's NN static
+                                          * eval must not consume it */
             tt_sh_flag = TT_FLAG(e);             /* FI-25: any-depth bound */
             tt_sh_val = TT_VALUE(e);
             /* PV-02: at PV nodes skip the whole cutoff/narrowing block (the
@@ -2797,7 +2815,10 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     int want_eval = !in_chk && (!is_pv || g_improving);
     int static_eval = want_eval
         ? (tt_eval != TT_EVAL_NONE ? tt_eval        /* FI-03: exact cache */
-                                   : eval_full_stm(b))
+                                   : (g_use_nnue ? nn_eval(b, ply)   /* FI-15
+                                       * hybrid: NN is negamax's static eval;
+                                       * qsearch stand-pat stays HCE */
+                                                 : eval_full_stm(b)))
         : 0;
 
     /* P-04: record this ply's eval and compare to our own two plies ago.
@@ -2834,6 +2855,10 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             && !(g_cb2 && g_no_null)) {      /* CB-02(c): verify subtree */
             int R = g_null_base + depth / g_null_div;
             Board c = *b; make_null(&c);
+            if (g_use_nnue)                  /* FI-15: null moves no pieces --
+                                              * propagate the slot; nn_eval
+                                              * swaps perspectives via turn */
+                g_nn_acc[ply + 1] = g_nn_acc[ply];
             g_ctx[ply + 1] = 0;              /* Q-01: null = no context */
             int ns = -negamax(&c, depth - 1 - R, -beta, -beta + 1, ply + 1,
                               0xFFFFFFFF, 0, 0, chk, srb);
@@ -3016,6 +3041,10 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             if (R < 0) R = 0;
         }
 
+        if (g_use_nnue)      /* FI-15: child accumulator (after every prune
+                              * gate above -- pruned moves never pay) */
+            nn_push(ply, b, &c, m);
+
         uint32_t cp = (ply + 1 < CS_MAXPLY) ? (uint32_t)fromto : 0xFFFFFFFF;
         int v;
         if (i == 0) {
@@ -3169,6 +3198,10 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
     Board b = *rb;
     uint64_t key = board_key(&b);
     g_path[0] = key;
+    if (g_use_nnue)          /* FI-15: seed the per-thread accumulator stack
+                              * (root_search is the shared entry for the main
+                              * thread AND every SMP helper -- __thread) */
+        nn_refresh(&b, 0);
     /* PV-01: g_root_pv is NOT zeroed here -- at short TCs the final ID
      * iteration almost always aborts mid-search, and zeroing per iteration
      * wiped the exact line the last COMPLETED iteration collected (the
@@ -3251,6 +3284,7 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
         Board c = b;
         apply_move(&c, m);
         TT_PREFETCH(c.key);                          /* FI-17 */
+        if (g_use_nnue) nn_push(0, &b, &c, m);       /* FI-15: slot 0 -> 1 */
         int gc = in_check(&c);
         g_ctx[1] = (uint16_t)((((m >> MV_SHIFT_MOVER) & 7) << 6)
                               | ((m >> 6) & 63));    /* Q-01 child context */
@@ -3466,7 +3500,10 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted, &second);
 }
 
-int csearch_abi(void) { return 18; }  /* 18 = FI-56 set_root_lmr (root-move LMR);
+int csearch_abi(void) { return 19; }  /* 19 = FI-15 NNUE build-out (set_use_nnue/
+                                       * nnue_load/nnue_ready/set_nnue_verify/
+                                       * nnue_verify_stats + nnue_* oracles);
+                                       * 18 = FI-56 set_root_lmr (root-move LMR);
                                        * 17 = FI-53/54 set_tt_r50 + set_term_store/set_tt_mate_cut;
                                        * 16 = FI-49 set_tt_fh_tight (fail-high depth tightening);
                                        * 15 = FI-48 set_tt_keep_exact (flag-aware TT replacement);
