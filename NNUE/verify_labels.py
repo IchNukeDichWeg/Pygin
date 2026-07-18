@@ -88,6 +88,18 @@ def main():
     d = read_pygdata(args.dataset)
     rng = np.random.default_rng(args.seed)
 
+    if not args.cycle_on_worker:        # dataset health summary first
+        s = d["score"].astype(np.int64)
+        res = dict(zip(*np.unique(d["result"], return_counts=True)))
+        stm = dict(zip(*np.unique(d["stm"], return_counts=True)))
+        print(f"dataset: {len(d):,} records "
+              f"({os.path.getsize(args.dataset)/1e9:.2f} GB)")
+        print(f"  score: mean {s.mean():+.1f}  std {s.std():.0f}  "
+              f"pct[5/50/95] {np.percentile(s, [5, 50, 95]).astype(int)}")
+        print(f"  result W/D/L: {res.get(1, 0):,}/{res.get(0, 0):,}/"
+              f"{res.get(-1, 0):,}   stm W/B: {stm.get(1, 0):,}/"
+              f"{stm.get(0, 0):,}   hmc max {d['hmc'].max()}")
+
     if args.cycle_on_worker:            # subprocess: CYCLE_DETECT=1 pass
         idx = rng.choice(len(d), min(args.sample, len(d)), replace=False)
         recs = np.asarray(d[np.sort(idx)])
