@@ -10,10 +10,11 @@ match results as the training data (see the "Stockfish WDL model" writeup
 in chat for how win_rate_model() works upstream).
 
 Stage 1 (extract): scan every match log under "New logs/" and "logs/". A
-log file is USABLE when BOTH sides' engine bases are in NEAR_EQUAL_BASES
-(near-equal engine-family pairings per the documented A/B results -- both
-sides' samples are then extracted, since each side's score -> outcome
-mapping is unbiased against a near-equal opponent), or when the file is in
+log file is USABLE when the two sides form a near-equal engine-family
+pairing per near_equal_pair() (C-era snapshots >= v31, numbered pairs must
+be adjacent versions, cengine pairs with its contemporaries -- both sides'
+samples are then extracted, since each side's score -> outcome mapping is
+unbiased against a near-equal opponent), or when the file is in
 NEAR_EQUAL_STOCKFISH_LOGS (a Stockfish match at matched strength; only the
 engine-family side extracts). Mismatched-strength opponents, odds games and
 " copy" duplicates are excluded -- those would bias the fit. For every
@@ -112,30 +113,54 @@ def board_phase(board):
     return min(phase, PHASE_MAX)
 
 
-# Engine-family bases whose RECORDED matches were near-equal pairings (A/B
-# matches pair same-era builds; every pairing below measured within ~20 Elo
-# per the documented A/B results). A log is usable iff BOTH sides are in
-# this set -- and then BOTH sides' samples are extracted: against a
-# near-equal opponent, each side's cp -> outcome mapping is equally valid.
-# Do NOT add snapshots whose recorded matches had large gaps (engine15/19/
-# 20 and older: 30-100+ Elo -- biased outcomes); if a future match pairs a
-# listed base against something much stronger, delist it first.
-NEAR_EQUAL_BASES = {
-    # v31 / C-core era (2026-07-08 ->): cengine vs its frozen Old Engine/31
-    # snapshot are IDENTICAL engines -- near-equal by construction. The
-    # v24-v30 Python-era bases are deliberately DELISTED for the v31 refit:
-    # (a) a depth-~8 engine's cp -> outcome conversion is exactly what the
-    # refit must stop modeling (the C core converts +300 far more reliably),
-    # and (b) delisting "engine" also auto-excludes the lopsided
-    # cengine-vs-engine 29-1-0 gate log (a ~700-Elo-gap pairing that would
-    # otherwise qualify once "cengine" is listed).
-    "cengine", "engine31", "engine32",  "engine33", "engine34", "engine35",
-    "engine36", "engine37", "engine38", "engine39", "engine_qtt_off", 
-    "engine40", "engine41", "engine42", "engine43", "engine44", "engine45",
-    "engine46", "engine47", "engine48", "engine49", "engine50", "engine51", 
-    "engine52", "engine53", "engine54", "engine55", "engine56", "engine57", 
-    "engine58", "engine59", "engine60", 
+# Near-equal pairing RULE (2026-07-18, replaces the old hand-maintained
+# NEAR_EQUAL_BASES set -- which pre-listed engine52-60 before they existed
+# and had no guard against cross-era pairings like engine43-vs-engine51,
+# a ~+30 Elo gap that would have silently biased the fit):
+#   - A numbered C-era snapshot base ("engine<N>", N >= 31) auto-qualifies
+#     the day it exists -- no list edit at each version ship.
+#   - Two NUMBERED bases are near-equal only if ADJACENT (|N-M| <= 1): the
+#     only snapshot-vs-snapshot pairing this project ever records, and every
+#     adjacent step measured within ~14 Elo. Wider gaps compound (v44->v45
+#     alone was +13.5) and are refused even though both sides qualify.
+#   - "cengine" (the live dev build) pairs with any qualifying base: every
+#     recorded cengine log plays it against its CONTEMPORARY snapshot, so
+#     the gap is one armed candidate (-5..+18 Elo observed), never an era.
+#   - Python-era bases stay excluded ("engine" plain, engine15/19/20, ...):
+#     a depth-~8 engine's cp -> outcome conversion is exactly what the v31
+#     refit stopped modeling, and excluding plain "engine" also drops the
+#     lopsided 29-1-0 cengine-vs-engine gate log (~700 Elo gap).
+#   - Odds logs, " copy" duplicates and Stockfish logs are excluded above/
+#     below regardless (SF scores are a different eval scale anyway).
+NEAR_EQUAL_EXTRA = {
+    "cengine",
+    "engine_qtt_off",   # v34-era P-44 isolation build, paired vs its
+                        # contemporary cengine only -- near-equal like it
 }
+_BASE_NUM_RE = re.compile(r"^engine(\d+)$")
+_MIN_C_ERA_SNAPSHOT = 31
+
+
+def _base_num(base):
+    m = _BASE_NUM_RE.match(base)
+    return int(m.group(1)) if m else None
+
+
+def _side_usable(base):
+    if base in NEAR_EQUAL_EXTRA:
+        return True
+    n = _base_num(base)
+    return n is not None and n >= _MIN_C_ERA_SNAPSHOT
+
+
+def near_equal_pair(wb, bb):
+    """Both sides usable AND the pairing itself is near-equal (see rule)."""
+    if not (_side_usable(wb) and _side_usable(bb)):
+        return False
+    wn, bn = _base_num(wb), _base_num(bb)
+    if wn is not None and bn is not None:
+        return abs(wn - bn) <= 1        # numbered pairs: adjacent eras only
+    return True                          # cengine/qtt_off vs a listed base
 
 # Specific Stockfish match logs where Stockfish was configured within a few
 # Elo of the engine, making the engine's own samples from them unbiased.
@@ -186,8 +211,8 @@ def classify_file(path):
         return False    # identical tags -> move lines can't be attributed
     if os.path.splitext(os.path.basename(path))[0] in NEAR_EQUAL_STOCKFISH_LOGS:
         return True     # near-equal SF match; only the engine side extracts
-    # Both sides near-equal engine family -> usable, BOTH sides extracted.
-    return wb in NEAR_EQUAL_BASES and bb in NEAR_EQUAL_BASES
+    # Both sides usable AND the pairing near-equal -> BOTH sides extracted.
+    return near_equal_pair(wb, bb)
 
 
 def iter_game_blocks(text):
@@ -204,7 +229,7 @@ def process_block(block, samples, stats):
     side whose base is in NEAR_EQUAL_BASES (both sides of a near-equal
     engine-family match are equally valid training data; a near-equal
     Stockfish match contributes its engine-family side only, since
-    "stockfish_engine" is never in the set)."""
+    "stockfish_engine" is never usable)."""
     fen_m = FEN_RE.search(block)
     white_m = WHITE_RE.search(block)
     black_m = BLACK_RE.search(block)
@@ -231,9 +256,9 @@ def process_block(block, samples, stats):
 
     # tag -> that side's own final result, for every extractable side.
     side_score = {}
-    if white_base in NEAR_EQUAL_BASES:
+    if _side_usable(white_base):
         side_score[white_base] = w_score
-    if black_base in NEAR_EQUAL_BASES:
+    if _side_usable(black_base):
         side_score[black_base] = b_score
     if not side_score:
         stats["skipped_no_usable_side"] += 1
