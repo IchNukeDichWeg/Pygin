@@ -2389,6 +2389,23 @@ void set_term_store(int v) { g_term_store = v ? 1 : 0; }
 static int g_tt_mate_cut = 0;
 void set_tt_mate_cut(int v) { g_tt_mate_cut = v ? 1 : 0; }
 
+/* FI-56 (BUILT-DORMANT, arm after the FI-53/54 verdict): root-move LMR.
+ * Deliberately overturns the long-standing "no reductions or pruning at
+ * root" stance for LATE roots only: at depth >= 3, quiet non-promotion
+ * root moves at index >= 4 that neither respond to check nor give check
+ * are scouted at depth-1-R with R = g_lmr[depth][i]/2 (capped depth-2).
+ * A reduced scout that beats alpha is re-searched at full depth
+ * zero-window before the existing full-window re-search -- the standard
+ * three-step cascade negamax already uses. Move 0 (PV move) is never
+ * reduced; FB-23 adoption is untouched (best_move updates only after the
+ * cascade completes at full depth). Known side effects (pre-registered):
+ * FI-06 subtree counts shrink under reduction (dormant, relative order
+ * only) and out_second becomes a shallower upper bound. 0 = off = v49
+ * node-exact. NOT correctness-class: 2k screen mandatory before the 10k
+ * (design-stance reversal), revert on null. */
+static int g_root_lmr = 0;
+void set_root_lmr(int v) { g_root_lmr = v ? 1 : 0; }
+
 static void tt_store_terminal(TTEntry* t, uint64_t key, int val, int ply)
 {
     if (!g_term_store || !g_use_tt || t == NULL || CS_UNWINDING()) return;
@@ -3124,9 +3141,11 @@ void cs_search_begin(const uint64_t* hist, int nhist, double budget_sec)
 }
 
 /* Root PVS body, shared by the main thread and the Lazy-SMP helpers: full
- * width inside [alpha, beta), no reductions or pruning (root moves are few
- * and important). Returns the best move's 15-bit key; *out_done counts
- * root moves fully searched (a stop mid-move leaves it short). */
+ * width inside [alpha, beta), no pruning; the only reduction is FI-56's
+ * opt-in late-quiet-move LMR scout (g_root_lmr, default off = the
+ * historical no-reductions root). Returns the best move's 15-bit key;
+ * *out_done counts root moves fully searched (a stop mid-move leaves it
+ * short). */
 static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
                             uint32_t prev_key, int hmc,
                             int* out_score, int* out_done, int* out_second)
@@ -3189,6 +3208,7 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
         }
     }
 
+    int root_chk = in_check(&b);                   /* FI-56: LMR gate input */
     int best = -CS_INF, best2 = -CS_INF;           /* FI-09(b): best2 = 2nd-best
                                                     * root score (upper bound
                                                     * for the failing scouts) */
@@ -3223,7 +3243,19 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
         if (i == 0) {
             v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX);
         } else {
-            v = -negamax(&c, depth - 1, -alpha - 1, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX);
+            /* FI-56: reduced zero-window scout for late quiet root moves;
+             * a scout that beats alpha verifies at full depth before the
+             * full-window re-search (negamax's three-step cascade). */
+            int R = 0;
+            if (g_root_lmr && depth >= 3 && i >= 4
+                    && !root_chk && !gc
+                    && !victim && !((m >> 12) & 7)) {  /* quiet, no promo */
+                R = g_lmr[depth < 64 ? depth : 63][i < 64 ? i : 63] / 2;
+                if (R > depth - 2) R = depth - 2;
+            }
+            v = -negamax(&c, depth - 1 - R, -alpha - 1, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX);
+            if (R && v > alpha && !g_abort && !(g_is_helper && g_hstop))
+                v = -negamax(&c, depth - 1, -alpha - 1, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX);
             if (v > alpha && v < beta)
                 v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX);
         }
@@ -3418,7 +3450,8 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted, &second);
 }
 
-int csearch_abi(void) { return 17; }  /* 17 = FI-53/54 set_tt_r50 + set_term_store/set_tt_mate_cut;
+int csearch_abi(void) { return 18; }  /* 18 = FI-56 set_root_lmr (root-move LMR);
+                                       * 17 = FI-53/54 set_tt_r50 + set_term_store/set_tt_mate_cut;
                                        * 16 = FI-49 set_tt_fh_tight (fail-high depth tightening);
                                        * 15 = FI-48 set_tt_keep_exact (flag-aware TT replacement);
                                        * 14 = FI-50/51/52 qsearch-TT batch
