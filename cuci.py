@@ -138,10 +138,16 @@ BENCH_FENS = [
 
 def run_bench(engine, depth=11):
     import time as _time
-    saved = engine.use_book, engine.use_tb, engine.smp_workers
+    saved = (engine.use_book, engine.use_tb, engine.smp_workers,
+             engine.on_depth, engine.on_final)
     engine.use_book = engine.use_tb = False   # FB-20: the signature must not
     engine.smp_workers = 1                    # depend on .bin files -- nor on
-    try:                                      # Threads (FB-32): 1-thread only
+    engine.on_depth = engine.on_final = None  # Threads (FB-32): 1-thread only.
+                                              # FB-37: a prior go()'s closure
+                                              # must not spray info lines into
+                                              # the nodes/nps output (same
+                                              # leak class as FB-20/FB-32)
+    try:
         total, t0 = 0, _time.perf_counter()
         for fen in BENCH_FENS:
             engine._lib.cs_tt_reset()
@@ -150,7 +156,8 @@ def run_bench(engine, depth=11):
         dt = max(1e-9, _time.perf_counter() - t0)
         out(f"{total} nodes {int(total / dt)} nps")
     finally:
-        engine.use_book, engine.use_tb, engine.smp_workers = saved
+        (engine.use_book, engine.use_tb, engine.smp_workers,
+         engine.on_depth, engine.on_final) = saved
 
 
 def _emit_multipv(engine, board, best_mv, k, budget, white_to_move, stop_evt):
