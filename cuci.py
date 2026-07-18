@@ -171,8 +171,13 @@ def _emit_multipv(engine, board, best_mv, k, budget, white_to_move, stop_evt):
     import time as _t
     lib = engine._lib
     depth = engine.last_depth or 1
+    # FB-38: line 1's dt was hardcoded 0.0 -> time_ms clamped to 1 ->
+    # info_line printed nps = nodes*1000 (billions). The main search's
+    # real elapsed is the final search_log record (int ms -> seconds).
+    main_ms = (engine.search_log[-1].get("time_ms", 0)
+               if engine.search_log else 0)
     lines = [(engine.last_score, engine.last_pv, depth,
-              engine.nodes_searched, 0.0)]
+              engine.nodes_searched, max(main_ms, 1) / 1000.0)]
     excl = [best_mv]
     sv = (engine.last_score, engine.last_pv, engine.last_depth,
           engine.nodes_searched, engine.use_book, engine.on_depth,
