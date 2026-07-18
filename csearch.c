@@ -2337,6 +2337,17 @@ static inline int tt_exact_shield(TTEntry cur, int new_depth, int new_flag)
 static inline int tt_exact_bonus(TTEntry cur)
 {   return (g_tt_keep_exact >= 2 && TT_FLAG(cur) == TT_EXACT) ? 2 : 0; }
 
+/* FI-49 (armed for the twenty-fifth 50+0.20 A/B, vs Old Engine/49):
+ * TT fail-high depth tightening, matching current Stockfish -- an
+ * equal-depth TT_LOWER whose value would cut (v >= beta) needs one ply
+ * more stored depth before the cutoff/narrowing block fires; fail-high
+ * scores are unstable at equal depth. EXACT entries and narrowing-only
+ * LOWER hits (v < beta) are untouched, PV nodes were already skipped
+ * (PV-02). 0 = off = v49 node-exact. NOT correctness-class: revert on
+ * null. */
+static int g_tt_fh_tight = 0;
+void set_tt_fh_tight(int v) { g_tt_fh_tight = v ? 1 : 0; }
+
 static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
                                int flag, int ev, int depth)  /* FI-52: depth */
 {
@@ -2640,7 +2651,19 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             /* PV-02: at PV nodes skip the whole cutoff/narrowing block (the
              * EXACT return AND the bound-narrowing both truncate the
              * collected PV); the TT move above still orders. */
-            if (TT_DEPTH(e) >= depth
+            /* FI-49: fail-high tightening -- an equal-depth LOWER that would
+             * cut (v >= beta) must be one ply deeper (SF-standard: fail-high
+             * scores are unstable at equal depth). Non-mate only: tt_sh_val
+             * is the RAW stored value, and the mate guard is exactly what
+             * makes the beta comparison node-exact. Deliberate deviation
+             * kept: an equal-depth EXACT with v > beta still returns (exact
+             * scores carry no fail-high instability). fh_extra is 0 with
+             * the toggle off = v49 byte-identical. */
+            int fh_extra = (g_tt_fh_tight && TT_FLAG(e) == TT_LOWER
+                            && tt_sh_val > -MATE_THRESH
+                            && tt_sh_val < MATE_THRESH
+                            && tt_sh_val >= beta) ? 1 : 0;
+            if (TT_DEPTH(e) >= depth + fh_extra
                     && !(g_pv_exact && (beta - alpha) > 1)) {
                 int v = TT_VALUE(e);                /* ply-relative -> node */
                 if (v >= MATE_THRESH) v -= ply;
@@ -3313,7 +3336,8 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted, &second);
 }
 
-int csearch_abi(void) { return 15; }  /* 15 = FI-48 set_tt_keep_exact (flag-aware TT replacement);
+int csearch_abi(void) { return 16; }  /* 16 = FI-49 set_tt_fh_tight (fail-high depth tightening);
+                                       * 15 = FI-48 set_tt_keep_exact (flag-aware TT replacement);
                                        * 14 = FI-50/51/52 qsearch-TT batch
                                        * (set_qs_beta_narrow/set_qs_ttm_exempt/set_qs_chk_d1);
                                        * 13 = FI-29 set_cycle (cuckoo upcoming-repetition);
