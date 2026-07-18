@@ -24,6 +24,7 @@ What remains (Phases 6–8): generate the real ~50M-position dataset, train,
 | `config.py` | frozen constants shared by every tool (the C loader cross-checks them per net file) |
 | `data_format.py` | `.pygdata` v1 writer/reader/merger (88-byte records, mmap-able) |
 | `gen_data.py` | self-play labeling harness (F49-30 + F5-19 rules baked in) |
+| `logs_to_pygdata.py` | converts match.py A/B battle logs into training data (same filters; per-side `--allow` version gate — pre-v49/CYCLE_DETECT sides only; tested: 20k-game log → 791,168 positions, 0 desyncs) |
 | `verify_labels.py` | label audit: exact-reproduction gate + FI-29 shaping report |
 | `nnue_ref.py` | numpy truth: feature extraction, `.nnue` I/O, EXACT quantized reference forward |
 | `model.py`, `train.py` | PyTorch float model (QAT-style clipping) + trainer + quantized export |
@@ -98,6 +99,14 @@ rationale; TC-free — the labeling budget is fixed NODES, immune to load):
 nohup python3 NNUE/gen_data.py NNUE/datasets/main50m.pygdata --positions 50000000 --nodes 5000 --workers 223 --seed 1 > gen50m.log 2>&1 &
 tail -f gen50m.log
 ```
+
+Wall-clock: measured ~70 positions/s per worker locally (~1 s/game at
+5,000 nodes/move) -> est. **~1.5-3 h** on 223 server workers (calibrated
+against the known 10k-games-per-~65-min @ 50+0.2 campaign throughput;
+these generation games are ~60x shorter than match games). Supplementary
+source: existing A/B battle logs convert via `logs_to_pygdata.py` (deeper
+50+0.2 labels; version-gate the sides to pre-v49 engines per F49-30, then
+`data_format.py merge` the results with the self-play file).
 
 Then: `verify_labels.py` on the result, train with `--epochs 20`-ish
 (watch `loss_curve.csv`; val must fall and not diverge), export, run all
