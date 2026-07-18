@@ -69,12 +69,15 @@ DEAD GATE pre-A/B: instrumented engagement ~0.001% of nodes at both
 levels under the production config -- the probe-side EXACT cutoff
 structurally prevents the overwrites the shield guards against, and the
 192MB TT does not saturate at this TC (FI-08/FI-20 context). No slot
-spent. Mechanism kept at 0 = v49 node-exact. Armed candidate: FI-49
-TT fail-high depth tightening (TT_FH_TIGHT=True, abi 16) -- an equal-depth
-TT_LOWER that would cut needs one ply more stored depth (SF-standard);
-solo slot per the FI-50/51/52 attribution lesson. False = v49 node-exact.
-Revert on null. Twenty-fifth campaign vs Old Engine/49. PENDING: paired
-matetrack, then the uncapped 10k. See improvements.md (R1).
+spent. Mechanism kept at 0 = v49 node-exact. Twenty-fifth campaign
+(2026-07-18, vs Old Engine/49): FI-49 fail-high tightening REJECTED --
+-3.65 +/-6.8 @10k, ratio 0.94, LLR -2.403 (reject-lean; the +28% node
+cost never paid, as the matetrack dip predicted) -- reverted to dormant.
+Armed candidate: the FI-53+FI-54 store/probe pair (TT_R50 + TERM_STORE +
+TT_MATE_CUT all True, abi 17) -- rule50 TT staleness guard + permanent
+terminal stores/mate-range probe cuts; correctness-flavored keep-on-null
+pair. All False = v49 node-exact. Twenty-sixth campaign vs Old Engine/49
+on SUBSET_SEED 50. PENDING: paired matetrack, then the uncapped 10k.
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
@@ -607,21 +610,23 @@ class Engine:
 
     # FI-49: TT fail-high depth tightening (SF-standard) -- an equal-depth
     # TT_LOWER whose value would cut (v >= beta, non-mate) needs TT_DEPTH >=
-    # depth+1 before the negamax cutoff/narrowing block fires; fail-high
-    # scores are unstable at equal depth. EXACT entries, narrowing-only
-    # LOWER hits, and PV nodes (PV-02) are untouched. ARMED for the
-    # twenty-fifth 50+0.20 A/B vs Old Engine/49 -- solo slot (the
-    # FI-50/51/52 batch-null attribution lesson), uncapped 10k GSPRT[0,4].
-    # False = v49 node-exact. NOT correctness-class: revert on null.
-    # PENDING: paired matetrack, then the 10k.
-    TT_FH_TIGHT = True
+    # depth+1 before the negamax cutoff/narrowing block fires. REJECTED
+    # 2026-07-18 (twenty-fifth campaign vs Old Engine/49, 10,000 games @
+    # 50+0.20, seed 42): -3.65 +/-6.8 (49.48%, ptnml 310/1234/2002/1159/295,
+    # pair ratio 0.94, norm -7.44, GSPRT[0,4] LLR -2.403 -- 82% of the way
+    # to the H0 bound at full budget). A reject-lean null, not flat: the
+    # +28% fixed-depth node cost was not bought back, exactly as the paired
+    # matetrack's ~-1.5% best-mate dip predicted (pre-registered
+    # corroboration). The warm-cross-move-TT argument for SF's rule does
+    # not transfer to Pygin at this TC. REVERTED to False (dormant,
+    # do-not-retry at this TC); mechanism kept.
+    TT_FH_TIGHT = False
 
-    # FI-53 + FI-54: the store/probe-policy pair, BUILT-DORMANT 2026-07-18 --
-    # code is in csearch.c behind three toggles, NOT armed (the FI-49 solo
-    # campaign is in flight; one live tree change at a time). Flip all three
-    # True + docstring + selftest comments when arming as the twenty-sixth
-    # campaign after the FI-49 verdict lands. Both items are
-    # correctness-flavored keep-on-null candidates (pre-registered).
+    # FI-53 + FI-54: the store/probe-policy pair, ARMED 2026-07-18 for the
+    # twenty-sixth 50+0.20 A/B vs Old Engine/49 (first campaign on the
+    # rotated SUBSET_SEED 50), one uncapped 10k GSPRT[0,4] slot. Both items
+    # are correctness-flavored keep-on-null candidates (pre-registered);
+    # a real NEGATIVE splits for attribution before any revert-for-good.
     #  FI-53 TT_R50      -- at hmc>=90 refuse TT cutoffs/narrowing for
     #       decisive-but-non-mate stored values (|v|>=500cp): the promised
     #       win may not be convertible before the rule draw. Mates and
@@ -633,9 +638,9 @@ class Engine:
     #       regardless of stored depth (GHI exposure = SF's accepted
     #       tradeoff; if matetrack shows wrong mates, arm TERM_STORE alone).
     # All False = v49 node-exact.
-    TT_R50 = False
-    TERM_STORE = False
-    TT_MATE_CUT = False
+    TT_R50 = True
+    TERM_STORE = True
+    TT_MATE_CUT = True
 
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4

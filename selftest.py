@@ -265,20 +265,20 @@ if os.path.exists("csearch.c"):
             ce._lib.set_tt_keep_exact(0)
         except AttributeError:
             pass                       # pre-FI-48 csearch.so
-        # FI-49 fail-high depth tightening: ARMED (twenty-fifth A/B vs Old
-        # Engine/49) but NOT yet confirmed -- v49 has it OFF, so the ladder
-        # pins it off here (LOAD-BEARING: cengine's class default is True
-        # for match play). Flip to set_tt_fh_tight(1) and re-pin CE_LADDER
-        # only on CONFIRM.
+        # FI-49 fail-high depth tightening: REJECTED (twenty-fifth campaign
+        # vs Old Engine/49, 2026-07-18: -3.65 +/-6.8 @10k, LLR -2.403
+        # reject-lean -- the +28% node cost never paid; dormant,
+        # do-not-retry at this TC). Default False, so this pin is
+        # belt-and-braces.
         try:
             ce._lib.set_tt_fh_tight(0)
         except AttributeError:
             pass                       # pre-FI-49 csearch.so
-        # FI-53/FI-54 store/probe pair: BUILT-DORMANT (defaults False, not
-        # yet armed -- pending the FI-49 verdict), so these pins are
-        # belt-and-braces. They become LOAD-BEARING the day the pair is
-        # armed (class defaults flip True); flip to 1 + re-pin only on
-        # CONFIRM.
+        # FI-53/FI-54 store/probe pair: ARMED (twenty-sixth A/B vs Old
+        # Engine/49) but NOT yet confirmed -- v49 has all three OFF, so the
+        # ladder pins them off here (LOAD-BEARING: cengine's class defaults
+        # are True for match play). Flip to 1 + re-pin CE_LADDER only on
+        # CONFIRM/KEEP.
         try:
             ce._lib.set_tt_r50(0)
             ce._lib.set_term_store(0)
