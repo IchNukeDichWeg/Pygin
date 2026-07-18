@@ -649,19 +649,17 @@ class Engine:
     TERM_STORE = True
     TT_MATE_CUT = True
 
-    # FI-56: root-move LMR, BUILT-DORMANT 2026-07-18 (the FI-53/54 campaign
-    # is in flight; one live tree change at a time). Late (i>=4) quiet
+    # FI-56: root-move LMR, ARMED 2026-07-18 for the twenty-seventh
+    # campaign vs Old Engine/50 (2k screen MANDATORY first -- design-stance
+    # reversal -- then the uncapped 10k GSPRT[0,4]). Late (i>=4) quiet
     # non-promotion root moves that neither respond to nor give check are
     # scouted at depth-1-R (R = g_lmr[d][i]/2, cap depth-2, depth>=3), with
     # a full-depth zero-window verify before the full-window re-search --
     # negamax's standard cascade, now at the root. Deliberately overturns
     # the "no reductions at root" design stance; 3/4-convergent,
-    # SF-standard. ARM after the FI-53/54 verdict: flip True + selftest
-    # comment LOAD-BEARING + the MANDATORY 2k screen (design-stance
-    # reversal) + paired matetrack (root mate finds must not slip), then
-    # the uncapped 10k. False = v49 node-exact. NOT correctness-class:
-    # revert on null.
-    ROOT_LMR = False
+    # SF-standard. False = v50 node-exact. NOT correctness-class: revert
+    # on null. PENDING: 2k screen + paired matetrack, then the 10k.
+    ROOT_LMR = True
 
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
