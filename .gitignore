@@ -167,3 +167,6 @@ fixes_Mephisto.md
 *MC5*
 fetch_gg.py
 !NNUE/datasets/README.md
+
+# NNUE personal operating guide (local-only; NNUE/README.md is the tracked doc)
+nnue_readme.md
