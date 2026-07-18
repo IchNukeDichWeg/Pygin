@@ -760,13 +760,6 @@ def main():
                     print(f"cuci: position command rejected ({ex})",
                           file=sys.stderr)
             elif cmd == "go":
-                if pending_hash_mb is not None and not searching():
-                    mb = max(2, min(6144, pending_hash_mb))   # FB-25: apply
-                    entries = mb * 1024 * 1024 // 24          # deferred Hash
-                    bits = entries.bit_length() - 1
-                    engine._lib.set_tt_bits(bits)
-                    engine.TT_BITS = bits       # FB-30: fingerprint honesty
-                    pending_hash_mb = None
                 if searching():
                     # FB-14: a self-terminated `go infinite` (mate break /
                     # depth cap) leaves its thread HOLDING the bestmove --
@@ -787,6 +780,15 @@ def main():
                         search_thread.join()
                     else:
                         continue             # actively searching; ignore
+                if pending_hash_mb is not None:      # FB-25/FB-35: apply the
+                    mb = max(2, min(6144, pending_hash_mb))   # deferred Hash
+                    entries = mb * 1024 * 1024 // 24  # AFTER the holding
+                    bits = entries.bit_length() - 1   # release above --
+                    engine._lib.set_tt_bits(bits)     # idle is guaranteed
+                    engine.TT_BITS = bits    # FB-30   # here (joined or
+                    pending_hash_mb = None            # bailed), so the FB-32
+                                                      # next-go promise holds
+                                                      # on the FB-14 path too
                 search_thread = go(tokens[1:])
                 search_thread.start()
             elif cmd == "stop":
