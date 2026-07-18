@@ -154,3 +154,6 @@ patch_book_startpos.py
 
 # local security/bug audit of the Mephisto extension -- contains the unpacked ext-id; this repo is PUBLIC
 fixes_Mephisto.md
+
+*MC5*
+fetch_gg.py
