@@ -749,6 +749,13 @@ def main():
                         nb = chess.Board(" ".join(tokens[i + 1:j]))
                     else:                    # startpos
                         nb = chess.Board()
+                    # FB-36: trust-boundary gate -- python-chess parses
+                    # structurally-legal-but-illegal FENs (opponent in check,
+                    # missing king); csearch.c ctzll's the king bitboard, so
+                    # a kingless board is UB. Reject via the existing
+                    # all-or-nothing path; nb.status() names the reason.
+                    if not nb.is_valid():
+                        raise ValueError(f"invalid position: {nb.status()!r}")
                     if "moves" in tokens:
                         for u in tokens[tokens.index("moves") + 1:]:
                             mv = chess.Move.from_uci(u)   # raises on garbage
