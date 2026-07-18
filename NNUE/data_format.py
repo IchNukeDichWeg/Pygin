@@ -70,7 +70,15 @@ def merge_pygdata(out_path, shard_paths):
     return total
 
 
-if __name__ == "__main__":            # ponytail: smallest runnable check
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) >= 4 and sys.argv[1] == "merge":
+        # python3 NNUE/data_format.py merge OUT IN1 IN2 [...]
+        n = merge_pygdata(sys.argv[2], sys.argv[3:])
+        print(f"merged {len(sys.argv) - 3} files -> {sys.argv[2]} "
+              f"({n:,} records)")
+        raise SystemExit(0)
+    # ponytail: smallest runnable check
     import tempfile
     r = np.zeros(3, dtype=RECORD_DTYPE)
     r["score"] = [10, -20, 30]
