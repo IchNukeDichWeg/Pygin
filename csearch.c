@@ -2348,6 +2348,56 @@ static inline int tt_exact_bonus(TTEntry cur)
 static int g_tt_fh_tight = 0;
 void set_tt_fh_tight(int v) { g_tt_fh_tight = v ? 1 : 0; }
 
+/* FI-53 (BUILT-DORMANT, arm after the FI-49 verdict): rule50 TT staleness
+ * guard. A decisive-but-non-mate TT value stored at a low halfmove clock is
+ * stale near the 50-move horizon -- the win it promises may no longer be
+ * convertible before the rule draw. At hmc >= 90 refuse the TT value
+ * cutoff/narrowing (negamax block + qsearch bound-return block) for values
+ * |v| >= 500cp below MATE_THRESH, falling through to real search. Mate
+ * scores and quiet values still cut, so mate finds are never lost by
+ * construction; TT-move ordering and the FI-03/FI-25/FI-30 field reads are
+ * untouched. Pre-registered partial coverage: FI-25/FI-30 sharpening still
+ * consumes stale values inside the window. 0 = off = v49 node-exact. */
+static int g_tt_r50 = 0;
+void set_tt_r50(int v) { g_tt_r50 = v ? 1 : 0; }
+#define R50_TT_HMC   90                /* SF-classic window: hmc 90..99 */
+#define R50_DECISIVE 500               /* decisive-but-non-mate filter */
+static inline int tt_r50_stale(int hmc, int v)
+{
+    return g_tt_r50 && hmc >= R50_TT_HMC
+        && v > -MATE_THRESH && v < MATE_THRESH        /* mates still cut */
+        && (v >= R50_DECISIVE || v <= -R50_DECISIVE); /* quiet vals still cut */
+}
+
+/* FI-54 (BUILT-DORMANT, arm after the FI-49 verdict): depth-independent TT
+ * mate handling -- a forced mate/stalemate is depth-invariant. Store side
+ * (set_term_store): the three terminal returns that today skip the TT store
+ * (negamax staged-exhaust, negamax n==0, qsearch evasion checkmate) write a
+ * TT_EXACT entry at sentinel depth 200 (> any real draft, wins every
+ * depth-preferred replace), mate values ply-encoded, stalemate 0,
+ * TT_EVAL_NONE (never a fake FI-03 eval). Probe side (set_tt_mate_cut): a
+ * second negamax cutoff arm fires even when TT_DEPTH(e) < depth iff the
+ * ply-adjusted value is mate-range and the bound proves it; PV nodes
+ * skipped (PV-01 mate lines). Rule draws are decided before the probe in
+ * both searches, so a permanent entry cannot mask a draw at the probing
+ * node; the residual GHI exposure (a propagated mate resting on a
+ * repetition claimable from the current path) lives only in the probe arm
+ * and matches Stockfish's accepted tradeoff. Both 0 = off = v49
+ * node-exact. */
+static int g_term_store = 0;
+void set_term_store(int v) { g_term_store = v ? 1 : 0; }
+static int g_tt_mate_cut = 0;
+void set_tt_mate_cut(int v) { g_tt_mate_cut = v ? 1 : 0; }
+
+static void tt_store_terminal(TTEntry* t, uint64_t key, int val, int ply)
+{
+    if (!g_term_store || !g_use_tt || t == NULL || CS_UNWINDING()) return;
+    int sv = val;
+    if (sv >= MATE_THRESH) sv += ply;                /* node -> ply-relative */
+    else if (sv <= -MATE_THRESH) sv -= ply;
+    tt_store_raw(t, key, sv, 0, 200, TT_EXACT, TT_EVAL_NONE);
+}
+
 static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
                                int flag, int ev, int depth)  /* FI-52: depth */
 {
@@ -2420,7 +2470,9 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
             else if (v <= -MATE_THRESH) v += ply;
             int fl = TT_FLAG(e);
             qs_sh_flag = fl; qs_sh_val = v;          /* FI-30(a) */
-            if (!(g_pv_exact && is_pv)) {            /* PV-02: PV nodes walk on */
+            if (!(g_pv_exact && is_pv)              /* PV-02: PV nodes walk on */
+                    && !tt_r50_stale(hmc, v)) {     /* FI-53: stale decisive
+                                                     * values fall through */
                 if (fl == TT_EXACT) return v;
                 if (fl == TT_LOWER && v >= beta) return v;
                 if (fl == TT_UPPER && v <= alpha) return v;
@@ -2446,7 +2498,12 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
     int n;
     if (in_chk) {
         n = gen_legal(b, moves);                     /* full evasions */
-        if (n == 0) return -CS_INF + ply;            /* checkmate */
+        if (n == 0) {                                /* checkmate */
+            if (use_qtt)                             /* FI-54: permanent fact */
+                tt_store_terminal(&g_tt[key & TT_MASK], key,
+                                  -CS_INF + ply, ply);
+            return -CS_INF + ply;
+        }
         best = -CS_INF;
     } else if (g_qs_lazy && g_qgen) {
         /* P-46: eval + stand-pat BEFORE generation -- a large share of
@@ -2668,10 +2725,29 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                 int v = TT_VALUE(e);                /* ply-relative -> node */
                 if (v >= MATE_THRESH) v -= ply;
                 else if (v <= -MATE_THRESH) v += ply;
-                if (TT_FLAG(e) == TT_EXACT) return v;
-                if (TT_FLAG(e) == TT_LOWER && v > alpha) alpha = v;
-                else if (TT_FLAG(e) == TT_UPPER && v < beta) beta = v;
-                if (alpha >= beta) return v;
+                if (!tt_r50_stale(hmc, v)) {        /* FI-53: stale decisive
+                                                     * values near the 50-move
+                                                     * horizon fall through */
+                    if (TT_FLAG(e) == TT_EXACT) return v;
+                    if (TT_FLAG(e) == TT_LOWER && v > alpha) alpha = v;
+                    else if (TT_FLAG(e) == TT_UPPER && v < beta) beta = v;
+                    if (alpha >= beta) return v;
+                }
+            } else if (g_tt_mate_cut
+                       && !(g_pv_exact && (beta - alpha) > 1)) {
+                /* FI-54 probe arm: mate-range values cut regardless of
+                 * stored depth -- a forced mate is depth-invariant. */
+                int v = TT_VALUE(e);                /* ply-relative -> node */
+                if (v >= MATE_THRESH) v -= ply;
+                else if (v <= -MATE_THRESH) v += ply;
+                if (v >= MATE_THRESH || v <= -MATE_THRESH) {
+                    int fl = TT_FLAG(e);
+                    if (fl == TT_EXACT) return v;
+                    if (fl == TT_LOWER && v >= MATE_THRESH && v >= beta)
+                        return v;
+                    if (fl == TT_UPPER && v <= -MATE_THRESH && v <= alpha)
+                        return v;
+                }
             }
         }
     }
@@ -2795,8 +2871,11 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         stager_init(&st, b, ply, counter_key, tt_move);
     } else {
         n = gen_legal(b, moves);
-        if (n == 0)
-            return in_chk ? -CS_INF + ply : 0;       /* ply-relative mate */
+        if (n == 0) {                                /* ply-relative mate */
+            int tv = in_chk ? -CS_INF + ply : 0;
+            tt_store_terminal(tte, key, tv, ply);    /* FI-54 */
+            return tv;
+        }
         /* P-43: single-reply extension -- node-level, fires when this node
          * has exactly one legal move (spends from the srb budget). */
         sr_ext = (g_single_reply && n == 1 && srb > 0) ? 1 : 0;
@@ -2957,8 +3036,11 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
      * zero moves streamed: the first streamed move is never skipped, since
      * LMP/futility both require best > -MATE_THRESH.) Return BEFORE the TT
      * store, exactly like the v35 n==0 path. */
-    if (staged && best_move == 0)
-        return in_chk ? -CS_INF + ply : 0;
+    if (staged && best_move == 0) {
+        int tv = in_chk ? -CS_INF + ply : 0;
+        tt_store_terminal(tte, key, tv, ply);        /* FI-54 */
+        return tv;
+    }
 
     /* --- TT store: gen-aware depth-preferred, ply-relative mates ---- *
      * Same key: deeper-or-equal wins. Different key: an entry from an older
@@ -3336,7 +3418,8 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted, &second);
 }
 
-int csearch_abi(void) { return 16; }  /* 16 = FI-49 set_tt_fh_tight (fail-high depth tightening);
+int csearch_abi(void) { return 17; }  /* 17 = FI-53/54 set_tt_r50 + set_term_store/set_tt_mate_cut;
+                                       * 16 = FI-49 set_tt_fh_tight (fail-high depth tightening);
                                        * 15 = FI-48 set_tt_keep_exact (flag-aware TT replacement);
                                        * 14 = FI-50/51/52 qsearch-TT batch
                                        * (set_qs_beta_narrow/set_qs_ttm_exempt/set_qs_chk_d1);
