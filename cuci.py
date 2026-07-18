@@ -126,6 +126,8 @@ def info_line(rec, white_to_move, engine, multipv=None, board=None):
 
 # FI-13c: OpenBench-style `bench` -- fixed suite, fixed depth, cold TT per
 # position; the node total is the reproducible signature.
+# FB-39: 6 FENs. Adding/removing a FEN re-baselines the signature and
+# invalidates every stored comparison; only do that at a tree-changing ship.
 BENCH_FENS = [
     "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
     "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3",
