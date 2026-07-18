@@ -620,6 +620,7 @@ def main():
                     f" tt_r50={int(engine.TT_R50)}"
                     f" term_store={int(engine.TERM_STORE)}"
                     f" tt_mate_cut={int(engine.TT_MATE_CUT)}"
+                    f" root_lmr={int(engine.ROOT_LMR)}"
                     f" king_shelter={int(engine.USE_KING_SHELTER)}"
                     f" tt_keep_warm={int(engine.TT_KEEP_WARM)}"
                     f" simplify_threshold={engine.SIMPLIFY_THRESHOLD}"

@@ -285,6 +285,13 @@ if os.path.exists("csearch.c"):
             ce._lib.set_tt_mate_cut(0)
         except AttributeError:
             pass                       # pre-FI-53/54 csearch.so
+        # FI-56 root LMR: BUILT-DORMANT (default False, not yet armed --
+        # pending the FI-53/54 verdict), so this pin is belt-and-braces;
+        # LOAD-BEARING the day it is armed.
+        try:
+            ce._lib.set_root_lmr(0)
+        except AttributeError:
+            pass                       # pre-FI-56 csearch.so
         # FI-06 root-move ordering is DORMANT (+2.26 null @10k vs Old
         # Engine/45, 2026-07-13 -- positive lean but CI covers zero, not
         # correctness); the default already reproduces v45, so this pin is
