@@ -2443,6 +2443,21 @@ void set_root_lmr(int v) { g_root_lmr = v ? 1 : 0; }
 static int g_iir_weak = 0;
 void set_iir_weak(int v) { g_iir_weak = v ? 1 : 0; }
 
+/* FI-64 (armed for the twenty-ninth 50+0.20 A/B, vs Old Engine/51): LMR on
+ * SEE-losing captures. Badcaps are ordered dead last (staged stage 6 /
+ * ORD_BADCAP) and almost never best, yet each gets a full-depth zero-window
+ * scout today; sharing the g_lmr reduction table trims the widest useless
+ * subtrees. Reduction, NOT pruning (unlike the closed FI-18 vein): a
+ * reduced badcap that fails high is re-searched at full depth by the
+ * existing PVS ladder, so no move is ever lost -- deep sacrifices are seen
+ * one iteration later at worst. Killer/history/counter updates stay
+ * quiet-gated; the FI-04 history nudge is quiet-gated in the same edit
+ * (butterfly history is quiet-only -- wrong on capture fromto squares if
+ * FI-04 is ever armed). depth==3 overlaps dormant FI-18 if ever re-armed.
+ * 0 = off = v51 node-exact. NOT correctness-class: revert on null. */
+static int g_lmr_badcap = 0;
+void set_lmr_badcap(int v) { g_lmr_badcap = v ? 1 : 0; }
+
 static void tt_store_terminal(TTEntry* t, uint64_t key, int val, int ply)
 {
     if (!g_term_store || !g_use_tt || t == NULL || CS_UNWINDING()) return;
@@ -3055,11 +3070,14 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
 
         /* late-move reduction on quiet, late, non-checking moves */
         int R = 0;
-        if (g_prune && depth >= 3 && i >= 3 && quiet && !in_chk && !gives_check) {
+        if (g_prune && depth >= 3 && i >= 3 && !in_chk && !gives_check
+                && (quiet || (g_lmr_badcap && badcap))) {   /* FI-64 */
             R = g_lmr[depth < 64 ? depth : 63][i < 64 ? i : 63];
             if (is_pv && R) R--;
             if (g_improving && !improving) R++;      /* P-04: sharpen declining lines */
-            if (g_lmr_hist) {                        /* FI-04: history nudge */
+            if (g_lmr_hist && quiet) {               /* FI-04: history nudge --
+                                                      * quiet-only butterfly
+                                                      * table (FI-64 gate) */
                 int adj = g_history[b->turn][((m & 63) << 6) | ((m >> 6) & 63)]
                         / g_lmr_hist;
                 if (adj > 1) adj = 1; else if (adj < -1) adj = -1;
@@ -3528,7 +3546,8 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted, &second);
 }
 
-int csearch_abi(void) { return 20; }  /* 20 = FI-55 set_iir_weak (IIR weak-evidence trigger);
+int csearch_abi(void) { return 21; }  /* 21 = FI-64 set_lmr_badcap (badcap LMR);
+                                       * 20 = FI-55 set_iir_weak (IIR weak-evidence trigger);
                                        * 19 = FI-15 NNUE build-out (set_use_nnue/
                                        * nnue_load/nnue_ready/set_nnue_verify/
                                        * nnue_verify_stats + nnue_* oracles);

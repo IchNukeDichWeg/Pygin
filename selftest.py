@@ -302,6 +302,14 @@ if os.path.exists("csearch.c"):
             ce._lib.set_iir_weak(0)
         except AttributeError:
             pass                       # pre-FI-55 csearch.so
+        # FI-64 badcap LMR: ARMED (twenty-ninth A/B vs Old Engine/51) but
+        # NOT yet confirmed -- v51 has it OFF, so the ladder pins it off
+        # here (LOAD-BEARING: cengine's class default is True for match
+        # play). Flip to 1 + re-pin CE_LADDER only on CONFIRM.
+        try:
+            ce._lib.set_lmr_badcap(0)
+        except AttributeError:
+            pass                       # pre-FI-64 csearch.so
         # FI-06 root-move ordering is DORMANT (+2.26 null @10k vs Old
         # Engine/45, 2026-07-13 -- positive lean but CI covers zero, not
         # correctness); the default already reproduces v45, so this pin is
