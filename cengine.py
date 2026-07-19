@@ -687,12 +687,18 @@ class Engine:
     # (the move is whatever the fail-low search last tried -- no cutoff
     # evidence, ordering nearly as blind as a miss). Current-SF trigger
     # form (!ttMove || bound == UPPER); IIR_MIN_DEPTH/!in_chk gates kept;
-    # the F1 depth-gap sub-variant is NOT built (follow-up only if this
-    # ships). ARMED for the twenty-eighth 50+0.20 A/B vs Old Engine/51 on
-    # seed 51 -- solo slot, screen-then-pool pattern. False = v51
-    # node-exact. NOT correctness-class: revert on null. PENDING: 2k
-    # screen + paired matetrack, then the uncapped 10k.
-    IIR_WEAK = True
+    # the F1 depth-gap sub-variant is NOT built and now stays that way.
+    # SCREEN-KILLED 2026-07-19 (twenty-eighth candidate vs Old Engine/51,
+    # seed 51, 2k screen): -9.04 +/-15.2 (48.70%, ptnml 63/250/408/234/45,
+    # pair ratio 0.89, norm -18.90) -- a negative lean on a +0-2 prior
+    # fails the screen gate; no 10k spent. CALIBRATION LESSON recorded:
+    # the paired matetrack had read the STRONGEST result on the books
+    # (+100 mates, 1049/877 vs 949/811) and the screen still leaned
+    # negative -- matetrack magnitude does NOT predict Elo (it measures
+    # tactics-finding; the re-firing reduction mis-ranks quiet positions).
+    # REVERTED to False (dormant, do-not-retry at this TC); mechanism
+    # kept, abi 20 stays.
+    IIR_WEAK = False
 
     # FI-15 NNUE (Phases 1-5 BUILT-DORMANT 2026-07-18): hybrid NN eval --
     # nn_eval replaces the HCE as negamax's static eval, qsearch stand-pat
