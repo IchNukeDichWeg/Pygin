@@ -2428,6 +2428,21 @@ void set_tt_mate_cut(int v) { g_tt_mate_cut = v ? 1 : 0; }
 static int g_root_lmr = 0;
 void set_root_lmr(int v) { g_root_lmr = v ? 1 : 0; }
 
+/* FI-55 (armed for the twenty-eighth 50+0.20 A/B, vs Old Engine/51): IIR
+ * trigger extension. P-03 reduces only when there is NO TT move; this also
+ * reduces when the TT move is WEAK ordering evidence -- a TT_UPPER entry
+ * stored shallower than the current depth (the move is just whatever the
+ * fail-low search last tried; it carries no cutoff evidence, so ordering
+ * ahead is nearly as blind as a TT miss). Current-SF trigger form
+ * (!ttMove || bound == UPPER); persistently-failing-low nodes re-fire the
+ * reduction each visit (intended, matches SF). Existing IIR_MIN_DEPTH and
+ * !in_chk gates kept. The F1 depth-gap sub-variant (tt_depth <= depth-4
+ * regardless of flag) is deliberately NOT built -- follow-up slot only if
+ * this form ships. 0 = off = v51 node-exact. NOT correctness-class:
+ * revert on null. */
+static int g_iir_weak = 0;
+void set_iir_weak(int v) { g_iir_weak = v ? 1 : 0; }
+
 static void tt_store_terminal(TTEntry* t, uint64_t key, int val, int ply)
 {
     if (!g_term_store || !g_use_tt || t == NULL || CS_UNWINDING()) return;
@@ -2745,6 +2760,9 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     uint32_t tt_move = 0;
     int tt_eval = TT_EVAL_NONE;      /* FI-03: cached static eval, if any */
     int tt_sh_flag = -1, tt_sh_val = 0;          /* FI-25: hit's flag+value */
+    int tt_depth = -1;               /* FI-55: hoisted for the IIR-weak
+                                      * trigger (read-only -- must not
+                                      * perturb the cutoff gate below) */
     TTEntry* tte = NULL;
     if (g_use_tt && g_tt) {         /* FB-13b: g_tt may be NULL (failed alloc) */
         tte = &g_tt[key & TT_MASK];
@@ -2758,6 +2776,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                                           * eval must not consume it */
             tt_sh_flag = TT_FLAG(e);             /* FI-25: any-depth bound */
             tt_sh_val = TT_VALUE(e);
+            tt_depth = TT_DEPTH(e);              /* FI-55 */
             /* PV-02: at PV nodes skip the whole cutoff/narrowing block (the
              * EXACT return AND the bound-narrowing both truncate the
              * collected PV); the TT move above still orders. */
@@ -2808,9 +2827,16 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     int is_pv = (beta - alpha) > 1;
 
     /* P-03: IIR -- no TT move here, so ordering is blind; go shallower.
+     * FI-55: an UPPER entry shallower than depth is weak evidence too
+     * (SF trigger form: !ttMove || bound == UPPER).
      * (Not in check: reduced-depth evasion search is a tactical risk.) */
-    if (g_iir && depth >= IIR_MIN_DEPTH && !tt_move && !in_chk)
-        depth--;
+    {
+        int tt_weak = g_iir_weak && tt_move
+                      && tt_sh_flag == TT_UPPER && tt_depth < depth;
+        if (g_iir && depth >= IIR_MIN_DEPTH && (!tt_move || tt_weak)
+                && !in_chk)
+            depth--;
+    }
 
     /* static eval (for pruning); meaningless in check, unused at PV nodes
      * (P-04 additionally computes it at PV nodes to feed the eval stack). */
@@ -3502,7 +3528,8 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted, &second);
 }
 
-int csearch_abi(void) { return 19; }  /* 19 = FI-15 NNUE build-out (set_use_nnue/
+int csearch_abi(void) { return 20; }  /* 20 = FI-55 set_iir_weak (IIR weak-evidence trigger);
+                                       * 19 = FI-15 NNUE build-out (set_use_nnue/
                                        * nnue_load/nnue_ready/set_nnue_verify/
                                        * nnue_verify_stats + nnue_* oracles);
                                        * 18 = FI-56 set_root_lmr (root-move LMR);
