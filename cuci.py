@@ -12,7 +12,7 @@ same budgets the internal harnesses use.
 
 Options:
     Threads       (spin 1..256, default 1) -- Lazy-SMP helper threads in C
-    MultiPV       (spin 1..5, default 1)   -- k best lines per go (analysis;
+    MultiPV       (spin 1..20, default 1)  -- k best lines per go (analysis;
                                               >1 bypasses the opening book,
                                               else book hits show no lines;
                                               =1 is byte-identical to before,
@@ -599,7 +599,7 @@ def main():
                 out(f"id name {NAME}")
                 out(f"id author {AUTHOR}")
                 out("option name Threads type spin default 1 min 1 max 256")
-                out("option name MultiPV type spin default 1 min 1 max 5")
+                out("option name MultiPV type spin default 1 min 1 max 20")
                 out("option name OwnBook type check default true")
                 out("option name BookFile type string default <empty>")
                 out("option name UseTB type check default false")
@@ -678,7 +678,7 @@ def main():
                 if name == "threads":
                     engine.smp_workers = max(1, min(256, int(value)))
                 elif name == "multipv":
-                    engine.multipv = max(1, min(5, int(value)))
+                    engine.multipv = max(1, min(20, int(value)))
                 elif name == "ownbook":
                     engine.use_book = value.lower() == "true"
                 elif name == "bookfile":
