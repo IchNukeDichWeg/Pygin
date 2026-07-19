@@ -700,6 +700,19 @@ class Engine:
     # kept, abi 20 stays.
     IIR_WEAK = False
 
+    # FI-64: LMR on SEE-losing captures -- badcaps (ordered dead last,
+    # almost never best) share the g_lmr reduction table instead of getting
+    # full-depth zero-window scouts. Reduction NOT pruning: a reduced
+    # badcap that fails high re-searches at full depth via the PVS ladder,
+    # so no move is ever lost (deep sacs seen one iteration later at
+    # worst) -- unlike the closed FI-18 pruning vein. The FI-04 history
+    # nudge is quiet-gated in the same edit (butterfly history is
+    # quiet-only). ARMED for the twenty-ninth 50+0.20 A/B vs Old Engine/51
+    # on seed 51 -- solo slot, screen-then-pool. False = v51 node-exact.
+    # NOT correctness-class: revert on null. PENDING: 2k screen + paired
+    # matetrack (sac-mates are the exposure), then the uncapped 10k.
+    LMR_BADCAP = True
+
     # FI-15 NNUE (Phases 1-5 BUILT-DORMANT 2026-07-18): hybrid NN eval --
     # nn_eval replaces the HCE as negamax's static eval, qsearch stand-pat
     # stays HCE (the old MLP project's -203/-273 lesson), the FI-03 TT eval
@@ -768,9 +781,9 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (FI-55's set_iir_weak is abi 20) -- bump together with
+        # (FI-64's set_lmr_badcap is abi 21) -- bump together with
         # csearch_abi.
-        if lib.csearch_abi() < 20:
+        if lib.csearch_abi() < 21:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -810,7 +823,7 @@ class Engine:
               self.TT_KEEP_EXACT, self.TT_FH_TIGHT, self.TT_R50,
               self.TERM_STORE, self.TT_MATE_CUT, self.ROOT_LMR,
               self.USE_NNUE, self.NNUE_FILE,
-              self.IIR_WEAK)
+              self.IIR_WEAK, self.LMR_BADCAP)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -861,6 +874,7 @@ class Engine:
         lib.set_tt_mate_cut(1 if self.TT_MATE_CUT else 0)        # FI-54
         lib.set_root_lmr(1 if self.ROOT_LMR else 0)              # FI-56
         lib.set_iir_weak(1 if self.IIR_WEAK else 0)              # FI-55
+        lib.set_lmr_badcap(1 if self.LMR_BADCAP else 0)          # FI-64
         # FI-15 NNUE (abi 19): load-then-arm. A load failure with USE_NNUE
         # on raises loudly -- a missing/corrupt net must never silently
         # fall back to HCE (the A/B would be mislabeled). set_use_nnue(0)

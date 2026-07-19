@@ -654,6 +654,7 @@ def main():
                     f" tt_mate_cut={int(engine.TT_MATE_CUT)}"
                     f" root_lmr={int(engine.ROOT_LMR)}"
                     f" iir_weak={int(engine.IIR_WEAK)}"
+                    f" lmr_badcap={int(engine.LMR_BADCAP)}"
                     f" use_nnue={int(engine.USE_NNUE)}"
                     f" king_shelter={int(engine.USE_KING_SHELTER)}"
                     f" tt_keep_warm={int(engine.TT_KEEP_WARM)}"
