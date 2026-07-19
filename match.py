@@ -243,6 +243,18 @@ class EngineProcess:
             raise EngineError(f"{self.name} failed to load:\n{msg[1]}")
         raise EngineError(f"{self.name}: unexpected reply {msg[0]!r} on load")
 
+    def request_calibrate(self, timeout=120.0):
+        """--nodes mode: ask the engine process to bench itself (6-FEN suite
+        @ d11, book/tb/1-thread forced) and return its measured NPS."""
+        self.conn.send(("calibrate",))
+        if not self.conn.poll(timeout):
+            self.kill()
+            raise EngineTimeout(f"{self.name}: calibration hung (killed)")
+        msg = self.conn.recv()
+        if msg[0] == "ok":
+            return float(msg[1]["nps"])
+        raise EngineError(f"{self.name} failed calibration:\n{msg[1]}")
+
     def request_move(self, fen, mode, value, timeout):
         """Ask for a move; kill+respawn and raise on a timeout (hung search)."""
         self.conn.send(("move", fen, mode, value, MAX_DEPTH_CAP))
@@ -539,6 +551,13 @@ def play_game(round_no, fen, white, black, e1, mode_cfg):
         elif mode_cfg["mode"] == "depth":
             req_mode, req_value = "depth", mode_cfg["depth"]
             req_timeout = DEPTH_SAFETY_CAP
+        elif mode_cfg["mode"] == "nodes":
+            # --nodes: per-side NPS-calibrated budget (set in _worker_loop);
+            # the node count is load-immune but WALL time stretches under
+            # load, hence the generous depth-style watchdog.
+            req_mode = "nodes"
+            req_value = getattr(mover, "node_budget", None) or mode_cfg["nodes"]
+            req_timeout = DEPTH_SAFETY_CAP
         else:  # "time"
             req_mode, req_value = "time", mode_cfg["time_ms"]
             req_timeout = mode_cfg["time_ms"] / 1000.0 * TIME_OVERSHOOT_FACTOR + TIME_GRACE
@@ -651,6 +670,9 @@ def write_game_block(fh, pgn_fh, g, e1, mode_cfg, tc_label, tpm):
             out.append(f"Mode: Time control = {tc_label} (min + sec/move, dynamic budget)")
         elif mode_cfg["mode"] == "depth":
             out.append(f"Mode: Depth = {mode_cfg['depth']}")
+        elif mode_cfg["mode"] == "nodes":
+            out.append(f"Mode: Nodes = {mode_cfg['nodes']}/move "
+                       f"(engine1 reference; engine2 NPS-scaled per worker)")
         else:
             out.append(f"Mode: Time = {mode_cfg['time_ms']} ms/move")
         if g["error"]:
@@ -839,6 +861,13 @@ def _worker_loop(in_q, out_q, engine1_path, engine2_path, mode_cfg,
     try:
         e1.start()
         e2.start()
+        if mode_cfg["mode"] == "nodes":
+            # Budgets were calibrated ONCE in the parent (sequentially, on a
+            # quiet machine) -- benching per worker during parallel startup
+            # measured each side under different contention and biased the
+            # very first null test (-45 on identical engines, ratio 0.52).
+            e1.node_budget = int(mode_cfg["nodes_e1"])
+            e2.node_budget = int(mode_cfg["nodes_e2"])
         while True:
             job = in_q.get()
             if job is None:
@@ -977,6 +1006,7 @@ def main():
         ADJUDICATE, FEN_FILE, BOOK_ENGINE1, BOOK_ENGINE2, START_POS
     argv = sys.argv[1:]
     workers_str = None
+    nodes_budget = None
     positional = []
     # SPRT early-stop config (opt-in via --sprt). Defaults = Option 2: a
     # [0, 4] normalized test, alpha=beta=0.05. Wider than Fishtest's standard
@@ -1034,6 +1064,15 @@ def main():
         elif argv[i] == "--fen-file" and i + 1 < len(argv):
             FEN_FILE = argv[i + 1]
             i += 2
+        elif argv[i] == "--nodes" and i + 1 < len(argv):
+            # Opt-in fixed-node mode (machine-load-immune SCREENS; 10k GSPRT
+            # confirmations stay 50+0.2 timed per doctrine). Each side's
+            # per-move budget is scaled by its own bench NPS measured at
+            # worker startup (engine1 = reference), so an NPS-costly
+            # candidate still pays in nodes exactly as it would on the
+            # clock. Results are NOT comparable to timed campaigns.
+            nodes_budget = int(argv[i + 1])
+            i += 2
         elif argv[i] == "--sprt":
             sprt_enable = True
             i += 1
@@ -1074,10 +1113,64 @@ def main():
             print(f"ERROR: engine file not found: {p!r}")
             return
 
+    if nodes_budget is not None:
+        MODE = "nodes"                   # --nodes overrides the module default
     mode_cfg = {"mode": MODE, "time_ms": TIME_PER_MOVE_MS, "depth": FIXED_DEPTH,
-                "tc_seconds": TC_SECONDS, "tc_increment": TC_INCREMENT}
+                "tc_seconds": TC_SECONDS, "tc_increment": TC_INCREMENT,
+                "nodes": nodes_budget}
     tc_label = f"{TC_SECONDS:.2f}+{TC_INCREMENT:.2f}" if MODE == "clock" else None
     tpm = TIME_PER_MOVE_MS if MODE == "time" else None
+
+    if MODE == "nodes":
+        # One sequential calibration pair on the quiet pre-spawn machine.
+        # engine1 is the reference (gets exactly N); engine2's budget is
+        # scaled by the measured NPS ratio so equal budgets = equal wall
+        # time and an NPS-costly candidate still pays in nodes exactly as
+        # it would on the clock (~1 Elo per 1% NPS house pricing).
+        # Interleaved repeated benches, median per-round ratio: single
+        # benches swing several % on a busy/thermal machine, and in nodes
+        # mode ANY consistent budget error is AMPLIFIED by near-mirror
+        # determinism (the first null test read -40 on identical engines
+        # from a 3.7% ratio error). Adjacent-in-time round pairs share
+        # thermal state, so per-round ratios are far tighter than one long
+        # bench; the median rejects outlier rounds. A 1% deadband snaps
+        # measurement noise to exactly 1.0 (identical builds MUST get equal
+        # budgets); a real candidate's sub-1% NPS cost is absorbed as <1
+        # Elo of budget error on naturally-divergent games -- documented
+        # limitation, fine at screen precision.
+        _CAL_ROUNDS = 5
+        _CAL_DEADBAND = 0.01
+        print(f"Calibrating --nodes budgets ({_CAL_ROUNDS} interleaved "
+              "bench rounds per engine)...")
+        _ctx = mp.get_context("spawn")
+        _c1 = EngineProcess(_ctx, engine1, BOOK_ENGINE1)
+        _c2 = EngineProcess(_ctx, engine2, BOOK_ENGINE2)
+        ratios, nps1_list, nps2_list = [], [], []
+        try:
+            _c1.start()
+            _c2.start()
+            for _r in range(_CAL_ROUNDS):
+                _n1 = _c1.request_calibrate()
+                _n2 = _c2.request_calibrate()
+                nps1_list.append(_n1)
+                nps2_list.append(_n2)
+                ratios.append(_n2 / _n1)
+        finally:
+            _c1.kill()
+            _c2.kill()
+        ratios.sort()
+        ratio = ratios[len(ratios) // 2]             # median round ratio
+        if abs(ratio - 1.0) < _CAL_DEADBAND:
+            ratio = 1.0
+        nps1 = sorted(nps1_list)[len(nps1_list) // 2]
+        nps2 = sorted(nps2_list)[len(nps2_list) // 2]
+        mode_cfg["nodes_e1"] = int(nodes_budget)
+        mode_cfg["nodes_e2"] = max(1, int(round(nodes_budget * ratio)))
+        print(f"  engine1: {nps1/1e6:.2f}M nps -> {mode_cfg['nodes_e1']:,} nodes/move")
+        print(f"  engine2: {nps2/1e6:.2f}M nps -> {mode_cfg['nodes_e2']:,} nodes/move")
+        print(f"  round ratios: {' '.join(f'{r:.3f}' for r in ratios)}"
+              f" -> median {ratio:.3f}"
+              + (" (deadband -> 1.000)" if ratio == 1.0 else ""))
 
     # Positions -> seeded shuffle, then take the slice [offset : offset+n].
     # With a FIXED SUBSET_SEED every window shuffles identically, so distinct
@@ -1130,6 +1223,7 @@ def main():
     interp = f"{impl.name} {sys.version.split()[0]}" if impl else "python"
     mode_desc = ({"time": f"{TIME_PER_MOVE_MS} ms/move",
                   "depth": f"depth {FIXED_DEPTH}",
+                  "nodes": f"nodes {nodes_budget}/move (NPS-calibrated)",
                   "clock": f"clock {tc_label}"}[MODE])
     workers_desc = (f"{n_workers} parallel" if parallel else "1 sequential")
     banner = (f"Match: {e1.name}  vs  {e2.name}\n"
