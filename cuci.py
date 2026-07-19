@@ -52,8 +52,8 @@ import math
 # cp score + game phase into Stockfish-style win/draw/loss permille, so the extension's WDL readout
 # works on pygin too. Local-only (pygin is not in the public fork). Refit via fit_wdl_model.py; do
 # not hand-edit the coefficients.
-_WDL_AS = [-89.57259612411593, 374.8719716130802, -467.12182754889454, 279.5527333843635]
-_WDL_BS = [97.47922944308569, -12.091574718162514, -98.21868968801675, 112.03272964593339]
+_WDL_AS = [-95.5827310059855, 385.9739223827328, -473.20584720117995, 280.47313578042935]
+_WDL_BS = [94.29739651525439, -6.928814021592501, -100.83964904923802, 112.28540128015895]
 _WDL_PHASE_MAX = 24
 _WDL_PHASE_CLAMP_MIN = 6
 
