@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Tar up ALL engine match-result files (*.txt, *.pgn) in the current dir
-# and delete the originals, leaving a single archive to scp elsewhere.
+# Tar up engine match-result files (*.txt, *.pgn) in the current dir and
+# delete the originals, leaving a single archive to scp elsewhere.
 #
-# Exports EVERYTHING it matches (2026-07-19, user call -- the old version
-# skipped the 2 newest files as an assumed live match). Because the
-# originals are DELETED after archiving, only run this when no match is
-# writing: a live run's log would be tarred mid-write and unlinked.
+# Skips the 2 NEWEST files by modification time -- those belong to a match
+# that is still running (its live .txt/.pgn pair), so it's safe to export
+# finished results mid-A/B without corrupting or losing the active run.
+# To export EVERYTHING (only when no match is running), use ./export_all.sh.
 #
 #     ./export.sh
 #
@@ -16,7 +16,17 @@ if [ ${#all[@]} -eq 0 ]; then
     echo "no *engine*.txt / *engine*.pgn files here -- nothing to export (existing archive, if any, left untouched)"
     exit 1
 fi
-files=("${all[@]}")
+# sort by mtime, newest first; skip the first 2 (the live match's pair)
+files=()
+while IFS= read -r f; do
+    files+=("$f")
+done < <(ls -t -- "${all[@]}" | tail -n +3)
+if [ ${#files[@]} -eq 0 ]; then
+    echo "only ${#all[@]} file(s) here and the newest 2 are skipped (assumed live match) -- nothing to export"
+    exit 1
+fi
+echo "skipping newest 2 (assumed live match):"
+ls -t -- "${all[@]}" | head -n 2 | sed 's/^/    /'
 # rotate any existing archive out of the way first -- it's never overwritten, just renamed
 if [ -f /tmp/match_export.tar.gz ]; then
     n=1
