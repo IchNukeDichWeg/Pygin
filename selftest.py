@@ -294,10 +294,10 @@ if os.path.exists("csearch.c"):
             ce._lib.set_root_lmr(1)
         except AttributeError:
             pass                       # pre-FI-56 csearch.so
-        # FI-55 IIR weak-evidence trigger: ARMED (twenty-eighth A/B vs Old
-        # Engine/51) but NOT yet confirmed -- v51 has it OFF, so the ladder
-        # pins it off here (LOAD-BEARING: cengine's class default is True
-        # for match play). Flip to 1 + re-pin CE_LADDER only on CONFIRM.
+        # FI-55 IIR weak-evidence trigger: SCREEN-KILLED 2026-07-19
+        # (-9.04 +/-15.2 @2k vs Old Engine/51 -- negative lean on a +0-2
+        # prior, no 10k spent; matetrack's +100-mate read did not predict
+        # Elo). Default False, so this pin is belt-and-braces.
         try:
             ce._lib.set_iir_weak(0)
         except AttributeError:
