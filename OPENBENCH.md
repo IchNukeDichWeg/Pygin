@@ -51,6 +51,27 @@ format moves between OpenBench versions — follow the repo's wiki page
 python3 Client/Client.py -U <user> -P <pass> -S http://<server>:8000 -T <threads>
 ```
 
+(The `-U/-P` account is created through the web UI's registration page and
+approved from the admin panel — `createsuperuser` above only makes the
+admin. Workers need a user with engine access.)
+
+## Running a test (typical workflow)
+
+1. Push the candidate to a branch on the GitHub repo (the worker builds
+   from GitHub, not from a local checkout — an unpushed branch is
+   invisible to it).
+2. Measure the candidate's bench on the fleet machine:
+   `make EXE=t && ./t bench` on that branch's checkout.
+3. Web UI → **New Test**: dev = the branch (+ its bench), base = `main`
+   (+ its bench), time control, and the SPRT bounds. The house-standard
+   GSPRT[0,4]-normalized corresponds to OpenBench's normalized-elo bounds
+   `[0.0, 4.0]`; use its defaults for alpha/beta (0.05).
+4. Set `OwnBook=false` in BOTH engines' option fields (caveat 2 below).
+5. Workers pick the test up automatically; results/LLR stream on the test
+   page. A finished OpenBench verdict is recorded in the ledger the same
+   way as a match.py campaign (Benchmark block in the ship commit), with
+   the instrument noted.
+
 ## Pygin-specific caveats
 
 1. **Homogeneous workers only.** The build uses `-march=native` /
