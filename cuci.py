@@ -333,6 +333,14 @@ def main():
         raise SystemExit(
             "PHASE_WEIGHTS retuned: update cuci._board_phase, "
             "cuci._WDL_PHASE_MAX and time_manager._phase_24 to match")
+    # OpenBench CLI mode: `pygin bench [depth]` prints the node signature
+    # and exits -- the OpenBench worker runs `./engine bench` (argv, not
+    # UCI) to verify every build. Same run_bench as the UCI `bench` command
+    # (FB-20/FB-32/FB-37 hygiene: book/tb/threads/closures all forced off).
+    if len(sys.argv) > 1 and sys.argv[1] == "bench":
+        run_bench(engine,
+                  depth=int(sys.argv[2]) if len(sys.argv) > 2 else 11)
+        return
     engine.pv_uci = True                     # UCI pv format
     engine.move_overhead_ms = 40             # FI-13b: UCI Move Overhead
     # P-26: shadow copies of the paired C-side tuning values (set_rfp and
