@@ -120,6 +120,51 @@ def engine_worker(conn, engine_path, use_book, pv_uci=False, book_path=None):
             break                        # parent closed the pipe -- exit quietly
         if not msg or msg[0] == "quit":
             break
+        if msg[0] == "calibrate":
+            # --nodes mode (opt-in): measure this build's bench NPS once so
+            # match.py can scale per-side node budgets -- fixed nodes would
+            # otherwise systematically flatter NPS-costly candidates (house
+            # pricing ~1 Elo per 1%% NPS). Same 6-FEN suite as cuci's bench
+            # (duplicated here: this worker must not import cuci for
+            # arbitrary engine paths), book/tb/threads forced off like
+            # run_bench, cold TT per position where the engine exposes one.
+            _CAL_FENS = [
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+                "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3",
+                "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
+                "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+                "8/2k5/3p4/p2P1p2/P2P1P2/8/8/4K3 w - - 0 1",
+                "r2q1rk1/pP1p2pp/Q4n2/bbp1p3/Np6/1B3NBn/pPPP1PPP/R3K2R b KQ - 0 1",
+            ]
+            try:
+                sv = (getattr(engine, "use_book", False),
+                      getattr(engine, "use_tb", False),
+                      getattr(engine, "smp_workers", 1))
+                try:
+                    engine.use_book = engine.use_tb = False
+                    engine.smp_workers = 1
+                except Exception:
+                    pass
+                tot_nodes, t0 = 0, time.perf_counter()
+                for _f in _CAL_FENS:
+                    try:
+                        engine._lib.cs_tt_reset()
+                    except Exception:
+                        pass
+                    engine.get_best_move(chess.Board(_f), 11)
+                    tot_nodes += int(getattr(engine, "nodes_searched", 0) or 0)
+                dt = max(1e-9, time.perf_counter() - t0)
+                try:
+                    (engine.use_book, engine.use_tb, engine.smp_workers) = sv
+                except Exception:
+                    pass
+                conn.send(("ok", {"nps": tot_nodes / dt, "nodes": tot_nodes}))
+            except Exception:
+                try:
+                    conn.send(("error", traceback.format_exc()))
+                except (BrokenPipeError, OSError, EOFError):
+                    break
+            continue
         if msg[0] != "move":
             continue
 
@@ -145,6 +190,17 @@ def engine_worker(conn, engine_path, use_book, pv_uci=False, book_path=None):
             t0 = time.perf_counter()
             if mode == "time":
                 move = engine.get_best_move_timed(board, value / 1000.0, max_depth)
+            elif mode == "nodes":
+                # --nodes mode: fixed node budget via FB-09. The assert
+                # refuses pre-FB-09 builds, which silently IGNORE the attr
+                # and would play unlimited (a wrong result, not a crash).
+                assert hasattr(engine, "node_limit"), \
+                    "engine lacks FB-09 node_limit -- cannot play --nodes"
+                engine.node_limit = int(value)
+                try:
+                    move = engine.get_best_move(board, max_depth)
+                finally:
+                    engine.node_limit = None
             else:
                 move = engine.get_best_move(board, int(value))
             elapsed = time.perf_counter() - t0
