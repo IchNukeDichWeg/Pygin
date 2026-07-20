@@ -2,8 +2,11 @@
 """
 sprt.py -- Sequential Probability Ratio Test for paired-game engine matches.
 
-A faithful port of the Fishtest / tests.stockfishchess.org sprt_calc math so a
-match.py run can STOP EARLY the moment a change is provably good or provably
+An independent implementation of the published GSPRT statistics (the
+generalized sequential probability ratio test via empirical likelihood, per
+Michel Van den Bergh's GSPRT write-up -- the method Fishtest also uses),
+verified numerically against the tests.stockfishchess.org sprt_calc
+calculator on identical inputs. It lets a match.py run STOP EARLY the moment a change is provably good or provably
 bad, instead of always playing the full game budget. On a 223-worker server
 that is most of the CPU/money saving -- an obvious winner (or loser) is decided
 in a fraction of the games; only genuinely borderline changes run to the cap.
@@ -24,7 +27,7 @@ default):
     accept H0 (reject)  when  LLR <= log(beta / (1 - alpha))      ~ -2.94
     keep playing        otherwise
 
-ELO MODELS (match the sprt_calc dropdown)
+ELO MODELS (the same two offered by Fishtest's sprt_calc calculator)
 -----------------------------------------
 * "normalized" (default, the modern Fishtest standard): the hypotheses are in
   normalized-Elo units. elo -> target mean score uses sqrt(2 * var) of the
@@ -36,7 +39,8 @@ ELO MODELS (match the sprt_calc dropdown)
   SPRT here is on the sprt_calc scale by construction.)
 * "logistic": classic BayesElo-style, elo -> score = 1/(1 + 10^(-elo/400)).
 
-The math (GSPRT via empirical likelihood) is the exact method Fishtest uses,
+The statistics (GSPRT via empirical likelihood) are the published method
+Fishtest also implements,
 not a normal approximation: for each hypothesis mean s it finds the
 maximum-likelihood pentanomial distribution q(s) constrained to that mean
 (a one-parameter tilt of the observed distribution) and
@@ -213,7 +217,7 @@ def _selftest():
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser(description="SPRT for paired-game matches "
-                                 "(Fishtest sprt_calc math).")
+                                 "(published GSPRT statistics; agrees with Fishtest's sprt_calc).")
     ap.add_argument("--ptnml", type=int, nargs=5,
                     metavar=("LL", "LD", "DD_WL", "WD", "WW"),
                     help="pentanomial pair counts")
