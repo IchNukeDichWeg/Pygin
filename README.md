@@ -40,13 +40,15 @@ The engine exists in two forms:
   for ≈ +195 internal Elo — the odds formats compress toward saturation
   as the engine outgrows them. Odds numbers are machine-dependent —
   compare only runs from the same machine.
-- **vs Stockfish 18 capped at UCI_Elo 2850:** **62.5%** over 2,000 games
-  at 50s+0.2 (**+88.9 ± 16.3**, pair ratio 3.57, 2026-07-19, v51). A
-  class bracket, not a rating — the UCI_Elo limiter compresses real
-  strength differences and calibrates differently per cap level, so
-  cross-cap deltas aren't linear; odds games remain the honest yardstick.
-  (Prior brackets: 55.5% over the 2800 cap on v49; an earlier run vs a
-  *dev* build at 2700 is retired — the limiter shifts across SF versions.)
+- **vs Stockfish 18 with the UCI_Elo limiter — bracketed both sides on
+  v51:** **62.5%** over the **2850** cap (+88.9 ± 16.3, pair ratio 3.57)
+  and **46.4%** under the **2900** cap (−25.2 ± 15.3, ratio 0.73), 2,000
+  games each at 50s+0.2 (2026-07-19). On this instrument's scale the
+  engine sits between the caps, ≈2885 — a class bracket, not a rating:
+  the limiter compresses real differences and the two caps extrapolate
+  inconsistently (~2939 vs ~2875), which is the nonlinearity in action;
+  odds games remain the honest yardstick. (Prior: 55.5% over 2800 on
+  v49; the 2700 run vs a *dev* SF build stays retired.)
 
 ### Version progression
 
