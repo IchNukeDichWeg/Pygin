@@ -27,9 +27,9 @@ Options: Hash, Threads, OwnBook, UseTB, Move Overhead (+ tuning spins).
 Version details: engine.py version history / DESIGN_c_search_core.md.}"
 
 if gh release view "v${V}" >/dev/null 2>&1; then
-    gh release upload "v${V}" "$ASSET" --clobber
-    echo "uploaded $ASSET to existing release v${V}"
+    gh release upload "v${V}" "$ASSET" THIRD_PARTY_LICENSES.md --clobber
+    echo "uploaded $ASSET + THIRD_PARTY_LICENSES.md to existing release v${V}"
 else
-    gh release create "v${V}" "$ASSET" --title "Pygin v${V}" --notes "$NOTES"
-    echo "created release v${V} with $ASSET"
+    gh release create "v${V}" "$ASSET" THIRD_PARTY_LICENSES.md --title "Pygin v${V}" --notes "$NOTES"
+    echo "created release v${V} with $ASSET + THIRD_PARTY_LICENSES.md"
 fi

@@ -358,4 +358,11 @@ other.
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+The **source code** in this repository is MIT — see [`LICENSE`](LICENSE).
+
+The **released binaries** bundle [`python-chess`](https://github.com/niklasf/python-chess)
+(GPL-3.0+), so the binary distribution as a whole is governed by
+GPL-3.0 terms — see [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)
+for the full text, the corresponding-source pointers, and credits for the
+bundled Perfect2023 opening book (Sedat Canbaz) and the UHO opening
+suites (Stefan Pohl) used as A/B starting positions.
