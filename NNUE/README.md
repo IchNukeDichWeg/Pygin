@@ -50,6 +50,20 @@ Generate data (any size; `--workers 223` on the match server):
 python3 NNUE/gen_data.py NNUE/datasets/run1.pygdata --positions 100000 --nodes 5000 --workers 8 --seed 42
 ```
 
+Opening/coverage modes (mixable into a multi-slice dataset via
+`data_format.py merge` — the recommended Phase-6 recipe is random +
+UHO-book + endgame slices):
+
+```
+--book UHO_Lichess_4852_v1.epd     # start games from random book lines
+                                   # (O(1) memory: random-offset sampling)
+--endgame [--eg-men 14]            # endgame harvest: early win adjudication
+                                   # OFF (games reach real endgames), record
+                                   # only positions with <= eg-men total men;
+                                   # ply-cap games score-adjudicated so the
+                                   # WDL label is not a fake draw
+```
+
 Audit the labels (hard gate: hmc==0 records reproduce exactly):
 
 ```
