@@ -683,6 +683,8 @@ def main():
                     f" null_nodouble={int(engine.NULL_NODOUBLE)}"
                     f" null_evalr={int(engine.NULL_EVALR)}"
                     f" qs_evasion_cap={engine.QS_EVASION_CAP}"
+                    f" singular={int(engine.SINGULAR)}"
+                    f" se={engine.SE_MIN_DEPTH}/{engine.SE_MARGIN}"
                     f" use_nnue={int(engine.USE_NNUE)}"
                     f" king_shelter={int(engine.USE_KING_SHELTER)}"
                     f" tt_keep_warm={int(engine.TT_KEEP_WARM)}"
