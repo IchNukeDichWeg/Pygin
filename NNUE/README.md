@@ -44,7 +44,8 @@ python3.12 -m venv NNUE/venv && NNUE/venv/bin/pip install torch numpy python-che
 
 ## Commands (all from the repo root)
 
-Generate data (any size; `--workers 223` on the match server):
+Generate data (any size; `--workers <cores-1>` on a generation server,
+e.g. 95 on the current cheap boxes):
 
 ```
 python3 NNUE/gen_data.py NNUE/datasets/run1.pygdata --positions 100000 --nodes 5000 --workers 8 --seed 42
@@ -106,18 +107,20 @@ byte-exact v50; run `bench` (1,083,772) + `selftest.py` after any change.
 
 ## Generating real training data (Phase 6, the next step)
 
-On the 223-worker server (~50M positions, see DESIGN_nnue.md for the
-rationale; TC-free — the labeling budget is fixed NODES, immune to load):
+On a generation server (~50M positions, see DESIGN_nnue.md for the
+rationale; TC-free — the labeling budget is fixed NODES, so machine
+speed changes wall clock only, never label quality; split across
+servers with different --seed values and merge):
 
 ```
-nohup python3 NNUE/gen_data.py NNUE/datasets/main50m.pygdata --positions 50000000 --nodes 5000 --workers 223 --seed 1 > gen50m.log 2>&1 &
+nohup python3 NNUE/gen_data.py NNUE/datasets/main50m.pygdata --positions 50000000 --nodes 5000 --workers 95 --seed 1 > gen50m.log 2>&1 &
 tail -f gen50m.log
 ```
 
 Wall-clock: measured ~70 positions/s per worker locally (~1 s/game at
-5,000 nodes/move) -> est. **~1.5-3 h** on 223 server workers (calibrated
-against the known 10k-games-per-~65-min @ 50+0.2 campaign throughput;
-these generation games are ~60x shorter than match games). Supplementary
+5,000 nodes/move) -> est. **~4-6 h** for the full three-slice mix on one
+95-worker server (~2-3 h on two; generation games are ~70x shorter than
+50+0.2 match games). Supplementary
 source: existing A/B battle logs convert via `logs_to_pygdata.py` (deeper
 50+0.2 labels; version-gate the sides to pre-v49 engines per F49-30, then
 `data_format.py merge` the results with the self-play file).
