@@ -846,6 +846,34 @@ class Engine:
     SE_MARGIN = 192
     SE_BUDGET = 3        # per-line cap, INDEPENDENT of CHECK_EXT_BUDGET
 
+    # FI-59 + FI-60: the ORDERING/HISTORY batch -- the untried mechanism
+    # family after extensions and reductions were exhausted (FI-55/63/64 and
+    # P-33 all closed or reverted). Two toggles, ONE campaign: both mutate
+    # ordering/history only, neither touches the TT or bounds, and each is
+    # priced +0-2 alone (batching per the FI-24 same-family precedent, NOT
+    # the FI-50/51/52 anti-pattern of ganging independent mechanisms).
+    #  FI-59 KILLER_INHERIT -- warm-start an untouched killer slot from two
+    #    plies up (same side to move); one 8-byte copy per first-touch node,
+    #    no new stage/band, both ordering paths see the same table.
+    #  FI-60 QUIET_MALUS_ALL -- a bad-capture/promo cutoff also sweeps the
+    #    -depth*depth malus over the quiets already tried (cutter not in the
+    #    list, so the bound is nq); no bonus, no killer/counter write.
+    # ARMING DECISION (measured, not planned): FI-59 goes SOLO. Per-toggle
+    # cost at d16 (3 positions) -- FI-59 -3.2% nodes (cheaper AND better
+    # ordered: the warm killer slot earns its cutoffs), FI-60 **+27.3%**,
+    # both +28.7%. FI-60's profile is the one that killed FI-49 (+28%,
+    # rejected -3.65) and FI-63 (+10.5%, closed): the extra malus traffic
+    # drives history more negative, reshaping LMR/pruning into a bushier
+    # tree, on a +0-2 prior. Not worth a fixed-node campaign -- PARKED with
+    # this data (mechanism kept at 0, re-measure only if the history
+    # gravity/clamp changes). Arming FI-59 alone also keeps attribution
+    # clean, per the FI-50/51/52 batch-null lesson.
+    # FI-58 (mate killers) is deliberately NOT here either: its own entry
+    # prices self-play Elo at ~0 and makes matetrack the accept gate, so it
+    # belongs to a matetrack decision, not an Elo campaign.
+    KILLER_INHERIT = True
+    QUIET_MALUS_ALL = False
+
     # FI-15 NNUE (Phases 1-5 BUILT-DORMANT 2026-07-18): hybrid NN eval --
     # nn_eval replaces the HCE as negamax's static eval, qsearch stand-pat
     # stays HCE (the old MLP project's -203/-273 lesson), the FI-03 TT eval
@@ -914,9 +942,9 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (P-33's set_singular/set_singular_params are abi 24) -- bump with
+        # (FI-59/60's set_killer_inherit/set_quiet_malus_all are abi 25) -- bump with
         # csearch_abi.
-        if lib.csearch_abi() < 24:
+        if lib.csearch_abi() < 25:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -959,7 +987,8 @@ class Engine:
               self.IIR_WEAK, self.LMR_BADCAP,
               self.NULL_BASE, self.NULL_DIV, self.LMR_DIV,
               self.NULL_NODOUBLE, self.NULL_EVALR, self.QS_EVASION_CAP,
-              self.SINGULAR, self.SE_MIN_DEPTH, self.SE_MARGIN, self.SE_BUDGET)
+              self.SINGULAR, self.SE_MIN_DEPTH, self.SE_MARGIN, self.SE_BUDGET,
+              self.KILLER_INHERIT, self.QUIET_MALUS_ALL)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -1055,6 +1084,8 @@ class Engine:
         lib.set_singular_params(int(self.SE_MIN_DEPTH),
                                 int(self.SE_MARGIN))                # P-33
         lib.set_singular_budget(int(self.SE_BUDGET))                # P-33
+        lib.set_killer_inherit(1 if self.KILLER_INHERIT else 0)     # FI-59
+        lib.set_quiet_malus_all(1 if self.QUIET_MALUS_ALL else 0)   # FI-60
         # FB-04: entries scored under a PREVIOUS construction's eval params
         # would poison this one (the table is process-global and persistent).
         # First construction: the table is empty, reset is a no-op.

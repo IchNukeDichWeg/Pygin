@@ -2392,6 +2392,32 @@ void set_qs_evasion_cap(int v) { g_qs_evasion_cap = v < 0 ? 0 : v; }
  * unwind path.
  *
  * 0 = off = v52 node-exact. NOT correctness-class: revert on null. */
+/* FI-59 (killers/malus batch, armed for the thirty-second campaign vs Old
+ * Engine/52): ply-2 killer reuse. Warm-start an untouched killer slot from
+ * two plies up (same side to move) at first touch -- one bounded 8-byte
+ * copy per node, no new table/stage/band, so the existing emission and
+ * dedup machinery handles the inherited keys identically on BOTH the
+ * staged and array paths (P-23 stream identity by construction). After a
+ * null move ply-2 is the opponent's slot: ordering noise only, and
+ * move_from_key re-validates legality at emission. The inherited write
+ * persists for the rest of the search (later ply-2 updates do not
+ * re-propagate) -- intended. 0 = off = v52 node-exact (no write occurs). */
+static int g_killer_inherit = 0;
+void set_killer_inherit(int v) { g_killer_inherit = v ? 1 : 0; }
+
+/* FI-60 (same batch): quiet-history malus on ALL beta cutoffs. Today only a
+ * QUIET cutter sweeps -depth*depth over the tried quiets; when a bad
+ * capture or promotion cuts, the quiets that already failed keep their
+ * history untouched. This extends the malus to those cutoffs (the cutter is
+ * NOT in quiets[], so the bound is nq, not nq-1). No bonus to the cutter
+ * (that is FI-05 capture history, separate), no killer/counter write --
+ * those stay quiet-only. Ordering-only mutation: no TT/FI-03 exactness
+ * exposure. Honest ceiling: staged ordering searches good captures at i=0
+ * with nq==0, so this only fires on bad-cap/promo cutoffs AFTER quiets were
+ * tried. 0 = off = v52 node-exact. */
+static int g_quiet_malus_all = 0;
+void set_quiet_malus_all(int v) { g_quiet_malus_all = v ? 1 : 0; }
+
 static int g_singular = 0;
 void set_singular(int v) { g_singular = v ? 1 : 0; }
 static int g_se_min_depth = 8;      /* min depth to attempt the test */
@@ -3049,6 +3075,15 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         }
     }
 
+    /* FI-59: warm-start an untouched killer slot from two plies up, BEFORE
+     * either ordering path snapshots g_killers[ply] -- so staged and array
+     * see the same table (P-23 stream identity). */
+    if (g_killer_inherit && ply >= 2 && ply < CS_MAXPLY
+            && g_killers[ply][0] == 0) {
+        g_killers[ply][0] = g_killers[ply - 2][0];
+        g_killers[ply][1] = g_killers[ply - 2][1];
+    }
+
     uint32_t counter_key = (prev12 != 0xFFFFFFFF) ? g_counter[prev12] : 0;
 
     /* P-23: staged ordering engages at not-in-check, full-ordering nodes
@@ -3257,6 +3292,22 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                     g_killers[ply][0] = kk;
                 }
                 if (prev12 != 0xFFFFFFFF) g_counter[prev12] = kk;
+            } else if (g_quiet_malus_all && nq > 0) {
+                /* FI-60: a bad-capture/promo cutoff still punishes the
+                 * quiets that were tried and failed. Cutter is NOT in
+                 * quiets[] -> sweep the full nq. No bonus, no killer or
+                 * counter write (those stay quiet-only). */
+                int bonus = depth * depth;
+                for (int q = 0; q < nq; q++)
+                    hist_update(color, quiets[q], -bonus);
+                if (g_cont_hist) {
+                    int p1 = g_ctx[ply];
+                    int p2 = (ply >= 1) ? g_ctx[ply - 1] : 0;
+                    for (int q = 0; q < nq; q++) {
+                        if (p1) cont_update(g_cont1[p1], quiets_ck[q], -bonus);
+                        if (p2) cont_update(g_cont2[p2], quiets_ck[q], -bonus);
+                    }
+                }
             }
             break;
         }
@@ -3669,7 +3720,8 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted, &second);
 }
 
-int csearch_abi(void) { return 24; }  /* 24 = P-33 set_singular/set_singular_params (singular extensions);
+int csearch_abi(void) { return 25; }  /* 25 = FI-59/60 set_killer_inherit/set_quiet_malus_all;
+                                       * 24 = P-33 set_singular/set_singular_params (singular extensions);
                                        * 23 = FI-63 set_qs_evasion_cap (quiet check-evasion cap);
                                        * 22 = FI-24ab set_null_nodouble/set_null_evalr;
                                        * 21 = FI-64 set_lmr_badcap (badcap LMR);
