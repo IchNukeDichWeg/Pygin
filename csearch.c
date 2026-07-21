@@ -2353,6 +2353,22 @@ void set_qs_ttm_exempt(int v) { g_qs_ttm_exempt = v ? 1 : 0; }
 static int g_qs_chk_d1 = 0;
 void set_qs_chk_d1(int v) { g_qs_chk_d1 = v ? 1 : 0; }
 
+/* FI-63 (armed for the thirty-second campaign, vs Old Engine/52): SF-style
+ * quietCheckEvasions. In-check qsearch nodes are the last node population
+ * with ZERO pruning -- they fan out through perpetual/spite-check lines
+ * where the 3rd+ quiet evasion, ordered behind TT/killer-quality moves,
+ * virtually never improves on the first two. After N fully-searched quiet
+ * evasions, skip the rest; captures and promotion evasions are ALWAYS
+ * searched. Mate guard: the cap never applies while every searched evasion
+ * still loses to mate (best <= -MATE_THRESH), so a mate score can never be
+ * concluded from a pruned move set. Known unsoundness (delta-pruning
+ * class): a capped fail-low node stores TT_UPPER at the searched best,
+ * which is a wrong-way bound if a skipped evasion was better -- paired
+ * matetrack is the PRIMARY gate, not a formality. 0 = off = v52
+ * node-exact (repo 0-means-off convention); armed value 2. */
+static int g_qs_evasion_cap = 0;
+void set_qs_evasion_cap(int v) { g_qs_evasion_cap = v < 0 ? 0 : v; }
+
 /* FI-48 (armed for the twenty-fifth 50+0.20 A/B, vs Old Engine/49):
  * flag-aware TT replacement. All three same-key store sites are flag-blind,
  * so an equal-depth bound-only store (qsearch stand-pat LOWERs, unproven
@@ -2659,6 +2675,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
     }
 
     uint32_t bm = 0;                                 /* P-44: best move found */
+    int quiet_evasions = 0;                          /* FI-63: cap counter */
     /* CB-01 (g): plies past the killer table read the LAST slot, not the
      * root's (the old clamp-to-0 ordered deep qsearch with root killers). */
     int msc[256];                    /* FI-02.4: lazy pick, no up-front sort */
@@ -2671,6 +2688,13 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         int is_promo = (m >> 12) & 7;
         /* FI-51: the search-proven TT move dodges the qsearch skips below. */
         int is_ttm = g_qs_ttm_exempt && tt_move && (m & 0x7FFF) == tt_move;
+        if (in_chk && g_qs_evasion_cap && !victim && !is_promo) {
+            /* FI-63: SF quietCheckEvasions -- cap fully-searched quiet
+             * evasions, never while the node still reads mated. */
+            if (quiet_evasions >= g_qs_evasion_cap && best > -MATE_THRESH)
+                continue;
+            quiet_evasions++;
+        }
         if (!in_chk) {
             if (!victim && !is_promo) continue;      /* quiets: not in qsearch */
             if (victim && !is_promo) {               /* pure capture */
@@ -3569,7 +3593,8 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted, &second);
 }
 
-int csearch_abi(void) { return 22; }  /* 22 = FI-24ab set_null_nodouble/set_null_evalr;
+int csearch_abi(void) { return 23; }  /* 23 = FI-63 set_qs_evasion_cap (quiet check-evasion cap);
+                                       * 22 = FI-24ab set_null_nodouble/set_null_evalr;
                                        * 21 = FI-64 set_lmr_badcap (badcap LMR);
                                        * 20 = FI-55 set_iir_weak (IIR weak-evidence trigger);
                                        * 19 = FI-15 NNUE build-out (set_use_nnue/
