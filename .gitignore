@@ -29,6 +29,10 @@ profile_report.html
 UHO_*.epd
 # ...except the default match.py book, which is kept in the repo:
 !UHO_4060_v4.epd
+# FI-15: the NNUE datagen book ships COMPRESSED (174 MB raw > GitHub's
+# 100 MB limit; the .gz is 41 MB). setup.sh auto-extracts the plain .epd,
+# which stays ignored via UHO_*.epd above.
+!UHO_Lichess_4852_v1.epd.gz
 *.bin
 # ...except the default opening book (Perfect 2023, freeware, 50 KB):
 !Perfect2023.bin
