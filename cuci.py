@@ -22,6 +22,14 @@ Options:
                                               (empty = bundled Perfect2023.bin)
     UseTB         (check, default false)   -- root Lichess-Syzygy probe
                                               (difficulty-gated; needs network)
+    Ponder        (check, default false)   -- real go-ponder/ponderhit:
+                                              search the predicted position
+                                              on the opponent's clock, hold
+                                              bestmove until ponderhit (then
+                                              a timed release) or stop.
+                                              Mutually exclusive with Premove
+                                              by construction (held searches
+                                              skip PM-01 certification)
     Move Overhead (spin 0..5000, default 40) -- per-move clock slack, ms
     Hash          (spin 2..6144 MB, default 192) -- C TT size (FI-10;
                                               resize wipes the table)
@@ -397,6 +405,8 @@ def main():
                     pass
             elif tok == "infinite":
                 params["infinite"] = True
+            elif tok == "ponder":
+                params["ponder"] = True     # FI-13e: real go-ponder (2026-07-21)
 
         max_depth = int(params.get("depth", 60))
         if "mate" in params and "depth" not in params:   # FB-25: `go mate N`
@@ -440,10 +450,21 @@ def main():
             engine.use_stability_time = True
             engine.soft_stop_frac = 0.55     # cengine constructor default
 
+        # FI-13e ponder: search the predicted position open-ended on the
+        # OPPONENT'S clock, holding bestmove until ponderhit/stop -- the
+        # B-03 hold rail does the holding, the ponderhit handler does the
+        # timed release. The go's clocks are SAVED for that conversion; the
+        # ponder search itself runs the budget-None (depth-mode) path.
+        ponder_mode = bool(params.get("ponder"))
+        if ponder_mode:
+            budget = None
         # B-03: UCI requires `go infinite` (and bare `go`) to hold bestmove
         # until `stop`, even if the search finishes early (mate break,
         # depth cap). Depth/time/clock/node-limited gos report on completion.
-        hold = ("infinite" in params) or not any(
+        # Ponder holds by definition (release = ponderhit/stop). Holding
+        # also auto-skips PM-01 certification below -- the Ponder/Premove
+        # mutual exclusion falls out of the existing `not hold` gate.
+        hold = ponder_mode or ("infinite" in params) or not any(
             k in params for k in ("movetime", "wtime", "btime", "depth",
                                   "nodes", "mate"))   # FB-25: mate reports
         stop_evt = threading.Event()
@@ -541,9 +562,9 @@ def main():
                 bm_str = mv.uci() if mv is not None else "0000"
                 pv = (engine.last_pv or "").split()
                 if mv is not None and len(pv) >= 2 and pv[0] == bm_str:
-                    out(f"bestmove {bm_str} ponder {pv[1]}")   # FI-45: GUIs
-                else:                        # display it; real go-ponder
-                    out(f"bestmove {bm_str}")  # semantics stay FI-13e
+                    out(f"bestmove {bm_str} ponder {pv[1]}")   # FI-45 hint;
+                else:                        # go-ponder itself is real now
+                    out(f"bestmove {bm_str}")  # (FI-13e, 2026-07-21)
                 if ("mate" in params and mv is not None
                         and abs(engine.last_score) < engine.MATE_THRESHOLD):
                     out(f"info string no mate found in <={params['mate']}")
@@ -584,6 +605,8 @@ def main():
         th = threading.Thread(target=run, daemon=True)
         th.stop_evt = stop_evt
         th.holding = holding
+        th.ponder = {"active": ponder_mode, "hit": False,
+                     "params": params, "board": search_board}
         return th
 
     for raw in sys.stdin:
@@ -620,6 +643,7 @@ def main():
                 out("option name SoftUnstable type spin default 80 min 50 max 130")
                 out("option name Premove type check default false")
                 out("option name UCI_ShowWDL type check default true")
+                out("option name Ponder type check default false")
                 out("option name Clear Hash type button")
                 out("option name Contempt type spin default 50 min -100 max 100")
                 out("option name Move Overhead type spin default 40 min 0 max 5000")
@@ -684,6 +708,10 @@ def main():
                     engine.smp_workers = max(1, min(256, int(value)))
                 elif name == "multipv":
                     engine.multipv = max(1, min(20, int(value)))
+                elif name == "ponder":
+                    engine.ponder_ok = value.lower() == "true"   # FI-13e:
+                    # informational -- go-ponder is honored whenever it
+                    # arrives; the option exists so GUIs enable pondering
                 elif name == "ownbook":
                     engine.use_book = value.lower() == "true"
                 elif name == "bookfile":
@@ -813,7 +841,12 @@ def main():
                     # Holding-only thread: implicit stop -- release the held
                     # bestmove, join, proceed. Genuinely live search: keep
                     # the old behavior (UCI says the GUI must stop first).
-                    if search_thread.holding.is_set():
+                    if (search_thread.holding.is_set()
+                            or (search_thread.ponder["active"]
+                                and not search_thread.ponder["hit"])):
+                        # A go during an un-hit ponder = ponder miss from a
+                        # GUI that skips `stop`: abort the ponder (its held
+                        # bestmove is emitted and ignored), then proceed.
                         search_thread.stop_evt.set()
                         engine.stop()    # FB-32: a PM-01 certification
                                          # sub-search polls stop_evt only
@@ -848,9 +881,40 @@ def main():
                 dbg["on"] = (len(tokens) > 1     # gates the ebf channel
                              and tokens[1] == "on")
             elif cmd == "ponderhit":
-                pass                     # FB-32: no ponder search yet
-                                         # (FI-13e); accepting the standard
-                                         # command kills the GUI error spam
+                # FI-13e: the predicted move was played -- convert the
+                # ponder search into a timed one. The time already spent
+                # pondering was the OPPONENT'S (free); the budget runs from
+                # NOW, enforced by a watcher that stops the search when the
+                # budget expires -- or releases immediately if the search
+                # already self-finished (mate break / depth cap) while
+                # holding. v1 deviation (documented): the depth-mode ponder
+                # search has no soft-stop machinery, so a ponderhit move
+                # spends its full calculated budget instead of the P-35/
+                # U-06 early-stop fraction.
+                if (searching() and search_thread.ponder["active"]
+                        and not search_thread.ponder["hit"]):
+                    search_thread.ponder["hit"] = True
+                    p = search_thread.ponder["params"]
+                    pb = search_thread.ponder["board"]
+                    if "movetime" in p:
+                        pbudget = max(1, p["movetime"]) / 1000.0
+                    elif "wtime" in p or "btime" in p:
+                        my = p.get("wtime" if pb.turn else "btime", 0)
+                        opp = p.get("btime" if pb.turn else "wtime", 0)
+                        inc = p.get("winc" if pb.turn else "binc", 0)
+                        pbudget = calculate_move_time(
+                            pb, my, opp, inc,
+                            overhead_ms=engine.move_overhead_ms,
+                            movestogo=p.get("movestogo")) / 1000.0
+                    else:
+                        pbudget = None   # clockless go ponder: hold to stop
+                    if pbudget is not None:
+                        def _release(th=search_thread, budget=pbudget):
+                            th.holding.wait(timeout=budget)
+                            engine.stop()      # no-op if already finished;
+                            th.stop_evt.set()  # stray _abort cleared by the
+                        threading.Thread(      # next go() (FB-21)
+                            target=_release, daemon=True).start()
             elif cmd == "quit":
                 if searching():
                     engine.stop()
