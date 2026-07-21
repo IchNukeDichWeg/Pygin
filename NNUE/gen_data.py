@@ -39,8 +39,11 @@ byte-identical threat inputs (threat_ver stamps the dataset).
 
 Parallelism: the parent spawns worker SUBPROCESSES (fresh process per
 engine, per the repo's one-process-one-config .so rule), each writing a
-shard; shards are merged into the final file. 223-worker server usage:
-just pass --workers 223.
+shard; shards are merged into the final file. On a generation server just
+pass --workers <cores-1> (e.g. 95). Fixed-NODE labeling means a slower
+server changes only wall clock, never label quality; multiple servers can
+split a slice by running different --seed values into different output
+files and merging (data_format.py merge).
 """
 
 import argparse
