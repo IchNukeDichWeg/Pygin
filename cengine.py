@@ -871,7 +871,20 @@ class Engine:
     # FI-58 (mate killers) is deliberately NOT here either: its own entry
     # prices self-play Elo at ~0 and makes matetrack the accept gate, so it
     # belongs to a matetrack decision, not an Elo campaign.
-    KILLER_INHERIT = True
+    # FI-59 VERDICT: SCREEN-KILLED 2026-07-21 (thirty-second candidate vs
+    # Old Engine/52, split 2k screen @nodes 1.75M, pooled): -5.21 (49.25%,
+    # ptnml 56/242/419/242/41, ratio 0.95, LLR -0.657) -- negative lean on
+    # a +0-2 prior, no tranche spent. The two reproducible matetrack
+    # declines (-15/-14 found) called it correctly after all: stale killers
+    # from two plies up displace the real move in forcing lines, and the
+    # -3.2% node saving does not buy that back. LESSON REFINED: matetrack
+    # magnitude still does not predict Elo (FI-55), but a REPRODUCIBLE
+    # decline is worth heeding even outside a feature's named risk mode --
+    # the ambiguity call here was wrong, and the screen was the right
+    # instrument to settle it for $2. REVERTED to False (dormant,
+    # do-not-retry at this TC); SF's own removal of ply-2 killers now has
+    # a local confirmation.
+    KILLER_INHERIT = False
     QUIET_MALUS_ALL = False
 
     # FI-15 NNUE (Phases 1-5 BUILT-DORMANT 2026-07-18): hybrid NN eval --
