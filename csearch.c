@@ -24,6 +24,7 @@
  * on arrival). */
 
 #include <stdint.h>
+#include <stddef.h>   /* FI-66: offsetof for the layout assert */
 #include <stdio.h>
 #include "Constants.h"   /* #2.1/#2.2: magic tables + INBETWEEN_BITBOARDS */
 
@@ -813,25 +814,27 @@ static void apply_move(Board* b, uint32_t mv)
         zkey ^= Z_PSQ[them][victim][(capmask == tb)
                                     ? to : __builtin_ctzll(capmask)];
 
-    uint64_t ncap = ~capmask;
-    b->pawns &= ncap; b->knights &= ncap; b->bishops &= ncap;
-    b->rooks &= ncap; b->queens &= ncap;
-    b->occ[them] &= ncap;
+    /* FI-66: targeted single-board updates instead of blanket sweeps.
+     * The first six Board members are declared in exact PT order, so
+     * bb[pt-1] indexes them (1=P 2=N 3=B 4=R 5=Q 6=K); the _Static_assert
+     * locks that layout. The resulting Board is byte-identical to the
+     * sweep version, so keys, the node stream and the PV are identical by
+     * construction -- this is an NPS change only. A quiet move used to do
+     * 12 read-modify-writes of which ~9 were no-ops. */
+    uint64_t* bb = &b->pawns;
+
+    if (victim) {                    /* capmask is already the ep-pawn square */
+        uint64_t ncap = ~capmask;
+        bb[victim - 1]  &= ncap;
+        b->occ[them]    &= ncap;
+    }
 
     uint64_t nfrom = ~fb;
-    b->pawns &= nfrom; b->knights &= nfrom; b->bishops &= nfrom;
-    b->rooks &= nfrom; b->queens &= nfrom; b->kings &= nfrom;
+    bb[movpt - 1] &= nfrom;
 
     int finalpt = promo ? promo : movpt;
     zkey ^= Z_PSQ[us][movpt][from] ^ Z_PSQ[us][finalpt][to];   /* FI-01 */
-    switch (finalpt) {
-        case 2:  b->knights |= tb; break;
-        case 3:  b->bishops |= tb; break;
-        case 4:  b->rooks   |= tb; break;
-        case 5:  b->queens  |= tb; break;
-        case 6:  b->kings   |= tb; break;
-        default: b->pawns   |= tb; break;
-    }
+    bb[finalpt - 1] |= tb;
     b->occ[us] = (b->occ[us] & nfrom) | tb;
 
     if (movpt == 6 && (to - from == 2 || from - to == 2)) {
@@ -2565,10 +2568,13 @@ static void tt_store_terminal(TTEntry* t, uint64_t key, int val, int ply)
     tt_store_raw(t, key, sv, 0, 200, TT_EXACT, TT_EVAL_NONE);
 }
 
-static inline void qs_tt_store(uint64_t key, int val, int ply, uint32_t move,
-                               int flag, int ev, int depth)  /* FI-52: depth */
+static inline void qs_tt_store(TTEntry* t, uint64_t key, int val, int ply,
+                               uint32_t move, int flag, int ev,
+                               int depth)  /* FI-52: depth; FI-71: slot in */
 {
-    TTEntry* t = &g_tt[key & TT_MASK];
+    /* FI-71: the slot pointer is computed once at the probe and threaded
+     * in -- every call site is inside `if (use_qtt ...)`, and g_tt cannot
+     * change mid-search, so it is never NULL here. Byte-identical output. */
     TTEntry cur = *t;
     uint64_t ck = cur.key_x ^ cur.d1 ^ cur.d2;
     int replace = (ck == key)
@@ -2608,6 +2614,16 @@ static inline int qs_sharpen_stand(int stand, int qs_sh_flag, int qs_sh_val)
     return stand;
 }
 
+/* FI-66: the PT-indexed piece array in apply_move requires pawns..kings
+ * contiguous and in PT order. Fail the BUILD, not a match, if that moves. */
+_Static_assert(offsetof(Board, kings) == offsetof(Board, pawns) + 5 * sizeof(uint64_t),
+               "FI-66 PT-indexed piece array needs pawns..kings contiguous in PT order");
+_Static_assert(offsetof(Board, knights) == offsetof(Board, pawns) + 1 * sizeof(uint64_t)
+            && offsetof(Board, bishops) == offsetof(Board, pawns) + 2 * sizeof(uint64_t)
+            && offsetof(Board, rooks)   == offsetof(Board, pawns) + 3 * sizeof(uint64_t)
+            && offsetof(Board, queens)  == offsetof(Board, pawns) + 4 * sizeof(uint64_t),
+               "FI-66 PT-indexed piece array needs exact PT order");
+
 static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
                    int hmc)
 {
@@ -2629,6 +2645,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
     uint64_t key = 0;
     uint32_t tt_move = 0;
     int use_qtt = g_use_tt && g_qs_tt && g_tt != NULL;
+    TTEntry* qslot = NULL;               /* FI-71: hoisted TT slot pointer */
     if (g_score_hyg) {
         if (!(b->pawns | b->rooks | b->queens) && insufficient_material(b))
             return draw_score(b);            /* (c) dead-drawn exchanges */
@@ -2647,8 +2664,9 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
     int qs_sh_flag = -1, qs_sh_val = 0;  /* FI-30(a): hit's flag+value */
     if (use_qtt) {
         if (!key) key = board_key(b);
+        qslot = &g_tt[key & TT_MASK];    /* FI-71 */
         TTEntry e;
-        if (tt_load(&g_tt[key & TT_MASK], key, &e)) {
+        if (tt_load(qslot, key, &e)) {
             tt_eval = TT_EVAL(e);
             if (g_use_nnue && TT_DEPTH(e) != 0)
                 tt_eval = TT_EVAL_NONE;  /* F49-B02: depth>=1 store = NN
@@ -2709,7 +2727,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         if (stand >= beta) {                         /* fail-soft stand-pat */
             if (has_legal_quiet(b) || gen_noisy(b, moves) > 0) {
                 if (use_qtt && !CS_UNWINDING())      /* P-44: cache the cutoff */
-                    qs_tt_store(key, stand, ply, 0, TT_LOWER, raw_stand, 0);
+                    qs_tt_store(qslot, key, stand, ply, 0, TT_LOWER, raw_stand, 0);
                 return stand;
             }
             return 0;                                /* stalemate: draw, not eval */
@@ -2732,7 +2750,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         stand = qs_sharpen_stand(stand, qs_sh_flag, qs_sh_val);   /* FB-40 */
         if (stand >= beta) {                         /* fail-soft stand-pat */
             if (use_qtt && !CS_UNWINDING())          /* P-44: cache the cutoff */
-                qs_tt_store(key, stand, ply, 0, TT_LOWER, raw_stand, 0);
+                qs_tt_store(qslot, key, stand, ply, 0, TT_LOWER, raw_stand, 0);
             return stand;
         }
         if (stand > alpha) alpha = stand;
@@ -2810,7 +2828,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
     if (use_qtt && !CS_UNWINDING()) {
         int flag = (best <= alpha_orig) ? TT_UPPER
                  : (best >= beta)       ? TT_LOWER : TT_EXACT;
-        qs_tt_store(key, best, ply, bm, flag,
+        qs_tt_store(qslot, key, best, ply, bm, flag,
                     in_chk ? TT_EVAL_NONE : raw_stand,   /* FI-03: RAW eval */
                     (g_qs_chk_d1 && in_chk) ? 1 : 0);    /* FI-52: depth-1 tag */
     }
