@@ -125,11 +125,11 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # quiet developing moves flip between depths without being a regression.
 # Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
 CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3"
-CE_LADDER = {                     # depth -> (nodes, score)  [v51: FI-56 root LMR ON -- re-measured 2026-07-18; the late-root reduced scouts reshape the whole tree (d14 -32% nodes vs the v50 ladder, scores drift at d11+). TT_BITS=23 (192 MB) unchanged]
+CE_LADDER = {                     # depth -> (nodes, score)  [v52: FI-24(a)+(b) null refinements ON -- re-measured 2026-07-21; no-double-null + eval-scaled R reshape the deep tree (d10-d12 scores drift, d12 +59% nodes as suppressed nulls hand work back to real search). TT_BITS=23 (192 MB) unchanged]
     1: (95, 126), 2: (180, 126), 3: (378, 126), 4: (921, 122),
-    5: (6110, 73), 6: (11726, 73), 7: (20446, 74), 8: (48581, 72),
-    9: (77104, 75), 10: (173683, 58), 11: (277259, 82), 12: (451299, 67),
-    13: (952414, 82), 14: (1421746, 79),
+    5: (6111, 73), 6: (11724, 73), 7: (20425, 74), 8: (48469, 72),
+    9: (81605, 75), 10: (162637, 53), 11: (290593, 53), 12: (717955, 58),
+    13: (1225434, 75), 14: (1716693, 97),
 }
 if os.path.exists("csearch.c"):
     try:
@@ -317,13 +317,14 @@ if os.path.exists("csearch.c"):
         # only when a sweep point is CONFIRMED/kept.
         ce._lib.set_null_move(2, 6)
         ce._lib.set_lmr_div(200)
-        # FI-24a/b null refinement batch: ARMED (thirty-first campaign vs
-        # Old Engine/51) but NOT yet confirmed -- v51 has both OFF, so the
-        # ladder pins them off here (LOAD-BEARING: class defaults are True
-        # for match play). Flip + re-pin CE_LADDER only on CONFIRM.
+        # FI-24a/b null refinement batch: CONFIRMED into v52 2026-07-21
+        # (pooled +6.63 +/-4.5 @12,000 games vs Old Engine/51, pooled
+        # GSPRT[0,4] LLR +4.533 ACCEPT -- the third SPRT accept). ON is
+        # the shipped default; pinned 1 so the v52 ladder below survives
+        # any future re-toggle experiment (load-bearing).
         try:
-            ce._lib.set_null_nodouble(0)
-            ce._lib.set_null_evalr(0)
+            ce._lib.set_null_nodouble(1)
+            ce._lib.set_null_evalr(1)
         except AttributeError:
             pass                       # pre-FI-24ab csearch.so
         # FI-06 root-move ordering is DORMANT (+2.26 null @10k vs Old
