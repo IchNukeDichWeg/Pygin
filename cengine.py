@@ -707,11 +707,18 @@ class Engine:
     # so no move is ever lost (deep sacs seen one iteration later at
     # worst) -- unlike the closed FI-18 pruning vein. The FI-04 history
     # nudge is quiet-gated in the same edit (butterfly history is
-    # quiet-only). ARMED for the twenty-ninth 50+0.20 A/B vs Old Engine/51
-    # on seed 51 -- solo slot, screen-then-pool. False = v51 node-exact.
-    # NOT correctness-class: revert on null. PENDING: 2k screen + paired
-    # matetrack (sac-mates are the exposure), then the uncapped 10k.
-    LMR_BADCAP = True
+    # quiet-only). SCREEN-KILLED 2026-07-21 (twenty-ninth candidate vs Old
+    # Engine/51, seed 51 -- the first screen on the nodes instrument,
+    # 2k @ --nodes 2M NPS-calibrated on the cheap server): -10.95 +/-15.3
+    # (48.43%, ptnml 40/281/427/206/46, pair ratio 0.79, norm -24.07).
+    # The earlier GCloud TIMED screen had read +2.78 +/-15.2 -- the two
+    # reads straddle null within joint noise; combined evidence
+    # null-to-negative on a +0-2 prior = no 10k. The FI-18 diagnosis
+    # ("these subtrees already fail low fast -- alpha-beta gets the skip
+    # for free") stands as the likely story. REVERTED to False (dormant,
+    # do-not-retry at this TC); mechanism kept, abi 21 stays; the FI-04
+    # quiet-gate fix inside the widened block survives (latent-bug value).
+    LMR_BADCAP = False
 
     # FI-15 NNUE (Phases 1-5 BUILT-DORMANT 2026-07-18): hybrid NN eval --
     # nn_eval replaces the HCE as negamax's static eval, qsearch stand-pat
