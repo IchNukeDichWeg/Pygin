@@ -2369,6 +2369,45 @@ void set_qs_chk_d1(int v) { g_qs_chk_d1 = v ? 1 : 0; }
 static int g_qs_evasion_cap = 0;
 void set_qs_evasion_cap(int v) { g_qs_evasion_cap = v < 0 ? 0 : v; }
 
+/* P-33 REVISIT (armed for the thirty-second campaign, vs Old Engine/52):
+ * singular extensions. The Python era rejected this at depth ~8 (null @d8,
+ * negative @d6) -- but singular is the classic technique whose value scales
+ * WITH depth, and the C core now searches ~19, so the old verdict is a
+ * measurement of a different engine (the FI-49 lesson read in reverse:
+ * there SF's rule needed SF's tree; here the tree finally resembles one).
+ *
+ * Mechanism (Stockfish-shaped, conservative): at a non-root node with a TT
+ * move whose entry is deep enough (TT_DEPTH >= depth - 3) and is a
+ * LOWER/EXACT non-mate bound, run a reduced zero-window verification
+ * search with that move EXCLUDED, at a lowered beta (tt_val - margin*depth
+ * /64). If every OTHER move fails below that bar, the TT move is singular
+ * and gets +1 ply.
+ *
+ * Threading: g_excl[ply] carries the excluded move for the verification
+ * search. Inside an excluded search the node MUST NOT (a) take a TT cutoff
+ * -- the stored entry describes the un-excluded node and would instantly
+ * return the very move being tested -- or (b) write the TT, which would
+ * poison the real node's entry with an exclusion-relative bound. Both are
+ * gated below. g_excl is per-thread and always restored, including on the
+ * unwind path.
+ *
+ * 0 = off = v52 node-exact. NOT correctness-class: revert on null. */
+static int g_singular = 0;
+void set_singular(int v) { g_singular = v ? 1 : 0; }
+static int g_se_min_depth = 8;      /* min depth to attempt the test */
+static int g_se_margin    = 64;     /* beta drop = margin * depth / 64 */
+static int g_se_budget    = 3;      /* max singular extensions per line --
+                                     * INDEPENDENT of the P-01 chk budget:
+                                     * sharing it starved the check
+                                     * extensions that find mates */
+void set_singular_params(int min_depth, int margin)
+{
+    g_se_min_depth = min_depth < 4 ? 4 : min_depth;
+    g_se_margin    = margin   < 1 ? 1 : margin;
+}
+void set_singular_budget(int v) { g_se_budget = v < 0 ? 0 : v; }
+static __thread uint32_t g_excl[CS_MAXPLY + 8];   /* 0 = no exclusion */
+
 /* FI-48 (armed for the twenty-fifth 50+0.20 A/B, vs Old Engine/49):
  * flag-aware TT replacement. All three same-key store sites are flag-blind,
  * so an equal-depth bound-only store (qsearch stand-pat LOWERs, unproven
@@ -2753,7 +2792,8 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
 }
 
 static int negamax(Board* b, int depth, int alpha, int beta, int ply,
-                   uint32_t prev12, int in_chk, int hmc, int chk, int srb)
+                   uint32_t prev12, int in_chk, int hmc, int chk, int srb,
+                   int seb)
 {
     g_nodes++;
     g_pv_len[ply] = 0;     /* PV-01: see qsearch -- every exit path must
@@ -2812,6 +2852,11 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         return g_qsearch ? qsearch(b, alpha, beta, ply, in_chk, hmc)
                          : eval_full_stm(b);
 
+    /* P-33: the move excluded at THIS node by a singular verification
+     * search (0 = normal search). Read once; the TT cutoff and the TT
+     * store below are both suppressed while it is set. */
+    uint32_t excluded = (ply < CS_MAXPLY + 8) ? g_excl[ply] : 0;
+
     /* --- TT probe -------------------------------------------------- */
     uint32_t tt_move = 0;
     int tt_eval = TT_EVAL_NONE;      /* FI-03: cached static eval, if any */
@@ -2848,7 +2893,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                             && tt_sh_val > -MATE_THRESH
                             && tt_sh_val < MATE_THRESH
                             && tt_sh_val >= beta) ? 1 : 0;
-            if (TT_DEPTH(e) >= depth + fh_extra
+            if (TT_DEPTH(e) >= depth + fh_extra && !excluded  /* P-33 */
                     && !(g_pv_exact && (beta - alpha) > 1)) {
                 int v = TT_VALUE(e);                /* ply-relative -> node */
                 if (v >= MATE_THRESH) v -= ply;
@@ -2861,7 +2906,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                     else if (TT_FLAG(e) == TT_UPPER && v < beta) beta = v;
                     if (alpha >= beta) return v;
                 }
-            } else if (g_tt_mate_cut
+            } else if (g_tt_mate_cut && !excluded             /* P-33 */
                        && !(g_pv_exact && (beta - alpha) > 1)) {
                 /* FI-54 probe arm: mate-range values cut regardless of
                  * stored depth -- a forced mate is depth-invariant. */
@@ -2951,7 +2996,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                 g_nn_acc[ply + 1] = g_nn_acc[ply];
             g_ctx[ply + 1] = 0;              /* Q-01: null = no context */
             int ns = -negamax(&c, depth - 1 - R, -beta, -beta + 1, ply + 1,
-                              0xFFFFFFFF, 0, 0, chk, srb);
+                              0xFFFFFFFF, 0, 0, chk, srb, seb);
             if (CS_UNWINDING()) return 0;            /* ns is garbage */
             if (ns >= beta) {
                 int verified = 1;
@@ -2960,7 +3005,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                      * no-null re-search at THIS node (same window). */
                     g_no_null = 1;
                     int vs = negamax(b, depth - 1 - R, beta - 1, beta, ply,
-                                     prev12, in_chk, hmc, chk, srb);
+                                     prev12, in_chk, hmc, chk, srb, seb);
                     g_no_null = 0;
                     if (CS_UNWINDING()) return 0;
                     if (vs < beta) verified = 0;     /* zugzwang mis-cut */
@@ -3055,6 +3100,29 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         order_moves(b, moves, n, ply, counter_key, tt_move, 1, msc);
     }
 
+    /* P-33: singular test -- is the TT move the ONLY playable move here?
+     * Run once per node, before the loop, and remember the verdict for the
+     * TT move's extension inside it. Skipped at the root (ply 0), inside
+     * an exclusion search (no recursion), and when the entry is too
+     * shallow / not a lower bound / mate-ranged. */
+    int se_extend = 0;
+    if (g_singular && tt_move && !excluded && ply > 0 && !in_chk
+            && depth >= g_se_min_depth
+            && tt_depth >= depth - 3
+            && (tt_sh_flag == TT_LOWER || tt_sh_flag == TT_EXACT)
+            && tt_sh_val > -MATE_THRESH && tt_sh_val < MATE_THRESH) {
+        int sbeta = tt_sh_val - (g_se_margin * depth) / 64;
+        int sdepth = (depth - 1) / 2;
+        if (sdepth >= 1 && sbeta > -MATE_THRESH) {
+            g_excl[ply] = tt_move;
+            int sv = negamax(b, sdepth, sbeta - 1, sbeta, ply, prev12,
+                             in_chk, hmc, chk, srb, seb);
+            g_excl[ply] = 0;             /* ALWAYS restore, unwind included */
+            if (CS_UNWINDING()) return 0;
+            if (sv < sbeta) se_extend = 1;   /* nothing else reaches the bar */
+        }
+    }
+
     int color = b->turn, best = -CS_INF;
     uint32_t best_move = 0;
     uint32_t quiets[256]; uint16_t quiets_ck[256]; int nq = 0;
@@ -3068,6 +3136,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             if (i >= n) break;
             m = pick_next(moves, msc, i, n);   /* FI-02.4 */
         }
+        if (excluded && (m & 0x7FFF) == excluded) continue;   /* P-33 */
         if (i == 0) best_move = m;
         int victim = (m >> MV_SHIFT_VICTIM) & 7;
         int mover  = (m >> MV_SHIFT_MOVER) & 7;
@@ -3111,9 +3180,16 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         /* P-01 check extension (never combines with LMR: R needs !gives_check)
          * + P-43 single-reply (node-level; can stack, but n==1 => one line). */
         int ext = (g_check_ext && gives_check && chk > 0) ? 1 : 0;
-        int nd = depth - 1 + ext + sr_ext;
+        /* P-33: the singular TT move gets its extra ply from its OWN
+         * budget (g_se_budget, threaded as seb) -- competing for the P-01
+         * chk budget starved the check extensions that find mates
+         * (measured: matetrack -34 found / -49 best). Independent budget
+         * keeps stacking bounded without taxing P-01. */
+        int se_ext = (se_extend && (m & 0x7FFF) == tt_move && seb > 0) ? 1 : 0;
+        int nd = depth - 1 + ext + sr_ext + se_ext;
         int child_chk = chk - ext;
         int child_srb = srb - sr_ext;
+        int child_seb = seb - se_ext;                /* P-33 budget */
 
         /* late-move reduction on quiet, late, non-checking moves */
         int R = 0;
@@ -3141,13 +3217,13 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         uint32_t cp = (ply + 1 < CS_MAXPLY) ? (uint32_t)fromto : 0xFFFFFFFF;
         int v;
         if (i == 0) {
-            v = -negamax(&c, nd, -beta, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb);
+            v = -negamax(&c, nd, -beta, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb, child_seb);
         } else {                                     /* PVS scout (reduced) */
-            v = -negamax(&c, nd - R, -alpha - 1, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb);
+            v = -negamax(&c, nd - R, -alpha - 1, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb, child_seb);
             if (R && v > alpha)                      /* reduced scout beat alpha */
-                v = -negamax(&c, nd, -alpha - 1, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb);
+                v = -negamax(&c, nd, -alpha - 1, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb, child_seb);
             if (v > alpha && v < beta)               /* full-window PV re-search */
-                v = -negamax(&c, nd, -beta, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb);
+                v = -negamax(&c, nd, -beta, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb, child_seb);
         }
         if (CS_UNWINDING()) return 0;                /* v is garbage: unwind */
         if (is_pv && v > alpha && v < beta)          /* PV-01: in-window best;
@@ -3384,7 +3460,7 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
         uint32_t cp = (uint32_t)((m & 63) << 6 | ((m >> 6) & 63));
         int v;
         if (i == 0) {
-            v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX);
+            v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX, g_se_budget);
         } else {
             /* FI-56: reduced zero-window scout for late quiet root moves;
              * a scout that beats alpha verifies at full depth before the
@@ -3396,11 +3472,11 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
                 R = g_lmr[depth < 64 ? depth : 63][i < 64 ? i : 63] / 2;
                 if (R > depth - 2) R = depth - 2;
             }
-            v = -negamax(&c, depth - 1 - R, -alpha - 1, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX);
+            v = -negamax(&c, depth - 1 - R, -alpha - 1, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX, g_se_budget);
             if (R && v > alpha && !g_abort && !(g_is_helper && g_hstop))
-                v = -negamax(&c, depth - 1, -alpha - 1, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX);
+                v = -negamax(&c, depth - 1, -alpha - 1, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX, g_se_budget);
             if (v > alpha && v < beta)
-                v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX);
+                v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX, g_se_budget);
         }
         if (g_abort || (g_is_helper && g_hstop))
             break;                                   /* v is garbage */
@@ -3593,7 +3669,8 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted, &second);
 }
 
-int csearch_abi(void) { return 23; }  /* 23 = FI-63 set_qs_evasion_cap (quiet check-evasion cap);
+int csearch_abi(void) { return 24; }  /* 24 = P-33 set_singular/set_singular_params (singular extensions);
+                                       * 23 = FI-63 set_qs_evasion_cap (quiet check-evasion cap);
                                        * 22 = FI-24ab set_null_nodouble/set_null_evalr;
                                        * 21 = FI-64 set_lmr_badcap (badcap LMR);
                                        * 20 = FI-55 set_iir_weak (IIR weak-evidence trigger);
