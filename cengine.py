@@ -799,6 +799,53 @@ class Engine:
     # only if qsearch evasion ordering changes materially.
     QS_EVASION_CAP = 0
 
+    # P-33 REVISIT: singular extensions. Rejected in the PYTHON era (null
+    # @depth 8, negative @depth 6) -- but that measured a depth-~8 engine,
+    # and singular is the classic technique whose value scales WITH depth;
+    # the C core now searches ~19. At a non-root node with a deep-enough
+    # TT move (TT_DEPTH >= depth-3, LOWER/EXACT, non-mate), a reduced
+    # zero-window search with that move EXCLUDED runs at a lowered beta;
+    # if every other move fails below it, the TT move is singular and gets
+    # +1 ply (spending from the P-01 check-extension budget, so stacking
+    # stays bounded). Inside an exclusion search the node takes no TT
+    # cutoff and writes no TT entry -- both would be exclusion-relative.
+    # ARMED for the thirty-second campaign vs Old Engine/52 (seed 52,
+    # nodes@1.75M) at the MEASURED point, not the textbook one. The
+    # spec-default 8/64 costs +57% nodes on the d11 bench and +25% at d16
+    # -- FI-49 died at +28%, so that config was never viable on a
+    # fixed-node instrument. Swept at d16 (the d11 bench is BLIND above
+    # min_depth 11 -- it reads 0% there because no such nodes exist, a
+    # measurement artifact worth remembering):
+    #   10/128 +25.0%, 12/128 +24.6%, 14/128 +13.4%, 14/192 -2.8%, 16 vacuous
+    # 14/192 is the point where the extensions pay for their own
+    # verification searches (fewer total nodes than baseline while still
+    # firing -- it differs from the off-run, unlike the vacuous 16). In
+    # game conditions (~1.75M nodes/move, depth ~17-19) nodes at depth
+    # >= 14 are a real population. False = v52 node-exact. NOT
+    # correctness-class: revert on null.
+    # CLOSED 2026-07-21 pre-A/B, on TWO independent matetrack failures --
+    # the Python-era verdict (null @d8, negative @d6) earns its second
+    # confirmation, now at depth ~19 where the "singular scales with depth"
+    # argument should have favored it. Run 1 (extension spending from the
+    # P-01 chk budget): ON 905/754 vs OFF 939/803 = -34 found / -49 best.
+    # Hypothesis: singular was starving the check extensions that find
+    # mates. Fix built (SE_BUDGET, an INDEPENDENT per-line cap threaded
+    # through negamax; cost -2.8% -> +1.8% nodes @d16). Run 2: ON 909/763
+    # vs OFF 943/807 = -34 / -44 -- essentially IDENTICAL damage, so the
+    # hypothesis was WRONG and the loss is intrinsic to extending the TT
+    # move here: in mate-bearing lines the mating move often is NOT the TT
+    # move, and the extra ply spent on the TT move is effort taken from it.
+    # Parameter sweeps recorded for the graveyard (d16, 3 positions):
+    # 10/128 +25.0%, 12/128 +24.6%, 14/128 +13.4%, 14/192 -2.8%, 16 vacuous;
+    # the spec-default 8/64 costs +57% on the d11 bench (FI-49 died at
+    # +28%). No screen spent. Mechanism kept in-tree at 0 (v52 node-exact,
+    # abi 24); do-not-retry at this TC without a materially different
+    # extension rule (e.g. extending on a non-TT-move criterion).
+    SINGULAR = False
+    SE_MIN_DEPTH = 14
+    SE_MARGIN = 192
+    SE_BUDGET = 3        # per-line cap, INDEPENDENT of CHECK_EXT_BUDGET
+
     # FI-15 NNUE (Phases 1-5 BUILT-DORMANT 2026-07-18): hybrid NN eval --
     # nn_eval replaces the HCE as negamax's static eval, qsearch stand-pat
     # stays HCE (the old MLP project's -203/-273 lesson), the FI-03 TT eval
@@ -867,9 +914,9 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (FI-63's set_qs_evasion_cap is abi 23) -- bump together with
+        # (P-33's set_singular/set_singular_params are abi 24) -- bump with
         # csearch_abi.
-        if lib.csearch_abi() < 23:
+        if lib.csearch_abi() < 24:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -911,7 +958,8 @@ class Engine:
               self.USE_NNUE, self.NNUE_FILE,
               self.IIR_WEAK, self.LMR_BADCAP,
               self.NULL_BASE, self.NULL_DIV, self.LMR_DIV,
-              self.NULL_NODOUBLE, self.NULL_EVALR, self.QS_EVASION_CAP)
+              self.NULL_NODOUBLE, self.NULL_EVALR, self.QS_EVASION_CAP,
+              self.SINGULAR, self.SE_MIN_DEPTH, self.SE_MARGIN, self.SE_BUDGET)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -1003,6 +1051,10 @@ class Engine:
         lib.set_null_nodouble(1 if self.NULL_NODOUBLE else 0)       # FI-24a
         lib.set_null_evalr(1 if self.NULL_EVALR else 0)             # FI-24b
         lib.set_qs_evasion_cap(int(self.QS_EVASION_CAP))            # FI-63
+        lib.set_singular(1 if self.SINGULAR else 0)                 # P-33
+        lib.set_singular_params(int(self.SE_MIN_DEPTH),
+                                int(self.SE_MARGIN))                # P-33
+        lib.set_singular_budget(int(self.SE_BUDGET))                # P-33
         # FB-04: entries scored under a PREVIOUS construction's eval params
         # would poison this one (the table is process-global and persistent).
         # First construction: the table is empty, reset is a no-op.
