@@ -27,7 +27,10 @@ The engine exists in two forms:
 
 - **Python engine:** ~**2440–2450 Elo** single-threaded (level with
   Stockfish 18 capped at UCI_Elo 2450, 2,500 games).
-- **C search core:** beat the Python engine **29–1–0** on arrival; the
+- **C search core:** unmeasurable against the Python engine — **1,815–0–40**
+  over 1,855 games at 50s+0.2 (2026-07-21, v52 tree; not one losing *or*
+  drawn pair). The arrival smoke match was 29–1–0; the gap is far outside
+  what Elo can express, so no rating is quoted. The
   C-era ledger has since added **≈ +215 Elo** of A/B-confirmed gains
   (v31 → v52 — IIR, TT persistence, check extensions, qsearch-TT, staged
   move generation, incremental Zobrist, TT prefetch, two TT-value
@@ -124,8 +127,8 @@ Regenerate the single-thread column with `python3 bench_progress.py`, the
   carries a figure. Never summed into a rating. The real anchor is ≈2442 by
   v25 (vs SF-2450).
 - **Bundled A/Bs** — v16+v17 vs v15 = **+69 ±16** ³; v22–24 vs v21 =
-  **+11.75 ±6.8** ²; v31 arrival = **29–1–0** smoke match, ≈+215 is
-  odds-derived, not an A/B ¹.
+  **+11.75 ±6.8** ²; v31 arrival = **29–1–0** smoke match (re-run on v52:
+  **1,815–0–40**, still unmeasurable), ≈+215 is odds-derived, not an A/B ¹.
 - **NPS 4 Threads** ⁶ — "—" for v1–24 (no reliable SMP: none before v19,
   fragile multi-process before v25). v25–30 = old multi-process SMP; v31+ =
   the C core's pthread Lazy-SMP, so the ~200k→millions jump at v30→v31 is
