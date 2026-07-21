@@ -37,7 +37,8 @@ ENGINE_1_PLAYS_FIRST = "white"          # "white" | "black"
 # --- Match length & parallelism --------------------------------------- #
 NUM_GAMES = 400       # TOTAL games (400 -> ~±35 Elo CI: enough to SEE a
                       # step on the rook-odds line, per the v30-era runs)
-N_WORKERS = 10        # parallel games (worker processes); 1 = sequential.
+N_WORKERS = 10        # parallel games (worker processes); 1 = sequential,
+                      # 0 = auto (cores - 1, same rule as match.py).
                       # Keep N_WORKERS * ENGINE_SMP <= CPU cores.
 
 # --- Opponent strength / engine threading (was env vars) --------------- #
@@ -140,6 +141,8 @@ def _apply_env_config():
     g = os.environ.get
     NUM_GAMES = int(g("ODDS_NUM_GAMES", NUM_GAMES))
     N_WORKERS = int(g("ODDS_WORKERS", N_WORKERS))
+    if N_WORKERS <= 0:                    # 0 / auto => all cores but one (match.py rule)
+        N_WORKERS = max(1, multiprocessing.cpu_count() - 1)
     STOCKFISH_ELO = int(g("STOCKFISH_ELO", STOCKFISH_ELO))
     ENGINE_SMP = int(g("CLAUDECHESS_SMP", ENGINE_SMP))
     ENGINE_1_PATH = g("ODDS_ENGINE1", ENGINE_1_PATH)
