@@ -85,6 +85,20 @@ def make_label_engine():
     return eng
 
 
+def random_book_fen(path, size, rng):
+    """One random line from a plain-FEN/EPD file in O(1) memory: seek to a
+    random byte offset, discard the partial line, read the next full one
+    (wraps to the start at EOF). Line-length bias is irrelevant here."""
+    with open(path, "rb") as f:
+        f.seek(rng.randrange(max(1, size)))
+        f.readline()                          # partial line
+        line = f.readline()
+        if not line:                          # hit EOF: wrap
+            f.seek(0)
+            line = f.readline()
+    return line.decode("ascii", "replace").strip()
+
+
 def cantwin_shaped(board, score_w):
     """F5-19: would the CW-01 clamp (or its horizon shadow) shape this
     label? Conservative: uses the SEARCH score's sign as the favored-side
@@ -124,14 +138,38 @@ def mopup_shaped(board, mopup_min):
     return abs(npm[chess.WHITE] - npm[chess.BLACK]) >= mopup_min
 
 
-def play_game(eng, rng, nodes, contempt, mopup_min):
-    """One self-play game; returns a list of RECORD_DTYPE rows."""
-    board = chess.Board()
-    for _ in range(rng.randint(LABEL_MIN_RANDOM_PLIES, LABEL_MAX_RANDOM_PLIES)):
-        moves = list(board.legal_moves)
-        if not moves:
+def play_game(eng, rng, nodes, contempt, mopup_min,
+              book=None, book_size=0, endgame=False, eg_men=14):
+    """One self-play game; returns a list of RECORD_DTYPE rows.
+
+    book: path to a plain-FEN/EPD file -- games start from a random line
+      (e.g. UHO exits, ~8-12 plies deep by design) instead of random plies.
+    endgame: endgame-harvest mode -- early win adjudication is DISABLED
+      (games run to their natural end, so real endgames are actually
+      reached; plain self-play under-samples them because decisive games
+      get adjudicated first) and only positions with <= eg_men total men
+      on the board are recorded.
+    """
+    if book:
+        board = None
+        for _ in range(10):                   # skip rare bad/terminal lines
+            try:
+                b = chess.Board(random_book_fen(book, book_size, rng))
+                if b.is_valid() and not b.is_game_over(claim_draw=True):
+                    board = b
+                    break
+            except ValueError:
+                continue
+        if board is None:
             return []
-        board.push(rng.choice(moves))
+    else:
+        board = chess.Board()
+        for _ in range(rng.randint(LABEL_MIN_RANDOM_PLIES,
+                                   LABEL_MAX_RANDOM_PLIES)):
+            moves = list(board.legal_moves)
+            if not moves:
+                return []
+            board.push(rng.choice(moves))
     if board.is_game_over(claim_draw=True):
         return []
 
@@ -141,6 +179,7 @@ def play_game(eng, rng, nodes, contempt, mopup_min):
     seen = set()
     streak = 0
     adjudicated = None
+    score_w = 0                    # defined even if the first move errors out
     while (not board.is_game_over(claim_draw=True)
            and len(board.move_stack) < LABEL_MAX_PLIES):
         lib.cs_tt_reset()              # cold TT: (near-)reproducible labels
@@ -165,7 +204,9 @@ def play_game(eng, rng, nodes, contempt, mopup_min):
                 and not (score_w in (0, contempt, -contempt)
                          and board.halfmove_clock >= 8)
                 and not cantwin_shaped(board, score_w)
-                and not mopup_shaped(board, mopup_min))
+                and not mopup_shaped(board, mopup_min)
+                and (not endgame
+                     or bin(board.occupied).count("1") <= eg_men))
         if keep:
             seen.add(tkey)
             lib.nnue_threats(*eng._bargs(board), tbuf)
@@ -186,30 +227,41 @@ def play_game(eng, rng, nodes, contempt, mopup_min):
             recs.append(r)
 
         board.push(mv)
-        if streak >= LABEL_ADJ_STREAK:
-            adjudicated = 1 if score_w > 0 else -1
-            break
+        if streak >= LABEL_ADJ_STREAK and not endgame:
+            adjudicated = 1 if score_w > 0 else -1   # (endgame mode plays
+            break                                    # on: the endgame IS
+                                                     # the harvest)
 
     if adjudicated is not None:
         result = adjudicated
     else:
         out = board.outcome(claim_draw=True)
-        result = (0 if out is None or out.winner is None
-                  else (1 if out.winner == chess.WHITE else -1))
+        if out is not None:
+            result = (0 if out.winner is None
+                      else (1 if out.winner == chess.WHITE else -1))
+        elif endgame and abs(score_w) >= LABEL_ADJ_CP:
+            result = 1 if score_w > 0 else -1   # ply-cap hit while clearly
+                                                # won: don't mislabel the
+                                                # WDL half as a draw
+        else:
+            result = 0
     for r in recs:
         r["result"] = result
     return recs
 
 
-def run_worker(shard_path, positions, nodes, seed):
+def run_worker(shard_path, positions, nodes, seed, book, endgame, eg_men):
     eng = make_label_engine()
     contempt = eng._py.CONTEMPT
     mopup_min = eng._py.MOPUP_MIN_ADV
     rng = random.Random(seed)
+    book_size = os.path.getsize(book) if book else 0
     rows = []
     games = 0
     while len(rows) < positions:
-        rows.extend(play_game(eng, rng, nodes, contempt, mopup_min))
+        rows.extend(play_game(eng, rng, nodes, contempt, mopup_min,
+                              book=book, book_size=book_size,
+                              endgame=endgame, eg_men=eg_men))
         games += 1
         if games % 20 == 0:
             print(f"[worker seed={seed}] {games} games, "
@@ -228,11 +280,23 @@ def main():
     ap.add_argument("--nodes", type=int, default=LABEL_NODES)
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--book", help="plain-FEN/EPD file: start games from a "
+                                   "random line (e.g. UHO_Lichess_4852_v1."
+                                   "epd) instead of random opening plies")
+    ap.add_argument("--endgame", action="store_true",
+                    help="endgame harvest: no early win adjudication, "
+                         "record only positions with <= --eg-men total men")
+    ap.add_argument("--eg-men", type=int, default=14)
     ap.add_argument("--shard", help=argparse.SUPPRESS)   # internal
     args = ap.parse_args()
+    if args.book:
+        args.book = os.path.abspath(args.book)
+        if not os.path.exists(args.book):
+            sys.exit(f"gen_data: book not found: {args.book}")
 
     if args.shard:                     # worker mode (fresh process = fresh
-        run_worker(args.shard, args.positions, args.nodes, args.seed)  # .so)
+        run_worker(args.shard, args.positions, args.nodes, args.seed,  # .so)
+                   args.book, args.endgame, args.eg_men)
         return
 
     per = (args.positions + args.workers - 1) // args.workers
@@ -244,7 +308,10 @@ def main():
         procs.append(subprocess.Popen(
             [sys.executable, os.path.abspath(__file__), args.out,
              "--shard", sp, "--positions", str(per),
-             "--nodes", str(args.nodes), "--seed", str(args.seed * 100003 + w)],
+             "--nodes", str(args.nodes), "--seed", str(args.seed * 100003 + w)]
+            + (["--book", args.book] if args.book else [])
+            + (["--endgame", "--eg-men", str(args.eg_men)]
+               if args.endgame else []),
             cwd=REPO_DIR))
     fails = sum(p.wait() != 0 for p in procs)
     if fails:
