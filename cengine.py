@@ -738,9 +738,29 @@ class Engine:
     # thesis, screen it only if the sweep exhausts better points.
     # (2, 6, 200) = v51 node-exact. NOT correctness-class: revert on null;
     # a kept point re-pins and the next point sweeps from there.
+    # POINT 1 VERDICT: NULL 2026-07-21 (thirtieth campaign, split 2k screen
+    # @ nodes 1.75M on two cheap servers, pooled): +0.69 (50.10%, ptnml
+    # 56/230/412/258/44, ratio 1.06, LLR -0.063 dead flat) -- LMR
+    # aggressiveness is measurably FLAT near the default at this
+    # resolution; reverted to 200, sweep advances to the next lever.
     NULL_BASE = 2
     NULL_DIV = 6
-    LMR_DIV = 170
+    LMR_DIV = 200
+
+    # FI-24(a)+(b): the null-move refinement batch, ARMED 2026-07-21 for
+    # the thirty-first campaign vs Old Engine/51 (nodes@1.75M standard).
+    # Two toggles, ONE campaign per the entry's pre-registration (same
+    # null-mechanism family -- the FI-30 batching precedent, not the
+    # FI-50/51/52 anti-pattern):
+    #  (a) NULL_NODOUBLE -- no null-after-null (prev12 sentinel): two
+    #      stand-pats in a row prove nothing and hide zugzwang 2 plies in.
+    #  (b) NULL_EVALR -- R += (prune_eval-beta)/200 capped +2: deep nulls
+    #      only at clearly-winning nodes; the shallow-null population is
+    #      untouched, so the measured NULL_BASE cliff cannot recur.
+    # Both False = v51 node-exact. NOT correctness-class: revert on null.
+    # PENDING: split screen @1.75M, then the split main tranche.
+    NULL_NODOUBLE = True
+    NULL_EVALR = True
 
     # FI-15 NNUE (Phases 1-5 BUILT-DORMANT 2026-07-18): hybrid NN eval --
     # nn_eval replaces the HCE as negamax's static eval, qsearch stand-pat
@@ -810,9 +830,9 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (FI-64's set_lmr_badcap is abi 21) -- bump together with
+        # (FI-24ab's set_null_nodouble/set_null_evalr are abi 22) -- bump with
         # csearch_abi.
-        if lib.csearch_abi() < 21:
+        if lib.csearch_abi() < 22:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -853,7 +873,8 @@ class Engine:
               self.TERM_STORE, self.TT_MATE_CUT, self.ROOT_LMR,
               self.USE_NNUE, self.NNUE_FILE,
               self.IIR_WEAK, self.LMR_BADCAP,
-              self.NULL_BASE, self.NULL_DIV, self.LMR_DIV)
+              self.NULL_BASE, self.NULL_DIV, self.LMR_DIV,
+              self.NULL_NODOUBLE, self.NULL_EVALR)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -942,6 +963,8 @@ class Engine:
         lib.set_delta_margin(200)
         lib.set_lmp(6, 10, 14)
         lib.set_lmr_div(int(self.LMR_DIV))                          # P-26 sweep
+        lib.set_null_nodouble(1 if self.NULL_NODOUBLE else 0)       # FI-24a
+        lib.set_null_evalr(1 if self.NULL_EVALR else 0)             # FI-24b
         # FB-04: entries scored under a PREVIOUS construction's eval params
         # would poison this one (the table is process-global and persistent).
         # First construction: the table is empty, reset is a no-op.

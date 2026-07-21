@@ -317,6 +317,15 @@ if os.path.exists("csearch.c"):
         # only when a sweep point is CONFIRMED/kept.
         ce._lib.set_null_move(2, 6)
         ce._lib.set_lmr_div(200)
+        # FI-24a/b null refinement batch: ARMED (thirty-first campaign vs
+        # Old Engine/51) but NOT yet confirmed -- v51 has both OFF, so the
+        # ladder pins them off here (LOAD-BEARING: class defaults are True
+        # for match play). Flip + re-pin CE_LADDER only on CONFIRM.
+        try:
+            ce._lib.set_null_nodouble(0)
+            ce._lib.set_null_evalr(0)
+        except AttributeError:
+            pass                       # pre-FI-24ab csearch.so
         # FI-06 root-move ordering is DORMANT (+2.26 null @10k vs Old
         # Engine/45, 2026-07-13 -- positive lean but CI covers zero, not
         # correctness); the default already reproduces v45, so this pin is

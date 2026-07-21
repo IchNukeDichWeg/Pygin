@@ -2089,6 +2089,23 @@ static int g_lmp[4]       = {0, 6, 10, 14};       /* by depth 1..3 */
 static int g_null_base    = 2;          /* null-move R = base + depth/div */
 static int g_null_div     = 6;
 static double g_lmr_div   = 2.0;        /* LMR = 0.75 + ln(d)*ln(m)/div */
+
+/* FI-24(a)+(b) (armed for the thirty-first 50+0.20-equivalent campaign, vs
+ * Old Engine/51 -- the null-move refinement batch, two toggles one campaign
+ * per the entry's pre-registration; both null-mechanism family):
+ *  (a) g_null_nodouble -- forbid null-after-null: the parent's null is
+ *      visible as the prev12==0xFFFFFFFF sentinel, and two stand-pats in a
+ *      row prove nothing new while hiding zugzwang two plies deep.
+ *  (b) g_null_evalr -- grow the null reduction R when the static eval is
+ *      far above beta (R += (prune_eval-beta)/200, capped +2): deep nulls
+ *      only at clearly-winning nodes, so the shallow-null population is
+ *      untouched (the measured NULL_BASE 2->3 cliff -- +17.5% fixed-depth
+ *      nodes from losing shallow null coverage -- cannot recur here).
+ * Both 0 = off = v51 node-exact. NOT correctness-class: revert on null. */
+static int g_null_nodouble = 0;
+void set_null_nodouble(int v) { g_null_nodouble = v ? 1 : 0; }
+static int g_null_evalr = 0;
+void set_null_evalr(int v) { g_null_evalr = v ? 1 : 0; }
 void set_rfp(int margin, int depth)  { g_rfp_margin = margin; g_rfp_depth = depth; }
 void set_fut_margin(int v)           { g_fut_margin = v; }
 void set_delta_margin(int v)         { g_delta_margin = v; }
@@ -2895,8 +2912,14 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         /* null-move pruning (hmc 0 below the null: repetition/50-move
          * cannot be tracked across a non-move, so disable them there) */
         if (depth >= 3 && prune_eval >= beta && has_non_pawn(b, b->turn)
+            && !(g_null_nodouble && prev12 == 0xFFFFFFFF)   /* FI-24(a) */
             && !(g_cb2 && g_no_null)) {      /* CB-02(c): verify subtree */
             int R = g_null_base + depth / g_null_div;
+            if (g_null_evalr) {              /* FI-24(b): eval-scaled R */
+                int x = (prune_eval - beta) / 200;
+                if (x > 2) x = 2;
+                if (x > 0) R += x;
+            }
             Board c = *b; make_null(&c);
             if (g_use_nnue)                  /* FI-15: null moves no pieces --
                                               * propagate the slot; nn_eval
@@ -3546,7 +3569,8 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted, &second);
 }
 
-int csearch_abi(void) { return 21; }  /* 21 = FI-64 set_lmr_badcap (badcap LMR);
+int csearch_abi(void) { return 22; }  /* 22 = FI-24ab set_null_nodouble/set_null_evalr;
+                                       * 21 = FI-64 set_lmr_badcap (badcap LMR);
                                        * 20 = FI-55 set_iir_weak (IIR weak-evidence trigger);
                                        * 19 = FI-15 NNUE build-out (set_use_nnue/
                                        * nnue_load/nnue_ready/set_nnue_verify/
