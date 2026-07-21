@@ -342,10 +342,9 @@ if os.path.exists("csearch.c"):
             ce._lib.set_singular(0)
         except AttributeError:
             pass                       # pre-P-33 csearch.so
-        # FI-59/FI-60 ordering-history batch: ARMED (thirty-second campaign
-        # vs Old Engine/52) but NOT yet confirmed -- v52 has both OFF, so
-        # the ladder pins them off (LOAD-BEARING: class defaults are True
-        # for match play). Flip + re-pin CE_LADDER only on CONFIRM.
+        # FI-59/FI-60 ordering-history batch: FI-59 SCREEN-KILLED
+        # 2026-07-21 (-5.21 pooled @2k, no tranche spent); FI-60 parked
+        # pre-arm (+27.3% nodes). Both default False -- belt-and-braces.
         try:
             ce._lib.set_killer_inherit(0)
             ce._lib.set_quiet_malus_all(0)
