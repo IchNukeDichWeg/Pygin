@@ -310,6 +310,13 @@ if os.path.exists("csearch.c"):
             ce._lib.set_lmr_badcap(0)
         except AttributeError:
             pass                       # pre-FI-64 csearch.so
+        # P-26 sweep point 1 (NULL_BASE 2->3): ARMED (thirtieth campaign vs
+        # Old Engine/51) but NOT yet confirmed -- v51 is (2,6,200), so the
+        # ladder pins the v51 values here (LOAD-BEARING: cengine's class
+        # defaults carry the armed point for match play). Re-pin CE_LADDER
+        # only when a sweep point is CONFIRMED/kept.
+        ce._lib.set_null_move(2, 6)
+        ce._lib.set_lmr_div(200)
         # FI-06 root-move ordering is DORMANT (+2.26 null @10k vs Old
         # Engine/45, 2026-07-13 -- positive lean but CI covers zero, not
         # correctness); the default already reproduces v45, so this pin is

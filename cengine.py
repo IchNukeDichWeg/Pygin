@@ -720,6 +720,28 @@ class Engine:
     # quiet-gate fix inside the widened block survives (latent-bug value).
     LMR_BADCAP = False
 
+    # P-26 selectivity spins as VISIBLE class attrs (previously hardcoded in
+    # the _sync_c_params push below; exposing them is the sweep's precondition
+    # -- house rule: no hidden values, a candidate is an attr change here).
+    # SWEEP POINT 1 ARMED 2026-07-21 (thirtieth campaign vs Old Engine/51,
+    # the selectivity lane's zero-code opener): LMR_DIV 200 -> 170, i.e.
+    # every LMR reduction scales by ~1.18 (R = 0.75 + ln(d)ln(m)/1.70).
+    # Fixed-depth engagement is the depth-thesis direction: bench
+    # 1,083,772 -> 965,336 (-10.9%; 185 read -4.9%, 150 -12.8% and
+    # flattening -- 170 is the knee). Known exposure: over-reduction of
+    # late quiets (tactical misses) -- paired matetrack is the gate, and
+    # the interior-reduction 0-for-2 record (FI-55/64) is priced in: this
+    # scales the CONFIRMED-good existing reduction structure rather than
+    # adding new reduction sites. NULL_BASE 2->3 was measured and PARKED:
+    # +17.5% fixed-depth nodes (R+1 pushes shallow nulls below the child-
+    # depth floor, losing null pruning where the tree is widest) -- anti-
+    # thesis, screen it only if the sweep exhausts better points.
+    # (2, 6, 200) = v51 node-exact. NOT correctness-class: revert on null;
+    # a kept point re-pins and the next point sweeps from there.
+    NULL_BASE = 2
+    NULL_DIV = 6
+    LMR_DIV = 170
+
     # FI-15 NNUE (Phases 1-5 BUILT-DORMANT 2026-07-18): hybrid NN eval --
     # nn_eval replaces the HCE as negamax's static eval, qsearch stand-pat
     # stays HCE (the old MLP project's -203/-273 lesson), the FI-03 TT eval
@@ -830,7 +852,8 @@ class Engine:
               self.TT_KEEP_EXACT, self.TT_FH_TIGHT, self.TT_R50,
               self.TERM_STORE, self.TT_MATE_CUT, self.ROOT_LMR,
               self.USE_NNUE, self.NNUE_FILE,
-              self.IIR_WEAK, self.LMR_BADCAP)
+              self.IIR_WEAK, self.LMR_BADCAP,
+              self.NULL_BASE, self.NULL_DIV, self.LMR_DIV)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -914,11 +937,11 @@ class Engine:
         # TODAY; a drifted default or stale .so now fails the ladder instead
         # of silently changing every non-UCI campaign).
         lib.set_rfp(80, 6)
-        lib.set_null_move(2, 6)
+        lib.set_null_move(int(self.NULL_BASE), int(self.NULL_DIV))  # P-26 sweep
         lib.set_fut_margin(150)
         lib.set_delta_margin(200)
         lib.set_lmp(6, 10, 14)
-        lib.set_lmr_div(200)
+        lib.set_lmr_div(int(self.LMR_DIV))                          # P-26 sweep
         # FB-04: entries scored under a PREVIOUS construction's eval params
         # would poison this one (the table is process-global and persistent).
         # First construction: the table is empty, reset is a no-op.
