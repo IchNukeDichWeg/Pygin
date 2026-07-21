@@ -334,6 +334,14 @@ if os.path.exists("csearch.c"):
             ce._lib.set_qs_evasion_cap(0)
         except AttributeError:
             pass                       # pre-FI-63 csearch.so
+        # P-33 singular extensions: CLOSED 2026-07-21 pre-A/B on two
+        # independent matetrack failures (-34 found mates both times, with
+        # and without an independent extension budget). Default False, so
+        # this pin is belt-and-braces.
+        try:
+            ce._lib.set_singular(0)
+        except AttributeError:
+            pass                       # pre-P-33 csearch.so
         # FI-06 root-move ordering is DORMANT (+2.26 null @10k vs Old
         # Engine/45, 2026-07-13 -- positive lean but CI covers zero, not
         # correctness); the default already reproduces v45, so this pin is
