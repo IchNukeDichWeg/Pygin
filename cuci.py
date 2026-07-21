@@ -349,7 +349,8 @@ def main():
     # drifts, the first setoption would otherwise pair a stale shadow with it.
     engine.premove_on = False                # PM-01 (opt-in)
     engine._rfp_margin, engine._rfp_depth = 80, 6
-    engine._null_base, engine._null_div = 2, 6
+    engine._null_base = int(engine.NULL_BASE)   # class attr = the
+    engine._null_div = int(engine.NULL_DIV)     # armed/swept value
     engine._lib.set_rfp(engine._rfp_margin, engine._rfp_depth)
     engine._lib.set_null_move(engine._null_base, engine._null_div)
     board = chess.Board()
