@@ -776,6 +776,29 @@ class Engine:
     NULL_NODOUBLE = True
     NULL_EVALR = True
 
+    # FI-63: SF-style quietCheckEvasions -- in-check qsearch nodes are the
+    # last node population with ZERO pruning; after QS_EVASION_CAP
+    # fully-searched quiet evasions the rest are skipped (captures and
+    # promotion evasions ALWAYS searched), never while the node still reads
+    # mated (best <= -MATE_THRESH), so a mate can't be concluded from a
+    # pruned set. Known unsoundness, delta-pruning class: a capped fail-low
+    # node stores TT_UPPER at the searched best -- a wrong-way bound if a
+    # skipped evasion was better, which the TT-quality machinery (P-44/
+    # FI-30 sharpening) then reads; paired matetrack is the PRIMARY gate.
+    # CLOSED AS A DEAD GATE 2026-07-21, pre-A/B (FI-48 precedent, second
+    # of its class): the feature has NO useful operating point. Cap sweep
+    # at fixed depth -- 2: 1,163,657 nodes (+10.5%!), 3: +0.5%, 4: +0.3%,
+    # 6: ~0 (vacuous). At the spec's armed value it ENGAGES but costs a
+    # tenth of the tree (the named wrong-way TT_UPPER mis-bounding forcing
+    # re-search upstream); at cap>=3 it barely fires at all, because
+    # in-check qsearch nodes rarely hold more than two quiet evasions. And
+    # the PRIMARY gate failed: paired matetrack ON 930/802 vs OFF 948/811
+    # (-18 found, -9 best) -- the skipped-saving-evasion mode is real, not
+    # theoretical. Against an entry priced +0-1 Elo, no screen is
+    # warranted. Mechanism kept at 0 (v52 node-exact, abi 23); re-measure
+    # only if qsearch evasion ordering changes materially.
+    QS_EVASION_CAP = 0
+
     # FI-15 NNUE (Phases 1-5 BUILT-DORMANT 2026-07-18): hybrid NN eval --
     # nn_eval replaces the HCE as negamax's static eval, qsearch stand-pat
     # stays HCE (the old MLP project's -203/-273 lesson), the FI-03 TT eval
@@ -844,9 +867,9 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (FI-24ab's set_null_nodouble/set_null_evalr are abi 22) -- bump with
+        # (FI-63's set_qs_evasion_cap is abi 23) -- bump together with
         # csearch_abi.
-        if lib.csearch_abi() < 22:
+        if lib.csearch_abi() < 23:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -888,7 +911,7 @@ class Engine:
               self.USE_NNUE, self.NNUE_FILE,
               self.IIR_WEAK, self.LMR_BADCAP,
               self.NULL_BASE, self.NULL_DIV, self.LMR_DIV,
-              self.NULL_NODOUBLE, self.NULL_EVALR)
+              self.NULL_NODOUBLE, self.NULL_EVALR, self.QS_EVASION_CAP)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -979,6 +1002,7 @@ class Engine:
         lib.set_lmr_div(int(self.LMR_DIV))                          # P-26 sweep
         lib.set_null_nodouble(1 if self.NULL_NODOUBLE else 0)       # FI-24a
         lib.set_null_evalr(1 if self.NULL_EVALR else 0)             # FI-24b
+        lib.set_qs_evasion_cap(int(self.QS_EVASION_CAP))            # FI-63
         # FB-04: entries scored under a PREVIOUS construction's eval params
         # would poison this one (the table is process-global and persistent).
         # First construction: the table is empty, reset is a no-op.

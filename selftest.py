@@ -327,6 +327,13 @@ if os.path.exists("csearch.c"):
             ce._lib.set_null_evalr(1)
         except AttributeError:
             pass                       # pre-FI-24ab csearch.so
+        # FI-63 quiet check-evasion cap: CLOSED AS DEAD GATE 2026-07-21
+        # pre-A/B (harmful at cap 2 -- +10.5% nodes + matetrack -18 mates;
+        # vacuous at cap>=3). Default 0, so this pin is belt-and-braces.
+        try:
+            ce._lib.set_qs_evasion_cap(0)
+        except AttributeError:
+            pass                       # pre-FI-63 csearch.so
         # FI-06 root-move ordering is DORMANT (+2.26 null @10k vs Old
         # Engine/45, 2026-07-13 -- positive lean but CI covers zero, not
         # correctness); the default already reproduces v45, so this pin is
