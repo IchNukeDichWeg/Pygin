@@ -52,6 +52,7 @@ import os
 import random
 import subprocess
 import sys
+import time
 
 import numpy as np
 
@@ -267,8 +268,13 @@ def run_worker(shard_path, positions, nodes, seed, book, endgame, eg_men):
                               endgame=endgame, eg_men=eg_men))
         games += 1
         if games % 20 == 0:
-            print(f"[worker seed={seed}] {games} games, "
-                  f"{len(rows)}/{positions} positions", flush=True)
+            # progress beacon for the parent's aggregate ETA line (tiny
+            # atomic-enough single write; parent polls, never blocks)
+            try:
+                with open(shard_path + ".progress", "w") as pf:
+                    pf.write(str(min(len(rows), positions)))
+            except OSError:
+                pass
     arr = np.stack(rows[:positions]) if rows else \
         np.zeros(0, dtype=RECORD_DTYPE)
     write_pygdata(shard_path, arr)
@@ -316,6 +322,28 @@ def main():
             + (["--endgame", "--eg-men", str(args.eg_men)]
                if args.endgame else []),
             cwd=REPO_DIR))
+
+    # aggregate progress + ETA, one plain line per interval -- survives
+    # nohup/tail -f (match.py's in-place bar is TTY-gated and would not).
+    t0 = time.time()
+    target = per * args.workers
+    while any(p.poll() is None for p in procs):
+        time.sleep(30)
+        done = 0
+        for sp in shards:
+            try:
+                with open(sp + ".progress") as pf:
+                    done += int(pf.read().strip() or 0)
+            except (OSError, ValueError):
+                pass
+        elapsed = time.time() - t0
+        rate = done / elapsed if elapsed > 0 else 0
+        eta = (target - done) / rate if rate > 0 else 0
+        print(f"progress: {done:,}/{target:,} positions "
+              f"({100.0 * done / max(1, target):.1f}%)  "
+              f"rate {rate:,.0f}/s  elapsed {elapsed/3600:.2f}h  "
+              f"ETA {eta/3600:.2f}h", flush=True)
+
     fails = sum(p.wait() != 0 for p in procs)
     if fails:
         sys.exit(f"gen_data: {fails} worker(s) failed; shards kept for "
@@ -323,6 +351,10 @@ def main():
     total = merge_pygdata(args.out, shards)
     for sp in shards:
         os.remove(sp)
+        try:
+            os.remove(sp + ".progress")
+        except OSError:
+            pass
     print(f"gen_data: {total} positions -> {args.out}")
 
 
