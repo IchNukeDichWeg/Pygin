@@ -685,6 +685,8 @@ def main():
                     f" qs_evasion_cap={engine.QS_EVASION_CAP}"
                     f" singular={int(engine.SINGULAR)}"
                     f" se={engine.SE_MIN_DEPTH}/{engine.SE_MARGIN}"
+                    f" killer_inherit={int(engine.KILLER_INHERIT)}"
+                    f" quiet_malus_all={int(engine.QUIET_MALUS_ALL)}"
                     f" use_nnue={int(engine.USE_NNUE)}"
                     f" king_shelter={int(engine.USE_KING_SHELTER)}"
                     f" tt_keep_warm={int(engine.TT_KEEP_WARM)}"
