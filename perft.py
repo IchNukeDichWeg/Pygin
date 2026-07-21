@@ -89,7 +89,7 @@ def main():
                   + (f"  [{dt:.2f}s]" if dt >= 0.1 else ""))
     nps = total_nodes / total_t if total_t > 0 else 0
     print(f"\n{'ALL PASS' if not failed else f'{failed} FAILURE(S)'} -- "
-          f"{total_nodes:,} nodes in {total_t:.2f}s ({nps/1e6:.1f}M nps)")
+          f"{total_nodes:,} nodes in {total_t:.2f}s ({nps/1e6:.2f}M nps)")
     sys.exit(1 if failed else 0)
 
 
