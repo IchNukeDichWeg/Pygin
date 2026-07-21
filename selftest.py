@@ -302,10 +302,10 @@ if os.path.exists("csearch.c"):
             ce._lib.set_iir_weak(0)
         except AttributeError:
             pass                       # pre-FI-55 csearch.so
-        # FI-64 badcap LMR: ARMED (twenty-ninth A/B vs Old Engine/51) but
-        # NOT yet confirmed -- v51 has it OFF, so the ladder pins it off
-        # here (LOAD-BEARING: cengine's class default is True for match
-        # play). Flip to 1 + re-pin CE_LADDER only on CONFIRM.
+        # FI-64 badcap LMR: SCREEN-KILLED 2026-07-21 (-10.95 +/-15.3 @2k
+        # nodes@2M vs Old Engine/51; GCloud timed screen had read +2.78 --
+        # combined null-to-negative, no 10k spent). Default False, so this
+        # pin is belt-and-braces.
         try:
             ce._lib.set_lmr_badcap(0)
         except AttributeError:
