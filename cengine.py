@@ -87,7 +87,15 @@ verdict 9,343 games: **+11.12 +/-5.3** (51.60%, ptnml 220/996/1988/1173/
 282, pair ratio 1.20, pooled GSPRT[0,4] LLR +4.549) -- the biggest
 single-feature gain since FI-25. Matetrack had passed strongly positive
 (924/794 vs 896/769). Snapshotted Old Engine/51; campaigns now run vs Old
-Engine/51 on SUBSET_SEED 51. Armed candidate: none pinned -- the
+Engine/51 on SUBSET_SEED 51. v52 = v51 + FI-24(a)+(b), the null-move
+refinement batch (NULL_NODOUBLE: no null-after-null via the prev12
+sentinel; NULL_EVALR: R += (prune_eval-beta)/200 capped +2 -- deep nulls
+only at clearly-winning nodes): CONFIRMED 2026-07-21 (thirty-first
+campaign vs Old Engine/51, nodes@1.75M): pooled 12,000 games **+6.63
++/-4.5**, pooled GSPRT[0,4] LLR +4.533 ACCEPT -- the third SPRT accept,
+and the first verdict confirmed on the nodes instrument. Snapshotted Old
+Engine/52; campaigns now run vs Old Engine/52 on SUBSET_SEED 52. Also in
+this tree: real UCI pondering (go ponder/ponderhit, host layer). Armed candidate: none pinned -- the
 search/pruning lane continues (R5: FI-57, FI-58/59/60 killers-malus
 batch, FI-61-64, FI-55, FI-24a/b). FI-15 NNUE Phases 1-5
 BUILT-DORMANT 2026-07-18 (abi 19): the full NN-eval infrastructure --
@@ -757,8 +765,14 @@ class Engine:
     #  (b) NULL_EVALR -- R += (prune_eval-beta)/200 capped +2: deep nulls
     #      only at clearly-winning nodes; the shallow-null population is
     #      untouched, so the measured NULL_BASE cliff cannot recur.
-    # Both False = v51 node-exact. NOT correctness-class: revert on null.
-    # PENDING: split screen @1.75M, then the split main tranche.
+    # Both False = v51 node-exact. CONFIRMED => v52 2026-07-21 (thirty-first
+    # campaign vs Old Engine/51, nodes@1.75M NPS-calibrated, split across two
+    # cheap servers): split 2k screen +15.82 pooled (LLR +1.403), then two
+    # 5k tranche halves (+4.79 / +10.84); POOLED 12,000 games **+6.63 +/-4.5**
+    # (50.95%, ptnml 257/1376/2490/1558/319, pair ratio 1.15, pooled
+    # GSPRT[0,4] LLR **+4.533 ACCEPT**) -- the C era's THIRD SPRT accept and
+    # the first campaign confirmed on the nodes instrument. Owes the
+    # one-time timed cross-check (instrument validation, pre-registered).
     NULL_NODOUBLE = True
     NULL_EVALR = True
 
