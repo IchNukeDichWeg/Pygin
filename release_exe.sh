@@ -26,6 +26,17 @@ Drop into any UCI GUI or lichess-bot; no Python or repo needed.
 Options: Hash, Threads, OwnBook, UseTB, Move Overhead (+ tuning spins).
 Version details: engine.py version history / DESIGN_c_search_core.md.}"
 
+# Append the GitHub compare link, like the auto-generated notes do. PREV is
+# the highest existing vN tag below this one, so a skipped version still
+# links to something real. `gh release create` creates the tag itself.
+REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo IchNukeDichWeg/Pygin)"
+PREV="$(git tag --list 'v[0-9]*' | sed 's/^v//' | sort -n | awk -v v="$V" '$1 < v' | tail -1)"
+if [ -n "$PREV" ]; then
+    NOTES="${NOTES}
+
+**Full Changelog**: https://github.com/${REPO}/compare/v${PREV}...v${V}"
+fi
+
 if gh release view "v${V}" >/dev/null 2>&1; then
     gh release upload "v${V}" "$ASSET" THIRD_PARTY_LICENSES.md --clobber
     echo "uploaded $ASSET + THIRD_PARTY_LICENSES.md to existing release v${V}"
