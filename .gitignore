@@ -174,3 +174,9 @@ fetch_gg.py
 
 # NNUE personal operating guide (local-only; NNUE/README.md is the tracked doc)
 nnue_readme.md
+
+# Texel tuning artefacts (texel.py itself is tracked): the extracted position
+# set is 75 MB of derived data, and the tuned engine is a candidate to A/B,
+# not a release -- a confirmed tune lands in engine.py by hand.
+texel_positions.npy
+engine_tuned.py
