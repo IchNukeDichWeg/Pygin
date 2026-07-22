@@ -132,8 +132,9 @@ def board_phase(board):
 #     lopsided 29-1-0 cengine-vs-engine gate log (~700 Elo gap).
 #   - Odds logs, " copy" duplicates and Stockfish logs are excluded above/
 #     below regardless (SF scores are a different eval scale anyway).
-# ERA CUTOFF (2026-07-22, v53). The WDL model maps THIS engine's reported cp
-# to an outcome probability, so every sample must come from ONE eval scale.
+# ERA CUTOFF -- OPT-IN, via --min-era / --cengine-since. The WDL model maps
+# THIS engine's reported cp to an outcome probability, so in principle every
+# sample should come from ONE eval scale.
 # v53 (the Texel retune) moved the scale materially -- MG minors and rooks
 # came down ~10% (N 353->307, R 489->443) -- so a v52-era cp and a v53-era cp
 # of the same number no longer describe the same position. Mixing eras blurs
@@ -147,11 +148,16 @@ def board_phase(board):
 #     CENGINE_MIN_DATE -- without it the entire v52 corpus walks back in
 #     through the side door.
 #
-# Expect an EMPTY corpus until v53-era campaigns have run: today's v53 logs
-# are cengine-vs-engine52, and engine52 is now both a different eval scale
-# AND ~37 Elo away, so those files fail near_equal_pair on both counts. The
-# refit genuinely waits for v53-vs-v53-candidate campaigns.
-CENGINE_MIN_DATE = "2026-07-22"
+# The DEFAULT stays the full C-era corpus (31+, no date gate), because
+# `--min-era 53` currently selects ZERO of 197 log files -- v53 shipped
+# today, and its own campaign logs are cengine-vs-engine52, which fail
+# near_equal_pair anyway now that the two are ~37 Elo apart. Refitting on
+# the v52-era corpus is strictly better than having no fresh fit at all:
+# v53's scale shift is ~10% in the middlegame, and it biases adjudication
+# in the CONSERVATIVE direction (v53 reports smaller cp, so the 99%-win
+# threshold is reached later, never sooner). Switch the default to 53 once
+# v53-vs-v53-candidate campaigns have filled the corpus.
+CENGINE_MIN_DATE = None
 _DATE_RE = re.compile(r"_(\d{4}-\d{2}-\d{2})_")
 
 NEAR_EQUAL_EXTRA = {
@@ -160,7 +166,7 @@ NEAR_EQUAL_EXTRA = {
                         # contemporary cengine only -- near-equal like it
 }
 _BASE_NUM_RE = re.compile(r"^engine(\d+)$")
-_MIN_C_ERA_SNAPSHOT = 53
+_MIN_C_ERA_SNAPSHOT = 31
 
 
 def _base_num(base):
@@ -178,6 +184,8 @@ def _side_usable(base, path=None):
     if base in NEAR_EQUAL_EXTRA:
         # Era-gate the dev build by the log's own date (see CENGINE_MIN_DATE).
         # No date in the name -> refuse: an unknown era is not a safe one.
+        if CENGINE_MIN_DATE is None:
+            return True
         d = _log_date(path)
         return d is not None and d >= CENGINE_MIN_DATE
     n = _base_num(base)
@@ -525,8 +533,18 @@ def wdl(cp, phase):
 #  Main
 # ====================================================================== #
 def main():
+    global _MIN_C_ERA_SNAPSHOT, CENGINE_MIN_DATE
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--min-era", type=int, default=None,
+                    help="minimum engine<N> snapshot to accept (default "
+                         "%d = the whole C era; pass 53 to restrict to the "
+                         "v53 eval scale once those logs exist)"
+                         % _MIN_C_ERA_SNAPSHOT)
+    ap.add_argument("--cengine-since", default=None, metavar="YYYY-MM-DD",
+                    help="also require dev-build ('cengine') logs to be dated "
+                         "on/after this, since the name alone cannot tell "
+                         "one eval era from another (default: no date gate)")
     ap.add_argument("--extract-only", action="store_true",
                     help="only extract + write the training CSV, skip fitting")
     ap.add_argument("--fit-only", action="store_true",
@@ -534,6 +552,13 @@ def main():
     ap.add_argument("--data-file", default=DATA_CSV,
                     help=f"CSV path for extracted samples (default: {DATA_CSV})")
     args = ap.parse_args()
+    if args.min_era is not None:
+        _MIN_C_ERA_SNAPSHOT = args.min_era
+    if args.cengine_since is not None:
+        CENGINE_MIN_DATE = args.cengine_since
+    print(f"Corpus gate: engine<N> >= {_MIN_C_ERA_SNAPSHOT}"
+          + (f", cengine logs on/after {CENGINE_MIN_DATE}"
+             if CENGINE_MIN_DATE else ", no cengine date gate"))
 
     if args.fit_only:
         if not os.path.exists(args.data_file):
