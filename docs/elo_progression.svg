@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 300" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+<defs><linearGradient id="g3fb950" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3fb950" stop-opacity="0.28"/><stop offset="1" stop-color="#3fb950" stop-opacity="0"/></linearGradient></defs>
+<text x="58" y="24" fill="#8b949e" font-size="15" font-weight="700">Cumulative A/B Elo</text>
+<text x="738" y="24" fill="#8b949e" font-size="12" text-anchor="end">vs v31 baseline</text>
+<line x1="58" y1="266.0" x2="738" y2="266.0" stroke="#8b949e33"/>
+<text x="50" y="270.0" fill="#8b949e" font-size="11" text-anchor="end">+0</text>
+<line x1="58" y1="210.5" x2="738" y2="210.5" stroke="#8b949e33"/>
+<text x="50" y="214.5" fill="#8b949e" font-size="11" text-anchor="end">+70</text>
+<line x1="58" y1="155.0" x2="738" y2="155.0" stroke="#8b949e33"/>
+<text x="50" y="159.0" fill="#8b949e" font-size="11" text-anchor="end">+140</text>
+<line x1="58" y1="99.5" x2="738" y2="99.5" stroke="#8b949e33"/>
+<text x="50" y="103.5" fill="#8b949e" font-size="11" text-anchor="end">+211</text>
+<line x1="58" y1="44.0" x2="738" y2="44.0" stroke="#8b949e33"/>
+<text x="50" y="48.0" fill="#8b949e" font-size="11" text-anchor="end">+281</text>
+<text x="58.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v31</text>
+<text x="181.6" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v35</text>
+<text x="336.2" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v40</text>
+<text x="490.7" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v45</text>
+<text x="645.3" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v50</text>
+<text x="738.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v53</text>
+<path d="M58.0,266.0 L58.0,266.0 L88.9,260.2 L119.8,241.6 L150.7,236.2 L181.6,179.3 L212.5,159.8 L243.5,159.7 L274.4,158.6 L305.3,151.6 L336.2,148.2 L367.1,150.5 L398.0,147.9 L428.9,143.8 L459.8,133.3 L490.7,122.6 L521.6,117.9 L552.5,115.4 L583.5,111.7 L614.4,110.9 L645.3,109.6 L676.2,100.8 L707.1,95.6 L738.0,65.9 L738.0,266.0 Z" fill="url(#g3fb950)"/>
+<polyline points="58.0,266.0 88.9,260.2 119.8,241.6 150.7,236.2 181.6,179.3 212.5,159.8 243.5,159.7 274.4,158.6 305.3,151.6 336.2,148.2 367.1,150.5 398.0,147.9 428.9,143.8 459.8,133.3 490.7,122.6 521.6,117.9 552.5,115.4 583.5,111.7 614.4,110.9 645.3,109.6 676.2,100.8 707.1,95.6 738.0,65.9" fill="none" stroke="#3fb950" stroke-width="2.5" stroke-linejoin="round"/>
+<circle cx="738.0" cy="65.9" r="4" fill="#3fb950"/>
+<text x="730.0" y="56.9" fill="#3fb950" font-size="13" font-weight="700" text-anchor="end">+253</text>
+</svg>

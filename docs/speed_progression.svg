@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 300" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+<defs><linearGradient id="g58a6ff" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#58a6ff" stop-opacity="0.28"/><stop offset="1" stop-color="#58a6ff" stop-opacity="0"/></linearGradient></defs>
+<text x="58" y="24" fill="#8b949e" font-size="15" font-weight="700">Single-thread speed</text>
+<text x="738" y="24" fill="#8b949e" font-size="12" text-anchor="end">x v31</text>
+<line x1="58" y1="266.0" x2="738" y2="266.0" stroke="#8b949e33"/>
+<text x="50" y="270.0" fill="#8b949e" font-size="11" text-anchor="end">0.73x</text>
+<line x1="58" y1="210.5" x2="738" y2="210.5" stroke="#8b949e33"/>
+<text x="50" y="214.5" fill="#8b949e" font-size="11" text-anchor="end">0.99x</text>
+<line x1="58" y1="155.0" x2="738" y2="155.0" stroke="#8b949e33"/>
+<text x="50" y="159.0" fill="#8b949e" font-size="11" text-anchor="end">1.25x</text>
+<line x1="58" y1="99.5" x2="738" y2="99.5" stroke="#8b949e33"/>
+<text x="50" y="103.5" fill="#8b949e" font-size="11" text-anchor="end">1.51x</text>
+<line x1="58" y1="44.0" x2="738" y2="44.0" stroke="#8b949e33"/>
+<text x="50" y="48.0" fill="#8b949e" font-size="11" text-anchor="end">1.77x</text>
+<text x="58.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v31</text>
+<text x="181.6" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v35</text>
+<text x="336.2" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v40</text>
+<text x="490.7" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v45</text>
+<text x="645.3" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v50</text>
+<text x="738.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v53</text>
+<path d="M58.0,266.0 L58.0,208.2 L88.9,203.6 L119.8,229.1 L150.7,227.2 L181.6,175.4 L212.5,130.9 L243.5,133.6 L274.4,140.0 L305.3,115.5 L336.2,117.3 L367.1,120.0 L398.0,120.0 L428.9,127.3 L459.8,87.3 L490.7,113.7 L521.6,80.9 L552.5,130.9 L583.5,141.8 L614.4,135.5 L645.3,128.2 L676.2,76.4 L707.1,76.4 L738.0,79.1 L738.0,266.0 Z" fill="url(#g58a6ff)"/>
+<polyline points="58.0,208.2 88.9,203.6 119.8,229.1 150.7,227.2 181.6,175.4 212.5,130.9 243.5,133.6 274.4,140.0 305.3,115.5 336.2,117.3 367.1,120.0 398.0,120.0 428.9,127.3 459.8,87.3 490.7,113.7 521.6,80.9 552.5,130.9 583.5,141.8 614.4,135.5 645.3,128.2 676.2,76.4 707.1,76.4 738.0,79.1" fill="none" stroke="#58a6ff" stroke-width="2.5" stroke-linejoin="round"/>
+<circle cx="738.0" cy="79.1" r="4" fill="#58a6ff"/>
+<text x="730.0" y="70.1" fill="#58a6ff" font-size="13" font-weight="700" text-anchor="end">1.61x</text>
+</svg>
