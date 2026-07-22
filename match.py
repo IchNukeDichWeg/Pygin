@@ -56,7 +56,7 @@ other_elo = 2900
 # limiter is actually set to -- the 2026-07-16 run played at 2700 while
 # a stale hardcoded 2600 here went into every PGN header.
 import os                   # config-time env read; harmlessly re-imported below
-stockfish_elo = int(os.environ.get("STOCKFISH_ELO", "2900"))
+stockfish_elo = 2900        # --sf-elo N; <= 0 = full strength
 
 NUM_GAMES = 5000            # number of starting POSITIONS to play (default when
                             #   no arg passed). Each position is played twice --
@@ -87,12 +87,12 @@ TC_INCREMENT = 0.20         # used when MODE == "clock": seconds added per move
 # threshold is the cp at which the fitted WDL model says P(win) >= ADJ_WIN_P
 # at the current phase. A draw is adjudicated late in level games. Needs
 # wdl_model.json (written by fit_wdl_model.py); silently stays off without it.
-# MATCH_ADJUDICATE=0 disables per run without editing this file. Use it for
+# `--adj off` disables it per run without editing this file. Use that for
 # CROSS-FAMILY matches (e.g. vs stockfish_engine.py): the WDL model is fitted
 # on THIS engine's score scale, so the two-sided agreement rule loses its
 # calibration against a foreign engine's cp reports. Same-family A/Bs only.
-import os                   # config-time env read; harmlessly re-imported below
-ADJUDICATE = (os.environ.get("MATCH_ADJUDICATE", "1") != "0")
+ADJUDICATE = True
+ENGINE_SMP = 1              # --smp N: Lazy-SMP workers per engine
 ADJ_WIN_P = 0.99            # per-phase cp threshold = model's P(win) 99% point
 ADJ_WIN_COUNT = 4           # consecutive own moves (each side) for a win call.
                             # 8 -> 4 (2026-07-18): the two-sided 99%-agreement
@@ -223,7 +223,7 @@ class EngineProcess:
         self.proc = self.ctx.Process(
             target=engine_worker,
             args=(child_conn, self.path, ENGINE_USE_BOOK, PV_UCI,
-                  self.book_path),
+                  self.book_path, ENGINE_SMP, stockfish_elo),
             # NOT daemon: an engine using Lazy SMP (CLAUDECHESS_SMP/SMP_WORKERS)
             # spawns its own worker pool, and daemonic processes are forbidden
             # from having children. The engine process is shut down explicitly
@@ -610,7 +610,7 @@ def play_game(round_no, fen, white, black, e1, mode_cfg):
         board.push(move)
 
         # --- WDL adjudication: end games both engines agree are decided --- #
-        if ADJUDICATE:
+        if mode_cfg.get("adjudicate", ADJUDICATE):
             thr = _wdl_win_threshold(_phase24(board))
             if thr is not None:
                 mate = res.get("mate")
@@ -975,20 +975,29 @@ def _shutdown_workers(workers, in_q, out_q, graceful):
 # Main
 # ====================================================================== #
 def main():
+    global ENGINE_SMP, stockfish_elo
     # Apply the engine SMP override FIRST -- the moment any worker (and hence
     # any engine subprocess) is spawned it inherits the current environment,
     # so this must happen before mp.get_context("spawn") or any .start() call
     # below. CLI flag wins over the CONFIG constant so you can do e.g.
     # ``python3 match.py --engine-smp 8`` without editing the file.
     smp_override = ENGINE_SMP_OVERRIDE
-    if "--engine-smp" in sys.argv:
-        i = sys.argv.index("--engine-smp")
-        if i + 1 < len(sys.argv):
-            smp_override = int(sys.argv[i + 1])
-            del sys.argv[i:i + 2]
+    for flag in ("--smp", "--engine-smp"):      # --engine-smp kept as an alias
+        if flag in sys.argv:
+            i = sys.argv.index(flag)
+            if i + 1 < len(sys.argv):
+                smp_override = int(sys.argv[i + 1])
+                del sys.argv[i:i + 2]
     if smp_override is not None:
-        os.environ["CLAUDECHESS_SMP"] = str(int(smp_override))
-        print(f"[match] engine SMP override: CLAUDECHESS_SMP={smp_override}")
+        ENGINE_SMP = max(1, int(smp_override))
+        print(f"[match] engine SMP: {ENGINE_SMP} worker(s) per engine")
+    if "--sf-elo" in sys.argv:
+        i = sys.argv.index("--sf-elo")
+        if i + 1 < len(sys.argv):
+            stockfish_elo = int(sys.argv[i + 1])
+            del sys.argv[i:i + 2]
+            print(f"[match] stockfish_engine.py Elo cap: "
+                  f"{'full strength' if stockfish_elo <= 0 else stockfish_elo}")
 
     # Optional command-line overrides so parallel windows can run DIFFERENT
     # matchups or DISJOINT position shards without editing this file:
@@ -1054,13 +1063,12 @@ def main():
         elif argv[i] == "--fixed-depth" and i + 1 < len(argv):
             FIXED_DEPTH = int(argv[i + 1])
             i += 2
-        elif argv[i] == "--adjudicate" and i + 1 < len(argv):
-            # Via env, not just the global: `spawn` workers re-import this
-            # module and re-read MATCH_ADJUDICATE at line ~78, so the env is
-            # the only channel that reaches play_game() in the children.
-            os.environ["MATCH_ADJUDICATE"] = \
-                "1" if argv[i + 1].lower() == "true" else "0"
-            ADJUDICATE = argv[i + 1].lower() == "true"
+        elif argv[i] == "--adj" and i + 1 < len(argv):
+            v = argv[i + 1].strip().lower()
+            if v not in ("on", "off"):
+                print("--adj takes 'on' or 'off'")
+                sys.exit(2)
+            ADJUDICATE = (v == "on")
             i += 2
         elif argv[i] == "--fen-file" and i + 1 < len(argv):
             FEN_FILE = argv[i + 1]
@@ -1118,7 +1126,13 @@ def main():
         MODE = "nodes"                   # --nodes overrides the module default
     mode_cfg = {"mode": MODE, "time_ms": TIME_PER_MOVE_MS, "depth": FIXED_DEPTH,
                 "tc_seconds": TC_SECONDS, "tc_increment": TC_INCREMENT,
-                "nodes": nodes_budget}
+                "nodes": nodes_budget,
+                # Carried in mode_cfg because `spawn` workers RE-IMPORT this
+                # module: the module-level ADJUDICATE would come back as its
+                # default in every child, which is why this used to travel by
+                # environment variable. mode_cfg is already an argument to
+                # _worker_loop -> play_game, so it is the honest channel.
+                "adjudicate": ADJUDICATE}
     tc_label = f"{TC_SECONDS:.2f}+{TC_INCREMENT:.2f}" if MODE == "clock" else None
     tpm = TIME_PER_MOVE_MS if MODE == "time" else None
 
