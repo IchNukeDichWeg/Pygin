@@ -111,6 +111,16 @@ cengine.Engine.NNUE_FILE = "NNUE/nets/toy.nnue"     # default already this
 `cuci.py`'s fingerprint echoes `use_nnue=` for PGN forensics. Toggle OFF is
 byte-exact v50; run `bench` (1,083,772) + `selftest.py` after any change.
 
+## Net naming & retirement (mirrors Old Engine/)
+
+Live net: `NNUE/nets/nnue_net_vN.nnue` — vN bumps per bootstrap round /
+retrain on new data; a small same-data fix bumps the minor
+(`nnue_net_v1.1.nnue`). Retired nets move FLAT into `NNUE/Old NNUE/`
+(`mv NNUE/nets/nnue_net_v1.nnue "NNUE/Old NNUE/"`). `toy.nnue` is the
+pipeline-proof artifact, not a version. cengine's `NNUE_FILE` default
+names the current live net; all `.nnue` files are gitignored (public
+repo) — only the Old NNUE README is tracked.
+
 ## Generating real training data (Phase 6, the next step)
 
 On a generation server (~50M positions, see DESIGN_nnue.md for the
