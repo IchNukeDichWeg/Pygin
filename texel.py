@@ -577,6 +577,85 @@ def _write_back(dst):
 # ====================================================================== #
 #  selftest -- the one runnable check
 # ====================================================================== #
+_PROBE_SRC = """
+import sys, ctypes, random, chess
+sys.path.insert(0, {dir!r})
+import cengine
+eng = cengine.Engine()
+# cengine declares argtypes for the eval SETTERS only; without these the
+# 64-bit bitboards would be passed as C ints and silently truncated.
+eng._lib.csearch_eval_white.restype = ctypes.c_int
+eng._lib.csearch_eval_white.argtypes = [ctypes.c_uint64] * 8 + \
+    [ctypes.c_int, ctypes.c_int, ctypes.c_uint64]
+out = []
+rng = random.Random(52)
+for _ in range(30):
+    b = chess.Board()
+    for _ in range(rng.randint(4, 60)):
+        mv = list(b.legal_moves)
+        if not mv:
+            break
+        b.push(rng.choice(mv))
+        if not b.is_check() and rng.random() < 0.3:
+            out.append(eng._lib.csearch_eval_white(
+                b.pawns, b.knights, b.bishops, b.rooks, b.queens, b.kings,
+                b.occupied_co[chess.WHITE], b.occupied_co[chess.BLACK],
+                1 if b.turn == chess.WHITE else 0,
+                -1 if b.ep_square is None else b.ep_square, b.castling_rights))
+print(",".join(map(str, out)))
+"""
+
+
+def _probe(dirpath):
+    """Eval a fixed probe set through the cengine in `dirpath`, in its OWN
+    process -- csearch.so's eval globals are process-wide and its basename is
+    the same in every snapshot dir, so two versions in one process would
+    silently share whichever params were pushed last."""
+    import subprocess
+    r = subprocess.run([sys.executable, "-c", _PROBE_SRC.format(dir=dirpath)],
+                       capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"probe of {dirpath} failed:\n{r.stderr.strip()[-2000:]}")
+    return [int(x) for x in r.stdout.strip().split(",")]
+
+
+def cmd_stage(a):
+    """Assemble a ready-to-A/B engine directory from the tuned engine.py.
+
+    engine_tuned.py is a copy of engine.py, NOT of cengine.py -- engine.py is
+    where the eval constants live, and cengine.py imports the engine.py
+    SITTING NEXT TO IT (cengine.py:320, `_DIR` is inserted at sys.path[0]) to
+    push those constants into csearch.so. So the tuned file cannot be handed
+    to match.py directly: doing so runs the slow pure-Python engine, and a
+    copy left in the repo root would still read the untuned engine.py. It has
+    to be staged as `engine.py` in a directory beside a cengine.py and the
+    three .so files, exactly like the Old Engine/NN snapshots.
+    """
+    import shutil
+    if not os.path.exists(a.src):
+        sys.exit(f"{a.src} not found -- run: python3 texel.py tune")
+    if os.path.exists(a.dir):
+        sys.exit(f"{a.dir} already exists -- remove it or pick another --dir")
+    os.makedirs(a.dir)
+    shutil.copy("cengine.py", os.path.join(a.dir, "cengine.py"))
+    shutil.copy(a.src, os.path.join(a.dir, "engine.py"))
+    for so in ("csearch.so", "eval_c.so", "movegen.so"):
+        shutil.copy(so, os.path.join(a.dir, so))
+
+    print(f"staged {a.dir}/ from {a.src}; verifying ...")
+    tuned, live = _probe(a.dir), _probe(".")
+    diff = sum(1 for x, y in zip(tuned, live) if x != y)
+    if not diff:
+        sys.exit(f"\nFAIL: {a.dir} evaluates all {len(tuned)} probe positions "
+                 f"identically to the live engine.\nThe tuned parameters did "
+                 f"NOT take effect -- an A/B of this would measure nothing.")
+    print(f"OK -- {diff}/{len(tuned)} probe positions differ from the live "
+          f"engine, so the tuned\n     values are live in the C eval.")
+    print(f"\nA/B it (candidate first, so a + score means the tune helped):\n"
+          f"  python3 match.py {a.dir}/cengine.py "
+          f'"Old Engine/52/engine52.py" 5000 --workers 0 --nodes 1750000')
+
+
 def cmd_selftest(a):
     import engine as E
     lib = ctypes.CDLL("./csearch.so")
@@ -680,6 +759,11 @@ def main():
                    help="coordinate-descent step sizes in cp, annealed evenly "
                         "across --rounds (default: 8 3 1)")
     t.set_defaults(fn=cmd_tune)
+
+    g = sub.add_parser("stage", help="tuned engine.py -> ready-to-A/B dir")
+    g.add_argument("--src", default=DEFAULT_OUT)
+    g.add_argument("--dir", default="Tuned")
+    g.set_defaults(fn=cmd_stage)
 
     s = sub.add_parser("selftest", help="verify the eval mirror + param push")
     s.set_defaults(fn=cmd_selftest)
