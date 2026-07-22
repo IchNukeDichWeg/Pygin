@@ -175,8 +175,10 @@ fetch_gg.py
 # NNUE personal operating guide (local-only; NNUE/README.md is the tracked doc)
 nnue_readme.md
 
-# Texel tuning artefacts (texel.py itself is tracked): the extracted position
-# set is 75 MB of derived data, and the tuned engine is a candidate to A/B,
-# not a release -- a confirmed tune lands in engine.py by hand.
+# Texel tuning artefacts (texel.py itself is tracked). The extracted position
+# set is 375 MB of derived data and stays local. engine_tuned.py is TRACKED:
+# it is how an eval candidate reaches the A/B servers (git checkout, then
+# `texel.py stage` there -- the .so files are -mcpu=native and cannot be
+# copied between machines). It is still a CANDIDATE, not a release: a
+# confirmed tune lands in engine.py by hand.
 texel_positions.npy
-engine_tuned.py
