@@ -907,10 +907,15 @@ class Engine:
     # countermoves are deliberately NOT kept: they are ply-indexed, so a
     # shifted root makes them wrong rather than merely stale. Watch the P-23
     # stager, which reads live history -- a warm start shifts early-iteration
-    # ordering. False = v53 node-exact; True is the ARMED CANDIDATE that
-    # match play must actually carry (2026-07-22). selftest pins it back to
-    # 0 so the ladder still measures v53.
-    HIST_KEEP = True
+    # ordering. SCREEN-NULL 2026-07-22 (thirty-third campaign vs Old
+    # Engine/53, nodes@1.75M): +1.74 +/-15 pooled over 2,000 games on two
+    # servers (ptnml 50/227/429/251/43, ratio 1.06, LLR +0.055), both halves
+    # reading +1.74 -- a clean flat, not a noisy one. No 10k spent.
+    # The tree really did get 12.8% cheaper at fixed depth and it bought
+    # NOTHING: warm history reaches the same moves sooner, it does not find
+    # better ones. That closes the history-refinement vein at 0-for-4
+    # (Q-01, FI-04, FI-23, FI-12). Dormant, do-not-retry.
+    HIST_KEEP = False
 
     # Lazy-SMP worker count. Plain class default -- no environment
     # read; hosts set it on the instance (match.py --smp).
