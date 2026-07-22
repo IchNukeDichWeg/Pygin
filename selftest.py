@@ -337,6 +337,15 @@ if os.path.exists("csearch.c"):
             ce._lib.set_null_evalr(1)
         except AttributeError:
             pass                       # pre-FI-24ab csearch.so
+        # FI-12 history persistence: ARMED CANDIDATE 2026-07-22, not yet
+        # confirmed. LOAD-BEARING -- cengine's class default carries the
+        # armed value for match play, so the ladder must force it OFF or it
+        # measures the candidate instead of v53. Re-pin CE_LADDER only if
+        # FI-12 is CONFIRMED.
+        try:
+            ce._lib.set_hist_keep(0)
+        except AttributeError:
+            pass                       # pre-FI-12 csearch.so
         # FI-63 quiet check-evasion cap: CLOSED AS DEAD GATE 2026-07-21
         # pre-A/B (harmful at cap 2 -- +10.5% nodes + matetrack -18 mates;
         # vacuous at cap>=3). Default 0, so this pin is belt-and-braces.
