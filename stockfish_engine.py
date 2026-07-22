@@ -29,10 +29,13 @@ _SF_PATHS = [
     "/opt/homebrew/bin/stockfish", "/usr/local/bin/stockfish",
     "/usr/games/stockfish", "/usr/bin/stockfish", "stockfish",
 ]
-SF_ELO = int(os.environ.get("STOCKFISH_ELO", "2900"))
-SF_SKILL = os.environ.get("STOCKFISH_SKILL")          # if set, used instead of Elo
-SF_THREADS = int(os.environ.get("STOCKFISH_THREADS", "1"))
-SF_HASH = int(os.environ.get("STOCKFISH_HASH", "64"))
+# Plain defaults -- no environment reads. Hosts that need a different value
+# set the module global before constructing (match.py --sf-elo does exactly
+# that, in the engine child, before _load_engine runs).
+SF_ELO = 2900          # UCI_Elo cap; <= 0 means full strength
+SF_SKILL = None        # if set, used instead of Elo
+SF_THREADS = 1
+SF_HASH = 64
 
 
 def _find_sf():

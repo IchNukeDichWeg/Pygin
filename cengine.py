@@ -910,6 +910,10 @@ class Engine:
     # ordering. False = v53 node-exact. ARMED CANDIDATE 2026-07-22.
     HIST_KEEP = False
 
+    # Lazy-SMP worker count. Plain class default -- no environment
+    # read; hosts set it on the instance (match.py --smp).
+    SMP_WORKERS = 1
+
     # FI-15 NNUE (Phases 1-5 BUILT-DORMANT 2026-07-18): hybrid NN eval --
     # nn_eval replaces the HCE as negamax's static eval, qsearch stand-pat
     # stays HCE (the old MLP project's -203/-273 lesson), the FI-03 TT eval
@@ -1181,8 +1185,7 @@ class Engine:
         # honored like engine.py.
         # FB-13c: clamp to the C-side ceiling (set_threads clamps at 256
         # silently -- the Python attr must not misrepresent the real count).
-        self.smp_workers = min(256, max(1, int(os.environ.get(
-            "CLAUDECHESS_SMP", "1"))))
+        self.smp_workers = min(256, max(1, int(self.SMP_WORKERS)))
         # FB-09: optional node budget (UCI `go nodes N`); None = unlimited.
         self.node_limit = None
         self.nodes_searched = 0

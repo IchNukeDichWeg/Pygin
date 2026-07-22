@@ -42,7 +42,7 @@ N_WORKERS = 10        # parallel games (worker processes); 1 = sequential,
                       # Keep N_WORKERS * ENGINE_SMP <= CPU cores.
 
 # --- Opponent strength / engine threading (was env vars) --------------- #
-STOCKFISH_ELO = 0     # stockfish_engine.py strength: 0 = FULL strength,
+STOCKFISH_ELO = 2900  # stockfish_engine.py strength: <= 0 = FULL strength,
                       # otherwise a UCI_Elo cap (clamped to 1320..3190)
 ENGINE_SMP = 1        # engine.py SMP workers per game (1 = single-thread)
 
@@ -136,40 +136,41 @@ from time_manager import calculate_move_time
 
 
 # ---------------------------------------------------------------------- #
-# Config overrides via environment. `spawn` workers re-import this module,
-# so the ONLY config a child sees is what's in its inherited environment
-# (same trick odds.py already uses for STOCKFISH_ELO / CLAUDECHESS_SMP).
-# The web dashboard passes CLI flags -> main() writes them here -> this runs
-# at import in every child. Unset vars keep the literal defaults above.
+# Config overrides as an explicit dict. `spawn` workers re-import this
+# module, so a child starts from the literal CONFIG defaults above; main()
+# passes the resolved overrides to the worker pool as initargs, and each
+# child applies them here before building its engines. (This used to travel
+# by environment variable -- no hidden env switches.)
 # ---------------------------------------------------------------------- #
-def _apply_env_config():
+def _apply_config(cfg=None):
     global NUM_GAMES, N_WORKERS, STOCKFISH_ELO, ENGINE_SMP
     global ENGINE_1_PATH, ENGINE_2_PATH, ODDS_GIVEN_BY, ODDS_SQUARES
     global ENGINE_1_CLOCK_SECONDS, ENGINE_1_CLOCK_INCREMENT
     global ENGINE_2_CLOCK_SECONDS, ENGINE_2_CLOCK_INCREMENT
-    g = os.environ.get
-    NUM_GAMES = int(g("ODDS_NUM_GAMES", NUM_GAMES))
-    N_WORKERS = int(g("ODDS_WORKERS", N_WORKERS))
+    g = lambda k, d=None: (cfg or {}).get(k, d)
+    NUM_GAMES = int(g("num_games", NUM_GAMES))
+    N_WORKERS = int(g("workers", N_WORKERS))
     if N_WORKERS <= 0:                    # 0 / auto => all cores but one (match.py rule)
         N_WORKERS = max(1, multiprocessing.cpu_count() - 1)
-    STOCKFISH_ELO = int(g("STOCKFISH_ELO", STOCKFISH_ELO))
-    ENGINE_SMP = int(g("CLAUDECHESS_SMP", ENGINE_SMP))
-    ENGINE_1_PATH = g("ODDS_ENGINE1", ENGINE_1_PATH)
-    ENGINE_2_PATH = g("ODDS_ENGINE2", ENGINE_2_PATH)
-    ODDS_GIVEN_BY = g("ODDS_GIVEN_BY", ODDS_GIVEN_BY)
-    sq = g("ODDS_SQUARES")
+    STOCKFISH_ELO = int(g("stockfish_elo", STOCKFISH_ELO))
+    ENGINE_SMP = int(g("smp", ENGINE_SMP))
+    ENGINE_1_PATH = g("engine1", ENGINE_1_PATH)
+    ENGINE_2_PATH = g("engine2", ENGINE_2_PATH)
+    ODDS_GIVEN_BY = g("odds_given_by", ODDS_GIVEN_BY)
+    sq = g("odds_squares")
     if sq is not None:
         sq = "" if sq.strip().lower() == "none" else sq
         ODDS_SQUARES = [s.strip() for s in sq.split(",") if s.strip()]
-    secs = g("ODDS_TC_SECONDS")
+    secs = g("tc_seconds")
     if secs is not None:
         ENGINE_1_CLOCK_SECONDS = ENGINE_2_CLOCK_SECONDS = float(secs)
-    inc = g("ODDS_TC_INC")
+    inc = g("tc_inc")
     if inc is not None:
         ENGINE_1_CLOCK_INCREMENT = ENGINE_2_CLOCK_INCREMENT = float(inc)
 
 
-_apply_env_config()
+# NOTE: no import-time apply any more -- a spawn child gets its config
+# from _init_worker's initargs, and the parent from main().
 
 
 # ---------------------------------------------------------------------- #
@@ -635,7 +636,8 @@ def write_summary(fh, p1_name, desc1, p2_name, desc2, tally,
 _W = {}                                  # per-process engines/state
 
 
-def _init_worker():
+def _init_worker(cfg=None):
+    _apply_config(cfg)
     p1 = EnginePolicy(ENGINE_1_PATH, ENGINE_1_MODE, ENGINE_1_TIME_MS,
                       ENGINE_1_DEPTH, ENGINE_1_CLOCK_SECONDS,
                       ENGINE_1_CLOCK_INCREMENT, "engine_1")
@@ -694,18 +696,9 @@ def main():
     a = ap.parse_args()
     if a.positions is not None:
         a.num_games = a.positions * 2   # colour-alternating pairs
-    _flag_env = {
-        "engine1": "ODDS_ENGINE1", "engine2": "ODDS_ENGINE2",
-        "num_games": "ODDS_NUM_GAMES", "workers": "ODDS_WORKERS",
-        "stockfish_elo": "STOCKFISH_ELO", "smp": "CLAUDECHESS_SMP",
-        "odds_squares": "ODDS_SQUARES", "odds_given_by": "ODDS_GIVEN_BY",
-        "tc_seconds": "ODDS_TC_SECONDS", "tc_inc": "ODDS_TC_INC",
-    }
-    for attr, envk in _flag_env.items():
-        v = getattr(a, attr)
-        if v is not None:
-            os.environ[envk] = str(v)
-    _apply_env_config()  # refresh this (parent) process's globals from env
+    cfg = {k: v for k, v in vars(a).items()
+           if v is not None and k not in ("fn", "positions")}
+    _apply_config(cfg)   # resolve this (parent) process's globals
 
     if ENGINE_1_PLAYS_FIRST not in ("white", "black"):
         print(f"ENGINE_1_PLAYS_FIRST must be 'white' or 'black' "
@@ -730,8 +723,7 @@ def main():
 
     # Config -> environment, BEFORE any engine loads / worker spawns
     # (children inherit; stockfish_engine.py reads these at import time).
-    os.environ["STOCKFISH_ELO"] = str(STOCKFISH_ELO)
-    os.environ["CLAUDECHESS_SMP"] = str(ENGINE_SMP)
+    # (no environment writes: _init_worker carries these into the children)
 
     # Names/descriptions derived from config only -- the parent process
     # never loads engines; each worker builds its own pair in _init_worker.
@@ -847,7 +839,7 @@ def main():
     if N_WORKERS > 1:
         print(f"Spawning {N_WORKERS} workers (each loads its own engine pair)...")
         ctx = multiprocessing.get_context("spawn")
-        pool = ctx.Pool(N_WORKERS, initializer=_init_worker)
+        pool = ctx.Pool(N_WORKERS, initializer=_init_worker, initargs=(cfg,))
         results_iter = pool.imap_unordered(_play_one, range(1, NUM_GAMES + 1))
     else:
         print("Loading engines (sequential mode)...")

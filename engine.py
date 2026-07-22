@@ -1624,7 +1624,7 @@ class Engine:
         # GUI use a persistent smp.SMPPool via _smp_pool below, NOT this flag. Keep
         # smp_workers * parallel_games <= CPU cores to avoid oversubscription.
         try:
-            self.smp_workers = max(1, int(os.environ.get("CLAUDECHESS_SMP", str(SMP_WORKERS))))
+            self.smp_workers = max(1, int(getattr(self, "SMP_WORKERS", SMP_WORKERS)))
         except ValueError:
             self.smp_workers = SMP_WORKERS
 
