@@ -651,9 +651,17 @@ def cmd_stage(a):
                  f"NOT take effect -- an A/B of this would measure nothing.")
     print(f"OK -- {diff}/{len(tuned)} probe positions differ from the live "
           f"engine, so the tuned\n     values are live in the C eval.")
-    print(f"\nA/B it (candidate first, so a + score means the tune helped):\n"
+    # SCREEN first, not the full campaign: a Texel fit optimises static
+    # prediction, and the terms it drives to their floor tend to be the ones
+    # the SEARCH already resolves concretely (passers, rook-on-7th, tempo).
+    # That makes the Elo sign genuinely uncertain no matter how good the loss
+    # looks, so it does not earn a 10,000-game slot up front.
+    print(f"\nScreen it first -- 2,000 games, ~+/-15 Elo (candidate first, so "
+          f"a + score means the tune helped):\n"
           f"  python3 match.py {a.dir}/cengine.py "
-          f'"Old Engine/52/engine52.py" 5000 --workers 0 --nodes 1750000')
+          f'"Old Engine/52/engine52.py" 1000 --workers 0 --nodes 1750000\n'
+          f"Only if that is clearly positive, spend the campaign: same line "
+          f"with 5000 instead of 1000.")
 
 
 def cmd_selftest(a):
