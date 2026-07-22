@@ -51,6 +51,12 @@ e.g. 95 on the current cheap boxes):
 python3 NNUE/gen_data.py NNUE/datasets/run1.pygdata --positions 100000 --nodes 5000 --workers 8 --seed 42
 ```
 
+Two stop rules: `--positions N` collects exactly N positions (game count
+varies); `--games N` (overrides it) plays exactly N games and keeps every
+extracted position — measured yields ~65/game random, ~72/game book,
+~20/game endgame. The Phase-6 recipe is games-targeted: 750k random +
+50k UHO + 250k endgame ≈ ~57M positions.
+
 Opening/coverage modes (mixable into a multi-slice dataset via
 `data_format.py merge` — the recommended Phase-6 recipe is random +
 UHO-book + endgame slices):
