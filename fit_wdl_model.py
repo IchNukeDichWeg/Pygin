@@ -132,13 +132,35 @@ def board_phase(board):
 #     lopsided 29-1-0 cengine-vs-engine gate log (~700 Elo gap).
 #   - Odds logs, " copy" duplicates and Stockfish logs are excluded above/
 #     below regardless (SF scores are a different eval scale anyway).
+# ERA CUTOFF (2026-07-22, v53). The WDL model maps THIS engine's reported cp
+# to an outcome probability, so every sample must come from ONE eval scale.
+# v53 (the Texel retune) moved the scale materially -- MG minors and rooks
+# came down ~10% (N 353->307, R 489->443) -- so a v52-era cp and a v53-era cp
+# of the same number no longer describe the same position. Mixing eras blurs
+# the fit toward an average of two scales that the engine never uses.
+#
+# Two guards are needed, not one:
+#   * numbered snapshots: _MIN_C_ERA_SNAPSHOT below rises to 53;
+#   * "cengine": the dev build auto-qualifies BY NAME and every log this
+#     project has ever written calls it that, so the name alone cannot tell a
+#     v52-era cengine log from a v53-era one. The filename date can, hence
+#     CENGINE_MIN_DATE -- without it the entire v52 corpus walks back in
+#     through the side door.
+#
+# Expect an EMPTY corpus until v53-era campaigns have run: today's v53 logs
+# are cengine-vs-engine52, and engine52 is now both a different eval scale
+# AND ~37 Elo away, so those files fail near_equal_pair on both counts. The
+# refit genuinely waits for v53-vs-v53-candidate campaigns.
+CENGINE_MIN_DATE = "2026-07-22"
+_DATE_RE = re.compile(r"_(\d{4}-\d{2}-\d{2})_")
+
 NEAR_EQUAL_EXTRA = {
     "cengine",
     "engine_qtt_off",   # v34-era P-44 isolation build, paired vs its
                         # contemporary cengine only -- near-equal like it
 }
 _BASE_NUM_RE = re.compile(r"^engine(\d+)$")
-_MIN_C_ERA_SNAPSHOT = 31
+_MIN_C_ERA_SNAPSHOT = 53
 
 
 def _base_num(base):
@@ -146,16 +168,25 @@ def _base_num(base):
     return int(m.group(1)) if m else None
 
 
-def _side_usable(base):
+def _log_date(path):
+    """The YYYY-MM-DD stamped into a match-log filename, or None."""
+    m = _DATE_RE.search(os.path.basename(path or ""))
+    return m.group(1) if m else None
+
+
+def _side_usable(base, path=None):
     if base in NEAR_EQUAL_EXTRA:
-        return True
+        # Era-gate the dev build by the log's own date (see CENGINE_MIN_DATE).
+        # No date in the name -> refuse: an unknown era is not a safe one.
+        d = _log_date(path)
+        return d is not None and d >= CENGINE_MIN_DATE
     n = _base_num(base)
     return n is not None and n >= _MIN_C_ERA_SNAPSHOT
 
 
-def near_equal_pair(wb, bb):
+def near_equal_pair(wb, bb, path=None):
     """Both sides usable AND the pairing itself is near-equal (see rule)."""
-    if not (_side_usable(wb) and _side_usable(bb)):
+    if not (_side_usable(wb, path) and _side_usable(bb, path)):
         return False
     wn, bn = _base_num(wb), _base_num(bb)
     if wn is not None and bn is not None:
@@ -212,7 +243,7 @@ def classify_file(path):
     if os.path.splitext(os.path.basename(path))[0] in NEAR_EQUAL_STOCKFISH_LOGS:
         return True     # near-equal SF match; only the engine side extracts
     # Both sides usable AND the pairing near-equal -> BOTH sides extracted.
-    return near_equal_pair(wb, bb)
+    return near_equal_pair(wb, bb, path)
 
 
 def iter_game_blocks(text):
@@ -224,7 +255,7 @@ def iter_game_blocks(text):
         yield text[start:end]
 
 
-def process_block(block, samples, stats):
+def process_block(block, samples, stats, path=None):
     """Extract (cp, phase, result) samples from one game block -- for EVERY
     side whose base is in NEAR_EQUAL_BASES (both sides of a near-equal
     engine-family match are equally valid training data; a near-equal
@@ -256,9 +287,9 @@ def process_block(block, samples, stats):
 
     # tag -> that side's own final result, for every extractable side.
     side_score = {}
-    if _side_usable(white_base):
+    if _side_usable(white_base, path):
         side_score[white_base] = w_score
-    if _side_usable(black_base):
+    if _side_usable(black_base, path):
         side_score[black_base] = b_score
     if not side_score:
         stats["skipped_no_usable_side"] += 1
@@ -310,7 +341,7 @@ def extract_all(log_dirs):
             print(f"  [skip] {path}: {ex}")
             continue
         for block in iter_game_blocks(text):
-            process_block(block, samples, stats)
+            process_block(block, samples, stats, path)
         if files_used % 10 == 0:
             print(f"  ...{files_used} usable files processed, "
                   f"{len(samples):,} samples so far")
