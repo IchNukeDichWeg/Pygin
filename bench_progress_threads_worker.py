@@ -40,6 +40,6 @@ if __name__ == "__main__":
             depth = getattr(e, "last_depth", 0) or 0
             nps = 0.0 if dt <= 0 else nodes / dt
             if depth > bd or (depth == bd and nps > bn): bd, bn = depth, nps
-        print(json.dumps({"v": V, "nps": int(bn), "depth": bd}))
+        print(json.dumps({"v": V, "nps": round(bn, 2), "depth": bd}))
     except Exception as ex:
         print(json.dumps({"v": V, "error": repr(ex)[:160]}))
