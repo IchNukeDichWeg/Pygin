@@ -931,8 +931,14 @@ class Engine:
     # command). False = v50+armed-defaults BYTE-EXACT (bench 1,083,772 /
     # 1,508,415 ROOT_LMR-off); no real net exists yet -- Phases 6-8 (50M
     # dataset, bootstrap, 2k screen -> 10k A/B) decide if this ever flips.
+    # Net naming convention (mirrors Old Engine/): the live net is
+    # NNUE/nets/nnue_net_vN.nnue (minor bump vN.M for small same-data
+    # fixes); retired nets move FLAT into "NNUE/Old NNUE/". toy.nnue is
+    # the pipeline-proof artifact, not a version. This default names the
+    # FIRST real net; it is only read when USE_NNUE is True (load fails
+    # loudly if the file does not exist -- no silent HCE fallback).
     USE_NNUE = False
-    NNUE_FILE = os.path.join("NNUE", "nets", "toy.nnue")
+    NNUE_FILE = os.path.join("NNUE", "nets", "nnue_net_v1.nnue")
 
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
