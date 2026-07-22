@@ -125,6 +125,20 @@ PARAMS = (
 )
 
 
+# The five eval terms that are BUILT but toggled OFF. Each was rejected in the
+# v21-v37 era on hand-guessed weights, mostly against the far weaker Python
+# engine at depth ~8; none has ever had its weights FITTED. `--with-dormant`
+# turns them on and adds their 11 weights to the tuned set, so the A/B asks
+# "is this term worth anything at its best weight", which is a different
+# question from the one those old rejections answered.
+DORMANT_TOGGLES = ("use_outpost", "use_space", "use_phalanx", "use_storm",
+                   "use_king_shelter")
+DORMANT_PARAMS = [(n, n, None) for n in (
+    "OUTPOST_N_MG", "OUTPOST_N_EG", "OUTPOST_B_MG", "OUTPOST_B_EG",
+    "SPACE_MG", "PHALANX_MG", "PHALANX_EG", "STORM_MG", "STORM_EG",
+    "SHELTER_CLOSE", "SHELTER_FAR")]
+
+
 def _get(eng, attr, key):
     v = getattr(eng, attr)
     return v if key is None else v[key]
@@ -305,13 +319,17 @@ def cmd_extract(a):
 _W = {}          # per-worker state
 
 
-def _worker_init(npy_path, nchunks, ntrain):
+def _worker_init(npy_path, nchunks, ntrain, dormant=False):
     import engine as E
     lib = ctypes.CDLL("./csearch.so")
     lib.csearch_eval_white.restype = ctypes.c_int
     lib.csearch_eval_white.argtypes = [ctypes.c_uint64] * 8 + \
         [ctypes.c_int, ctypes.c_int, ctypes.c_uint64]
-    _W.update(lib=lib, E=E, eng=E.Engine(), arr=np.load(npy_path, mmap_mode="r"),
+    eng = E.Engine()
+    if dormant:
+        for t in DORMANT_TOGGLES:
+            setattr(eng, t, True)
+    _W.update(lib=lib, E=E, eng=eng, arr=np.load(npy_path, mmap_mode="r"),
               nchunks=nchunks, ntrain=ntrain, cid=-1, cols=None, res=None)
     _push(_W["eng"], lib, E)
 
@@ -406,7 +424,13 @@ def cmd_tune(a):
         sys.exit(f"{a.positions} not found -- run: python3 texel.py extract")
 
     import engine as E
+    global PARAMS
+    if a.with_dormant:
+        PARAMS = PARAMS + DORMANT_PARAMS
     eng = E.Engine()
+    if a.with_dormant:
+        for t in DORMANT_TOGGLES:
+            setattr(eng, t, True)
     base = baseline_vector(eng)
     bounds = bounds_for(base)
     arr = np.load(a.positions, mmap_mode="r")
@@ -418,7 +442,8 @@ def cmd_tune(a):
 
     best_vec, best_val, results = None, None, []
     with mp.Pool(a.workers, initializer=_worker_init,
-                 initargs=(a.positions, nchunks, ntrain)) as pool:
+                 initargs=(a.positions, nchunks, ntrain,
+                           a.with_dormant)) as pool:
         # --- fit K (the cp -> win-probability scale) on the shipped eval --- #
         t0 = time.time()
         k, kloss = None, None
@@ -507,13 +532,14 @@ def cmd_tune(a):
 
     for (_, attr, key), v in zip(PARAMS, best_vec):
         _set(E.Engine, attr, key, v)
-    _write_back(a.out)
+    _write_back(a.out, DORMANT_TOGGLES if a.with_dormant else ())
     print(f"\nWrote {a.out}. This is a CANDIDATE, not a release: A/B it "
           f"against Old Engine/52 before shipping,\nand remember an eval "
           f"change re-pins CE_LADDER and moves the bench signature.")
 
 
-def _write_back(dst):
+def _write_back(dst, enable_toggles=()):
+    import pathlib
     """Patch the tuned constants into a copy of engine.py. Reuses tune.py's
     line-rewriting helpers so there is one implementation of the fiddly part;
     PST blocks are never touched."""
@@ -538,6 +564,18 @@ def _write_back(dst):
                  f"write a partially-tuned file")
 
     shutil.copy("engine.py", dst)
+    if enable_toggles:
+        # The weights only reach the C eval when the toggle is on -- writing
+        # fitted values into a file that still says `use_outpost = False`
+        # would produce a candidate byte-identical to the baseline.
+        txt = pathlib.Path(dst).read_text()
+        for t in enable_toggles:
+            old_line = f"self.{t} = False"
+            if old_line not in txt:
+                sys.exit(f"write-back: `{old_line}` not found -- refusing to "
+                         f"write a candidate whose terms would stay off")
+            txt = txt.replace(old_line, f"self.{t} = True")
+        pathlib.Path(dst).write_text(txt)
     with open(dst) as f:
         lines = f.read().splitlines()
 
@@ -758,6 +796,9 @@ def main():
     t.add_argument("--out", default=DEFAULT_OUT)
     t.add_argument("--workers", type=int, default=cores)
     t.add_argument("--rounds", type=int, default=DEFAULT_ROUNDS)
+    t.add_argument("--with-dormant", action="store_true",
+                   help="also enable and fit the five BUILT-but-OFF eval "
+                        "terms (outpost, space, phalanx, storm, king shelter)")
     t.add_argument("--restarts", type=int, default=1,
                    help="independent descents from different starting points, "
                         "keeping the best on held-out data (default 1)")
