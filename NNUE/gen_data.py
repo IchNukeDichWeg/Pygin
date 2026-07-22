@@ -254,7 +254,11 @@ def play_game(eng, rng, nodes, contempt, mopup_min,
     return recs
 
 
-def run_worker(shard_path, positions, nodes, seed, book, endgame, eg_men):
+def run_worker(shard_path, positions, nodes, seed, book, endgame, eg_men,
+               games_quota=0):
+    """games_quota > 0: play exactly that many games, keep EVERY extracted
+    position (position count becomes the variable). games_quota == 0: play
+    until `positions` are collected (game count becomes the variable)."""
     eng = make_label_engine()
     contempt = eng._py.CONTEMPT
     mopup_min = eng._py.MOPUP_MIN_ADV
@@ -262,7 +266,7 @@ def run_worker(shard_path, positions, nodes, seed, book, endgame, eg_men):
     book_size = os.path.getsize(book) if book else 0
     rows = []
     games = 0
-    while len(rows) < positions:
+    while (games < games_quota) if games_quota else (len(rows) < positions):
         rows.extend(play_game(eng, rng, nodes, contempt, mopup_min,
                               book=book, book_size=book_size,
                               endgame=endgame, eg_men=eg_men))
@@ -272,11 +276,12 @@ def run_worker(shard_path, positions, nodes, seed, book, endgame, eg_men):
             # atomic-enough single write; parent polls, never blocks)
             try:
                 with open(shard_path + ".progress", "w") as pf:
-                    pf.write(str(min(len(rows), positions)))
+                    pf.write(f"{games} {len(rows)}")
             except OSError:
                 pass
-    arr = np.stack(rows[:positions]) if rows else \
-        np.zeros(0, dtype=RECORD_DTYPE)
+    if not games_quota:
+        rows = rows[:positions]
+    arr = np.stack(rows) if rows else np.zeros(0, dtype=RECORD_DTYPE)
     write_pygdata(shard_path, arr)
     print(f"[worker seed={seed}] done: {len(arr)} positions "
           f"from {games} games -> {shard_path}", flush=True)
@@ -285,7 +290,14 @@ def run_worker(shard_path, positions, nodes, seed, book, endgame, eg_men):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("out")
-    ap.add_argument("--positions", type=int, default=100_000)
+    ap.add_argument("--positions", type=int, default=100_000,
+                    help="stop rule A: collect exactly this many positions "
+                         "(game count varies)")
+    ap.add_argument("--games", type=int, default=0,
+                    help="stop rule B (overrides --positions): play exactly "
+                         "this many games, keep every extracted position "
+                         "(position count varies, ~65/game random, "
+                         "~72/game book, ~20/game endgame)")
     ap.add_argument("--nodes", type=int, default=LABEL_NODES)
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--seed", type=int, default=1)
@@ -305,10 +317,13 @@ def main():
 
     if args.shard:                     # worker mode (fresh process = fresh
         run_worker(args.shard, args.positions, args.nodes, args.seed,  # .so)
-                   args.book, args.endgame, args.eg_men)
+                   args.book, args.endgame, args.eg_men,
+                   games_quota=args.games)
         return
 
     per = (args.positions + args.workers - 1) // args.workers
+    per_g = (args.games + args.workers - 1) // args.workers if args.games \
+        else 0
     shards = []
     procs = []
     for w in range(args.workers):
@@ -317,6 +332,7 @@ def main():
         procs.append(subprocess.Popen(
             [sys.executable, os.path.abspath(__file__), args.out,
              "--shard", sp, "--positions", str(per),
+             "--games", str(per_g),
              "--nodes", str(args.nodes), "--seed", str(args.seed * 100003 + w)]
             + (["--book", args.book] if args.book else [])
             + (["--endgame", "--eg-men", str(args.eg_men)]
@@ -326,22 +342,29 @@ def main():
     # aggregate progress + ETA, one plain line per interval -- survives
     # nohup/tail -f (match.py's in-place bar is TTY-gated and would not).
     t0 = time.time()
-    target = per * args.workers
+    games_mode = bool(args.games)
+    target = (per_g if games_mode else per) * args.workers
+    unit = "games" if games_mode else "positions"
     while any(p.poll() is None for p in procs):
         time.sleep(30)
-        done = 0
+        g_done = p_done = 0
         for sp in shards:
             try:
                 with open(sp + ".progress") as pf:
-                    done += int(pf.read().strip() or 0)
+                    a, b = pf.read().split()
+                    g_done += int(a)
+                    p_done += int(b)
             except (OSError, ValueError):
                 pass
+        done = g_done if games_mode else p_done
         elapsed = time.time() - t0
         rate = done / elapsed if elapsed > 0 else 0
         eta = (target - done) / rate if rate > 0 else 0
-        print(f"progress: {done:,}/{target:,} positions "
-              f"({100.0 * done / max(1, target):.1f}%)  "
-              f"rate {rate:,.0f}/s  elapsed {elapsed/3600:.2f}h  "
+        extra = (f"  positions harvested {p_done:,}" if games_mode
+                 else f"  games played {g_done:,}")
+        print(f"progress: {done:,}/{target:,} {unit} "
+              f"({100.0 * done / max(1, target):.1f}%)"
+              f"{extra}  rate {rate:,.0f}/s  elapsed {elapsed/3600:.2f}h  "
               f"ETA {eta/3600:.2f}h", flush=True)
 
     fails = sum(p.wait() != 0 for p in procs)
