@@ -928,8 +928,10 @@ class Engine:
     # Architecture: KA8T king-bucketed features + T16 threat vector,
     # 6144->2x256->528->32->32->1 quantized int16/int8 (DESIGN_nnue.md
     # "Phase 1 spec" is the frozen contract; NNUE/README.md has every
-    # command). False = v50+armed-defaults BYTE-EXACT (bench 1,083,772 /
-    # 1,508,415 ROOT_LMR-off); no real net exists yet -- Phases 6-8 (50M
+    # command). False = the CURRENT confirmed defaults BYTE-EXACT (the
+    # bench signature re-baselines per ship: v53 = 1,122,753 as of
+    # 2026-07-22; built-out and verified against the v50-era 1,083,772 /
+    # 1,508,415 pair); no real net exists yet -- Phases 6-8 (50M
     # dataset, bootstrap, 2k screen -> 10k A/B) decide if this ever flips.
     # Net naming convention (mirrors Old Engine/): the live net is
     # NNUE/nets/nnue_net_vN.nnue (minor bump vN.M for small same-data
