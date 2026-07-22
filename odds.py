@@ -69,10 +69,13 @@ ODDS_SQUARES = ["b1"]                   # Knight odds      (Nb1) -- the standing
                                         # external yardstick, both @45+0.15 vs
                                         # full-strength SF:
                                         #   v31  76.75%  (400g,  +207 +/-48)
+                                        #   v49  79.05% (1000g,  +231)
                                         #   v52  81.65% (1000g,  +259 +/-36)
-                                        # +52 Elo for +215 of self-play Elo --
-                                        # the line is compressing; expect it to
-                                        # saturate like rook odds did. Next rung
+                                        # v31 -> v52 is +52 Elo here for +215 of
+                                        # self-play Elo -- the line compresses as
+                                        # the engine outgrows it (single steps
+                                        # sit inside the CI). Expect it to
+                                        # saturate like rook odds did; next rung
                                         # down when it does: pawn odds (f2).
 # ODDS_SQUARES = ["f1"]                 # Bishop odds      (Bf1)
 # ODDS_SQUARES = ["f2"]                 # Pawn odds        (f-pawn)
