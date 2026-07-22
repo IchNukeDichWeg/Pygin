@@ -40,10 +40,13 @@ The engine exists in two forms:
   (100 games, saturated); rook odds **93.25%** on v31 → **95.50%** on v49
   (400 games each — draws collapsed 18 → 4; a ~4% swindle floor remains);
   knight odds, the live external yardstick, **76.75%** on v31 →
-  **79.05%** on v49 (1,000 games, 2026-07-17). Both re-runs moved ~+2.3pp
-  for ≈ +195 internal Elo — the odds formats compress toward saturation
-  as the engine outgrows them. Odds numbers are machine-dependent —
-  compare only runs from the same machine.
+  **79.05%** on v49 → **81.65%** on v52 (1,000 games each; v52 =
+  +259.33 ± 36.2, 2026-07-22). Across v31 → v52 that is +4.9pp for
+  ≈ +215 internal Elo — the odds formats compress toward saturation as
+  the engine outgrows them; single steps (v49 → v52, +2.6pp) sit inside
+  the ± 36 Elo CIs, so only the long leg resolves. Pawn odds (`f2`) is
+  the next rung once knight odds saturates. Odds numbers are
+  machine-dependent — compare only runs from the same machine.
 - **vs Stockfish 18 with the UCI_Elo limiter — bracketed both sides on
   v51:** **62.5%** over the **2850** cap (+88.9 ± 16.3, pair ratio 3.57)
   and **46.4%** under the **2900** cap (−25.2 ± 15.3, ratio 0.73), 2,000
@@ -273,6 +276,14 @@ configured in the `CONFIG` block at the top of the file, then:
 
 ```bash
 python3 odds.py
+```
+
+The CONFIG values can be overridden per run; `--positions N` plays each
+position twice (once per colour) for `2N` games, and `--workers 0` means
+cores − 1, as in `match.py`:
+
+```bash
+python3 odds.py --positions 500 --workers 0
 ```
 
 ---
