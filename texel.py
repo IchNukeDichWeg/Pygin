@@ -238,7 +238,14 @@ def _extract_file(args):
         # are spawned, so hash() would make extraction unreproducible.
         seed = zlib.crc32(os.path.basename(path).encode())
         rows = random.Random(seed).sample(rows, per_file_cap)
-    return path, rows
+    # Pack to the record dtype HERE, not in the parent: a Python tuple costs
+    # ~450 B against the record's 80 B, so accumulating tuples for a
+    # multi-million-position set would cost GBs and pickle slowly back.
+    arr = np.zeros(len(rows), dtype=RECORD)
+    for i, r in enumerate(rows):
+        arr[i]["bb"] = r[:8]
+        arr[i]["cast"], arr[i]["turn"], arr[i]["ep"], arr[i]["res"] = r[8:]
+    return path, arr
 
 
 def cmd_extract(a):
@@ -253,31 +260,30 @@ def cmd_extract(a):
     print(f"Scanning {len(files):,} log files with {a.workers} workers "
           f"(target {a.limit:,} positions, <= {cap:,} per match log)...")
 
-    rows, used, t0 = [], 0, time.time()
+    parts, n, used, t0 = [], 0, 0, time.time()
     with mp.Pool(a.workers) as pool:
         it = pool.imap_unordered(_extract_file,
                                  ((f, a.max_per_game, cap) for f in files))
         for i, (path, got) in enumerate(it, 1):
-            if got:
+            if len(got):
                 used += 1
-                rows.extend(got)
-            if i % 25 == 0 or len(rows) >= a.limit:
+                parts.append(got)
+                n += len(got)
+            if i % 25 == 0 or n >= a.limit:
                 print(f"  {i:>4}/{len(files)} files  {used} usable  "
-                      f"{len(rows):,} positions  "
-                      f"[{time.time() - t0:.0f}s]")
-            if len(rows) >= a.limit:
+                      f"{n:,} positions  [{time.time() - t0:.0f}s]")
+            if n >= a.limit:
                 pool.terminate()
                 break
 
-    if not rows:
+    if not parts:
         sys.exit("no usable positions -- every log was filtered out "
                  "(odds / mismatched-strength / Stockfish logs are excluded)")
-    random.Random(52).shuffle(rows)
-    rows = rows[:a.limit]
-    arr = np.zeros(len(rows), dtype=RECORD)
-    for i, r in enumerate(rows):
-        arr[i]["bb"] = r[:8]
-        arr[i]["cast"], arr[i]["turn"], arr[i]["ep"], arr[i]["res"] = r[8:]
+    arr = np.concatenate(parts)
+    del parts
+    rng = np.random.default_rng(52)
+    rng.shuffle(arr)               # so a validation tail is not one match log
+    arr = arr[:a.limit]
     np.save(a.out, arr)
     w = int((arr["res"] == 2).sum()); d = int((arr["res"] == 1).sum())
     print(f"\nWrote {len(arr):,} positions to {a.out} "
@@ -299,14 +305,14 @@ def cmd_extract(a):
 _W = {}          # per-worker state
 
 
-def _worker_init(npy_path, nchunks):
+def _worker_init(npy_path, nchunks, ntrain):
     import engine as E
     lib = ctypes.CDLL("./csearch.so")
     lib.csearch_eval_white.restype = ctypes.c_int
     lib.csearch_eval_white.argtypes = [ctypes.c_uint64] * 8 + \
         [ctypes.c_int, ctypes.c_int, ctypes.c_uint64]
     _W.update(lib=lib, E=E, eng=E.Engine(), arr=np.load(npy_path, mmap_mode="r"),
-              nchunks=nchunks, cid=-1, cols=None, res=None)
+              nchunks=nchunks, ntrain=ntrain, cid=-1, cols=None, res=None)
     _push(_W["eng"], lib, E)
 
 
@@ -342,11 +348,20 @@ def _push(eng, lib, E):
 def _chunk(cid):
     """Columns of chunk `cid` as plain Python int lists -- ~4x faster in the
     eval loop than indexing the numpy record, and only one chunk is held at a
-    time so 10 workers never materialise the whole set."""
+    time so 10 workers never materialise the whole set.
+
+    Chunk ids >= nchunks address the VALIDATION tail; the split point is a
+    fixed index into a set that was shuffled at extraction, so train and
+    validation never share a game."""
     if _W["cid"] != cid:
         arr = _W["arr"]
-        lo = len(arr) * cid // _W["nchunks"]
-        hi = len(arr) * (cid + 1) // _W["nchunks"]
+        if cid < _W["nchunks"]:
+            base, span, k = 0, _W["ntrain"], cid
+        else:
+            base, span, k = _W["ntrain"], len(arr) - _W["ntrain"], \
+                cid - _W["nchunks"]
+        lo = base + span * k // _W["nchunks"]
+        hi = base + span * (k + 1) // _W["nchunks"]
         a = arr[lo:hi]
         bb = a["bb"]
         _W["cols"] = list(zip(*[bb[:, i].tolist() for i in range(8)],
@@ -376,9 +391,9 @@ def _loss_task(job):
     return s, len(_W["cols"])
 
 
-def _loss(pool, nchunks, vec, k):
-    out = pool.map(_loss_task, [(c, vec, k) for c in range(nchunks)],
-                   chunksize=1)
+def _loss(pool, nchunks, vec, k, val=False):
+    ids = range(nchunks, 2 * nchunks) if val else range(nchunks)
+    out = pool.map(_loss_task, [(c, vec, k) for c in ids], chunksize=1)
     tot = sum(s for s, _ in out)
     n = sum(m for _, m in out)
     return tot / n
@@ -396,63 +411,101 @@ def cmd_tune(a):
     bounds = bounds_for(base)
     arr = np.load(a.positions, mmap_mode="r")
     nchunks = a.workers
-    print(f"{len(arr):,} positions, {len(PARAMS)} parameters, "
-          f"{a.workers} workers")
+    ntrain = int(len(arr) * (1.0 - a.val_frac))
+    print(f"{len(arr):,} positions ({ntrain:,} train / "
+          f"{len(arr) - ntrain:,} validation), {len(PARAMS)} parameters, "
+          f"{a.workers} workers, {a.restarts} restart(s)")
 
+    best_vec, best_val, results = None, None, []
     with mp.Pool(a.workers, initializer=_worker_init,
-                 initargs=(a.positions, nchunks)) as pool:
+                 initargs=(a.positions, nchunks, ntrain)) as pool:
         # --- fit K (the cp -> win-probability scale) on the shipped eval --- #
         t0 = time.time()
-        best_k, best = None, None
-        for k in [round(0.6 + 0.1 * i, 1) for i in range(20)]:
-            L = _loss(pool, nchunks, base if best_k is None else None, k)
-            if best is None or L < best:
-                best, best_k = L, k
-        k = best_k
-        print(f"K = {k} (loss {best:.6f}, {time.time() - t0:.0f}s)\n")
+        k, kloss = None, None
+        for cand in [round(0.6 + 0.1 * i, 1) for i in range(20)]:
+            L = _loss(pool, nchunks, base if k is None else None, cand)
+            if kloss is None or L < kloss:
+                kloss, k = L, cand
+        base_val = _loss(pool, nchunks, base, k, val=True)
+        print(f"K = {k}   shipped eval: train {kloss:.6f}  "
+              f"validation {base_val:.6f}   ({time.time() - t0:.0f}s)")
 
-        cur = list(base)
-        cur_loss = best
-        start_loss = best
-        for rnd in range(1, a.rounds + 1):
-            # Anneal the step: the delta schedule is spread evenly over the
-            # rounds (12 rounds, 3 deltas -> 4 coarse, 4 medium, 4 fine)
-            # rather than one delta per round with the rest at the finest.
-            delta = a.deltas[min((rnd - 1) * len(a.deltas) // a.rounds,
-                                 len(a.deltas) - 1)]
-            t0, changed = time.time(), 0
-            order = list(range(len(PARAMS)))
-            random.Random(rnd).shuffle(order)
-            for idx in order:
-                lo, hi = bounds[idx]
-                for step in (delta, -delta):
-                    trial = list(cur)
-                    v = trial[idx] + step
-                    if not (lo <= v <= hi) or v == cur[idx]:
-                        continue
-                    trial[idx] = v
-                    if not _valid(trial):
-                        continue
-                    L = _loss(pool, nchunks, trial, k)
-                    if L < cur_loss:
-                        cur, cur_loss, changed = trial, L, changed + 1
+        for restart in range(a.restarts):
+            # Restart 0 starts from the shipped values; later restarts start
+            # from a random point inside the bounds. Coordinate descent finds
+            # a LOCAL optimum, and restarts are the only axis on which more
+            # compute buys a better answer -- extra rounds just re-confirm
+            # the same optimum once the step size stops moving anything.
+            if restart == 0:
+                cur = list(base)
+            else:
+                # Jitter around the shipped values, NOT uniform-random inside
+                # the bounds: a uniform start in 44 dimensions lands nowhere
+                # near a chess-sane eval and descent cannot climb back (a
+                # measured 0.1002 against the shipped basin's 0.0891). The
+                # jitter widens with each restart to probe further out.
+                rng = random.Random(1000 + restart)
+                frac = 0.10 * (1 + (restart - 1) % 4)
+                while True:
+                    cur = []
+                    for v, (lo, hi) in zip(base, bounds):
+                        j = max(1, int((hi - lo) * frac / 2))
+                        cur.append(min(hi, max(lo, v + rng.randint(-j, j))))
+                    if _valid(cur):
                         break
-            print(f"round {rnd:>2}/{a.rounds}  delta {delta:>2}cp  "
-                  f"loss {cur_loss:.6f}  ({changed} params moved, "
-                  f"{time.time() - t0:.0f}s)")
-            if not changed:
-                print("  converged at this step size")
-                if delta == min(a.deltas):
-                    break
+            cur_loss = _loss(pool, nchunks, cur, k)
+            start_loss = cur_loss
+            print(f"\n--- restart {restart + 1}/{a.restarts} "
+                  f"({'shipped values' if restart == 0 else 'jittered start'}), "
+                  f"train {cur_loss:.6f} ---")
 
-    print(f"\nloss {start_loss:.6f} -> {cur_loss:.6f}  "
-          f"({(start_loss - cur_loss) / start_loss * 100:.2f}% better)")
-    print("\nchanged parameters:")
-    for (label, _, _), b0, b1 in zip(PARAMS, base, cur):
+            for rnd in range(1, a.rounds + 1):
+                # Anneal the step: the delta schedule is spread evenly over
+                # the rounds (12 rounds, 3 deltas -> 4 coarse, 4 mid, 4 fine).
+                delta = a.deltas[min((rnd - 1) * len(a.deltas) // a.rounds,
+                                     len(a.deltas) - 1)]
+                t0, changed = time.time(), 0
+                order = list(range(len(PARAMS)))
+                random.Random(restart * 1000 + rnd).shuffle(order)
+                for idx in order:
+                    lo, hi = bounds[idx]
+                    for step in (delta, -delta):
+                        trial = list(cur)
+                        v = trial[idx] + step
+                        if not (lo <= v <= hi) or v == cur[idx]:
+                            continue
+                        trial[idx] = v
+                        if not _valid(trial):
+                            continue
+                        L = _loss(pool, nchunks, trial, k)
+                        if L < cur_loss:
+                            cur, cur_loss, changed = trial, L, changed + 1
+                            break
+                vloss = _loss(pool, nchunks, cur, k, val=True)
+                flag = ""
+                if best_val is None or vloss < best_val:
+                    best_val, best_vec, flag = vloss, list(cur), "  <- best"
+                print(f"  round {rnd:>3}/{a.rounds}  delta {delta:>2}cp  "
+                      f"train {cur_loss:.6f}  val {vloss:.6f}  "
+                      f"({changed:>2} moved, {time.time() - t0:.0f}s){flag}")
+                if not changed and delta == min(a.deltas):
+                    print("  converged")
+                    break
+            results.append((restart, start_loss, cur_loss, vloss))
+
+    print(f"\nshipped eval: train {kloss:.6f}  validation {base_val:.6f}")
+    print(f"best found:   validation {best_val:.6f}  "
+          f"({(base_val - best_val) / base_val * 100:+.2f}% vs shipped)")
+    if best_val >= base_val:
+        print("\nNO IMPROVEMENT on held-out data -- the shipped eval already "
+              "fits this corpus\nbetter than anything the search found. Do "
+              "NOT spend an A/B slot on this.")
+    print("\nchanged parameters (best-on-validation):")
+    for (label, _, _), b0, b1 in zip(PARAMS, base, best_vec):
         if b0 != b1:
             print(f"  {label:<28} {b0:>6} -> {b1:>6}  ({b1 - b0:+d})")
 
-    for (_, attr, key), v in zip(PARAMS, cur):
+    for (_, attr, key), v in zip(PARAMS, best_vec):
         _set(E.Engine, attr, key, v)
     _write_back(a.out)
     print(f"\nWrote {a.out}. This is a CANDIDATE, not a release: A/B it "
@@ -618,6 +671,11 @@ def main():
     t.add_argument("--out", default=DEFAULT_OUT)
     t.add_argument("--workers", type=int, default=cores)
     t.add_argument("--rounds", type=int, default=DEFAULT_ROUNDS)
+    t.add_argument("--restarts", type=int, default=1,
+                   help="independent descents from different starting points, "
+                        "keeping the best on held-out data (default 1)")
+    t.add_argument("--val-frac", type=float, default=0.2,
+                   help="fraction held out to detect overfitting (default 0.2)")
     t.add_argument("--deltas", type=int, nargs="+", default=list(DEFAULT_DELTAS),
                    help="coordinate-descent step sizes in cp, annealed evenly "
                         "across --rounds (default: 8 3 1)")
@@ -626,6 +684,10 @@ def main():
     s = sub.add_parser("selftest", help="verify the eval mirror + param push")
     s.set_defaults(fn=cmd_selftest)
 
+    # Line-buffer stdout so `nohup ... | tail -f` shows progress live;
+    # Python block-buffers when stdout is not a tty and a 5-hour run would
+    # otherwise print nothing until it finished.
+    sys.stdout.reconfigure(line_buffering=True)
     a = ap.parse_args()
     a.fn(a)
 
