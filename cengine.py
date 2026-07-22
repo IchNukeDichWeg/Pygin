@@ -907,8 +907,10 @@ class Engine:
     # countermoves are deliberately NOT kept: they are ply-indexed, so a
     # shifted root makes them wrong rather than merely stale. Watch the P-23
     # stager, which reads live history -- a warm start shifts early-iteration
-    # ordering. False = v53 node-exact. ARMED CANDIDATE 2026-07-22.
-    HIST_KEEP = False
+    # ordering. False = v53 node-exact; True is the ARMED CANDIDATE that
+    # match play must actually carry (2026-07-22). selftest pins it back to
+    # 0 so the ladder still measures v53.
+    HIST_KEEP = True
 
     # Lazy-SMP worker count. Plain class default -- no environment
     # read; hosts set it on the instance (match.py --smp).
