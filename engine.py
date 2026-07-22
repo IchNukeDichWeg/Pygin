@@ -1139,7 +1139,7 @@ _ZOB_CR_BITS = ((chess.H1, 0), (chess.A1, 1), (chess.H8, 2), (chess.A8, 3))
 #            N * parallel_games <= CPU cores or you oversubscribe.
 # Per-run overrides, in priority order (highest wins):
 #     1. ``Engine.smp_workers`` set programmatically AFTER construction
-#        (e.g. ``match.py``'s ENGINE_SMP_OVERRIDE -- see below).
+#        (e.g. ``match.py``'s --smp flag -- see below).
 #     2. ``CLAUDECHESS_SMP`` env var (still honoured for shell one-offs).
 #     3. This module constant.
 # GUIs use a separate persistent pool via CLAUDECHESS_GUI_SMP; see gui.py.

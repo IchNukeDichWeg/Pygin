@@ -17,22 +17,29 @@ SMP predates v25's "Lazy-SMP production fixes" (v19-24 -- known fragile, see
 that milestone's own description) report an error and get "--" in the
 README; there is nothing reliably measurable there.
 """
-import os, subprocess, sys
+import concurrent.futures, os, subprocess, sys
 
 REPO = os.path.dirname(os.path.abspath(__file__))
 WORKER = os.path.join(REPO, "bench_progress_threads_worker.py")
 THREADS = int(sys.argv[1]) if len(sys.argv) > 1 else 4
 SECONDS = float(sys.argv[2]) if len(sys.argv) > 2 else 5.0
 REPS = 5
+JOBS = 2          # concurrent version subprocesses (THREADS each)
 
 def versions():
     return sorted(int(d) for d in os.listdir(os.path.join(REPO, "Old Engine"))
                   if d.isdigit())
 
 if __name__ == "__main__":
-    for v in versions():
+    # JOBS versions at a time, THREADS each -- keep JOBS*THREADS under the
+    # core count so versions do not contend. Every version must see the same
+    # load for the column to stay comparable.
+    def run(v):
         r = subprocess.run([sys.executable, WORKER, REPO, str(v),
                             str(THREADS), str(SECONDS), str(REPS)],
                            capture_output=True, text=True)
-        line = (r.stdout.strip().splitlines() or ["{}"])[-1]
-        print(line, flush=True)
+        return (r.stdout.strip().splitlines() or ["{}"])[-1]
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=JOBS) as ex:
+        for line in ex.map(run, versions()):
+            print(line, flush=True)
