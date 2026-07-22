@@ -4,7 +4,10 @@ The complete NNUE infrastructure for Pygin: data generation, PyTorch
 trainer, quantized export, C inference (accumulator + NEON/scalar forward),
 and hybrid integration behind one master toggle. **Everything is dormant by
 default** — `cengine.USE_NNUE = False` is byte-exact v50+armed-defaults
-(bench `1,083,772` armed / `1,508,415` with ROOT_LMR off).
+(byte-exact vs the CURRENT confirmed defaults; the bench signature
+re-baselines per ship -- v53 = `1,122,753` as of 2026-07-22. The
+build-out itself was verified against the v50-era 1,083,772/1,508,415
+pair on 2026-07-18).
 
 The frozen architecture/format contract is **DESIGN_nnue.md → "Phase 1 spec
 (FROZEN)"**. Summary: KA8T feature set (8 king buckets, horizontal mirror,
@@ -109,7 +112,8 @@ cengine.Engine.NNUE_FILE = "NNUE/nets/toy.nnue"     # default already this
 ```
 
 `cuci.py`'s fingerprint echoes `use_nnue=` for PGN forensics. Toggle OFF is
-byte-exact v50; run `bench` (1,083,772) + `selftest.py` after any change.
+byte-exact vs the current confirmed defaults; run `bench` (v53:
+1,122,753) + `selftest.py` after any change.
 
 ## Net naming & retirement (mirrors Old Engine/)
 
