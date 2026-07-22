@@ -92,7 +92,14 @@ TC_INCREMENT = 0.20         # used when MODE == "clock": seconds added per move
 # on THIS engine's score scale, so the two-sided agreement rule loses its
 # calibration against a foreign engine's cp reports. Same-family A/Bs only.
 ADJUDICATE = True
-ENGINE_SMP = 1              # --smp N: Lazy-SMP workers per engine
+ENGINE_SMP = 1              # Lazy-SMP workers inside EACH engine subprocess.
+                            # --smp N overrides it for one run (--engine-smp
+                            # is kept as an alias). Passed to the engine child
+                            # as an argument -- it used to be exported as
+                            # CLAUDECHESS_SMP, which is gone.
+                            # Keep ENGINE_SMP * N_WORKERS * 2 (two engines per
+                            # game) <= CPU cores or you oversubscribe and lose
+                            # throughput.
 ADJ_WIN_P = 0.99            # per-phase cp threshold = model's P(win) 99% point
 ADJ_WIN_COUNT = 4           # consecutive own moves (each side) for a win call.
                             # 8 -> 4 (2026-07-18): the two-sided 99%-agreement
@@ -137,21 +144,6 @@ VERBOSE_MOVES = False       # also print every move to the terminal
 N_WORKERS = 10              # parallel game workers (override via --workers N|auto)
                             #   1  -> sequential (one engine pair, plays all games)
                             #   >1 -> N worker processes, each with its own engine pair
-
-ENGINE_SMP_OVERRIDE = 1     # override engine.SMP_WORKERS for THIS match run.
-                            # None  -> respect each engine's own SMP_WORKERS
-                            #          (the constant inside engine.py).
-                            # int N -> force every engine subprocess this match
-                            #          spawns to use N Lazy-SMP workers, by
-                            #          exporting CLAUDECHESS_SMP=N before the
-                            #          first subprocess is launched. Lets a
-                            #          single match override the file default
-                            #          without editing engine.py, and matches
-                            #          the env-var semantics the engine already
-                            #          honours (see SMP_WORKERS in engine.py).
-                            # Keep ENGINE_SMP_OVERRIDE * N_WORKERS * 2  (two
-                            # engines per game) <= CPU cores or you will
-                            # oversubscribe and lose throughput.
 
 # ====================================================================== #
 #  Internals (rarely need changing)
@@ -981,7 +973,7 @@ def main():
     # so this must happen before mp.get_context("spawn") or any .start() call
     # below. CLI flag wins over the CONFIG constant so you can do e.g.
     # ``python3 match.py --engine-smp 8`` without editing the file.
-    smp_override = ENGINE_SMP_OVERRIDE
+    smp_override = None
     for flag in ("--smp", "--engine-smp"):      # --engine-smp kept as an alias
         if flag in sys.argv:
             i = sys.argv.index(flag)
