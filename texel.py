@@ -233,6 +233,7 @@ def _quiet_positions(block, max_per_game):
 
 def _extract_file(args):
     path, max_per_game, per_file_cap = args
+    _use_full_corpus()   # spawned workers re-import fit_wdl_model fresh
     import fit_wdl_model as F
     if not F.classify_file(path):
         return path, []
@@ -262,7 +263,19 @@ def _extract_file(args):
     return path, arr
 
 
+def _use_full_corpus():
+    """fit_wdl_model gates its corpus to ONE eval era, because it maps this
+    engine's cp to an outcome probability and v53 moved the cp scale. Texel
+    labels are GAME RESULTS, which are scale-free -- a v31 win is a win on
+    any eval. So reuse that module's log parsing but not its era policy, or
+    the whole 10 GB corpus filters down to nothing."""
+    import fit_wdl_model as F
+    F._MIN_C_ERA_SNAPSHOT = 31
+    F.CENGINE_MIN_DATE = None
+
+
 def cmd_extract(a):
+    _use_full_corpus()
     import fit_wdl_model as F
     files = []
     for d in F.LOG_DIRS:
