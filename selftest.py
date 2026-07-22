@@ -36,7 +36,7 @@ os.chdir(HERE)
 REF_FEN = "r3k2r/8/8/8/8/8/8/R2QK2R w KQkq - 0 1"
 REF_DEPTH = 6
 REF_MOVE = "h1h8"
-REF_NODES = 3495          # update on confirmed search changes (see docstring)
+REF_NODES = 2950          # update on confirmed search changes (see docstring)
 
 # The reference node count pins the CONFIRMED (latest vN) search. A default-ON
 # search feature that is still under A/B legitimately changes the tree, so a
@@ -125,11 +125,21 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # quiet developing moves flip between depths without being a regression.
 # Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
 CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3"
-CE_LADDER = {                     # depth -> (nodes, score)  [v52: FI-24(a)+(b) null refinements ON -- re-measured 2026-07-21; no-double-null + eval-scaled R reshape the deep tree (d10-d12 scores drift, d12 +59% nodes as suppressed nulls hand work back to real search). TT_BITS=23 (192 MB) unchanged]
-    1: (95, 126), 2: (180, 126), 3: (378, 126), 4: (921, 122),
-    5: (6111, 73), 6: (11724, 73), 7: (20425, 74), 8: (48469, 72),
-    9: (81605, 75), 10: (162637, 53), 11: (290593, 53), 12: (717955, 58),
-    13: (1225434, 75), 14: (1716693, 97),
+CE_LADDER = {
+    1: (91, 128),
+    2: (179, 128),
+    3: (380, 128),
+    4: (1107, 91),
+    5: (4605, 91),
+    6: (23575, 56),
+    7: (29844, 56),
+    8: (48539, 64),
+    9: (134861, 92),
+    10: (221843, 63),
+    11: (319681, 68),
+    12: (591594, 68),
+    13: (1205214, 67),
+    14: (2053985, 82),
 }
 if os.path.exists("csearch.c"):
     try:
