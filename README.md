@@ -26,16 +26,22 @@ representation, move generation and legality.
 
 <table>
 <tr>
-<td width="50%"><img src="docs/elo_progression.svg" alt="Cumulative A/B Elo across the C era"/></td>
-<td width="50%"><img src="docs/speed_progression.svg" alt="Single-thread speed multiplier across the C era"/></td>
+<td><img src="docs/elo_progression.svg" width="100%" alt="Cumulative A/B Elo across the C era, v31=0 climbing to +253"/></td>
+<td><img src="docs/speed_progression.svg" width="100%" alt="Single-thread speed as a multiple of v31, ending at 1.61x"/></td>
+</tr>
+<tr>
+<td><img src="docs/odds_knight.svg" width="100%" alt="Knight-odds win rate vs full-strength Stockfish 18: 76.75 to 81.65 percent"/></td>
+<td><img src="docs/odds_ladder.svg" width="100%" alt="Odds it can spot full-strength Stockfish 18 and still win: queen 100, rook 95.5, knight 81.65 percent"/></td>
 </tr>
 </table>
 
-> **How to read these:** every C-era version (v31+) is A/B-tested against the
-> one before it. Left = those gains stacked (**+253 Elo** over v31). Right =
-> single-thread speed as a multiple of v31 (**1.61×**). The v30→v31 rewrite —
-> the whole search loop moving into C, a ~34× speedup — is off the left edge of
-> both, so v31 is the honest zero.
+- **Top row — self-play.** Every C-era version (v31+) is A/B-tested against the
+  one before it: gains stacked (**+253 Elo**) and single-thread speed (**1.61×**).
+  The v30→v31 C rewrite (~34× faster, +215 odds-derived) is off the left edge,
+  so v31 is the honest zero.
+- **Bottom row — vs Stockfish 18 at full strength.** The external check: knight
+  odds climbing **76.75 → 81.65%**, and the handicap ladder — it spots SF a
+  **queen** (100%), **rook** (95.5%) or **knight** (81.65%) and still wins.
 
 ### Two engines, one eval
 
