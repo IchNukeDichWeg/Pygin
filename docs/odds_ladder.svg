@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="300" viewBox="0 0 760 300" preserveAspectRatio="xMidYMid meet" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+<text x="28" y="24" fill="#8b949e" font-size="15" font-weight="700">Odds it can spot full-strength SF-18 and still win</text>
+<text x="738" y="24" fill="#8b949e" font-size="12" text-anchor="end">latest each</text>
+<rect x="104" y="44.0" width="582.0" height="63.3" rx="4" fill="#8b949e33"/>
+<rect x="104" y="44.0" width="582.0" height="63.3" rx="4" fill="#f0883e"/>
+<text x="94" y="80.7" fill="#8b949e" font-size="13" font-weight="600" text-anchor="end">Queen</text>
+<text x="694.0" y="80.7" fill="#f0883e" font-size="13" font-weight="700">100.0%</text>
+<text x="738" y="80.7" fill="#8b949e" font-size="11" text-anchor="end">v-</text>
+<rect x="104" y="123.3" width="582.0" height="63.3" rx="4" fill="#8b949e33"/>
+<rect x="104" y="123.3" width="555.8" height="63.3" rx="4" fill="#f0883e"/>
+<text x="94" y="160.0" fill="#8b949e" font-size="13" font-weight="600" text-anchor="end">Rook</text>
+<text x="667.8" y="160.0" fill="#f0883e" font-size="13" font-weight="700">95.5%</text>
+<text x="738" y="160.0" fill="#8b949e" font-size="11" text-anchor="end">v49</text>
+<rect x="104" y="202.7" width="582.0" height="63.3" rx="4" fill="#8b949e33"/>
+<rect x="104" y="202.7" width="475.2" height="63.3" rx="4" fill="#f0883e"/>
+<text x="94" y="239.3" fill="#8b949e" font-size="13" font-weight="600" text-anchor="end">Knight</text>
+<text x="587.2" y="239.3" fill="#f0883e" font-size="13" font-weight="700">81.7%</text>
+<text x="738" y="239.3" fill="#8b949e" font-size="11" text-anchor="end">v52</text>
+</svg>
