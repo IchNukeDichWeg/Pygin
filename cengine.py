@@ -95,9 +95,21 @@ campaign vs Old Engine/51, nodes@1.75M): pooled 12,000 games **+6.63
 +/-4.5**, pooled GSPRT[0,4] LLR +4.533 ACCEPT -- the third SPRT accept,
 and the first verdict confirmed on the nodes instrument. Snapshotted Old
 Engine/52; campaigns now run vs Old Engine/52 on SUBSET_SEED 52. Also in
-this tree: real UCI pondering (go ponder/ponderhit, host layer). Armed candidate: none pinned -- the
-search/pruning lane continues (R5: FI-57, FI-58/59/60 killers-malus
-batch, FI-61-64, FI-55, FI-24a/b). FI-15 NNUE Phases 1-5
+this tree: real UCI pondering (go ponder/ponderhit, host layer).
+v53 = v52 + the **Texel eval retune** -- NO change in this file or in
+csearch.c: 44 eval scalars refitted in engine.py, which this module pushes
+into csearch.so at construction (the eval-param oracle, _load_pyengine +
+csearch_set_eval below). Fitted by texel.py on 4M quiet positions from
+this project's own self-play logs, labelled with the GAME RESULT.
+CONFIRMED 2026-07-22 (thirty-second campaign vs Old Engine/52,
+nodes@1.75M): pooled 12,000 games **+37.52 +/-6.3** (55.38%, ptnml
+245/1133/2264/1802/556, pair ratio 1.71, GSPRT[0,2] LLR +9.918 ACCEPT) --
+the fourth SPRT accept, 2.8x the bound, and by a wide margin the largest
+single gain in the C era (previous best +11.12). The eval lane's first
+win, opened right after the search lane was declared exhausted. Full
+detail in engine.py's version history. Snapshotted Old Engine/53;
+campaigns now run vs Old Engine/53 on SUBSET_SEED 53. Armed candidate:
+none pinned. FI-15 NNUE Phases 1-5
 BUILT-DORMANT 2026-07-18 (abi 19): the full NN-eval infrastructure --
 KA8T king-bucketed features + T16 threats, quantized int16/int8 net,
 F49-31 accumulator stack, hybrid nn_eval-in-negamax/HCE-in-qsearch with

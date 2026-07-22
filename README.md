@@ -31,18 +31,19 @@ The engine exists in two forms:
   over 1,855 games at 50s+0.2 (2026-07-21, v52 tree; not one losing *or*
   drawn pair). The arrival smoke match was 29–1–0; the gap is far outside
   what Elo can express, so no rating is quoted. The
-  C-era ledger has since added **≈ +215 Elo** of A/B-confirmed gains
-  (v31 → v52 — IIR, TT persistence, check extensions, qsearch-TT, staged
+  C-era ledger has since added **≈ +253 Elo** of A/B-confirmed gains
+  (v31 → v53 — IIR, TT persistence, check extensions, qsearch-TT, staged
   move generation, incremental Zobrist, TT prefetch, two TT-value
   sharpeners, root-move LMR, null-move refinements, a 192 MB table, eight
-  correctness releases).
+  correctness releases, and the v53 Texel eval retune — **+37.52 ±6.3**,
+  the largest single release in the ledger and the eval lane's first win).
 - **vs full-strength Stockfish 18** (`odds.py`): **100%** at queen odds
   (100 games, saturated); rook odds **93.25%** on v31 → **95.50%** on v49
   (400 games each — draws collapsed 18 → 4; a ~4% swindle floor remains);
   knight odds, the live external yardstick, **76.75%** on v31 →
   **79.05%** on v49 → **81.65%** on v52 (1,000 games each; v52 =
   +259.33 ± 36.2, 2026-07-22). Across v31 → v52 that is +4.9pp for
-  ≈ +215 internal Elo — the odds formats compress toward saturation as
+  ≈ +215 internal Elo (pre-v53) — the odds formats compress toward saturation as
   the engine outgrows them; single steps (v49 → v52, +2.6pp) sit inside
   the ± 36 Elo CIs, so only the long leg resolves. Pawn odds (`f2`) is
   the next rung once knight odds saturates. Odds numbers are
@@ -119,6 +120,7 @@ Regenerate the single-thread column with `python3 bench_progress.py`, the
 |  50 |             4.3 M |          14.7 M |    18 | +1.60 ±6.8    | rule50 TT staleness guard + depth-independent TT mate handling (permanent terminal entries; null kept as correctness) |
 |  51 |             4.3 M |          14.7 M |    19 | +11.12 ±5.3   | root-move LMR (late quiet root scouts reduced; second SPRT accept, 9.3k pooled games) |
 |  52 |             4.3 M |          14.7 M |    19 | +6.63 ±4.5    | null-move refinements (no double null + eval-scaled R; third SPRT accept, 12k pooled games) |
+|  53 |             4.3 M |          14.7 M |    19 | **+37.52 ±6.3** | **Texel eval retune** (44 scalars refitted on 4M own-self-play positions, game-result labels; fourth SPRT accept, LLR +9.918, 12k pooled games — largest single release) |
 
 **Table notes**
 
