@@ -25,38 +25,18 @@ The engine exists in two forms:
 
 **Strength:**
 
-- **Python engine:** ~**2440–2450 Elo** single-threaded (level with
-  Stockfish 18 capped at UCI_Elo 2450, 2,500 games).
-- **C search core:** unmeasurable against the Python engine — **1,815–0–40**
-  over 1,855 games at 50s+0.2 (2026-07-21, v52 tree; not one losing *or*
-  drawn pair). The arrival smoke match was 29–1–0; the gap is far outside
-  what Elo can express, so no rating is quoted. The
-  C-era ledger has since added **≈ +253 Elo** of A/B-confirmed gains
-  (v31 → v53 — IIR, TT persistence, check extensions, qsearch-TT, staged
-  move generation, incremental Zobrist, TT prefetch, two TT-value
-  sharpeners, root-move LMR, null-move refinements, a 192 MB table, eight
-  correctness releases, and the v53 Texel eval retune — **+37.52 ±6.3**,
-  the largest single release in the ledger and the eval lane's first win).
-- **vs full-strength Stockfish 18** (`odds.py`): **100%** at queen odds
-  (100 games, saturated); rook odds **93.25%** on v31 → **95.50%** on v49
-  (400 games each — draws collapsed 18 → 4; a ~4% swindle floor remains);
-  knight odds, the live external yardstick, **76.75%** on v31 →
-  **79.05%** on v49 → **81.65%** on v52 (1,000 games each; v52 =
-  +259.33 ± 36.2, 2026-07-22). Across v31 → v52 that is +4.9pp for
-  ≈ +215 internal Elo (pre-v53) — the odds formats compress toward saturation as
-  the engine outgrows them; single steps (v49 → v52, +2.6pp) sit inside
-  the ± 36 Elo CIs, so only the long leg resolves. Pawn odds (`f2`) is
-  the next rung once knight odds saturates. Odds numbers are
-  machine-dependent — compare only runs from the same machine.
-- **vs Stockfish 18 with the UCI_Elo limiter — bracketed both sides on
-  v51:** **62.5%** over the **2850** cap (+88.9 ± 16.3, pair ratio 3.57)
-  and **46.4%** under the **2900** cap (−25.2 ± 15.3, ratio 0.73), 2,000
-  games each at 50s+0.2 (2026-07-19). On this instrument's scale the
-  engine sits between the caps, ≈2885 — a class bracket, not a rating:
-  the limiter compresses real differences and the two caps extrapolate
-  inconsistently (~2939 vs ~2875), which is the nonlinearity in action;
-  odds games remain the honest yardstick. (Prior: 55.5% over 2800 on
-  v49; the 2700 run vs a *dev* SF build stays retired.)
+- **~2885 Elo** (v51, SF-18 UCI_Elo bracket: 62.5% over the 2850 cap, 46.4%
+  under 2900, 2,000 games each). A class bracket, not a rating — the limiter
+  is nonlinear and the two caps extrapolate inconsistently.
+- **Knight odds vs full-strength SF-18** — the live external yardstick:
+  76.75% (v31) → 79.05% (v49) → **81.65%** (v52, 1,000 games, +259 ±36).
+  Queen and rook odds are saturated (100% / 95.5%); pawn odds is the next rung.
+- **C-era ledger: ≈ +253 Elo** of A/B-confirmed gains, v31 → v53. Largest
+  single release: **v53 Texel eval retune, +37.52 ±6.3** (12,000 games,
+  LLR +9.918) — the eval lane's first win.
+- **Python engine: ~2440–2450 Elo** (level with SF-18 at UCI_Elo 2450).
+  The C core beats it **1,815–0–40** — no rating quoted, the gap is past
+  what Elo expresses.
 
 ### Version progression
 
@@ -132,34 +112,31 @@ these figures against a pre-2026-07-22 revision of this table.
 **Table notes**
 
 - **Elo Δ** — each figure is an A/B vs the previous version (C-era = 10,000
-  games). Cumulative **≈ +189** over v31. **Not summable across the whole
-  column:** TCs differ (early Python-era at assorted fast TCs ⁴, v32–36 at
-  45+0.10, v37–47 at 50+0.20), so only same-TC spans are comparable.
-- **`est`** ⁵ — a feature-based estimate, not an A/B; shown so every row
-  carries a figure. Never summed into a rating. The real anchor is ≈2442 by
-  v25 (vs SF-2450).
-- **Bundled A/Bs** — v16+v17 vs v15 = **+69 ±16** ³; v22–24 vs v21 =
-  **+11.75 ±6.8** ²; v31 arrival = **29–1–0** smoke match (re-run on v52:
-  **1,815–0–40**, still unmeasurable), ≈+215 is odds-derived, not an A/B ¹.
-- **NPS 4 Threads** ⁶ — "—" for v1–24 (no reliable SMP: none before v19,
-  fragile multi-process before v25). v25–30 = old multi-process SMP; v31+ =
-  the C core's pthread Lazy-SMP, so the ~200k→millions jump at v30→v31 is
-  partly that methodology change, not pure speedup.
-- **Measurement** — absolute NPS is hardware-dependent (Apple Silicon); the
-  C-era block (v31+) was re-measured in one uniform session so its rows are
-  mutually comparable. Regenerate: `bench_progress.py` / `bench_progress_threads.py 4`.
+  games). **Cumulative ≈ +253 over v31.** Not summable across the whole
+  column: TCs differ (Python era at assorted fast TCs ⁴, v32–36 at 45+0.10,
+  v37–47 at 50+0.20, v48+ on `--nodes`).
+- **`est` ⁵** — feature-based estimate, not an A/B. Never summed into a
+  rating; the real anchor is ≈2442 by v25.
+- **Bundled A/Bs** — v16+v17 vs v15 = +69 ±16 ³; v22–24 vs v21 = +11.75 ±6.8 ²;
+  v31's ≈+215 ¹ is odds-derived, not an A/B.
+- **NPS 4 Threads ⁶** — "—" for v1–24 (no reliable SMP). v25–30 = multi-process
+  SMP, v31+ = the C core's pthread Lazy-SMP, so the v30→v31 jump is partly a
+  methodology change.
+- **Measurement** — Apple Silicon, versions run 8-concurrent (2 for 4-thread),
+  so rows compare to each other but not to a solo reading.
 
 **The load-bearing NPS jumps**
 
-- **v15→v17, 35k → 58k** — eval then movegen ported to C (`eval_c.c`, `movegen.c`), byte-identical play.
-- **v25→v28, 60k → 88k** — node-identical speed batches (hoisted invariants, fewer allocations).
-- **v30→v31, 88k → 2.7M (~30×)** — the whole per-node loop moves to C: no interpreter cost, no per-node ctypes crossing. The single largest jump.
-- **v34→v36, 2.5M → 4.0M** — noisy-only qsearch generation + staged (lazy) move ordering.
-- **v38→v39, 4.1M → 4.4M** — incremental Zobrist hashing + eval cached in spare TT bits.
-- **v43→v44, 4.0M → 4.3M** — TT prefetch (the v39 child key hides the probe's cache miss); +13.31 Elo, the biggest NPS win of the C era (~2.7 Elo per 1% NPS).
+- **v15→v17, 28.7k → 52.7k** — eval then movegen ported to C, byte-identical play.
+- **v25→v28, 49.1k → 69.0k** — node-identical speed batches.
+- **v30→v31, 69.0k → 2.34M (~34×)** — the whole per-node loop moves to C. The
+  single largest jump.
+- **v34→v36, 2.13M → 3.19M** — noisy-only qsearch generation + staged move ordering.
+- **v38→v39, 3.09M → 3.36M** — incremental Zobrist + eval cached in spare TT bits.
+- **v43→v44, 3.23M → 3.67M** — TT prefetch; +13.31 Elo, ~2.7 Elo per 1% NPS.
 
-Some wins don't show as NPS: v39→v40 (ep-key merge) and the v41→v43
-verified-null removal are **nodes-to-depth** gains at flat speed.
+Not visible as NPS: v39→v40 (ep-key merge) and the v41→v43 verified-null
+removal are nodes-to-depth gains at flat speed.
 
 ---
 
