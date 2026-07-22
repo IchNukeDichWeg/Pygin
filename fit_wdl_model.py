@@ -148,16 +148,12 @@ def board_phase(board):
 #     CENGINE_MIN_DATE -- without it the entire v52 corpus walks back in
 #     through the side door.
 #
-# The DEFAULT stays the full C-era corpus (31+, no date gate), because
-# `--min-era 53` currently selects ZERO of 197 log files -- v53 shipped
-# today, and its own campaign logs are cengine-vs-engine52, which fail
-# near_equal_pair anyway now that the two are ~37 Elo apart. Refitting on
-# the v52-era corpus is strictly better than having no fresh fit at all:
-# v53's scale shift is ~10% in the middlegame, and it biases adjudication
-# in the CONSERVATIVE direction (v53 reports smaller cp, so the 99%-win
-# threshold is reached later, never sooner). Switch the default to 53 once
-# v53-vs-v53-candidate campaigns have filled the corpus.
-CENGINE_MIN_DATE = None
+# The default is the v53 era: engine53+ snapshots, and dev-build ("cengine")
+# logs dated on/after v53's ship date. Every campaign from FI-12 onward runs
+# cengine-vs-engine53 and qualifies automatically. Older corpora are still
+# one flag away -- `--min-era 52` refits on the v52 era, and `--min-era 31
+# --cengine-since ""` reproduces the pre-v53 behaviour exactly.
+CENGINE_MIN_DATE = "2026-07-22"
 _DATE_RE = re.compile(r"_(\d{4}-\d{2}-\d{2})_")
 
 NEAR_EQUAL_EXTRA = {
@@ -166,7 +162,7 @@ NEAR_EQUAL_EXTRA = {
                         # contemporary cengine only -- near-equal like it
 }
 _BASE_NUM_RE = re.compile(r"^engine(\d+)$")
-_MIN_C_ERA_SNAPSHOT = 31
+_MIN_C_ERA_SNAPSHOT = 53
 
 
 def _base_num(base):
@@ -555,7 +551,7 @@ def main():
     if args.min_era is not None:
         _MIN_C_ERA_SNAPSHOT = args.min_era
     if args.cengine_since is not None:
-        CENGINE_MIN_DATE = args.cengine_since
+        CENGINE_MIN_DATE = args.cengine_since or None
     print(f"Corpus gate: engine<N> >= {_MIN_C_ERA_SNAPSHOT}"
           + (f", cengine logs on/after {CENGINE_MIN_DATE}"
              if CENGINE_MIN_DATE else ", no cengine date gate"))
