@@ -1201,6 +1201,17 @@ static __thread uint32_t g_counter[4096];
  * (default OFF = v36 node-exact); re-test only at a much longer TC. */
 static int g_cont_hist = 0;
 void set_cont_hist(int v) { g_cont_hist = v; }
+
+/* FI-12: history persistence across game moves (P-17, never tried in the C
+ * era). cs_search_begin wipes the quiet-move ordering tables every move, but
+ * consecutive positions share most of their quiet structure -- halving
+ * instead of wiping starts the ordering warm exactly like the TT does, and
+ * the TT-warm family is 2-for-2 (P-14 +23.5, P-44 +8.1). Counter-prior:
+ * history refinements keep measuring null (Q-01, FI-04, FI-23). Killers and
+ * countermoves stay wiped -- they are ply-indexed and a shifted root makes
+ * them wrong, not merely stale. 0 = v53 node-exact. */
+static int g_hist_keep = 0;
+void set_hist_keep(int v) { g_hist_keep = v; }
 #define CTX_N 448                       /* (pt 1..6)<<6 | to; 0 = none */
 static __thread int16_t g_cont1[CTX_N][CTX_N];
 static __thread int16_t g_cont2[CTX_N][CTX_N];
@@ -3396,7 +3407,12 @@ void cs_search_begin(const uint64_t* hist, int nhist, double budget_sec)
         for (int i = 0; i < nhist; i++) g_hist[i] = hist[i];
         g_nhist = nhist;
     }
-    memset(g_history, 0, sizeof(g_history));
+    if (g_hist_keep) {                       /* FI-12: decay, do not wipe */
+        for (int c = 0; c < 2; c++)
+            for (int i = 0; i < 4096; i++) g_history[c][i] /= 2;
+    } else {
+        memset(g_history, 0, sizeof(g_history));
+    }
     memset(g_killers, 0, sizeof(g_killers));
     memset(g_counter, 0, sizeof(g_counter));
     if (g_cont_hist) {                       /* Q-01: same per-move lifecycle
@@ -3738,7 +3754,8 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted, &second);
 }
 
-int csearch_abi(void) { return 25; }  /* 25 = FI-59/60 set_killer_inherit/set_quiet_malus_all;
+int csearch_abi(void) { return 26; }  /* 26 = FI-12 set_hist_keep;
+                                       * 25 = FI-59/60 set_killer_inherit/set_quiet_malus_all;
                                        * 24 = P-33 set_singular/set_singular_params (singular extensions);
                                        * 23 = FI-63 set_qs_evasion_cap (quiet check-evasion cap);
                                        * 22 = FI-24ab set_null_nodouble/set_null_evalr;
