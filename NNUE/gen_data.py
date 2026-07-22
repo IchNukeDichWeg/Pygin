@@ -301,6 +301,12 @@ def main():
     ap.add_argument("--nodes", type=int, default=LABEL_NODES)
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--offset", type=int, default=0,
+                    help="worker-seed offset for splitting ONE logical run "
+                         "across servers: box A --offset 0, box B --offset "
+                         "<A's worker count> (same --seed on both) -- the "
+                         "boxes then behave like one big pool with disjoint "
+                         "games; merge the outputs afterwards")
     ap.add_argument("--book", help="plain-FEN/EPD file: start games from a "
                                    "random line (e.g. UHO_Lichess_4852_v1."
                                    "epd) instead of random opening plies")
@@ -333,7 +339,8 @@ def main():
             [sys.executable, os.path.abspath(__file__), args.out,
              "--shard", sp, "--positions", str(per),
              "--games", str(per_g),
-             "--nodes", str(args.nodes), "--seed", str(args.seed * 100003 + w)]
+             "--nodes", str(args.nodes),
+             "--seed", str(args.seed * 100003 + args.offset + w)]
             + (["--book", args.book] if args.book else [])
             + (["--endgame", "--eg-men", str(args.eg_men)]
                if args.endgame else []),
