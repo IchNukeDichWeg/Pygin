@@ -245,15 +245,6 @@ if [ -f csearch.c ]; then
     fi
 fi
 
-# --- 6c. commit-message hook ------------------------------------------ #
-# Enforces the mandatory commit format (Type: from the allowed set, the
-# Co-Authored-By trailer, the fixed Benchmark field layout). Repo-local, so
-# it has to be re-pointed on every fresh clone.
-if [ -d .githooks ]; then
-    git config core.hooksPath .githooks 2>/dev/null && \
-        echo "-> commit-msg hook installed (core.hooksPath=.githooks)"
-fi
-
 # --- 7. Old Engine snapshots (best effort, for A/B matches) ----------- #
 if [ -d "Old Engine" ]; then
     echo "-> building Old Engine snapshot libraries (for A/B; best effort) ..."
