@@ -1,57 +1,63 @@
 # Pygin
 
-A from-scratch chess engine written in **Python + C**. The search and
-evaluation are hand-written (no NNUE, no external engine); the
-[`python-chess`](https://pypi.org/project/chess/) library is used **only** for
-board representation, move generation and legality checking.
+> A from-scratch chess engine in **Python + C**. Hand-written search and
+> evaluation — no NNUE, no external engine. [`python-chess`](https://pypi.org/project/chess/)
+> is used **only** for board representation, move generation and legality.
 
-> **Built with the help of [Claude Code](https://claude.com/claude-code).**
-> Pygin is developed through human–AI collaboration: the search core, the
-> C port, the evaluation, and the whole regimen of A/B-tested improvements
-> were designed, implemented, and tuned with Claude Code.
+![Elo](https://img.shields.io/badge/strength-~2885_Elo-blue)
+![Speed](https://img.shields.io/badge/speed-3.8M_nps-brightgreen)
+![Versions](https://img.shields.io/badge/versions-53-lightgrey)
+![Ledger](https://img.shields.io/badge/C--era_gains-+253_Elo-orange)
+![License](https://img.shields.io/badge/source-MIT-green)
 
-The engine exists in two forms:
+**Built with [Claude Code](https://claude.com/claude-code)** — the search core,
+the C port, the evaluation, and every A/B-tested improvement were designed,
+implemented and tuned through human–AI collaboration.
 
-- **`engine.py`** — the reference implementation: a full Python engine, with
-  evaluation and move generation ported to C (`eval_c.c`, `movegen.c`). It
-  stays the single source of truth for evaluation — the C core syncs every
-  eval parameter from it at startup.
-- **`cengine.py` + `csearch.c`** — the **C search core**, the current
-  strongest engine: the *entire* per-node search loop (board, ordering,
-  transposition table, pruning, quiescence, bit-exact eval port) runs in C;
-  Python keeps only the root layer (iterative deepening, time management,
-  opening book). ~3.8M nodes/s ≈ 50× the Python core, several plies deeper
-  at the same time control.
+### At a glance
 
-**Strength:**
+| | |
+|---|---|
+| 🏆 **Strength** | **~2885 Elo** (SF-18 UCI_Elo bracket, v51) |
+| ⚡ **Speed** | **3.8M nps** single-thread · **14.9M** at 4 threads (v53) |
+| 📈 **Depth** | ~18 ply from startpos in 5 s |
+| 🧪 **Gains** | **+253 Elo** A/B-confirmed across the C era (v31→v53) |
+| 🥇 **Biggest release** | **v53** Texel retune, **+37.52 ±6.3** over 12,000 games |
+| 📚 **Only dependency** | `python-chess` (board + movegen + legality) |
 
-- **~2885 Elo** (v51, SF-18 UCI_Elo bracket: 62.5% over the 2850 cap, 46.4%
-  under 2900, 2,000 games each). A class bracket, not a rating — the limiter
-  is nonlinear and the two caps extrapolate inconsistently.
+### Two engines, one eval
+
+- **`cengine.py` + `csearch.c`** — the **C search core**, the strongest engine.
+  The *whole* per-node loop runs in C (board, ordering, TT, pruning, quiescence,
+  bit-exact eval). Python keeps only the root: iterative deepening, time
+  management, book. **~50× the Python core.**
+- **`engine.py`** — the reference Python engine and the **single source of eval
+  truth**: the C core reads every eval parameter from it at startup.
+
+### Measured strength
+
+- **~2885 Elo** — SF-18 UCI_Elo bracket (v51): **62.5%** over the 2850 cap,
+  **46.4%** under 2900, 2,000 games each. A class bracket, not a rating.
 - **Knight odds vs full-strength SF-18** — the live external yardstick:
-  76.75% (v31) → 79.05% (v49) → **81.65%** (v52, 1,000 games, +259 ±36).
-  Queen and rook odds are saturated (100% / 95.5%); pawn odds is the next rung.
-- **C-era ledger: ≈ +253 Elo** of A/B-confirmed gains, v31 → v53. Largest
-  single release: **v53 Texel eval retune, +37.52 ±6.3** (12,000 games,
-  LLR +9.918) — the eval lane's first win.
-- **Python engine: ~2440–2450 Elo** (level with SF-18 at UCI_Elo 2450).
-  The C core beats it **1,815–0–40** — no rating quoted, the gap is past
-  what Elo expresses.
+  76.75% → 79.05% → **81.65%** (v31 → v49 → v52). Queen/rook odds saturated
+  (100% / 95.5%).
+- **vs its own Python engine: 1,815–0–40.** No rating quoted — the gap is past
+  what Elo can express. The Python engine alone is **~2440–2450** (level with
+  SF-18 at UCI_Elo 2450).
 
-### Version progression
+---
 
-Speed (nodes/s) and search depth reached from the **starting position** in a
-uniform **5 s** budget (book off, best of N), for every version, plus the A/B
-Elo gain over the immediately preceding version where one was measured.
-Regenerate the single-thread column with `python3 bench_progress.py`, the
-4-thread column with `python3 bench_progress_threads.py 4`.
+## Version progression
 
-Both sweeps run several versions **concurrently** — 8 at a time single-thread,
-2 at a time for the 4-thread column, so each sweep loads 8 of this Mac's 10
-cores. Every version therefore sees the same contention and the columns stay
-comparable *to each other*, but the absolute numbers sit ~12% below a solo
-reading (v52 measures 3.79 M here against 4.3 M run alone). Don't compare
-these figures against a pre-2026-07-22 revision of this table.
+- **53 versions**, each A/B-tested against the one before it.
+- Speed = nodes/s and depth from **startpos in 5 s** (book off, best-of-N).
+- **`Elo Δ`** = A/B vs the previous version. **Cumulative ≈ +253 over v31.**
+- Regenerate: `python3 bench_progress.py` (single) · `bench_progress_threads.py 4`.
+
+> ⚠️ Sweeps run **8 versions concurrently** (2 for the 4-thread column), so
+> every row sees the same contention and the columns compare *to each other* —
+> but absolute NPS sits ~12% below a solo reading. Don't compare against a
+> pre-2026-07-22 revision.
 
 | Ver | NPS Single Thread | NPS 4 Threads ⁶ | Depth | Elo Δ vs prev | Milestone |
 | --: | ----------------: | --------------: | ----: | :------------ | :-------- |
@@ -109,74 +115,52 @@ these figures against a pre-2026-07-22 revision of this table.
 |  52 |            3.79 M |         13.79 M |    17 | +6.63 ±4.5    | null-move refinements (no double null + eval-scaled R; third SPRT accept, 12k pooled games) |
 |  53 |            3.76 M |         14.86 M |    18 | **+37.52 ±6.3** | **Texel eval retune** (44 scalars refitted on 4M own-self-play positions, game-result labels; fourth SPRT accept, LLR +9.918, 12k pooled games — largest single release) |
 
-**Table notes**
+<details>
+<summary><b>Reading the table</b> (footnotes & caveats)</summary>
 
-- **Elo Δ** — each figure is an A/B vs the previous version (C-era = 10,000
-  games). **Cumulative ≈ +253 over v31.** Not summable across the whole
-  column: TCs differ (Python era at assorted fast TCs ⁴, v32–36 at 45+0.10,
+- **Elo Δ** — A/B vs the previous version (C-era = 10,000 games). Not summable
+  across the whole column: TCs differ (Python era assorted ⁴, v32–36 at 45+0.10,
   v37–47 at 50+0.20, v48+ on `--nodes`).
-- **`est` ⁵** — feature-based estimate, not an A/B. Never summed into a
-  rating; the real anchor is ≈2442 by v25.
+- **`est` ⁵** — feature-based estimate, not an A/B. The real anchor is ≈2442 by v25.
 - **Bundled A/Bs** — v16+v17 vs v15 = +69 ±16 ³; v22–24 vs v21 = +11.75 ±6.8 ²;
-  v31's ≈+215 ¹ is odds-derived, not an A/B.
-- **NPS 4 Threads ⁶** — "—" for v1–24 (no reliable SMP). v25–30 = multi-process
-  SMP, v31+ = the C core's pthread Lazy-SMP, so the v30→v31 jump is partly a
-  methodology change.
-- **Measurement** — Apple Silicon, versions run 8-concurrent (2 for 4-thread),
-  so rows compare to each other but not to a solo reading.
+  v31's ≈+215 ¹ is odds-derived.
+- **NPS 4 Threads ⁶** — "—" for v1–24 (no reliable SMP). v25–30 multi-process,
+  v31+ pthread Lazy-SMP, so the v30→v31 jump is partly methodology.
 
-**The load-bearing NPS jumps**
+</details>
 
-- **v15→v17, 28.7k → 52.7k** — eval then movegen ported to C, byte-identical play.
-- **v25→v28, 49.1k → 69.0k** — node-identical speed batches.
-- **v30→v31, 69.0k → 2.34M (~34×)** — the whole per-node loop moves to C. The
-  single largest jump.
-- **v34→v36, 2.13M → 3.19M** — noisy-only qsearch generation + staged move ordering.
-- **v38→v39, 3.09M → 3.36M** — incremental Zobrist + eval cached in spare TT bits.
-- **v43→v44, 3.23M → 3.67M** — TT prefetch; +13.31 Elo, ~2.7 Elo per 1% NPS.
+### Milestones that moved the needle
 
-Not visible as NPS: v39→v40 (ep-key merge) and the v41→v43 verified-null
+| Jump | NPS | What |
+|---|---|---|
+| **v15→v17** | 28.7k → 52.7k | eval, then movegen ported to C (byte-identical) |
+| **v25→v28** | 49.1k → 69.0k | node-identical speed batches |
+| **v30→v31** | 69.0k → **2.34M (~34×)** | whole per-node loop moves to C — *the* jump |
+| **v34→v36** | 2.13M → 3.19M | noisy-only qsearch gen + staged ordering |
+| **v43→v44** | 3.23M → 3.67M | TT prefetch — **+13.31 Elo**, ~2.7 Elo per 1% NPS |
+| **v53** | — | Texel eval retune — **+37.52 Elo**, biggest single release |
+
+*Not visible as NPS:* v39→v40 (ep-key merge) and the v41→v43 verified-null
 removal are nodes-to-depth gains at flat speed.
 
 ---
 
 ## Features
 
-- **Search:** negamax + alpha-beta with PVS, iterative deepening, aspiration
-  windows, a transposition table, and quiescence search.
-- **Pruning / selectivity:** null-move pruning, reverse-futility and futility
-  pruning, late-move reductions (LMR) and late-move pruning (LMP), plus check /
-  single-reply / passed-pawn extensions.
-- **Move ordering:** TT move, MVV-LVA with capture history, killers,
-  counter-moves, the history heuristic, and Static Exchange Evaluation (SEE).
-- **Evaluation:** a tapered hand-crafted evaluation (material + piece-square
-  tables, pawn structure, king safety, mobility, rook files, bishop pair,
-  threats, endgame mop-up), ported to C (`eval_c.c`).
-- **C move generator** (`movegen.c`) with magic bitboards, reproducing
-  python-chess's move order so the search stays byte-identical.
-- **C search core** (`csearch.c`, driven by `cengine.py`): the whole per-node
-  loop in C — board, staged move ordering, array TT (kept warm across moves,
-  probed in quiescence), pruning, quiescence and a bit-exact port of the
-  evaluation (verified over 3M positions) — at ~4.3M nodes/s.
-  `cuci.py` exposes it as a UCI engine.
-- **Lazy SMP:** the C core uses pthreads with a lock-free shared TT (opt-in
-  via the UCI `Threads` option); the Python engine has a multi-process
-  variant (`smp.py`, `shared_tt.py`).
-- **Optional** Polyglot opening book (`Perfect2023.bin` bundled) and online
-  Syzygy tablebase probing.
-
----
-
-## Requirements
-
-`setup.sh` checks for these and installs anything missing (via Homebrew on
-macOS, or apt/dnf/pacman/zypper on Linux):
-
-- **Python 3.10+**
-- **A C compiler** — `clang` (macOS) or `gcc` (Linux)
-- **`python-chess`** (the only third-party Python dependency)
-- **Stockfish** — optional, only used for absolute-strength / odds testing
-  (`stockfish_engine.py`, `odds.py`)
+- **Search** — negamax/alpha-beta, PVS, iterative deepening, aspiration windows,
+  transposition table, quiescence.
+- **Selectivity** — null-move, reverse-futility & futility pruning, LMR + LMP,
+  check / single-reply / passed-pawn extensions.
+- **Move ordering** — TT move, MVV-LVA + capture history, killers, counter-moves,
+  history heuristic, SEE.
+- **Evaluation** — tapered HCE (material + PSQT, pawn structure, king safety,
+  mobility, rook files, bishop pair, threats, endgame mop-up), ported to C.
+- **C internals** — magic-bitboard movegen reproducing python-chess's order
+  byte-for-byte; whole per-node search loop in C; bit-exact eval port verified
+  over **3M positions**.
+- **Lazy SMP** — pthreads + lock-free shared TT (UCI `Threads`); Python engine
+  has a multi-process variant.
+- **Optional** — bundled Polyglot book (`Perfect2023.bin`), online Syzygy probing.
 
 ---
 
@@ -188,85 +172,48 @@ cd Pygin
 ./setup.sh
 ```
 
-`setup.sh` installs any missing prerequisites (python3, a C compiler,
-stockfish, `python-chess`), builds the C libraries (`eval_c.so`, `movegen.so`)
-for your platform, best-effort builds the C libraries for the `Old Engine/`
-snapshots (so you can play them head-to-head), and runs a quick self-test.
+`setup.sh` installs anything missing (Homebrew on macOS, apt/dnf/pacman/zypper
+on Linux), builds the C libraries, best-effort builds the `Old Engine/`
+snapshots, and self-tests.
 
-To check the installation health at any time (C libraries loaded with the
-right ABI, move generation exact, the Python search reproducing the reference
-position node-for-node, the C search core running a fixed-depth ladder to
-depth 12 with a throughput/NPS probe, snapshots ready for A/B matches):
+**Needs:** Python 3.10+ · a C compiler (`clang`/`gcc`) · `python-chess` (only
+dependency) · Stockfish *(optional, for strength/odds testing)*.
 
 ```bash
-python3 selftest.py        # a few seconds; exit 0 = everything OK, chainable
+python3 selftest.py        # health check; exit 0 = OK, chainable
 ```
 
-> If you prefer to keep things isolated, create a virtualenv first
-> (`python3 -m venv .venv && source .venv/bin/activate`) and then run
-> `./setup.sh`.
->
-> **Windows:** the engine builds a Unix shared library, so run it under
-> [WSL](https://learn.microsoft.com/windows/wsl/install) (`wsl --install`,
-> then `./setup.sh` inside the Ubuntu shell). Git Bash / MSYS2 also works.
-
-To rebuild the C libraries by hand at any time:
-
-```bash
-python3 eval_build.py
-python3 movegen_build.py
-```
-
-The C search core's library (`csearch.so`) has no separate build script —
-re-run `./setup.sh` to rebuild it (it recompiles only what changed).
+> **Isolated install:** `python3 -m venv .venv && source .venv/bin/activate`, then `./setup.sh`.
+> **Windows:** build a Unix `.so`, so use [WSL](https://learn.microsoft.com/windows/wsl/install) (`wsl --install`) or Git Bash / MSYS2.
+> **Rebuild C by hand:** `python3 eval_build.py && python3 movegen_build.py` (for `csearch.so`, re-run `./setup.sh`).
 
 ---
 
 ## Running a headless match
 
-`match.py` plays an engine-vs-engine match and prints a live scoreboard +
-Elo estimate, writing a full per-game log and a PGN file.
+`match.py` plays engine-vs-engine, prints a live scoreboard + Elo, and writes a
+per-game log and PGN.
 
 ```bash
-# C search core vs a saved snapshot: 100 games, 4 parallel workers
+# C search core vs a saved snapshot: 100 games (×2 colours), 4 workers
 python3 match.py cengine.py "Old Engine/34/engine34.py" 100 0 --workers 4
 ```
 
-Positional arguments are `engine1 engine2 NUM_GAMES OFFSET`. `NUM_GAMES` is a
-count of *positions*; each is played twice (once per colour), so the total is
-`NUM_GAMES × 2`. Match settings (time control, adjudication, etc.) are edited
-at the top of `match.py`. Useful flags: `--book1 / --book2 PATH` give each
-engine its own Polyglot book (for book testing), and `--start-pos True` plays
-every game from the standard start position instead of the opening file.
+- **Positional args:** `engine1 engine2 NUM_POSITIONS OFFSET` — each position is
+  played both colours, so games = `NUM_POSITIONS × 2`.
+- **Flags:** `--workers 0` = cores−1 · `--adj on|off` adjudication ·
+  `--sf-elo N` · `--smp N` · `--book1/--book2 PATH` · `--start-pos True`.
+- **Openings:** defaults to bundled `UHO_4060_v4.epd`. Larger sets from the
+  [Stockfish books repo](https://github.com/official-stockfish/books); point
+  `FEN_FILE` at one.
 
-**Starting positions:** `match.py` defaults to `UHO_4060_v4.epd`, a set of
-balanced openings included in the repo (`fen.txt` is a smaller bundled
-fallback). For a larger set (e.g. `UHO_Lichess_4852_v1.epd`, 174 MB) see the
-[official Stockfish books repo](https://github.com/official-stockfish/books)
-and point `FEN_FILE` at it in `match.py`. These seed the games; an engine's own
-in-play opening book (`Perfect2023.bin`, bundled) is separate.
-
-### Play against Stockfish (optional)
-
-With a `stockfish` binary on your `PATH`:
+**vs Stockfish** (binary on `PATH`):
 
 ```bash
-STOCKFISH_ELO=2000 python3 match.py engine.py stockfish_engine.py 100 0
-# STOCKFISH_ELO=0  -> full strength (used for odds matches)
+python3 match.py engine.py stockfish_engine.py 100 0 --sf-elo 2000   # 0 = full strength
 ```
 
-### Material / time odds
-
-`odds.py` runs an odds match (e.g. give one side queen odds). Everything is
-configured in the `CONFIG` block at the top of the file, then:
-
-```bash
-python3 odds.py
-```
-
-The CONFIG values can be overridden per run; `--positions N` plays each
-position twice (once per colour) for `2N` games, and `--workers 0` means
-cores − 1, as in `match.py`:
+**Material / time odds** — configured in `odds.py`'s `CONFIG` block:
 
 ```bash
 python3 odds.py --positions 500 --workers 0
@@ -344,27 +291,21 @@ odds.py                material / time-odds match runner
 Old Engine/<N>/        frozen version snapshots (engineN.py + its C sources)
 ```
 
-`Old Engine/<N>/` holds every historical version, each self-contained, so you
-can reproduce the engine's progression and A/B any two versions against each
-other.
+`Old Engine/<N>/` holds every historical version, each self-contained — see
+its [README](Old%20Engine/README.md).
 
 ---
 
 ## Notes
 
-- The C `.so` files are **not** committed — they are platform-specific and
-  built from source by `setup.sh`.
-- If a `.so` fails to load, the engine falls back to a pure-Python evaluation
-  and move generator (correct, but several times slower); `setup.sh`'s
-  self-test reports which path is active.
+- C `.so` files are **not** committed — platform-specific, built by `setup.sh`.
+- If a `.so` won't load, the engine falls back to pure Python (correct, slower);
+  the self-test reports which path is active.
 
 ## License
 
-The **source code** in this repository is MIT — see [`LICENSE`](LICENSE).
-
-The **released binaries** bundle [`python-chess`](https://github.com/niklasf/python-chess)
-(GPL-3.0+), so the binary distribution as a whole is governed by
-GPL-3.0 terms — see [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)
-for the full text, the corresponding-source pointers, and credits for the
-bundled Perfect2023 opening book (Sedat Canbaz) and the UHO opening
-suites (Stefan Pohl) used as A/B starting positions.
+- **Source:** MIT — see [`LICENSE`](LICENSE).
+- **Released binaries** bundle [`python-chess`](https://github.com/niklasf/python-chess)
+  (GPL-3.0+), so the binary distribution is GPL-3.0 as a whole. Full text,
+  source pointers and credits (Perfect2023 book — Sedat Canbaz; UHO suites —
+  Stefan Pohl) in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).
