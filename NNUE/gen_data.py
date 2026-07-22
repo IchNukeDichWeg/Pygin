@@ -13,8 +13,9 @@ LABELING ENGINE (the F49-30 amendment, binding):
     draw-flattens labels via path history that position-only features
     cannot see; labels are v48-era search semantics. The PLAYING config
     keeps FI-29 on at inference -- this class exists only here.
-  * ROOT_LMR = False      -- labels come from the CONFIRMED v50 search,
-    not the armed-but-unproven FI-56 candidate.
+  * every OTHER toggle follows cengine's confirmed defaults (F5-19:
+    labels come from the strongest confirmed search -- when FI-56 was
+    merely armed this file pinned ROOT_LMR off; v51 confirmed it).
   * cold TT per labeling search (cs_tt_reset before every move): labels are
     (near-)position-deterministic, so verify_labels.py's re-search audit can
     reproduce them. Residual history dependence: in-window repetition
@@ -73,10 +74,14 @@ def make_label_engine():
     import cengine
 
     class LabelEngine(cengine.Engine):
-        CYCLE_DETECT = False   # F49-30: labels are v48-era search values;
-                               # FI-29 stays on at inference
-        ROOT_LMR = False       # labels from the confirmed v50 search
-        USE_NNUE = False
+        CYCLE_DETECT = False   # F49-30: the ONLY deviation from the
+                               # confirmed defaults -- FI-29's path-history
+                               # alpha-raise draw-flattens labels; it stays
+                               # on at inference
+        USE_NNUE = False       # (ROOT_LMR etc. follow cengine's confirmed
+                               # defaults -- FI-56 confirmed into v51, so
+                               # labels now come from the strongest
+                               # confirmed search, per F5-19)
 
     eng = LabelEngine()
     eng.use_book = False

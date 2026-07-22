@@ -6,8 +6,9 @@
 Three checks on a generated dataset:
 
 1. REPRODUCTION (hard gate): sample records with hmc == 0, re-search each
-   with the labeling config (CYCLE_DETECT=0, ROOT_LMR=0, cold TT, same
-   node budget) and assert the stored label is reproduced exactly.
+   with the labeling config (CYCLE_DETECT=0, all other toggles = the
+   confirmed defaults, cold TT, same node budget) and assert the stored
+   label is reproduced exactly.
    hmc == 0 records carry no game-history repetition context, so the
    standalone re-search is byte-deterministic vs generation time.
 2. HISTORY DRIFT (report only): the same re-search on hmc > 0 records --
@@ -58,9 +59,9 @@ def research(records, nodes, cycle_on):
     import cengine
 
     class AuditEngine(cengine.Engine):
-        CYCLE_DETECT = bool(cycle_on)
-        ROOT_LMR = False
-        USE_NNUE = False
+        CYCLE_DETECT = bool(cycle_on)   # must mirror gen_data's LabelEngine
+        USE_NNUE = False                # (all other toggles = confirmed
+                                        # defaults, same as the generator)
 
     eng = AuditEngine()
     eng.use_book = False
