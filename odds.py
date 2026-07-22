@@ -66,8 +66,14 @@ ODDS_GIVEN_BY = "engine_2"
 # ODDS_SQUARES = ["d1"]                 # Queen odds       (Q on d1, saturated)
 # ODDS_SQUARES = ["a1"]                 # Rook odds        (Ra1, saturated @v31)
 ODDS_SQUARES = ["b1"]                   # Knight odds      (Nb1) -- the standing
-                                        # external yardstick; v31 baseline
-                                        # 76.75% (400g @45+0.15, +207 +/-48)
+                                        # external yardstick, both @45+0.15 vs
+                                        # full-strength SF:
+                                        #   v31  76.75%  (400g,  +207 +/-48)
+                                        #   v52  81.65% (1000g,  +259 +/-36)
+                                        # +52 Elo for +215 of self-play Elo --
+                                        # the line is compressing; expect it to
+                                        # saturate like rook odds did. Next rung
+                                        # down when it does: pawn odds (f2).
 # ODDS_SQUARES = ["f1"]                 # Bishop odds      (Bf1)
 # ODDS_SQUARES = ["f2"]                 # Pawn odds        (f-pawn)
 # ODDS_SQUARES = ["d1", "a1"]           # Queen + Rook odds
