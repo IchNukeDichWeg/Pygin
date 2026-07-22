@@ -49,8 +49,14 @@ import time
 import traceback
 
 
-def _load_engine(path):
-    """Import an engine .py file by path and return a fresh Engine() instance."""
+def _load_engine(path, module_overrides=None):
+    """Import an engine .py file by path and return a fresh Engine() instance.
+
+    `module_overrides` is applied to the module's globals BETWEEN import and
+    construction -- stockfish_engine reads SF_ELO in Engine.__init__, so an
+    override set afterwards would arrive too late. Only names the module
+    already defines are set, so passing SF_ELO to a non-Stockfish engine is a
+    no-op rather than an error."""
     spec = importlib.util.spec_from_file_location("battle_engine_mod", path)
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load a Python module from {path!r}")
@@ -58,6 +64,9 @@ def _load_engine(path):
     spec.loader.exec_module(module)
     if not hasattr(module, "Engine"):
         raise AttributeError(f"{path!r} does not define an `Engine` class")
+    for k, v in (module_overrides or {}).items():
+        if v is not None and hasattr(module, k):
+            setattr(module, k, v)
     return module.Engine()
 
 
@@ -68,7 +77,8 @@ def _format_info(depth, score_cp, mate, nodes, nps, time_ms):
             f"nps {nps} time {time_ms}")
 
 
-def engine_worker(conn, engine_path, use_book, pv_uci=False, book_path=None):
+def engine_worker(conn, engine_path, use_book, pv_uci=False, book_path=None,
+                  smp=1, sf_elo=None):
     """Process entry point: load the engine, then serve move requests forever."""
     import chess  # imported only in the child process
     import signal
@@ -86,7 +96,15 @@ def engine_worker(conn, engine_path, use_book, pv_uci=False, book_path=None):
         pass                     # not the main thread / platform without SIGINT
 
     try:
-        engine = _load_engine(engine_path)
+        # Config reaches this child as ARGUMENTS, not through the environment.
+        engine = _load_engine(
+            engine_path,
+            {"SF_ELO": None if sf_elo is None else int(sf_elo),
+             "SMP_WORKERS": int(smp)})
+        try:
+            engine.smp_workers = min(256, max(1, int(smp)))
+        except Exception:
+            pass            # engine without SMP support: fine
         try:
             engine.use_book = use_book
         except Exception:
