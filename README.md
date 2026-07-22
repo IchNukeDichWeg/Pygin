@@ -1,29 +1,41 @@
+<div align="center">
+
 # Pygin
 
-> A from-scratch chess engine in **Python + C**. Hand-written search and
-> evaluation — no NNUE, no external engine. [`python-chess`](https://pypi.org/project/chess/)
-> is used **only** for board representation, move generation and legality.
+**A from-scratch chess engine in Python + C** — hand-written search and
+evaluation, no NNUE, no external engine.<br/>
+[`python-chess`](https://pypi.org/project/chess/) is used *only* for board
+representation, move generation and legality.
 
-![Elo](https://img.shields.io/badge/strength-~2885_Elo-blue)
-![Speed](https://img.shields.io/badge/speed-3.8M_nps-brightgreen)
-![Versions](https://img.shields.io/badge/versions-53-lightgrey)
-![Ledger](https://img.shields.io/badge/C--era_gains-+253_Elo-orange)
-![License](https://img.shields.io/badge/source-MIT-green)
+![Strength](https://img.shields.io/badge/strength-~2885_Elo-3fb950)
+![Speed](https://img.shields.io/badge/speed-3.8M_nps-58a6ff)
+![Versions](https://img.shields.io/badge/versions-53-8b949e)
+![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B253_Elo-f0883e)
+![Source](https://img.shields.io/badge/source-MIT-green)
+&nbsp;·&nbsp; Built with **[Claude Code](https://claude.com/claude-code)**
 
-**Built with [Claude Code](https://claude.com/claude-code)** — the search core,
-the C port, the evaluation, and every A/B-tested improvement were designed,
-implemented and tuned through human–AI collaboration.
+</div>
 
 ### At a glance
 
-| | |
-|---|---|
-| 🏆 **Strength** | **~2885 Elo** (SF-18 UCI_Elo bracket, v51) |
-| ⚡ **Speed** | **3.8M nps** single-thread · **14.9M** at 4 threads (v53) |
-| 📈 **Depth** | ~18 ply from startpos in 5 s |
-| 🧪 **Gains** | **+253 Elo** A/B-confirmed across the C era (v31→v53) |
-| 🥇 **Biggest release** | **v53** Texel retune, **+37.52 ±6.3** over 12,000 games |
-| 📚 **Only dependency** | `python-chess` (board + movegen + legality) |
+| | | | |
+|---|---|---|---|
+| 🏆 **~2885 Elo** | SF-18 UCI_Elo bracket | ⚡ **3.8M nps** | 14.9M at 4 threads |
+| 🧪 **+253 Elo** | A/B-confirmed, v31→v53 | 📈 **~18 ply** | from startpos in 5 s |
+| 🥇 **v53** biggest release | +37.52 ±6.3 / 12,000 games | 📚 **1 dependency** | `python-chess` only |
+
+<table>
+<tr>
+<td width="50%"><img src="docs/elo_progression.svg" alt="Cumulative A/B Elo across the C era"/></td>
+<td width="50%"><img src="docs/speed_progression.svg" alt="Single-thread speed multiplier across the C era"/></td>
+</tr>
+</table>
+
+> **How to read these:** every C-era version (v31+) is A/B-tested against the
+> one before it. Left = those gains stacked (**+253 Elo** over v31). Right =
+> single-thread speed as a multiple of v31 (**1.61×**). The v30→v31 rewrite —
+> the whole search loop moving into C, a ~34× speedup — is off the left edge of
+> both, so v31 is the honest zero.
 
 ### Two engines, one eval
 
@@ -52,7 +64,8 @@ implemented and tuned through human–AI collaboration.
 - **53 versions**, each A/B-tested against the one before it.
 - Speed = nodes/s and depth from **startpos in 5 s** (book off, best-of-N).
 - **`Elo Δ`** = A/B vs the previous version. **Cumulative ≈ +253 over v31.**
-- Regenerate: `python3 bench_progress.py` (single) · `bench_progress_threads.py 4`.
+- Regenerate NPS: `python3 bench_progress.py` (single) · `bench_progress_threads.py 4`;
+  the charts above: `python3 make_readme_charts.py`.
 
 > ⚠️ Sweeps run **8 versions concurrently** (2 for the 4-thread column), so
 > every row sees the same contention and the columns compare *to each other* —
