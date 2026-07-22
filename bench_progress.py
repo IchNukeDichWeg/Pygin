@@ -16,11 +16,12 @@ fixed budget mixes speed AND selectivity -- a version that prunes/extends
 differently can reach a different nominal depth at the same NPS, so the
 Elo column (real A/B results, not this bench) is the strength axis.
 """
-import importlib.util, json, os, subprocess, sys, time
+import concurrent.futures, importlib.util, json, os, subprocess, sys, time
 
 REPO = os.path.dirname(os.path.abspath(__file__))
 SECONDS = float(sys.argv[1]) if len(sys.argv) > 1 else 5.0
 REPS = 5
+JOBS = 8          # concurrent version subprocesses (1 thread each)
 
 CHILD = r'''
 import importlib.util, json, os, sys, time
@@ -45,7 +46,7 @@ try:
         depth = getattr(e, "last_depth", 0) or 0
         nps = 0.0 if dt <= 0 else nodes / dt
         if depth > bd or (depth == bd and nps > bn): bd, bn, bnodes = depth, nps, nodes
-    print(json.dumps({"v": V, "nps": int(bn), "depth": bd}))
+    print(json.dumps({"v": V, "nps": round(bn, 2), "depth": bd}))
 except Exception as ex:
     print(json.dumps({"v": V, "error": repr(ex)[:160]}))
 ''' % REPO
@@ -56,9 +57,16 @@ def versions():
     return vs + [vs[-1] + 1]          # + the live cengine
 
 if __name__ == "__main__":
-    for v in versions():
+    # JOBS versions at a time. Each child is single-threaded, so JOBS*1 must
+    # stay under the core count or the versions contend and the NPS reading
+    # sags -- uniformly, but there is no reason to pay it. The measurement is
+    # comparative across versions, so every version must see the SAME load.
+    def run(v):
         r = subprocess.run([sys.executable, "-c", CHILD, str(v),
                             str(SECONDS), str(REPS)],
                            capture_output=True, text=True)
-        line = (r.stdout.strip().splitlines() or ["{}"])[-1]
-        print(line, flush=True)
+        return (r.stdout.strip().splitlines() or ["{}"])[-1]
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=JOBS) as ex:
+        for line in ex.map(run, versions()):
+            print(line, flush=True)
