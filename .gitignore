@@ -139,6 +139,7 @@ dist/
 /*/
 !/Old Engine/
 !/NNUE/
+!/.githooks/
 # FI-15: NNUE code/docs are tracked; datasets, checkpoints, weight files and
 # the training venv are local-only (large binaries, PUBLIC repo).
 NNUE/datasets/
