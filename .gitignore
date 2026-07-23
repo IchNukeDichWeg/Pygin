@@ -118,6 +118,7 @@ improvements_*.md
 improvements.md
 final_improvements.md
 improvements.md.bak
+HANDOFF.md
 
 # attic/: dead code archived out of the root (was individually gitignored before the move)
 attic/
