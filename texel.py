@@ -59,6 +59,7 @@ weights, and stay fixed.
 
 import argparse
 import ctypes
+import re
 import glob
 import math
 import multiprocessing as mp
@@ -620,6 +621,51 @@ def cmd_tune(a):
           f"change re-pins CE_LADDER and moves the bench signature.")
 
 
+
+# ---------------------------------------------------------------------- #
+#  Write-back helpers -- VENDORED from tune.py, not imported.
+#  tune.py is gitignored (.gitignore:95), so `from tune import ...` worked on
+#  the dev Mac and crashed on every fresh clone -- after a 3.5-hour tune had
+#  already finished, losing the write-back (2026-07-23). Never import a
+#  gitignored module from a tracked one.
+# ---------------------------------------------------------------------- #
+def _replace_dict_block(lines, name, new_lines):
+    start = None
+    for i, line in enumerate(lines):
+        if re.match(rf'\s+{re.escape(name)}\s*=\s*\{{', line):
+            start = i; break
+    if start is None:
+        print(f"  [warn] {name} not found", file=sys.stderr); return
+    end = None
+    for i in range(start + 1, len(lines)):
+        if lines[i].rstrip().endswith('}'):
+            end = i; break
+    if end is None:
+        return
+    lines[start:end + 1] = new_lines
+
+
+def _replace_pst(lines, name, values):
+    start = None
+    for i, line in enumerate(lines):
+        if re.match(rf'\s+{re.escape(name)}\s*=\s*\[', line):
+            start = i; break
+    if start is None:
+        print(f"  [warn] {name} not found", file=sys.stderr); return
+    end = None
+    for i in range(start + 1, len(lines)):
+        if lines[i].rstrip().endswith(']'):
+            end = i; break
+    if end is None:
+        return
+    new = [f"    {name} = ["]
+    for rank in range(8):
+        row = [round(values[rank * 8 + f]) for f in range(8)]
+        new.append("        " + "".join(f"{v:5d}," for v in row))
+    new.append("    ]")
+    lines[start:end + 1] = new
+
+
 def _write_back(dst, enable_toggles=()):
     import pathlib
     """Patch the tuned constants into a copy of engine.py. Reuses tune.py's
@@ -627,7 +673,6 @@ def _write_back(dst, enable_toggles=()):
     PST blocks are never touched."""
     import shutil
     import re
-    from tune import _replace_dict_block
     E = __import__("engine").Engine
 
     def _replace_scalar(lines, name, value):
@@ -662,7 +707,6 @@ def _write_back(dst, enable_toggles=()):
         lines = f.read().splitlines()
 
     if any(l.split("[")[0] in PST_TABLES for l, _, _ in PARAMS):
-        from tune import _replace_pst
         for n in PST_TABLES:
             _replace_pst(lines, n, getattr(E, n))
 
