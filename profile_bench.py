@@ -34,6 +34,8 @@ import chess
 
 import engine as engine_mod
 
+import interruptible
+
 # Same suite as nps_history_bench.py (keep in sync).
 POSITIONS = [
     ("Startpos",        chess.STARTING_FEN),
