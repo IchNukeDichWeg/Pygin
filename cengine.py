@@ -368,6 +368,11 @@ class Engine:
     # as USE_KING_SHELTER; False = v37 eval exactly.
     USE_OUTPOST = False
 
+    # FI-85: battery-transparent (x-ray) slider mobility. Lives on
+    # cengine because it is an eval A/B toggle, mirrored onto _py below.
+    # False = v54 byte-exact. ARMED CANDIDATE 2026-07-23.
+    USE_XRAY_MOB = True
+
     # CB-01 correctness batch (LIVE CANDIDATE, fifth 50+0.20-era campaign,
     # A/B vs Old Engine/37 PENDING; selftest pins the ladder to off).
     # One master toggle over seven sub-+/-6.8 "score draws as draws, keep
@@ -1006,6 +1011,7 @@ class Engine:
         # embedded engine BEFORE _sync_c_params pushes them into csearch.so.
         self._py.use_king_shelter = bool(self.USE_KING_SHELTER)
         self._py.use_outpost = bool(self.USE_OUTPOST)
+        self._py.use_xray_mob = bool(self.USE_XRAY_MOB)     # FI-85
         self._py.use_cantwin = bool(self.CANTWIN)          # CW-01 mirror
         # FI-27: mirror simplify too -- flipping USE_SIMPLIFY for its queued
         # re-test must not split the GUI eval bar (evaluate_position -> _py)
@@ -1037,7 +1043,8 @@ class Engine:
                    "set_mobility_area", "set_outpost_params",
                    "set_phalanx_params", "set_rook_on_7th_params",
                    "set_shelter_params", "set_space_params",
-                   "set_storm_params", "set_threats_params"):
+                   "set_storm_params", "set_threats_params",
+                   "set_xray_mob"):
             try:
                 getattr(lib, _n).argtypes = \
                     getattr(self._pymod._eval_lib, _n).argtypes
@@ -1066,7 +1073,7 @@ class Engine:
               self.NULL_NODOUBLE, self.NULL_EVALR, self.QS_EVASION_CAP,
               self.SINGULAR, self.SE_MIN_DEPTH, self.SE_MARGIN, self.SE_BUDGET,
               self.KILLER_INHERIT, self.QUIET_MALUS_ALL, self.HIST_KEEP,
-            self.QS_TTFIRST)
+            self.QS_TTFIRST, self.USE_XRAY_MOB)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
