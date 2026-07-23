@@ -13,13 +13,13 @@
 <line x1="58" y1="44.0" x2="738" y2="44.0" stroke="#8b949e33"/>
 <text x="50" y="48.0" fill="#8b949e" font-size="11" text-anchor="end">+281</text>
 <text x="58.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v31</text>
-<text x="181.6" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v35</text>
-<text x="336.2" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v40</text>
-<text x="490.7" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v45</text>
-<text x="645.3" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v50</text>
-<text x="738.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v53</text>
-<path d="M58.0,266.0 L58.0,266.0 L88.9,260.2 L119.8,241.6 L150.7,236.2 L181.6,179.3 L212.5,159.8 L243.5,159.7 L274.4,158.6 L305.3,151.6 L336.2,148.2 L367.1,150.5 L398.0,147.9 L428.9,143.8 L459.8,133.3 L490.7,122.6 L521.6,117.9 L552.5,115.4 L583.5,111.7 L614.4,110.9 L645.3,109.6 L676.2,100.8 L707.1,95.6 L738.0,65.9 L738.0,266.0 Z" fill="url(#g3fb950)"/>
-<polyline points="58.0,266.0 88.9,260.2 119.8,241.6 150.7,236.2 181.6,179.3 212.5,159.8 243.5,159.7 274.4,158.6 305.3,151.6 336.2,148.2 367.1,150.5 398.0,147.9 428.9,143.8 459.8,133.3 490.7,122.6 521.6,117.9 552.5,115.4 583.5,111.7 614.4,110.9 645.3,109.6 676.2,100.8 707.1,95.6 738.0,65.9" fill="none" stroke="#3fb950" stroke-width="2.5" stroke-linejoin="round"/>
-<circle cx="738.0" cy="65.9" r="4" fill="#3fb950"/>
-<text x="730.0" y="56.9" fill="#3fb950" font-size="13" font-weight="700" text-anchor="end">+253</text>
+<text x="176.3" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v35</text>
+<text x="324.1" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v40</text>
+<text x="471.9" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v45</text>
+<text x="619.7" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v50</text>
+<text x="738.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v54</text>
+<path d="M58.0,266.0 L58.0,266.0 L87.6,260.2 L117.1,241.6 L146.7,236.2 L176.3,179.3 L205.8,159.8 L235.4,159.7 L265.0,158.6 L294.5,151.6 L324.1,148.2 L353.7,150.5 L383.2,147.9 L412.8,143.8 L442.3,133.3 L471.9,122.6 L501.5,117.9 L531.0,115.4 L560.6,111.7 L590.2,110.9 L619.7,109.6 L649.3,100.8 L678.9,95.6 L708.4,65.9 L738.0,41.3 L738.0,266.0 Z" fill="url(#g3fb950)"/>
+<polyline points="58.0,266.0 87.6,260.2 117.1,241.6 146.7,236.2 176.3,179.3 205.8,159.8 235.4,159.7 265.0,158.6 294.5,151.6 324.1,148.2 353.7,150.5 383.2,147.9 412.8,143.8 442.3,133.3 471.9,122.6 501.5,117.9 531.0,115.4 560.6,111.7 590.2,110.9 619.7,109.6 649.3,100.8 678.9,95.6 708.4,65.9 738.0,41.3" fill="none" stroke="#3fb950" stroke-width="2.5" stroke-linejoin="round"/>
+<circle cx="738.0" cy="41.3" r="4" fill="#3fb950"/>
+<text x="730.0" y="32.3" fill="#3fb950" font-size="13" font-weight="700" text-anchor="end">+284</text>
 </svg>
