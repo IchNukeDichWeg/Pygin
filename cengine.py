@@ -921,6 +921,23 @@ class Engine:
     # read; hosts set it on the instance (match.py --smp).
     SMP_WORKERS = 1
 
+    # FI-67: TT-move-first stage in the lazy qsearch path -- search a
+    # validated TT move BEFORE gen_noisy/order_moves; a beta cutoff skips
+    # both entirely. BENCH-CLASS: gates replicate the move loop verbatim, so
+    # ON is node-identical (any bench drift is a bug) and the ship gate is
+    # measured NPS + unchanged signature, no A/B slot. The savings population
+    # is only bound-mismatch TT hits -- the depth-ungated value cutoff already
+    # returns pre-movegen on most cut-capable nodes -- hence the abandon
+    # threshold: < ~0.3% NPS means leave it dormant. MEASURED 2026-07-23:
+    # node-identity PASSED everywhere (bench 1,122,753 exact with ON, ladder
+    # pins exact, 1.55M-node differential over 8 positions x 11 depths clean)
+    # but the NPS median over 32 paired d13 ratios was -0.26% -- below the
+    # abandon threshold, exactly the shadowing the estimate predicted. The
+    # correct implementation buys nothing on this tree. DORMANT, do-not-ship;
+    # revisit only if the qsearch TT cutoff ever grows a depth gate. False =
+    # v53 byte-exact.
+    QS_TTFIRST = False
+
     # FI-15 NNUE (Phases 1-5 BUILT-DORMANT 2026-07-18): hybrid NN eval --
     # nn_eval replaces the HCE as negamax's static eval, qsearch stand-pat
     # stays HCE (the old MLP project's -203/-273 lesson), the FI-03 TT eval
@@ -999,7 +1016,7 @@ class Engine:
         # BUG-04: must match the NEWEST abi whose exports this file calls
         # (FI-59/60's set_killer_inherit/set_quiet_malus_all are abi 25) -- bump with
         # csearch_abi.
-        if lib.csearch_abi() < 26:
+        if lib.csearch_abi() < 27:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -1043,7 +1060,8 @@ class Engine:
               self.NULL_BASE, self.NULL_DIV, self.LMR_DIV,
               self.NULL_NODOUBLE, self.NULL_EVALR, self.QS_EVASION_CAP,
               self.SINGULAR, self.SE_MIN_DEPTH, self.SE_MARGIN, self.SE_BUDGET,
-              self.KILLER_INHERIT, self.QUIET_MALUS_ALL, self.HIST_KEEP)
+              self.KILLER_INHERIT, self.QUIET_MALUS_ALL, self.HIST_KEEP,
+            self.QS_TTFIRST)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -1142,6 +1160,7 @@ class Engine:
         lib.set_killer_inherit(1 if self.KILLER_INHERIT else 0)     # FI-59
         lib.set_quiet_malus_all(1 if self.QUIET_MALUS_ALL else 0)   # FI-60
         lib.set_hist_keep(1 if self.HIST_KEEP else 0)               # FI-12
+        lib.set_qs_ttfirst(1 if self.QS_TTFIRST else 0)             # FI-67
         # FB-04: entries scored under a PREVIOUS construction's eval params
         # would poison this one (the table is process-global and persistent).
         # First construction: the table is empty, reset is a no-op.
