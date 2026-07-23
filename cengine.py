@@ -434,6 +434,20 @@ class Engine:
     # oracle differential clean over 389 positions. False = v41 eval.
     CANTWIN = True
 
+    # FI-76 (WB-01) wrong-bishop rook-pawn dead draw: CW-01's sibling gate
+    # for the case the strong side HAS pawns and still cannot win (all on
+    # one rook file, wrong-coloured bishop for that corner, bare defending
+    # king already within one move of it). ARMED CANDIDATE 2026-07-23 for
+    # the 2k screen (>= +15 earns a 10k); False = v54 node-exact, and the
+    # selftest pins it off so the ladder keeps measuring v54. Priced +0 --
+    # the honest case is the CW-01 correctness class, not Elo, and see
+    # test_wrongbishop.py: the clamp is exact statically but does NOT
+    # propagate to the root of a bishop draw (the one drawing reply is a
+    # quiet king move the deep tree prunes; Stockfish reads the same FEN
+    # +1.06 at d24). Bit-exact twin of engine.py's use_wrongbishop,
+    # mirrored below so the GUI eval bar and the search never disagree.
+    WRONGBISHOP = True
+
     # NV-01 verification isolation: RESOLVED into v43 (eleventh 50+0.20
     # campaign, A/B vs Old Engine/42 2026-07-11: +5.18 +/-6.8 @10k for the
     # REMOVAL, 50.74%, pair ratio 1.08, norm +10.82). Converging evidence
@@ -1018,6 +1032,7 @@ class Engine:
         self._py.use_outpost = bool(self.USE_OUTPOST)
         self._py.use_xray_mob = bool(self.USE_XRAY_MOB)     # FI-85
         self._py.use_cantwin = bool(self.CANTWIN)          # CW-01 mirror
+        self._py.use_wrongbishop = bool(self.WRONGBISHOP)  # FI-76 mirror
         # FI-27: mirror simplify too -- flipping USE_SIMPLIFY for its queued
         # re-test must not split the GUI eval bar (evaluate_position -> _py)
         # from the C search's eval. And use_pin_eval is the ONE
@@ -1030,9 +1045,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (FI-59/60's set_killer_inherit/set_quiet_malus_all are abi 25) -- bump with
-        # csearch_abi.
-        if lib.csearch_abi() < 27:
+        # (FI-76's set_wrongbishop is abi 28) -- bump with csearch_abi.
+        if lib.csearch_abi() < 28:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -1078,7 +1092,7 @@ class Engine:
               self.NULL_NODOUBLE, self.NULL_EVALR, self.QS_EVASION_CAP,
               self.SINGULAR, self.SE_MIN_DEPTH, self.SE_MARGIN, self.SE_BUDGET,
               self.KILLER_INHERIT, self.QUIET_MALUS_ALL, self.HIST_KEEP,
-            self.QS_TTFIRST, self.USE_XRAY_MOB)
+            self.QS_TTFIRST, self.USE_XRAY_MOB, self.WRONGBISHOP)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -1109,6 +1123,7 @@ class Engine:
         lib.set_qs_evict_max(int(self.QS_EVICT_MAX))           # FI-08/Q-03
         lib.set_cb2(1 if self.CB2 else 0)                      # CB-02
         lib.set_cantwin(1 if self.CANTWIN else 0)              # CW-01
+        lib.set_wrongbishop(1 if self.WRONGBISHOP else 0)      # FI-76
         lib.set_lmr_hist(int(self.LMR_HIST))                   # FI-04
         lib.set_tt_eval_sharpen(1 if self.TT_EVAL_SHARPEN else 0)  # FI-25
         lib.set_see_prune(1 if self.SEE_PRUNE else 0)          # FI-18
