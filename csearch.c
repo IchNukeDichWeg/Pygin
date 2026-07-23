@@ -2185,6 +2185,19 @@ void set_qgen(int v) { g_qgen = v; }
 static int g_qs_lazy = 1;
 void set_qs_lazy(int v) { g_qs_lazy = v; }
 
+/* FI-67: TT-move-first stage in the lazy qsearch path. When the TT move
+ * validates legal (move_from_key -- the negamax stager's filter), search it
+ * BEFORE gen_noisy/order_moves; on a beta cutoff neither ever runs. The
+ * savings population is only bound-mismatch TT hits: the depth-ungated value
+ * cutoff above already returns before movegen on most cut-capable nodes.
+ * Gates replicate the move loop VERBATIM (quiet-skip, Q-02 mover>victim SEE
+ * with fresh SEE since the reconstructed word is untagged, delta prune on
+ * pure captures ONLY -- promos are exempt in the loop, and FI-51's TT-move
+ * exemption when armed), so toggled ON is node-identical: any bench-
+ * signature drift is a bug. 0 = v53 byte-exact. */
+static int g_qs_ttfirst = 0;
+void set_qs_ttfirst(int v) { g_qs_ttfirst = v; }
+
 /* P-44: quiescence TT probe/store. The node majority lives in qsearch, and
  * until now it never touched the transposition table: every qsearch node
  * recomputed the full static eval and re-resolved exchanges the warm P-14
@@ -2713,6 +2726,9 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
 
     int color = b->turn, best, stand = 0, raw_stand = 0;
     uint32_t moves[256];
+    uint32_t bm = 0;           /* FI-67: hoisted -- the TT-first stage sets it */
+    uint32_t qs_ttf = 0;       /* FI-67: validated TT move (0 = none/illegal) */
+    uint32_t qs_ttdone = 0;    /* FI-67: nonzero => already searched pre-loop */
     int n;
     if (in_chk) {
         n = gen_legal(b, moves);                     /* full evasions */
@@ -2743,11 +2759,67 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
             }
             return 0;                                /* stalemate: draw, not eval */
         }
-        n = gen_noisy(b, moves);
-        if (n == 0 && !has_legal_quiet(b))
-            return 0;                                /* stalemate: draw, not eval */
-        if (stand > alpha) alpha = stand;
+        if (stand > alpha) alpha = stand;        /* FI-67: baseline BEFORE the
+                                                  * TT-first stage -- the loop
+                                                  * raises alpha to stand before
+                                                  * its first move too */
         best = stand;
+        if (g_qs_ttfirst && tt_move
+                && (qs_ttf = move_from_key(b, tt_move)) != 0) {
+            uint32_t m = qs_ttf;
+            int victim   = (m >> MV_SHIFT_VICTIM) & 7;
+            int is_promo = (m >> 12) & 7;
+            int go = (victim || is_promo);       /* quiets: not in qsearch */
+            if (go && victim && !is_promo) {     /* pure capture: loop gates */
+                int is_ttm = g_qs_ttm_exempt;    /* it IS the TT move (FI-51) */
+                int mover = (m >> MV_SHIFT_MOVER) & 7;
+                if (mover > victim && !is_ttm) { /* Q-02; word untagged (tag 0
+                                                  * from move_from_key) so the
+                                                  * loop would fresh-SEE too */
+                    int from = m & 63, to = (m >> 6) & 63;
+                    if (see(b->pawns, b->knights, b->bishops, b->rooks,
+                            b->queens, b->kings, b->occ[WHITE], b->occ[BLACK],
+                            color, from, to, (m & MV_BIT_EP) ? 1 : 0) < 0)
+                        go = 0;
+                }
+                if (go && !is_ttm
+                    && stand + (g_score_hyg ? DELTA_VAL[victim]
+                                            : PIECE_VAL[victim])
+                             + g_delta_margin <= alpha)
+                    go = 0;                      /* delta prune */
+            }
+            if (go) {
+                qs_ttdone = m;                   /* loop dedup by 15-bit key */
+                Board c = *b;
+                apply_move(&c, m);
+                TT_PREFETCH(c.key);              /* FI-17 */
+                int child_hmc = (victim
+                                 || ((m >> MV_SHIFT_MOVER) & 7) == PT_PAWN
+                                 || is_promo) ? 0 : hmc + 1;
+                int v = -qsearch(&c, -beta, -alpha, ply + 1, in_check(&c),
+                                 child_hmc);
+                if (CS_UNWINDING()) return 0;
+                if (is_pv && v > alpha && v < beta)
+                    pv_store(ply, m);            /* PV-01 */
+                if (v > best) { best = v; bm = m; }
+                if (v > alpha) alpha = v;
+                if (alpha >= beta) {             /* cutoff: NO movegen at all.
+                                                  * Store shape == the loop
+                                                  * exit's (best>=beta =>
+                                                  * TT_LOWER; !in_chk => raw
+                                                  * eval kept, FI-52 tag 0) */
+                    if (use_qtt && !CS_UNWINDING())
+                        qs_tt_store(qslot, key, best, ply, bm, TT_LOWER,
+                                    raw_stand, 0);
+                    return best;
+                }
+            }
+        }
+        n = gen_noisy(b, moves);
+        if (n == 0 && !qs_ttf && !has_legal_quiet(b))  /* FI-67: a validated
+                                                  * TT move proves a legal
+                                                  * move exists */
+            return 0;                                /* stalemate: draw, not eval */
     } else {
         /* P-22: noisy-only generation; stalemate still detected BEFORE the
          * stand-pat return (empty noisy list + no legal quiet = stalemate),
@@ -2768,7 +2840,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         best = stand;
     }
 
-    uint32_t bm = 0;                                 /* P-44: best move found */
+    /* P-44: bm (best move found) hoisted above for FI-67. */
     int quiet_evasions = 0;                          /* FI-63: cap counter */
     /* CB-01 (g): plies past the killer table read the LAST slot, not the
      * root's (the old clamp-to-0 ordered deep qsearch with root killers). */
@@ -2778,6 +2850,11 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
                 0, tt_move, 0, msc);
     for (int i = 0; i < n; i++) {
         uint32_t m = pick_next(moves, msc, i, n);
+        if (qs_ttdone && (m & 0x7FFF) == tt_move)
+            continue;      /* FI-67: searched before the loop. Dedup only when
+                            * actually searched -- a gate-out falls through to
+                            * the loop's own canonical gates, so a replication
+                            * drift can only cost savings, never nodes. */
         int victim   = (m >> MV_SHIFT_VICTIM) & 7;
         int is_promo = (m >> 12) & 7;
         /* FI-51: the search-proven TT move dodges the qsearch skips below. */
@@ -3754,7 +3831,8 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted, &second);
 }
 
-int csearch_abi(void) { return 26; }  /* 26 = FI-12 set_hist_keep;
+int csearch_abi(void) { return 27; }  /* 27 = FI-67 set_qs_ttfirst;
+                                       * 26 = FI-12 set_hist_keep;
                                        * 25 = FI-59/60 set_killer_inherit/set_quiet_malus_all;
                                        * 24 = P-33 set_singular/set_singular_params (singular extensions);
                                        * 23 = FI-63 set_qs_evasion_cap (quiet check-evasion cap);
