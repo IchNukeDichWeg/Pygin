@@ -18,6 +18,9 @@ Elo column (real A/B results, not this bench) is the strength axis.
 """
 import concurrent.futures, importlib.util, json, os, subprocess, sys, time
 
+if "-h" in sys.argv or "--help" in sys.argv:
+    print(__doc__.strip()); sys.exit(0)
+
 REPO = os.path.dirname(os.path.abspath(__file__))
 SECONDS = float(sys.argv[1]) if len(sys.argv) > 1 else 5.0
 REPS = 5
