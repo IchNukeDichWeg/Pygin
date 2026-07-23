@@ -21,6 +21,9 @@ import concurrent.futures, os, subprocess, sys
 
 import interruptible
 
+if "-h" in sys.argv or "--help" in sys.argv:
+    print(__doc__.strip()); sys.exit(0)
+
 REPO = os.path.dirname(os.path.abspath(__file__))
 WORKER = os.path.join(REPO, "bench_progress_threads_worker.py")
 THREADS = int(sys.argv[1]) if len(sys.argv) > 1 else 4
