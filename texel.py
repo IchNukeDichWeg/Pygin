@@ -97,6 +97,8 @@ RECORD = np.dtype([
     ("turn", "u1"),          # 1 = White to move
     ("ep",   "i1"),          # -1 or square
     ("res",  "u1"),          # White-POV game result: 0 loss, 1 draw, 2 win
+    ("game", "<u4"),         # FB-43: per-game id -- lets the split cut on a
+                             # GAME boundary so train and val share no game
 ])
 
 
@@ -300,9 +302,12 @@ def _extract_file(args):
             text = fh.read()
     except OSError:
         return path, []
-    rows = []
-    for block in F.iter_game_blocks(text):
-        rows.extend(_quiet_positions(block, max_per_game))
+    base = zlib.crc32(os.path.basename(path).encode())
+    rows, gids = [], []
+    for bi, block in enumerate(F.iter_game_blocks(text)):
+        gid = (base ^ (bi * 2654435761)) & 0xFFFFFFFF   # FB-43: unique per game
+        qr = _quiet_positions(block, max_per_game)
+        rows.extend(qr); gids.extend([gid] * len(qr))
     # One match log holds ~20k games = ~240k quiet positions, so an uncapped
     # 1M target is met by four or five files -- i.e. four or five engine
     # pairings. Cap per file so the fit spans eras instead.
@@ -310,7 +315,8 @@ def _extract_file(args):
         # crc32, not hash(): str hashing is salted per process, and workers
         # are spawned, so hash() would make extraction unreproducible.
         seed = zlib.crc32(os.path.basename(path).encode())
-        rows = random.Random(seed).sample(rows, per_file_cap)
+        idx = random.Random(seed).sample(range(len(rows)), per_file_cap)
+        rows = [rows[i] for i in idx]; gids = [gids[i] for i in idx]
     # Pack to the record dtype HERE, not in the parent: a Python tuple costs
     # ~450 B against the record's 80 B, so accumulating tuples for a
     # multi-million-position set would cost GBs and pickle slowly back.
@@ -318,6 +324,7 @@ def _extract_file(args):
     for i, r in enumerate(rows):
         arr[i]["bb"] = r[:8]
         arr[i]["cast"], arr[i]["turn"], arr[i]["ep"], arr[i]["res"] = r[8:]
+        arr[i]["game"] = gids[i]
     return path, arr
 
 
@@ -366,9 +373,16 @@ def cmd_extract(a):
                  "(odds / mismatched-strength / Stockfish logs are excluded)")
     arr = np.concatenate(parts)
     del parts
+    # FB-43: shuffle at GAME granularity, not position. Keep each game's rows
+    # together and randomise the order of GAMES, so a contiguous tail slice is
+    # whole games -- the tune's val split then shares no game with train.
+    # (Position-level shuffle put ~97% of games on both sides of the split.)
     rng = np.random.default_rng(52)
-    rng.shuffle(arr)               # so a validation tail is not one match log
-    arr = arr[:a.limit]
+    uniq = np.unique(arr["game"])          # sorted
+    rank = rng.permutation(len(uniq))      # a random rank per game
+    key = rank[np.searchsorted(uniq, arr["game"])]
+    arr = arr[np.argsort(key, kind="stable")]   # stable => rows stay grouped
+    arr = arr[:a.limit]                    # truncation splits at most ONE game
     np.save(a.out, arr)
     w = int((arr["res"] == 2).sum()); d = int((arr["res"] == 1).sum())
     print(f"\nWrote {len(arr):,} positions to {a.out} "
@@ -523,6 +537,17 @@ def cmd_tune(a):
     arr = np.load(a.positions, mmap_mode="r")
     nchunks = a.workers
     ntrain = int(len(arr) * (1.0 - a.val_frac))
+    if "game" in arr.dtype.names:
+        # FB-43: walk the split back to where the game id changes, so no game
+        # straddles train/val. arr is game-contiguous from extract.
+        g = arr["game"]
+        while 0 < ntrain < len(g) and g[ntrain] == g[ntrain - 1]:
+            ntrain -= 1
+        shared = set(np.unique(g[:ntrain]).tolist()) & set(np.unique(g[ntrain:]).tolist())
+        assert not shared, f"FB-43 split leak: {len(shared)} games straddle"
+    else:
+        print("  [warn] positions file predates FB-43 (no game id) -- the "
+              "val split may leak; re-extract for a clean held-out number")
     print(f"{len(arr):,} positions ({ntrain:,} train / "
           f"{len(arr) - ntrain:,} validation), {len(PARAMS)} parameters, "
           f"{a.workers} workers, {a.restarts} restart(s)")
@@ -831,6 +856,7 @@ def cmd_pack(a):
         a.out, bb=bb,
         cast=np.searchsorted(cast_u, arr["cast"]).astype("u1"),
         castmap=cast_u,
+        game=arr["game"],                                # FB-43
         meta=np.stack([arr["turn"], arr["ep"].view("u1"), arr["res"]], 1))
     src_mb = os.path.getsize(a.src) / 1048576
     out_mb = os.path.getsize(a.out) / 1048576
@@ -849,6 +875,8 @@ def cmd_unpack(a):
     out["bb"][:, 7] = allp & ~bb7[:, 6]                  # occ_b reconstructed
     out["cast"] = z["castmap"][z["cast"]]
     out["turn"], out["ep"], out["res"] = meta[:, 0], meta[:, 1].view("i1"), meta[:, 2]
+    if "game" in z.files:                                # FB-43 (older packs lack it)
+        out["game"] = z["game"]
     np.save(a.out, out)
     print(f"unpacked {n:,} positions -> {a.out} "
           f"({os.path.getsize(a.out) / 1048576:.0f} MB)")
