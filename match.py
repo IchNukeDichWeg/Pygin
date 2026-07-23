@@ -485,8 +485,18 @@ def _wdl_win_threshold(phase):
                 b = ((BS[0] * x + BS[1]) * x + BS[2]) * x + BS[3]
                 return a - b * gap
             _WDL_THR[0] = thr
-        except (OSError, ValueError, KeyError):
+        except (OSError, ValueError, KeyError) as _e:
+            # HOST-07: adjudication used to disable itself in SILENCE here.
+            # That is an A/B-integrity hazard, not a cosmetic one: a campaign
+            # split across two machines where one loads the model and the
+            # other does not produces halves with different game lengths and
+            # different draw rates, which must never be pooled.
             _WDL_THR[0] = None
+            print(f"[match] WARNING: WDL adjudication is OFF -- could not load "
+                  f"wdl_model.json ({type(_e).__name__}: {_e}). Games will "
+                  f"run to natural end / MAX_PLIES. If the OTHER half of a "
+                  f"split campaign loaded it, DO NOT pool the two halves.",
+                  file=sys.stderr, flush=True)
     return None if _WDL_THR[0] is None else _WDL_THR[0](phase)
 
 
@@ -1147,6 +1157,7 @@ def main():
         # limitation, fine at screen precision.
         _CAL_ROUNDS = 5
         _CAL_DEADBAND = 0.01
+        _CAL_MAX_SPREAD = 0.05   # HOST-03: warn above 5% round-to-round spread
         print(f"Calibrating --nodes budgets ({_CAL_ROUNDS} interleaved "
               "bench rounds per engine)...")
         _ctx = mp.get_context("spawn")
@@ -1178,6 +1189,19 @@ def main():
         print(f"  round ratios: {' '.join(f'{r:.3f}' for r in ratios)}"
               f" -> median {ratio:.3f}"
               + (" (deadband -> 1.000)" if ratio == 1.0 else ""))
+        # HOST-03: the median is robust to ONE bad round, not to a noisy box.
+        # This number sets the node budget for every game in the campaign, so
+        # a wide sample set has to be seen, not averaged away in silence.
+        # Rented "identical" hardware has been measured 50% apart (FI-64), and
+        # a co-tenant process is invisible from in here.
+        _spread = (ratios[-1] - ratios[0]) / ratio if ratio else 0.0
+        if _spread > _CAL_MAX_SPREAD:
+            print(f"[match] WARNING: NPS calibration spread {_spread*100:.1f}% "
+                  f"exceeds {_CAL_MAX_SPREAD*100:.0f}% "
+                  f"(min {ratios[0]:.3f}, max {ratios[-1]:.3f}). The node "
+                  f"budget below is unreliable -- something else is likely "
+                  f"using this machine. Re-run the calibration on a quiet box "
+                  f"before trusting this campaign.", file=sys.stderr, flush=True)
 
     # Positions -> seeded shuffle, then take the slice [offset : offset+n].
     # With a FIXED SUBSET_SEED every window shuffles identically, so distinct
