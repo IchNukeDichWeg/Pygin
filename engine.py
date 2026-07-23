@@ -914,6 +914,8 @@ try:
     # from each piece's mobility count, 0 = legacy behaviour).
     _eval_lib.set_mobility_area.argtypes = [ctypes.c_int]
     _eval_lib.set_mobility_area.restype = None
+    _eval_lib.set_xray_mob.argtypes = [ctypes.c_int]      # FI-85
+    _eval_lib.set_xray_mob.restype = None
     # #3.x: threats (pawn -> enemy non-pawn, minor -> enemy major). 0/0 off.
     _eval_lib.set_threats_params.argtypes = [ctypes.c_int, ctypes.c_int]
     _eval_lib.set_threats_params.restype = None
@@ -946,7 +948,7 @@ try:
     # P-12: ABI handshake. Bump together with abi_version() in eval_c.c on
     # any export-signature or semantics change -- a stale-but-loadable .so
     # must be rejected here, not trusted silently.
-    _EVAL_C_ABI = 3      # 3: U-04 mobility_king_safety takes a kings bitboard
+    _EVAL_C_ABI = 4      # 4: FI-85 set_xray_mob; 3: U-04 mobility_king_safety kings bb
     _eval_lib.abi_version.restype = ctypes.c_int
     if _eval_lib.abi_version() != _EVAL_C_ABI:
         raise OSError(f"eval_c.so ABI {_eval_lib.abi_version()} != expected "
@@ -1737,6 +1739,9 @@ class Engine:
         # mobility weights as before (no retune yet); subtle eval shift,
         # principled and standard. A/B via this toggle.
         self.use_mobility_area = True
+        # FI-85: battery-transparent slider mobility. False = v54
+        # byte-exact. ARMED CANDIDATE 2026-07-23.
+        self.use_xray_mob = True
 
         # #3.x: threats. Two coarse classes (cheap, big signal):
         #   pawn  -> any enemy non-pawn piece sitting on a square attacked
@@ -2094,6 +2099,7 @@ class Engine:
             _eval_lib.set_rook_on_7th_params(0, 0)
         # #3.x: sync mobility-area toggle.
         _eval_lib.set_mobility_area(1 if self.use_mobility_area else 0)
+        _eval_lib.set_xray_mob(1 if getattr(self, 'use_xray_mob', False) else 0)  # FI-85
         # #3.x: sync threats (0/0 if the toggle is off).
         if self.use_threats:
             _eval_lib.set_threats_params(self.THREAT_PAWN, self.THREAT_MINOR)

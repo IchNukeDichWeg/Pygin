@@ -50,6 +50,15 @@ static int R7_MG = 18, R7_EG = 32;
  * follow-up the engine_feature_workflow can A/B independently. */
 static int MOB_AREA_ON = 1;
 
+/* FI-85: battery-transparent (x-ray) slider mobility. When on, a slider's
+ * MOBILITY popcount is computed with own same-ray sliders removed from the
+ * occupancy, so a doubled rook or a queen-behind-bishop counts its real
+ * influence instead of seeing its own front piece as a wall. Ring-attack and
+ * threat sets keep TRUE occupancy (a battery does not attack THROUGH for
+ * check purposes). 0 = v54 byte-exact (ma == a, no extra attack calls). */
+static int XRAY_MOB = 0;
+void set_xray_mob(int on) { XRAY_MOB = on ? 1 : 0; }
+
 /* #3.x: threats. Two coarse classes (cheap, big signal):
  *   THREAT_PAWN   -- per enemy non-pawn piece attacked by one of our pawns
  *   THREAT_MINOR  -- per enemy major piece attacked by one of our minors
@@ -282,6 +291,12 @@ int mobility_king_safety(
     uint64_t patk_b = ((bp >> 7) & ~FILE_A) | ((bp >> 9) & ~FILE_H);
     uint64_t w_safe = MOB_AREA_ON ? (~occ_w & ~patk_b) : ~occ_w;
     uint64_t b_safe = MOB_AREA_ON ? (~occ_b & ~patk_w) : ~occ_b;
+    /* FI-85: own same-ray slider masks (diag = bishops+queens, orth =
+     * rooks+queens). Removing all own diagonal sliders is equivalent to
+     * removing same-ray ones for the popcount -- off-ray pieces are not
+     * blockers. */
+    uint64_t wbat = (bishops | queens) & occ_w, bbat = (bishops | queens) & occ_b;
+    uint64_t wrat = (rooks   | queens) & occ_w, brat = (rooks   | queens) & occ_b;
     /* #3.x: per-side minor-piece attack accumulator, OR'd inside the
      * knight + bishop mobility loops. Zero-init even when threats are
      * off so the threats block at the bottom can branch on a single int
@@ -330,7 +345,8 @@ int mobility_king_safety(
     for (t = bishops & occ_w; t; t &= t-1) {
         sq = __builtin_ctzll(t);
         uint64_t a = bishop_attacks(sq, occ);
-        score       += MOB_B * __builtin_popcountll(a & w_safe);
+        uint64_t ma = XRAY_MOB ? bishop_attacks(sq, occ & ~wbat) : a;  /* FI-85 */
+        score       += MOB_B * __builtin_popcountll(ma & w_safe);
         b_ring_att  += __builtin_popcountll(a & bring);
         w_minor_atk |= a;                                /* #3.x */
         if (OUTPOST_ON) {
@@ -348,7 +364,8 @@ int mobility_king_safety(
     for (t = bishops & occ_b; t; t &= t-1) {
         sq = __builtin_ctzll(t);
         uint64_t a = bishop_attacks(sq, occ);
-        score       -= MOB_B * __builtin_popcountll(a & b_safe);
+        uint64_t ma = XRAY_MOB ? bishop_attacks(sq, occ & ~bbat) : a;  /* FI-85 */
+        score       -= MOB_B * __builtin_popcountll(ma & b_safe);
         w_ring_att  += __builtin_popcountll(a & wring);
         b_minor_atk |= a;                                /* #3.x */
         if (OUTPOST_ON) {
@@ -370,7 +387,8 @@ int mobility_king_safety(
     for (t = rooks & occ_w; t; t &= t-1) {
         sq = __builtin_ctzll(t);
         uint64_t a = rook_attacks(sq, occ);
-        score      += MOB_R * __builtin_popcountll(a & w_safe);
+        uint64_t ma = XRAY_MOB ? rook_attacks(sq, occ & ~wrat) : a;    /* FI-85 */
+        score      += MOB_R * __builtin_popcountll(ma & w_safe);
         b_ring_att += __builtin_popcountll(a & bring);
         uint64_t fmask = 0x0101010101010101ULL << (sq & 7);
         if (!(wp & fmask))
@@ -379,7 +397,8 @@ int mobility_king_safety(
     for (t = rooks & occ_b; t; t &= t-1) {
         sq = __builtin_ctzll(t);
         uint64_t a = rook_attacks(sq, occ);
-        score      -= MOB_R * __builtin_popcountll(a & b_safe);
+        uint64_t ma = XRAY_MOB ? rook_attacks(sq, occ & ~brat) : a;    /* FI-85 */
+        score      -= MOB_R * __builtin_popcountll(ma & b_safe);
         w_ring_att += __builtin_popcountll(a & wring);
         uint64_t fmask = 0x0101010101010101ULL << (sq & 7);
         if (!(bp & fmask))
@@ -390,13 +409,17 @@ int mobility_king_safety(
     for (t = queens & occ_w; t; t &= t-1) {
         sq = __builtin_ctzll(t);
         uint64_t a = rook_attacks(sq, occ) | bishop_attacks(sq, occ);
-        score      += MOB_Q * __builtin_popcountll(a & w_safe);
+        uint64_t ma = XRAY_MOB ? (rook_attacks(sq, occ & ~wrat)
+                               |  bishop_attacks(sq, occ & ~wbat)) : a;  /* FI-85 */
+        score      += MOB_Q * __builtin_popcountll(ma & w_safe);
         b_ring_att += __builtin_popcountll(a & bring);
     }
     for (t = queens & occ_b; t; t &= t-1) {
         sq = __builtin_ctzll(t);
         uint64_t a = rook_attacks(sq, occ) | bishop_attacks(sq, occ);
-        score      -= MOB_Q * __builtin_popcountll(a & b_safe);
+        uint64_t ma = XRAY_MOB ? (rook_attacks(sq, occ & ~brat)
+                               |  bishop_attacks(sq, occ & ~bbat)) : a;  /* FI-85 */
+        score      -= MOB_Q * __builtin_popcountll(ma & b_safe);
         w_ring_att += __builtin_popcountll(a & wring);
     }
 
@@ -794,7 +817,7 @@ int see(uint64_t pawns, uint64_t knights, uint64_t bishops, uint64_t rooks,
  * exported signature or the semantics of an existing export change, so a
  * stale-but-loadable .so is rejected at load instead of silently
  * mis-evaluating. */
-int abi_version(void) { return 3; }   /* 2: C-18 folded mopup into
+int abi_version(void) { return 4; }   /* 2: C-18 folded mopup into
                                        *    mobility_king_safety at phase <= 6
                                        * 3: U-04 mobility_king_safety takes a
                                        *    kings bitboard, not wksq/bksq ints */
