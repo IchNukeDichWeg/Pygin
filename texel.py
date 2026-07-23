@@ -744,6 +744,45 @@ def _probe(dirpath):
     return [int(x) for x in r.stdout.strip().split(",")]
 
 
+def cmd_pack(a):
+    """positions .npy -> a compact .npz small enough to ship via GitHub.
+
+    358 MB -> ~100 MB, without touching a single label: occ_b is fully
+    derivable (all pieces AND NOT occ_w), and castling_rights takes only 16
+    distinct values so it stores as a byte index. The servers `unpack` back
+    to the .npy because the tuner mmaps it -- 95 workers share one mapping,
+    which a compressed archive cannot do.
+    """
+    arr = np.load(a.src, mmap_mode="r")
+    bb = np.ascontiguousarray(arr["bb"][:, :7])          # occ_b dropped
+    cast_u = np.unique(arr["cast"])
+    np.savez_compressed(
+        a.out, bb=bb,
+        cast=np.searchsorted(cast_u, arr["cast"]).astype("u1"),
+        castmap=cast_u,
+        meta=np.stack([arr["turn"], arr["ep"].view("u1"), arr["res"]], 1))
+    src_mb = os.path.getsize(a.src) / 1048576
+    out_mb = os.path.getsize(a.out) / 1048576
+    print(f"packed {len(arr):,} positions: {src_mb:.0f} MB -> {out_mb:.0f} MB "
+          f"({src_mb / out_mb:.1f}x)")
+
+
+def cmd_unpack(a):
+    """.npz -> the .npy the tuner mmaps. Run once on each server."""
+    z = np.load(a.src)
+    bb7, meta = z["bb"], z["meta"]
+    n = len(bb7)
+    out = np.zeros(n, dtype=RECORD)
+    out["bb"][:, :7] = bb7
+    allp = bb7[:, 0] | bb7[:, 1] | bb7[:, 2] | bb7[:, 3] | bb7[:, 4] | bb7[:, 5]
+    out["bb"][:, 7] = allp & ~bb7[:, 6]                  # occ_b reconstructed
+    out["cast"] = z["castmap"][z["cast"]]
+    out["turn"], out["ep"], out["res"] = meta[:, 0], meta[:, 1].view("i1"), meta[:, 2]
+    np.save(a.out, out)
+    print(f"unpacked {n:,} positions -> {a.out} "
+          f"({os.path.getsize(a.out) / 1048576:.0f} MB)")
+
+
 def cmd_stage(a):
     import pathlib
     """Assemble a ready-to-A/B engine directory from the tuned engine.py.
@@ -929,6 +968,16 @@ def main():
                    help="coordinate-descent step sizes in cp, annealed evenly "
                         "across --rounds (default: 8 3 1)")
     t.set_defaults(fn=cmd_tune)
+
+    k = sub.add_parser("pack", help="positions .npy -> compact .npz for GitHub")
+    k.add_argument("--src", default=POSITIONS_NPY)
+    k.add_argument("--out", default="texel_positions.npz")
+    k.set_defaults(fn=cmd_pack)
+
+    u = sub.add_parser("unpack", help="compact .npz -> the .npy the tuner mmaps")
+    u.add_argument("--src", default="texel_positions.npz")
+    u.add_argument("--out", default=POSITIONS_NPY)
+    u.set_defaults(fn=cmd_unpack)
 
     g = sub.add_parser("stage", help="tuned engine.py -> ready-to-A/B dir")
     g.add_argument("--src", default=DEFAULT_OUT)
