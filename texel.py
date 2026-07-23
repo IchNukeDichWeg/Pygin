@@ -707,10 +707,15 @@ def cmd_stage(a):
     # the SEARCH already resolves concretely (passers, rook-on-7th, tempo).
     # That makes the Elo sign genuinely uncertain no matter how good the loss
     # looks, so it does not earn a 10,000-game slot up front.
+    # The baseline is the NEWEST snapshot, not a hardcoded version -- this
+    # printed "Old Engine/52" for a whole day after v53 shipped.
+    snaps = sorted((int(d) for d in os.listdir("Old Engine") if d.isdigit()),
+                   reverse=True)
+    base = f"Old Engine/{snaps[0]}/engine{snaps[0]}.py" if snaps else "<snapshot>"
     print(f"\nScreen it first -- 2,000 games, ~+/-15 Elo (candidate first, so "
           f"a + score means the tune helped):\n"
           f"  python3 match.py {a.dir}/cengine.py "
-          f'"Old Engine/52/engine52.py" 1000 --workers 0 --nodes 1750000\n'
+          f'"{base}" 1000 --workers 0 --nodes 1750000\n'
           f"Only if that is clearly positive, spend the campaign: same line "
           f"with 5000 instead of 1000.")
 
