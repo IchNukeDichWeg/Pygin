@@ -134,6 +134,8 @@ import chess.pgn
 
 from time_manager import calculate_move_time
 
+import interruptible
+
 
 # ---------------------------------------------------------------------- #
 # Config overrides as an explicit dict. `spawn` workers re-import this
@@ -637,6 +639,7 @@ _W = {}                                  # per-process engines/state
 
 
 def _init_worker(cfg=None):
+    interruptible.silence_worker()   # parent owns shutdown
     _apply_config(cfg)
     p1 = EnginePolicy(ENGINE_1_PATH, ENGINE_1_MODE, ENGINE_1_TIME_MS,
                       ENGINE_1_DEPTH, ENGINE_1_CLOCK_SECONDS,

@@ -18,6 +18,8 @@ import time
 
 import chess
 
+import interruptible
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 _lib = ctypes.CDLL(os.path.join(HERE, "movegen.so"))
 _lib.perft.restype = ctypes.c_uint64
@@ -94,4 +96,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Ctrl-C / SIGTERM: one line, no traceback, exit 130.
+    with interruptible.salvage():
+        main()

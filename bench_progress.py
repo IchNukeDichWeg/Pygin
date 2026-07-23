@@ -27,6 +27,8 @@ CHILD = r'''
 import importlib.util, json, os, sys, time
 os.chdir(%r)
 import chess
+
+import interruptible
 V, SECONDS, REPS = int(sys.argv[1]), float(sys.argv[2]), int(sys.argv[3])
 snap = os.path.join("Old Engine", str(V), "engine%%d.py" %% V)
 path = snap if os.path.isfile(snap) else "cengine.py"
