@@ -183,3 +183,4 @@ nnue_readme.md
 # copied between machines). It is still a CANDIDATE, not a release: a
 # confirmed tune lands in engine.py by hand.
 texel_positions.npy
+texel_positions.npz
