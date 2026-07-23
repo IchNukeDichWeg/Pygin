@@ -1719,6 +1719,17 @@ class Engine:
         # attr (CANTWIN class attr). OFF by default until its own A/B slot.
         self.use_cantwin = False
 
+        # FI-76 (WB-01) wrong-bishop rook-pawn dead draw: CW-01's sibling
+        # truth-gate for the case where the strong side HAS pawns and still
+        # cannot win -- all of them on one rook file, at most one bishop and
+        # it does not control that promotion corner, and a bare defending
+        # king already sitting on it (zero bishops qualifies: bare rook
+        # pawns are drawn too, and gating only the one-bishop case pays the
+        # search to SHED the bishop). Ported bit-exactly to csearch.c;
+        # cengine mirrors this attr (WRONGBISHOP). OFF = v54 eval exactly;
+        # built 2026-07-23, screen PENDING.
+        self.use_wrongbishop = False
+
         # "Trade down when ahead" eval term (see SIMPLIFY_*). A/B verdict: ON
         # scored 47.9% (-14 Elo) over 800 games @0.8s -> it HURTS (likely trades
         # into drawn endings), so OFF. (A noisy 100-game/0.15s run had said +;
@@ -2432,6 +2443,31 @@ class Engine:
                 nn = chess.popcount(board.knights & strong)
                 if nb + nn <= 1 or (nb == 0 and nn == 2):
                     score = 0
+        if self.use_wrongbishop and score != 0:        # FI-76 (see __init__)
+            white_strong = score > 0
+            strong = board.occupied_co[white_strong]
+            weak = board.occupied_co[not white_strong]
+            bb = board.bishops & strong
+            sp = board.pawns & strong
+            if (not (weak & ~board.kings)                 # bare defender
+                    and not ((board.rooks | board.queens
+                              | board.knights) & strong)
+                    and chess.popcount(bb) <= 1 and sp):
+                if not (sp & ~chess.BB_FILE_A):
+                    cfile = 0
+                elif not (sp & ~chess.BB_FILE_H):
+                    cfile = 7
+                else:
+                    cfile = -1
+                if cfile >= 0:
+                    corner = (56 + cfile) if white_strong else cfile
+                    bsq = chess.lsb(bb) if bb else -1   # 0 bishops qualifies
+                    if bsq < 0 or ((((bsq >> 3) ^ bsq) & 1)
+                                   != (((corner >> 3) ^ corner) & 1)):
+                        ksq = chess.lsb(board.kings & weak)
+                        if max(abs((ksq & 7) - (corner & 7)),
+                               abs((ksq >> 3) - (corner >> 3))) <= 1:
+                            score = 0
         return score
 
     def _eval_base_white(self, board):
