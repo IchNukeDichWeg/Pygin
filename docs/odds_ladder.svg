@@ -4,16 +4,16 @@
 <rect x="104" y="44.0" width="582.0" height="63.3" rx="4" fill="#8b949e33"/>
 <rect x="104" y="44.0" width="582.0" height="63.3" rx="4" fill="#f0883e"/>
 <text x="94" y="80.7" fill="#8b949e" font-size="13" font-weight="600" text-anchor="end">Queen</text>
-<text x="694.0" y="80.7" fill="#f0883e" font-size="13" font-weight="700">100.0%</text>
+<text x="676.0" y="80.7" fill="#0d1117" font-size="13" font-weight="700" text-anchor="end">100.0%</text>
 <text x="738" y="80.7" fill="#8b949e" font-size="11" text-anchor="end">v-</text>
 <rect x="104" y="123.3" width="582.0" height="63.3" rx="4" fill="#8b949e33"/>
 <rect x="104" y="123.3" width="555.8" height="63.3" rx="4" fill="#f0883e"/>
 <text x="94" y="160.0" fill="#8b949e" font-size="13" font-weight="600" text-anchor="end">Rook</text>
-<text x="667.8" y="160.0" fill="#f0883e" font-size="13" font-weight="700">95.5%</text>
+<text x="649.8" y="160.0" fill="#0d1117" font-size="13" font-weight="700" text-anchor="end">95.5%</text>
 <text x="738" y="160.0" fill="#8b949e" font-size="11" text-anchor="end">v49</text>
 <rect x="104" y="202.7" width="582.0" height="63.3" rx="4" fill="#8b949e33"/>
-<rect x="104" y="202.7" width="475.2" height="63.3" rx="4" fill="#f0883e"/>
+<rect x="104" y="202.7" width="582.0" height="63.3" rx="4" fill="#f0883e"/>
 <text x="94" y="239.3" fill="#8b949e" font-size="13" font-weight="600" text-anchor="end">Knight</text>
-<text x="587.2" y="239.3" fill="#f0883e" font-size="13" font-weight="700">81.7%</text>
-<text x="738" y="239.3" fill="#8b949e" font-size="11" text-anchor="end">v52</text>
+<text x="676.0" y="239.3" fill="#0d1117" font-size="13" font-weight="700" text-anchor="end">100.0%</text>
+<text x="738" y="239.3" fill="#8b949e" font-size="11" text-anchor="end">v54</text>
 </svg>

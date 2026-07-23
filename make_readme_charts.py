@@ -29,13 +29,17 @@ DATA = {
 }
 
 # Knight odds win% vs FULL-STRENGTH Stockfish 18 -- the external yardstick.
-# Three real measurements, 1,000+ games each (README "Measured strength").
-ODDS_KNIGHT = [(31, 76.75), (49, 79.05), (52, 81.65)]  # saturated after v52
+# Four real measurements (odds.py records them all): v31/v49/v52 at 400-1,000
+# games each, then the PST candidate that shipped as v54 running it OUT --
+# 197 games, zero SF wins and zero draws. Knight odds is a closed rung now;
+# pawn odds (f2) is the live yardstick, not yet measured.
+ODDS_KNIGHT = [(31, 76.75), (49, 79.05), (52, 81.65), (54, 100.0)]
 # The odds LADDER vs full-strength SF: how big a material handicap the engine
-# can spot it and still win. Latest measurement of each (queen saturated at
-# 100/100 games; rook 95.5% at v49; knight 81.65% at v52).
+# can spot it and still win. Latest measurement of each (queen 100/100 games;
+# rook 95.5% at v49; knight saturated at v54, 197 games without a single SF
+# win or draw).
 ODDS_LADDER = [("Queen", 100.0, "v-"), ("Rook", 95.5, "v49"),
-               ("Knight", 81.65, "v52")]
+               ("Knight", 100.0, "v54")]
 
 W, H = 760, 300
 ML, MR, MT, MB = 58, 22, 44, 34          # margins
@@ -113,10 +117,16 @@ def _line_points(title, unit, pts, colour, ylo, yhi):
     s.append(f'<path d="{area}" fill="url(#g{colour[1:]})"/>')
     s.append(f'<polyline points="{" ".join(f"{x:.1f},{y:.1f}" for x,y in P)}" '
              f'fill="none" stroke="{colour}" stroke-width="2.5" stroke-linejoin="round"/>')
-    for (x, y), (cx, cy) in zip(pts, P):
+    for i, ((x, y), (cx, cy)) in enumerate(zip(pts, P)):
         s.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="4" fill="{colour}"/>')
-        s.append(f'<text x="{cx:.1f}" y="{cy-11:.1f}" fill="{colour}" font-size="12.5" '
-                 f'font-weight="700" text-anchor="middle">{y:.2f}%</text>')
+        # a value label on the last dot would overhang the viewBox: right-align it
+        anchor, tx = ("end", W - MR) if cx > W - MR - 30 else ("middle", cx)
+        # ...and a steep NEXT segment would draw straight through a centred
+        # label (v52's 81.65% vs the climb to 100%), so push that one left
+        if i + 1 < len(P) and P[i + 1][1] < cy - 40:
+            anchor, tx = "end", cx - 7
+        s.append(f'<text x="{tx:.1f}" y="{cy-11:.1f}" fill="{colour}" font-size="12.5" '
+                 f'font-weight="700" text-anchor="{anchor}">{y:.2f}%</text>')
         s.append(f'<text x="{cx:.1f}" y="{H-12}" fill="{AXIS}" font-size="11" '
                  f'text-anchor="middle">v{x}</text>')
     s.append('</svg>')
@@ -140,8 +150,13 @@ def _bars(title, unit, rows, colour):
                  f'rx="4" fill="{colour}"/>')
         s.append(f'<text x="{x0-10}" y="{y+bh/2+5:.1f}" fill="{AXIS}" font-size="13" '
                  f'font-weight="600" text-anchor="end">{label}</text>')
-        s.append(f'<text x="{px(v)+8:.1f}" y="{y+bh/2+5:.1f}" fill="{colour}" font-size="13" '
-                 f'font-weight="700">{v:.1f}%</text>')
+        # a near-full bar pushes its value label into the note column, so put
+        # that one INSIDE the bar (dark on orange reads in both GitHub themes)
+        vx, van, vfill = px(v) + 8, "start", colour
+        if vx + 46 > W - MR - 26:
+            vx, van, vfill = px(v) - 10, "end", "#0d1117"
+        s.append(f'<text x="{vx:.1f}" y="{y+bh/2+5:.1f}" fill="{vfill}" font-size="13" '
+                 f'font-weight="700" text-anchor="{van}">{v:.1f}%</text>')
         s.append(f'<text x="{W-MR}" y="{y+bh/2+5:.1f}" fill="{AXIS}" font-size="11" '
                  f'text-anchor="end">{note}</text>')
     s.append('</svg>')
@@ -165,8 +180,8 @@ def main():
         "Single-thread speed", "x v31", vs, mult, "#58a6ff",
         lambda y: f"{y:.2f}x", y0=0.8, ymax=1.7))
     open("docs/odds_knight.svg", "w").write(_line_points(
-        "Knight odds win% vs full-strength SF-18", "external yardstick",
-        ODDS_KNIGHT, "#a371f7", 74, 84))
+        "Knight odds win% vs full-strength SF-18", "saturated at v54",
+        ODDS_KNIGHT, "#a371f7", 74, 102))
     open("docs/odds_ladder.svg", "w").write(_bars(
         "Odds it can spot full-strength SF-18 and still win", "latest each",
         ODDS_LADDER, "#f0883e"))
