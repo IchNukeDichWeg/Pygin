@@ -650,6 +650,36 @@ benchmark" below.
   =1 and all match play are byte-identical). ``TT_BITS=22`` restores v46.
   Snapshotted as Old Engine/47.
 
+* **v52 -> v53 (2026-07-22, lives HERE in ``engine.py``): the Texel retune
+  -- the largest single gain the project has recorded, and the eval lane's
+  first win.** v48-v52 were all search/TT work in ``cengine.py``; this one
+  is 44 eval scalars and no C change at all, since ``cengine.py`` pushes
+  this file's constants into ``csearch.so`` at construction (the eval-param
+  oracle, ``cengine.py:940``). Fitted by ``texel.py`` on 4,000,000 quiet
+  positions from this project's own near-equal self-play logs, labelled
+  with the GAME RESULT rather than a Stockfish score -- 1.43%% better on a
+  held-out 20%% split, converged across 10 restarts.
+  **A/B vs Old Engine/52: +37.52 +/-6.3 over 12,000 games @ nodes
+  1,750,000 (55.38%%, ptnml 245/1133/2264/1802/556, pair ratio 1.71),
+  GSPRT[0,2] LLR +9.918 -> ACCEPT** -- 3.4x the accept bound, against
+  previous bests of +4.549 (FI-56) and +4.533 (FI-24). Three disjoint
+  slices of the seeded pool all agree within noise: the 1,000-position
+  screen at offset 0 (+35.39), then two 2,500-position halves on separate
+  servers at offsets 1000 and 3500 (+39.08 and +36.83).
+  41 of 44 parameters moved. The middlegame came down and the endgame went
+  up, widening the taper (MG N 353->307, B 356->323, R 489->443; EG B
+  328->348, R 570->609, Q 1020->1062), mobility rose across the board
+  (4/3/2/1 -> 6/5/3/3), and the terms the SEARCH already resolves
+  concretely were driven toward their floors (PASSED_PAWN_MG rank 6
+  105->42, ROOK_ON_7TH 18/32 -> 8/15, TEMPO 20->8). That last group is the
+  known static-fit-vs-search mismatch and was the reason to screen before
+  spending a slot -- the screen said the material and mobility gains win
+  anyway. Being an eval change it re-pins BOTH ``selftest.py`` pins
+  (``CE_LADDER`` d14 1,716,693 -> 2,053,985 and ``REF_NODES`` 3495 ->
+  2950; ``--recompute-ladder`` regenerates only the former) and moves the
+  bench signature 1,052,763 -> 1,122,753. Snapshotted as Old Engine/53.
+  Re-tune with ``python3 texel.py extract && python3 texel.py tune``.
+
 Cross-version benchmark
 -----------------------
 Sweep (2026-07-02): 24 versions x 8 positions x 6 timed 5s runs (1152 searches).
@@ -1109,7 +1139,7 @@ _ZOB_CR_BITS = ((chess.H1, 0), (chess.A1, 1), (chess.H8, 2), (chess.A8, 3))
 #            N * parallel_games <= CPU cores or you oversubscribe.
 # Per-run overrides, in priority order (highest wins):
 #     1. ``Engine.smp_workers`` set programmatically AFTER construction
-#        (e.g. ``match.py``'s ENGINE_SMP_OVERRIDE -- see below).
+#        (e.g. ``match.py``'s --smp flag -- see below).
 #     2. ``CLAUDECHESS_SMP`` env var (still honoured for shell one-offs).
 #     3. This module constant.
 # GUIs use a separate persistent pool via CLAUDECHESS_GUI_SMP; see gui.py.
@@ -1254,21 +1284,28 @@ class Engine:
             -53, -34, -21, -11, -28, -14, -24, -43
     ]
 
-    # Material values -- Texel-tuned on lichess-big3-resolved.book (7.15M WDL
-    # positions) with the stock PeSTO piece-square tables below held FIXED, so
-    # the fit is conditioned on those exact PSTs (they replace PeSTO's own
-    # piece values). Do NOT swap in external values (AlphaZero's, PeSTO's
-    # originals, ...) without re-tuning: the numbers only mean anything on top
-    # of these tables. The classic tapered pattern: pawns (89->108) and rooks
-    # (489->570) gain in the endgame while minors (N 353->335, B 356->328)
-    # and the queen (1148->1020) ease off.
+    # Material values -- RE-TUNED for v53 by texel.py on 4,000,000 quiet
+    # positions drawn from this project's OWN near-equal self-play logs and
+    # labelled with the GAME RESULT (the v30-era fit these replace used
+    # lichess-big3-resolved.book scored by Stockfish, which fits SF's eval
+    # rather than Pygin's). The PeSTO piece-square tables below were held
+    # FIXED, so the fit is conditioned on those exact PSTs (they replace
+    # PeSTO's own piece values) -- do NOT swap in external values
+    # (AlphaZero's, PeSTO's originals, ...) without re-tuning: these numbers
+    # only mean anything on top of these tables.
+    #
+    # v53 moved the middlegame down and the endgame up, widening the taper:
+    # MG minors and rooks eased off (N 353->307, B 356->323, R 489->443)
+    # while the EG gained (B 328->348, R 570->609, Q 1020->1062). The whole
+    # 44-parameter fit is the v53 release; see the module docstring.
+    # Re-tuning is `python3 texel.py extract && python3 texel.py tune`.
     MG_VALUES = {
-        chess.PAWN: 92, chess.KNIGHT: 307, chess.BISHOP: 323,
-        chess.ROOK: 443, chess.QUEEN: 1152, chess.KING: 0,
+        chess.PAWN: 88, chess.KNIGHT: 309, chess.BISHOP: 325,
+        chess.ROOK: 449, chess.QUEEN: 1123, chess.KING: 0,
     }
     EG_VALUES = {
-        chess.PAWN: 112, chess.KNIGHT: 335, chess.BISHOP: 348,
-        chess.ROOK: 609, chess.QUEEN: 1062, chess.KING: 0,
+        chess.PAWN: 119, chess.KNIGHT: 359, chess.BISHOP: 368,
+        chess.ROOK: 642, chess.QUEEN: 1136, chess.KING: 0,
     }
     # Game-phase contribution of each piece type. The maximum (full opening
     # material) is 24, used to blend the middlegame and endgame scores.
@@ -1370,23 +1407,23 @@ class Engine:
     # improvement confirmed.  Current values retained.
     # ------------------------------------------------------------------ #
     # Bishop pair bonus: worth more in the endgame (fewer pieces to block diags).
-    BISHOP_PAIR_MG = 30
+    BISHOP_PAIR_MG = 33
     BISHOP_PAIR_EG = 63
-    ROOK_OPEN_FILE = 20
+    ROOK_OPEN_FILE = 19
     ROOK_SEMIOPEN_FILE = 15
     # #3.x: rook-on-7th. Tapered (mg, eg); bonus applies per rook on the
     # side's 7th rank when the enemy king sits on its back rank OR an
     # enemy pawn still sits on its 7th. EG > MG because the active rook on
     # 7th is most lethal once minor pieces are off and the back rank can't
     # easily be defended.
-    ROOK_ON_7TH_MG = 8
-    ROOK_ON_7TH_EG = 15
+    ROOK_ON_7TH_MG = 0
+    ROOK_ON_7TH_EG = 23
     # Tempo is high by convention -- WDL tuning consistently finds 15-20 optimal.
     TEMPO = 8
 
     DOUBLED_PAWN = 23
-    ISOLATED_PAWN = 10
-    BACKWARD_PAWN = 11
+    ISOLATED_PAWN = 6
+    BACKWARD_PAWN = 7
     # Penalty for a piece pinned (absolutely, to its own king): it cannot move
     # off the pin line, so its real mobility/usefulness is far below what the
     # raw mobility term credits it, and it is a standing tactical target.
@@ -1397,14 +1434,14 @@ class Engine:
     # Passed-pawn bonus indexed by the pawn's rank *from its own side* (0..7).
     # MG table is hand-tuned (tuner collapsed ranks 5-7 to ~20, which is wrong).
     # EG table is tuner output -- back-rank passers are heavily rewarded.
-    PASSED_PAWN_MG = [0, 1, 7, 10, 19, 40, 42, 0]
-    PASSED_PAWN_EG = [0, 2, 2, 26, 43, 43, 43, 0]
+    PASSED_PAWN_MG = [0, 1, 1, 1, 19, 40, 40, 0]
+    PASSED_PAWN_EG = [0, 2, 2, 29, 43, 43, 43, 0]
 
     # Per-piece mobility weight (centipawns per reachable square).
     # Knight kept at 4 -- tuner found 1, but WDL signal for knight mobility is
     # thin in the middlegame; 4 is consistent with other HCE engines.
     MOBILITY_WEIGHT = {
-        chess.KNIGHT: 6, chess.BISHOP: 5, chess.ROOK: 3, chess.QUEEN: 3,
+        chess.KNIGHT: 6, chess.BISHOP: 6, chess.ROOK: 4, chess.QUEEN: 4,
     }
     # King-safety MG/EG split: attack/shield matter in MG only; in EG the king
     # should be active, so EG penalties are near zero.
@@ -1412,7 +1449,7 @@ class Engine:
     KING_RING_ATTACK_EG = 0
     KING_SHIELD_MG = 4
     KING_SHIELD_EG = 0
-    KING_OPEN_FILE_MG = 23
+    KING_OPEN_FILE_MG = 19
     KING_OPEN_FILE_EG = 0
 
     # Endgame "mop-up": when one side has a decisive non-pawn material edge in
@@ -1587,7 +1624,7 @@ class Engine:
         # GUI use a persistent smp.SMPPool via _smp_pool below, NOT this flag. Keep
         # smp_workers * parallel_games <= CPU cores to avoid oversubscription.
         try:
-            self.smp_workers = max(1, int(os.environ.get("CLAUDECHESS_SMP", str(SMP_WORKERS))))
+            self.smp_workers = max(1, int(getattr(self, "SMP_WORKERS", SMP_WORKERS)))
         except ValueError:
             self.smp_workers = SMP_WORKERS
 
@@ -1693,8 +1730,8 @@ class Engine:
         # Disabling the toggle passes 0/0 to C so the whole threats block
         # collapses to one branch.
         self.use_threats = True
-        self.THREAT_PAWN = 43
-        self.THREAT_MINOR = 40
+        self.THREAT_PAWN = 46
+        self.THREAT_MINOR = 43
 
         # Outpost: bonus for a knight or bishop on a square supported by a
         # friendly pawn and unreachable by any enemy pawn (no enemy pawn on
@@ -1706,11 +1743,11 @@ class Engine:
         # this on is a silent no-op instead of falling back with identical
         # behaviour like every other eval toggle. Currently moot since this
         # defaults off, but check _USE_C_EVAL before relying on it.
-        self.use_outpost = False
-        self.OUTPOST_N_MG = 35      # knight outpost middlegame bonus (cp)
-        self.OUTPOST_N_EG = 15      # knight outpost endgame bonus (cp)
-        self.OUTPOST_B_MG = 18      # bishop outpost middlegame bonus (cp)
-        self.OUTPOST_B_EG = 8       # bishop outpost endgame bonus (cp)
+        self.use_outpost = True
+        self.OUTPOST_N_MG = 35
+        self.OUTPOST_N_EG = 15
+        self.OUTPOST_B_MG = 18
+        self.OUTPOST_B_EG = 8
 
         # Space: bonus for safe central squares (c-f files, ranks 2-4 for
         # white / ranks 5-7 for black) not attacked by an enemy pawn and not
@@ -1718,8 +1755,8 @@ class Engine:
         # in the endgame. OFF by default. Passed to C via set_space_params.
         # CAUTION (roadmap bug #9): C-ONLY, no Python fallback -- see the
         # use_outpost note above, same caveat applies here.
-        self.use_space = False
-        self.SPACE_MG = 4           # cp per safe central square at full phase
+        self.use_space = True
+        self.SPACE_MG = 4
 
         # Phalanx / connected pawns: bonus per pawn that is either side-by-side
         # with a friendly pawn on the same rank (phalanx) or defended by one
@@ -1727,9 +1764,9 @@ class Engine:
         # depth 7-9. OFF by default; toggle via engine_phalanx.py wrapper.
         # CAUTION (roadmap bug #9): C-ONLY, no Python fallback -- see the
         # use_outpost note above, same caveat applies here.
-        self.use_phalanx = False
-        self.PHALANX_MG = 10        # cp per connected pawn, middlegame
-        self.PHALANX_EG = 5         # cp per connected pawn, endgame
+        self.use_phalanx = True
+        self.PHALANX_MG = 10
+        self.PHALANX_EG = 5
 
         # Pawn storm: bonus for friendly pawns that have crossed the midline on
         # the three files centred on the enemy king's file (ranks 5-7 for white,
@@ -1738,9 +1775,9 @@ class Engine:
         # engine_storm.py wrapper for A/B. Passed to C via set_storm_params.
         # CAUTION (roadmap bug #9): C-ONLY, no Python fallback -- see the
         # use_outpost note above, same caveat applies here.
-        self.use_storm = False
-        self.STORM_MG = 12          # cp per storm pawn, middlegame
-        self.STORM_EG = 0           # cp per storm pawn, endgame
+        self.use_storm = True
+        self.STORM_MG = 12
+        self.STORM_EG = 0
 
         # King shelter depth: more granular pawn shield. Replaces the legacy
         # flat "popcount(king_ring & own_pieces) * KING_SHIELD_MG" with a
@@ -1750,9 +1787,9 @@ class Engine:
         # Pawns beyond rank+2 don't contribute. Tapered to 0 in the EG (king
         # should be active there). OFF by default; toggle via engine_shelter.py
         # wrapper for A/B. Passed to C via set_shelter_params.
-        self.use_king_shelter = False
-        self.SHELTER_CLOSE = 8      # cp per pawn 1 rank ahead
-        self.SHELTER_FAR   = 4      # cp per pawn 2 ranks ahead
+        self.use_king_shelter = True
+        self.SHELTER_CLOSE = 8
+        self.SHELTER_FAR   = 4
 
         # History malus ("history gravity"): on a quiet beta-cutoff, the move
         # that caused the cutoff is rewarded (depth^2, as before) AND every
