@@ -638,9 +638,14 @@ def cmd_tune(a):
     for (_, attr, key), v in zip(PARAMS, best_vec):
         _set(E.Engine, attr, key, v)
     _write_back(a.out, dormant)
-    print(f"\nWrote {a.out}. This is a CANDIDATE, not a release: A/B it "
-          f"against Old Engine/52 before shipping,\nand remember an eval "
-          f"change re-pins CE_LADDER and moves the bench signature.")
+    snaps = sorted((int(d) for d in os.listdir("Old Engine") if d.isdigit()),
+                   reverse=True)
+    base = f"Old Engine/{snaps[0]}" if snaps else "the newest snapshot"
+    print(f"\nWrote {a.out}. This is a CANDIDATE, not a release. Next:\n"
+          f"  python3 texel.py stage        # build + verify a testable dir\n"
+          f"then screen it against {base} (>= +15 earns the 10k). An eval "
+          f"change re-pins BOTH CE_LADDER and REF_NODES, and moves the bench "
+          f"signature.")
 
 
 
