@@ -671,6 +671,7 @@ def _probe(dirpath):
 
 
 def cmd_stage(a):
+    import pathlib
     """Assemble a ready-to-A/B engine directory from the tuned engine.py.
 
     engine_tuned.py is a copy of engine.py, NOT of cengine.py -- engine.py is
@@ -688,8 +689,27 @@ def cmd_stage(a):
     if os.path.exists(a.dir):
         sys.exit(f"{a.dir} already exists -- remove it or pick another --dir")
     os.makedirs(a.dir)
-    shutil.copy("cengine.py", os.path.join(a.dir, "cengine.py"))
     shutil.copy(a.src, os.path.join(a.dir, "engine.py"))
+    # cengine OVERRIDES two of engine.py's eval toggles from its OWN class
+    # attrs (cengine.py:985-986, `self._py.use_outpost = bool(self.USE_OUTPOST)`)
+    # -- they are C-era A/B toggles that live on cengine. So a candidate that
+    # enables outpost/king-shelter in engine.py alone gets them silently
+    # forced back OFF in match play, and the A/B measures a config that was
+    # never tuned. Mirror them onto the staged cengine.
+    cen = pathlib.Path("cengine.py").read_text()
+    src = pathlib.Path(a.src).read_text()
+    for eng_attr, cen_attr in (("use_outpost", "USE_OUTPOST"),
+                               ("use_king_shelter", "USE_KING_SHELTER")):
+        if f"self.{eng_attr} = True" in src:
+            before = cen
+            cen = cen.replace(f"    {cen_attr} = False", f"    {cen_attr} = True", 1)
+            if cen == before:
+                sys.exit(f"stage: {a.src} enables {eng_attr} but "
+                         f"`    {cen_attr} = False` was not found in cengine.py "
+                         f"-- refusing to stage a candidate whose terms would "
+                         f"be silently disabled")
+            print(f"  mirrored {eng_attr} -> cengine {cen_attr} = True")
+    pathlib.Path(a.dir, "cengine.py").write_text(cen)
     for so in ("csearch.so", "eval_c.so", "movegen.so"):
         shutil.copy(so, os.path.join(a.dir, so))
 
