@@ -1,7 +1,10 @@
 """
 tune.py
 =======
-Step 2 of Texel tuning. Loads a scored-positions CSV (from score_positions.py),
+Step 2 of the PYTHON-ERA Texel pipeline. Loads a scored-positions CSV
+(from score_positions.py, which is deliberately LOCAL-ONLY and not in the
+repo -- see .gitignore; texel.py supersedes this whole path and needs no
+CSV),
 then optimises engine.py's evaluation constants using stochastic coordinate
 descent (SCD): for every parameter in random order, try +delta and -delta, keep
 whichever reduces the loss, and repeat for N rounds.
