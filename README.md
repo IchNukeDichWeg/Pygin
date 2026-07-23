@@ -40,8 +40,9 @@ representation, move generation and legality.
   The v30→v31 C rewrite (~34× faster, +215 odds-derived) is off the left edge,
   so v31 is the honest zero.
 - **Bottom row — vs Stockfish 18 at full strength.** The external check: knight
-  odds climbing **76.75 → 81.65%**, and the handicap ladder — it spots SF a
-  **queen** (100%), **rook** (95.5%) or **knight** (81.65%) and still wins.
+  odds climbing **76.75 → 81.65%** (v31 → v52, now saturating), and the handicap
+  ladder — it spots SF a **queen** (100%), **rook** (95.5%) or **knight** (81.65%)
+  and still wins. Pawn odds (f2) is the next rung down.
 
 ### Two engines, one eval
 
@@ -56,9 +57,10 @@ representation, move generation and legality.
 
 - **~2885 Elo** — SF-18 UCI_Elo bracket (v51): **62.5%** over the 2850 cap,
   **46.4%** under 2900, 2,000 games each. A class bracket, not a rating.
-- **Knight odds vs full-strength SF-18** — the live external yardstick:
-  76.75% → 79.05% → **81.65%** (v31 → v49 → v52). Queen/rook odds saturated
-  (100% / 95.5%).
+- **Odds vs full-strength SF-18** — the external yardstick. Knight odds ran
+  76.75% → 79.05% → **81.65%** (v31 → v49 → v52) and has now **saturated** —
+  a v53-tuned candidate scored ~100%. Queen (100%) and rook (95.5%) went the
+  same way. **Pawn odds (f2)** is the active rung with headroom left.
 - **vs its own Python engine: 1,815–0–40.** No rating quoted — the gap is past
   what Elo can express. The Python engine alone is **~2440–2450** (level with
   SF-18 at UCI_Elo 2450).
@@ -244,10 +246,12 @@ python3 match.py cengine.py "Old Engine/34/engine34.py" 100 0 --workers 4
 python3 match.py engine.py stockfish_engine.py 100 0 --sf-elo 2000   # 0 = full strength
 ```
 
-**Material / time odds** — configured in `odds.py`'s `CONFIG` block:
+**Material / time odds** — configured in `odds.py`'s `CONFIG` block (default is
+pawn odds, `f2`). Each worker runs **two** engines, so use `--workers ≤ cores/2`
+so a real clock TC isn't starved by oversubscription:
 
 ```bash
-python3 odds.py --positions 500 --workers 0
+python3 odds.py --positions 500 --workers 5
 ```
 
 ---

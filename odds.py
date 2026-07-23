@@ -62,23 +62,36 @@ ODDS_GIVEN_BY = "engine_2"
 # Black they are vertically mirrored automatically (d1 -> d8, f2 -> f7, ...).
 # So ``["d1"]`` means "queen odds" regardless of which colour gives them.
 #
-# Presets (uncomment ONE):
-# ODDS_SQUARES = ["d1"]                 # Queen odds       (Q on d1, saturated)
-# ODDS_SQUARES = ["a1"]                 # Rook odds        (Ra1, saturated @v31)
-ODDS_SQUARES = ["b1"]                   # Knight odds      (Nb1) -- the standing
-                                        # external yardstick, both @45+0.15 vs
+# Presets (uncomment ONE). The square is always written from White's side and
+# mirrors automatically, so "f2" == the f-pawn regardless of who gives odds.
+# ODDS_SQUARES = ["d1"]                 # Queen odds       (Q on d1, saturated 100%)
+# ODDS_SQUARES = ["a1"]                 # Rook odds        (Ra1, saturated 95.5% @v49)
+# ODDS_SQUARES = ["b1"]                 # Knight odds      (Nb1) -- SATURATED: the
+                                        # v53 PST candidate ran it to ~100% (0
+                                        # SF wins/draws over 197 games). The
+                                        # historical yardstick, both @45+0.15 vs
                                         # full-strength SF:
                                         #   v31  76.75%  (400g,  +207 +/-48)
                                         #   v49  79.05% (1000g,  +231)
                                         #   v52  81.65% (1000g,  +259 +/-36)
-                                        # v31 -> v52 is +52 Elo here for +215 of
-                                        # self-play Elo -- the line compresses as
-                                        # the engine outgrows it (single steps
-                                        # sit inside the CI). Expect it to
-                                        # saturate like rook odds did; next rung
-                                        # down when it does: pawn odds (f2).
+                                        # +52 Elo for +215 of self-play Elo, then
+                                        # the ceiling -- rook odds went the same way.
+ODDS_SQUARES = ["f2"]                   # PAWN odds (f-pawn) -- the new active
+                                        # yardstick, the rung with headroom. The
+                                        # f-pawn is the classic odds pawn: only
+                                        # the king defends it, so removing it is
+                                        # the least positionally-disruptive way
+                                        # to be down exactly one pawn (it also
+                                        # slightly exposes the king). NOT a centre
+                                        # pawn (e2/d2): those rip the centre open
+                                        # and hand back dynamic compensation, so
+                                        # they are worth far less than a clean
+                                        # pawn and measure sharpness, not material.
+                                        # Run with --workers <= cores/2 so each
+                                        # engine pair (cengine + SF) gets a full
+                                        # core -- the clock TC is meaningless under
+                                        # oversubscription.
 # ODDS_SQUARES = ["f1"]                 # Bishop odds      (Bf1)
-# ODDS_SQUARES = ["f2"]                 # Pawn odds        (f-pawn)
 # ODDS_SQUARES = ["d1", "a1"]           # Queen + Rook odds
 # ODDS_SQUARES = ["b1", "g1"]           # Two-knight odds
 # ODDS_SQUARES = []                     # no material odds
