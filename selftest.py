@@ -346,9 +346,9 @@ if os.path.exists("csearch.c"):
             ce._lib.set_hist_keep(0)
         except AttributeError:
             pass                       # pre-FI-12 csearch.so
-        # FI-85 x-ray mobility: ARMED CANDIDATE 2026-07-23. LOAD-BEARING --
-        # USE_XRAY_MOB carries the armed value for match play, so the ladder
-        # must force it OFF or it measures the candidate instead of v54.
+        # FI-85 x-ray mobility: SCREEN-KILLED 2026-07-23 (-4.52 +/-15.3 @2k).
+        # Default is 0 again, so this pin is belt-and-braces -- keep it, it
+        # is what makes the ladder measure v54 if the toggle is ever re-armed.
         try:
             ce._lib.set_xray_mob(0)
         except AttributeError:
