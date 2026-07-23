@@ -30,8 +30,8 @@ representation, move generation and legality.
 <td><img src="docs/speed_progression.svg" width="100%" alt="Single-thread speed as a multiple of v31, ending at 1.61x"/></td>
 </tr>
 <tr>
-<td><img src="docs/odds_knight.svg" width="100%" alt="Knight-odds win rate vs full-strength Stockfish 18: 76.75 to 81.65 percent"/></td>
-<td><img src="docs/odds_ladder.svg" width="100%" alt="Odds it can spot full-strength Stockfish 18 and still win: queen 100, rook 95.5, knight 81.65 percent"/></td>
+<td><img src="docs/odds_knight.svg" width="100%" alt="Knight-odds win rate vs full-strength Stockfish 18: 76.75 percent at v31 rising to 100 percent at v54"/></td>
+<td><img src="docs/odds_ladder.svg" width="100%" alt="Odds it can spot full-strength Stockfish 18 and still win: queen 100, rook 95.5, knight 100 percent"/></td>
 </tr>
 </table>
 
@@ -40,8 +40,8 @@ representation, move generation and legality.
   The v30→v31 C rewrite (~34× faster, +215 odds-derived) is off the left edge,
   so v31 is the honest zero.
 - **Bottom row — vs Stockfish 18 at full strength.** The external check: knight
-  odds climbing **76.75 → 81.65%** (v31 → v52, now saturating), and the handicap
-  ladder — it spots SF a **queen** (100%), **rook** (95.5%) or **knight** (81.65%)
+  odds climbing **76.75 → 100%** (v31 → v54, now saturated), and the handicap
+  ladder — it spots SF a **queen** (100%), **rook** (95.5%) or **knight** (100%)
   and still wins. Pawn odds (f2) is the next rung down.
 
 ### Two engines, one eval
@@ -58,8 +58,9 @@ representation, move generation and legality.
 - **~2885 Elo** — SF-18 UCI_Elo bracket (v51): **62.5%** over the 2850 cap,
   **46.4%** under 2900, 2,000 games each. A class bracket, not a rating.
 - **Odds vs full-strength SF-18** — the external yardstick. Knight odds ran
-  76.75% → 79.05% → **81.65%** (v31 → v49 → v52) and has now **saturated** —
-  a v53-tuned candidate scored ~100%. Queen (100%) and rook (95.5%) went the
+  76.75% → 79.05% → 81.65% → **100%** (v31 → v49 → v52 → v54) and is now
+  **saturated** — the PST candidate that shipped as v54 took 197 games without
+  conceding a single win or draw. Queen (100%) and rook (95.5%) went the
   same way. **Pawn odds (f2)** is the active rung with headroom left.
 - **vs its own Python engine: 1,815–0–40.** No rating quoted — the gap is past
   what Elo can express. The Python engine alone is **~2440–2450** (level with
