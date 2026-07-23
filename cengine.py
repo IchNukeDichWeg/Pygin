@@ -370,8 +370,13 @@ class Engine:
 
     # FI-85: battery-transparent (x-ray) slider mobility. Lives on
     # cengine because it is an eval A/B toggle, mirrored onto _py below.
-    # False = v54 byte-exact. ARMED CANDIDATE 2026-07-23.
-    USE_XRAY_MOB = True
+    # False = v54 byte-exact. SCREEN-KILLED 2026-07-23: -4.52 +/-15.3 @2k
+    # (nodes 1.75M vs Old Engine/54, seed 54; halves -13.21 and +4.17,
+    # ptnml 48/255/417/235/45, pair ratio 0.92). No 10k spent. The -23%
+    # d13 node reshape was real but bought nothing: batteries were not the
+    # gap. C-era static-eval add-ons now 0-for-4 (shelter -4.27, outpost
+    # -0.90, with-dormant -8.14, xray -4.52) -- do not re-try.
+    USE_XRAY_MOB = False
 
     # CB-01 correctness batch (LIVE CANDIDATE, fifth 50+0.20-era campaign,
     # A/B vs Old Engine/37 PENDING; selftest pins the ladder to off).
