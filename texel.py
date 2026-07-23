@@ -163,6 +163,35 @@ def dormant_params(toggles):
     return [(n, n, None) for t in toggles for n in _DORMANT_WEIGHTS[t]]
 
 
+# ---------------------------------------------------------------------- #
+#  PST parameters (--pst). 12 tables x 64 squares, minus the 16 pawn squares
+#  on ranks 1 and 8 -- a pawn can never stand there, so those entries are
+#  pure noise to fit. The tables are the STOCK PeSTO values: v53 fitted the
+#  44 scalars *conditioned on* them, so the tables themselves have never
+#  been fitted for this engine. That is the one eval avenue with a proven
+#  mechanism and no recorded negative.
+#
+#  Bounds are +/-PST_BOUND cp around the shipped square (much tighter than
+#  the +/-60% scalar rule): per-square signal is thin, and loose bounds are
+#  exactly how coordinate descent produces the spiky, incoherent tables that
+#  kept PST out of the tuner in the first place (tune.py:36).
+PST_TABLES = ["MG_PAWN_TABLE", "EG_PAWN_TABLE", "MG_KNIGHT_TABLE",
+              "EG_KNIGHT_TABLE", "MG_BISHOP_TABLE", "EG_BISHOP_TABLE",
+              "MG_ROOK_TABLE", "EG_ROOK_TABLE", "MG_QUEEN_TABLE",
+              "EG_QUEEN_TABLE", "MG_KING_TABLE", "EG_KING_TABLE"]
+PST_BOUND = 25
+
+
+def pst_params():
+    out = []
+    for t in PST_TABLES:
+        for sq in range(64):
+            if "PAWN" in t and (sq < 8 or sq >= 56):
+                continue                      # pawns never stand on rank 1/8
+            out.append((f"{t}[{sq}]", t, sq))
+    return out
+
+
 def _get(eng, attr, key):
     v = getattr(eng, attr)
     return v if key is None else v[key]
@@ -201,7 +230,9 @@ def bounds_for(vec):
     mobility weights are small ints, so they get an absolute +/-4 instead."""
     out = []
     for (label, _, _), v in zip(PARAMS, vec):
-        if label.startswith("MOBILITY_WEIGHT"):
+        if label.split("[")[0] in PST_TABLES:
+            out.append((v - PST_BOUND, v + PST_BOUND))   # may go negative
+        elif label.startswith("MOBILITY_WEIGHT"):
             out.append((max(0, v - 4), v + 4))
         else:
             span = max(BOUND_MIN, int(abs(v) * BOUND_FRAC))
@@ -475,6 +506,10 @@ def cmd_tune(a):
         if skipped:
             print("     (--include-rejected re-enables them anyway)")
         PARAMS = PARAMS + dormant_params(dormant)
+    if a.pst:
+        PARAMS = PARAMS + pst_params()
+        print(f"PST tuning ON: +{len(pst_params())} table entries "
+              f"(+/-{PST_BOUND}cp each), {len(PARAMS)} params total")
     eng = E.Engine()
     for t in dormant:
         setattr(eng, t, True)
@@ -516,7 +551,7 @@ def cmd_tune(a):
                 # near a chess-sane eval and descent cannot climb back (a
                 # measured 0.1002 against the shipped basin's 0.0891). The
                 # jitter widens with each restart to probe further out.
-                rng = random.Random(1000 + restart)
+                rng = random.Random(1000 + restart + 97 * a.restart_seed)
                 frac = 0.10 * (1 + (restart - 1) % 4)
                 while True:
                     cur = []
@@ -538,7 +573,7 @@ def cmd_tune(a):
                                      len(a.deltas) - 1)]
                 t0, changed = time.time(), 0
                 order = list(range(len(PARAMS)))
-                random.Random(restart * 1000 + rnd).shuffle(order)
+                random.Random(restart * 1000 + rnd + 97 * a.restart_seed).shuffle(order)
                 for idx in order:
                     lo, hi = bounds[idx]
                     for step in (delta, -delta):
@@ -625,6 +660,11 @@ def _write_back(dst, enable_toggles=()):
         pathlib.Path(dst).write_text(txt)
     with open(dst) as f:
         lines = f.read().splitlines()
+
+    if any(l.split("[")[0] in PST_TABLES for l, _, _ in PARAMS):
+        from tune import _replace_pst
+        for n in PST_TABLES:
+            _replace_pst(lines, n, getattr(E, n))
 
     for name in ("MG_VALUES", "EG_VALUES"):
         v = getattr(E, name)
@@ -868,6 +908,12 @@ def main():
     t.add_argument("--out", default=DEFAULT_OUT)
     t.add_argument("--workers", type=int, default=cores)
     t.add_argument("--rounds", type=int, default=DEFAULT_ROUNDS)
+    t.add_argument("--pst", action="store_true",
+                   help="also tune the 736 piece-square-table entries (the "
+                        "stock PeSTO tables, never fitted for this engine)")
+    t.add_argument("--restart-seed", type=int, default=0,
+                   help="offsets the jitter seeds, so two machines running "
+                        "the same command explore DIFFERENT restarts")
     t.add_argument("--include-rejected", action="store_true",
                    help="with --with-dormant, also enable terms that already "
                         "carry a recorded negative A/B (see DORMANT_VERDICTS)")
