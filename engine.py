@@ -1740,8 +1740,9 @@ class Engine:
         # principled and standard. A/B via this toggle.
         self.use_mobility_area = True
         # FI-85: battery-transparent slider mobility. False = v54
-        # byte-exact. ARMED CANDIDATE 2026-07-23.
-        self.use_xray_mob = True
+        # byte-exact. SCREEN-KILLED 2026-07-23 (-4.52 +/-15.3 @2k); see
+        # cengine.USE_XRAY_MOB for the verdict.
+        self.use_xray_mob = False
 
         # #3.x: threats. Two coarse classes (cheap, big signal):
         #   pawn  -> any enemy non-pawn piece sitting on a square attacked
