@@ -125,18 +125,42 @@ PARAMS = (
 )
 
 
-# The five eval terms that are BUILT but toggled OFF. Each was rejected in the
-# v21-v37 era on hand-guessed weights, mostly against the far weaker Python
-# engine at depth ~8; none has ever had its weights FITTED. `--with-dormant`
-# turns them on and adds their 11 weights to the tuned set, so the A/B asks
-# "is this term worth anything at its best weight", which is a different
-# question from the one those old rejections answered.
-DORMANT_TOGGLES = ("use_outpost", "use_space", "use_phalanx", "use_storm",
-                   "use_king_shelter")
-DORMANT_PARAMS = [(n, n, None) for n in (
-    "OUTPOST_N_MG", "OUTPOST_N_EG", "OUTPOST_B_MG", "OUTPOST_B_EG",
-    "SPACE_MG", "PHALANX_MG", "PHALANX_EG", "STORM_MG", "STORM_EG",
-    "SHELTER_CLOSE", "SHELTER_FAR")]
+# The five eval terms that are BUILT but toggled OFF -- with the verdict that
+# turned each one off. READ THESE BEFORE ENABLING ANY OF THEM.
+#
+# 2026-07-23: `--with-dormant` blanket-enabled all five, and the campaign came
+# back -8.83 Elo over 7,557 games. It re-answered a question the ledger had
+# already answered: king shelter and outpost each carry a 10,000-game A/B at
+# full C-core depth, and king shelter's own comment says "Do not re-try at
+# this TC". Two more were negative in the Python era. The premise this flag
+# was built on -- "rejected on hand-guessed weights against a depth-8 engine"
+# -- was simply false for half of them.
+DORMANT_VERDICTS = {
+    "use_king_shelter": "REJECTED at C-core depth, 10k vs v32: -4.27 +/-6.8 "
+                        "(cengine.py: 'Do not re-try at this TC')",
+    "use_outpost":      "NULL at C-core depth, 10k vs v37: -0.90 +/-6.8 "
+                        "('buys nothing and costs eval work, so OFF')",
+    "use_space":        "Python-era A/B: -9",
+    "use_storm":        "Python-era A/B: -5",
+    "use_phalanx":      None,     # +3 Python-era, the only non-negative
+}
+# Default set = only terms with NO recorded negative. --include-rejected adds
+# the rest back, printing each verdict first.
+DORMANT_TOGGLES = tuple(k for k, v in DORMANT_VERDICTS.items() if v is None)
+DORMANT_ALL = tuple(DORMANT_VERDICTS)
+_DORMANT_WEIGHTS = {
+    "use_outpost": ("OUTPOST_N_MG", "OUTPOST_N_EG", "OUTPOST_B_MG", "OUTPOST_B_EG"),
+    "use_space": ("SPACE_MG",),
+    "use_phalanx": ("PHALANX_MG", "PHALANX_EG"),
+    "use_storm": ("STORM_MG", "STORM_EG"),
+    "use_king_shelter": ("SHELTER_CLOSE", "SHELTER_FAR"),
+}
+
+
+def dormant_params(toggles):
+    """Only the weights of the terms actually being enabled -- tuning a weight
+    multiplied by a disabled term fits noise."""
+    return [(n, n, None) for t in toggles for n in _DORMANT_WEIGHTS[t]]
 
 
 def _get(eng, attr, key):
@@ -332,7 +356,7 @@ def cmd_extract(a):
 _W = {}          # per-worker state
 
 
-def _worker_init(npy_path, nchunks, ntrain, dormant=False):
+def _worker_init(npy_path, nchunks, ntrain, dormant=()):
     import engine as E
     lib = ctypes.CDLL("./csearch.so")
     lib.csearch_eval_white.restype = ctypes.c_int
@@ -340,7 +364,7 @@ def _worker_init(npy_path, nchunks, ntrain, dormant=False):
         [ctypes.c_int, ctypes.c_int, ctypes.c_uint64]
     eng = E.Engine()
     if dormant:
-        for t in DORMANT_TOGGLES:
+        for t in dormant:
             setattr(eng, t, True)
     _W.update(lib=lib, E=E, eng=eng, arr=np.load(npy_path, mmap_mode="r"),
               nchunks=nchunks, ntrain=ntrain, cid=-1, cols=None, res=None)
@@ -438,12 +462,22 @@ def cmd_tune(a):
 
     import engine as E
     global PARAMS
+    dormant = ()
     if a.with_dormant:
-        PARAMS = PARAMS + DORMANT_PARAMS
+        dormant = DORMANT_ALL if a.include_rejected else DORMANT_TOGGLES
+        print("dormant terms enabled: " + (", ".join(dormant) or "(none)"))
+        for t in dormant:
+            if DORMANT_VERDICTS[t]:
+                print(f"  !! {t}: {DORMANT_VERDICTS[t]}")
+        skipped = [t for t in DORMANT_ALL if t not in dormant]
+        for t in skipped:
+            print(f"  -- skipped {t}: {DORMANT_VERDICTS[t]}")
+        if skipped:
+            print("     (--include-rejected re-enables them anyway)")
+        PARAMS = PARAMS + dormant_params(dormant)
     eng = E.Engine()
-    if a.with_dormant:
-        for t in DORMANT_TOGGLES:
-            setattr(eng, t, True)
+    for t in dormant:
+        setattr(eng, t, True)
     base = baseline_vector(eng)
     bounds = bounds_for(base)
     arr = np.load(a.positions, mmap_mode="r")
@@ -456,7 +490,7 @@ def cmd_tune(a):
     best_vec, best_val, results = None, None, []
     with mp.Pool(a.workers, initializer=_worker_init,
                  initargs=(a.positions, nchunks, ntrain,
-                           a.with_dormant)) as pool:
+                           dormant)) as pool:
         # --- fit K (the cp -> win-probability scale) on the shipped eval --- #
         t0 = time.time()
         k, kloss = None, None
@@ -545,7 +579,7 @@ def cmd_tune(a):
 
     for (_, attr, key), v in zip(PARAMS, best_vec):
         _set(E.Engine, attr, key, v)
-    _write_back(a.out, DORMANT_TOGGLES if a.with_dormant else ())
+    _write_back(a.out, dormant)
     print(f"\nWrote {a.out}. This is a CANDIDATE, not a release: A/B it "
           f"against Old Engine/52 before shipping,\nand remember an eval "
           f"change re-pins CE_LADDER and moves the bench signature.")
@@ -834,6 +868,9 @@ def main():
     t.add_argument("--out", default=DEFAULT_OUT)
     t.add_argument("--workers", type=int, default=cores)
     t.add_argument("--rounds", type=int, default=DEFAULT_ROUNDS)
+    t.add_argument("--include-rejected", action="store_true",
+                   help="with --with-dormant, also enable terms that already "
+                        "carry a recorded negative A/B (see DORMANT_VERDICTS)")
     t.add_argument("--with-dormant", action="store_true",
                    help="also enable and fit the five BUILT-but-OFF eval "
                         "terms (outpost, space, phalanx, storm, king shelter)")
