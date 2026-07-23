@@ -33,6 +33,8 @@ import chess
 
 import cengine
 
+import interruptible
+
 
 def build_engine(threads, hash_mb):
     e = cengine.Engine()
@@ -159,4 +161,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Ctrl-C / SIGTERM: one line, no traceback, exit 130.
+    with interruptible.salvage():
+        main()

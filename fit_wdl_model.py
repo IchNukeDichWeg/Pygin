@@ -57,6 +57,8 @@ import chess
 import numpy as np
 from scipy.optimize import curve_fit
 
+import interruptible
+
 # ====================================================================== #
 #  CONFIG
 # ====================================================================== #
@@ -601,4 +603,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Ctrl-C during extraction exits WITHOUT writing. Salvaging a partial
+    # sample set here would overwrite the existing multi-million-row CSV
+    # with a truncated one -- the destructive outcome, not the safe one.
+    with interruptible.salvage():
+        main()
