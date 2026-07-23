@@ -353,6 +353,14 @@ if os.path.exists("csearch.c"):
             ce._lib.set_xray_mob(0)
         except AttributeError:
             pass                       # pre-FI-85 eval_c
+        # FI-76 wrong-bishop clamp: ARMED CANDIDATE 2026-07-23, screen
+        # PENDING. LOAD-BEARING -- cengine's class default carries the armed
+        # value for match play, so the ladder must force it OFF or it
+        # measures the candidate instead of v54.
+        try:
+            ce._lib.set_wrongbishop(0)
+        except AttributeError:
+            pass                       # pre-FI-76 csearch.so
         # FI-63 quiet check-evasion cap: CLOSED AS DEAD GATE 2026-07-21
         # pre-A/B (harmful at cap 2 -- +10.5% nodes + matetrack -18 mates;
         # vacuous at cap>=3). Default 0, so this pin is belt-and-braces.

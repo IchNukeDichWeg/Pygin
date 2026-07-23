@@ -1044,6 +1044,58 @@ static inline int cantwin_clamp(const Board* b, int s)
     return s;
 }
 
+/* FI-76 (WB-01, PENDING -- built 2026-07-23, default OFF, screen not yet
+ * run): wrong-bishop rook-pawn dead draw. CW-01's sibling truth-gate, and
+ * deliberately a GATE not an FI-44 g1 scale multiplier. The favored side
+ * has king + at most one bishop + pawns, ALL its pawns on one rook file,
+ * any bishop does NOT control that file's promotion corner, the defender
+ * is a bare king, and that king already sits within one move of the
+ * corner -- textbook dead draw, so the true bound is 0. Distinct from
+ * CW-01, which requires the strong side to have NO pawns; here it has
+ * pawns and still cannot win. The distance-1 test is deliberately
+ * STRICTER than the theory (which asks only whether the defender can
+ * reach the corner in time): a gate that fires on a won position is a
+ * real Elo leak, a gate that misses a drawn one costs only the clamp.
+ * Mirrored bit-exactly in engine.py's _evaluate_static (use_wrongbishop);
+ * the oracle differential covers both. 0 = v54 eval exactly. */
+static int g_wrongbishop = 0;
+void set_wrongbishop(int v) { g_wrongbishop = v; }
+static inline int wrongbishop_clamp(const Board* b, int s)
+{
+    if (!g_wrongbishop || s == 0) return s;
+    int white_strong = (s > 0);
+    uint64_t strong = b->occ[white_strong ? WHITE : BLACK];
+    uint64_t weak   = b->occ[white_strong ? BLACK : WHITE];
+    if (weak & ~b->kings) return s;                  /* bare defender only */
+    if ((b->rooks | b->queens | b->knights) & strong) return s;
+    uint64_t bb = b->bishops & strong;
+    if (__builtin_popcountll(bb) > 1) return s;      /* at most one bishop */
+    uint64_t sp = b->pawns & strong;
+    if (!sp) return s;                               /* pawnless = CW-01's */
+    int cfile;
+    if (!(sp & ~FILE_A)) cfile = 0;                  /* all pawns a-file */
+    else if (!(sp & ~FILE_H)) cfile = 7;             /* all pawns h-file */
+    else return s;
+    /* squares are a1=0..h8=63: White promotes on rank 8, Black on rank 1 */
+    int corner = white_strong ? (56 + cfile) : cfile;
+    /* Bare rook pawns vs a king already on the corner are drawn too, so
+     * ZERO bishops qualifies as well. Requiring exactly one was the first
+     * cut, and the d8 FEN gate caught what it costs: the search simply
+     * SHEDS the bishop (Bf4-b8, Kxb8) to reach an ungated position the
+     * eval still scores +493, i.e. a truth-gate narrower than the truth
+     * pays the engine to throw a piece away. */
+    int bsq = bb ? __builtin_ctzll(bb) : -1;
+    /* square colour parity; equal parity => the bishop covers the corner */
+    if (bsq >= 0 &&
+        (((bsq >> 3) ^ bsq) & 1) == (((corner >> 3) ^ corner) & 1)) return s;
+    int ksq = __builtin_ctzll(b->kings & weak);
+    int df = (ksq & 7) - (corner & 7), dr = (ksq >> 3) - (corner >> 3);
+    if (df < 0) df = -df;
+    if (dr < 0) dr = -dr;
+    if ((df > dr ? df : dr) > 1) return s;           /* king not yet home */
+    return 0;
+}
+
 static int eval_white(const Board* b)
 {
     uint64_t occ_w = b->occ[WHITE], occ_b = b->occ[BLACK];
@@ -1094,7 +1146,8 @@ static int eval_white(const Board* b)
             int md = (df < 0 ? -df : df) + (dr < 0 ? -dr : dr);
             int bonus = g_mopup_scmd * CENTER_MANH[loser]
                       + g_mopup_sking * (14 - md);
-            return cantwin_clamp(b, score + ((adv > 0) ? bonus : -bonus));
+            return wrongbishop_clamp(b,
+                cantwin_clamp(b, score + ((adv > 0) ? bonus : -bonus)));
         }
     }
 
@@ -1126,7 +1179,7 @@ static int eval_white(const Board* b)
             score += (diff > 0 ? 1 : -1) * g_simp_weight * (14 - pieces);
         }
     }
-    return cantwin_clamp(b, score);
+    return wrongbishop_clamp(b, cantwin_clamp(b, score));
 }
 
 static int eval_full_stm(const Board* b)
@@ -3831,7 +3884,8 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted, &second);
 }
 
-int csearch_abi(void) { return 27; }  /* 27 = FI-67 set_qs_ttfirst;
+int csearch_abi(void) { return 28; }  /* 28 = FI-76 set_wrongbishop;
+                                       * 27 = FI-67 set_qs_ttfirst;
                                        * 26 = FI-12 set_hist_keep;
                                        * 25 = FI-59/60 set_killer_inherit/set_quiet_malus_all;
                                        * 24 = P-33 set_singular/set_singular_params (singular extensions);
