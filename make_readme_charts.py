@@ -25,11 +25,12 @@ DATA = {
     43: (5.18, 3.23), 44: (13.31, 3.67), 45: (13.52, 3.38), 46: (5.94, 3.74),
     47: (3.16, 3.19), 48: (4.73, 3.07), 49: (0.97, 3.14), 50: (1.60, 3.22),
     51: (11.12, 3.79), 52: (6.63, 3.79), 53: (37.52, 3.76),
+    54: (31.20, 3.69),
 }
 
 # Knight odds win% vs FULL-STRENGTH Stockfish 18 -- the external yardstick.
 # Three real measurements, 1,000+ games each (README "Measured strength").
-ODDS_KNIGHT = [(31, 76.75), (49, 79.05), (52, 81.65)]
+ODDS_KNIGHT = [(31, 76.75), (49, 79.05), (52, 81.65)]  # saturated after v52
 # The odds LADDER vs full-strength SF: how big a material handicap the engine
 # can spot it and still win. Latest measurement of each (queen saturated at
 # 100/100 games; rook 95.5% at v49; knight 81.65% at v52).
@@ -170,7 +171,7 @@ def main():
         "Odds it can spot full-strength SF-18 and still win", "latest each",
         ODDS_LADDER, "#f0883e"))
     print("wrote 4 SVGs to docs/")
-    print(f"  cumulative Elo v31->v53: +{cum[-1]:.0f}   speed: {mult[-1]:.2f}x")
+    print(f"  cumulative Elo v31->newest: +{cum[-1]:.0f}   speed: {mult[-1]:.2f}x")
     print(f"  knight odds: {ODDS_KNIGHT[-1][1]}%   ladder: "
           + ", ".join(f"{l} {v}%" for l, v, _ in ODDS_LADDER))
 
