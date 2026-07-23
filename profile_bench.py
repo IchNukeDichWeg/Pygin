@@ -284,4 +284,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Ctrl-C / SIGTERM: one line, no traceback, exit 130.
+    with interruptible.salvage():
+        main()

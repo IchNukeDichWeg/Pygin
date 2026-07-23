@@ -72,6 +72,8 @@ import zlib
 import chess
 import numpy as np
 
+import interruptible
+
 # ====================================================================== #
 #  CONFIG
 # ====================================================================== #
@@ -344,7 +346,7 @@ def cmd_extract(a):
           f"(target {a.limit:,} positions, <= {cap:,} per match log)...")
 
     parts, n, used, t0 = [], 0, 0, time.time()
-    with mp.Pool(a.workers) as pool:
+    with mp.Pool(a.workers, initializer=interruptible.silence_worker) as pool:
         it = pool.imap_unordered(_extract_file,
                                  ((f, a.max_per_game, cap) for f in files))
         for i, (path, got) in enumerate(it, 1):
@@ -389,6 +391,8 @@ _W = {}          # per-worker state
 
 
 def _worker_init(npy_path, nchunks, ntrain, dormant=()):
+    interruptible.silence_worker()   # Ctrl-C hits the whole process
+                                     # group; the parent owns shutdown
     import engine as E
     lib = ctypes.CDLL("./csearch.so")
     lib.csearch_eval_white.restype = ctypes.c_int
@@ -524,6 +528,21 @@ def cmd_tune(a):
           f"{a.workers} workers, {a.restarts} restart(s)")
 
     best_vec, best_val, results = None, None, []
+
+    def _salvage():
+        """Ctrl-C during a multi-hour tune used to throw the whole run away --
+        engine_tuned.py is only written at the very end. Write the
+        best-on-validation vector found SO FAR instead; a partial descent is
+        still a candidate, and the printed loss says how far it got."""
+        if best_vec is None:
+            print("  (no round finished yet -- nothing to write)")
+            return
+        for (_, attr, key), v in zip(PARAMS, best_vec):
+            _set(E.Engine, attr, key, v)
+        _write_back(a.out, dormant)
+        print(f"  wrote {a.out} from the best round so far "
+              f"(validation {best_val:.6f}, {(base_val - best_val) / base_val * 100:+.2f}% "
+              f"vs shipped) -- a PARTIAL descent, not a converged one")
     with mp.Pool(a.workers, initializer=_worker_init,
                  initargs=(a.positions, nchunks, ntrain,
                            dormant)) as pool:
@@ -538,68 +557,71 @@ def cmd_tune(a):
         print(f"K = {k}   shipped eval: train {kloss:.6f}  "
               f"validation {base_val:.6f}   ({time.time() - t0:.0f}s)")
 
-        for restart in range(a.restarts):
-            # Restart 0 starts from the shipped values; later restarts start
-            # from a random point inside the bounds. Coordinate descent finds
-            # a LOCAL optimum, and restarts are the only axis on which more
-            # compute buys a better answer -- extra rounds just re-confirm
-            # the same optimum once the step size stops moving anything.
-            if restart == 0:
-                cur = list(base)
-            else:
-                # Jitter around the shipped values, NOT uniform-random inside
-                # the bounds: a uniform start in 44 dimensions lands nowhere
-                # near a chess-sane eval and descent cannot climb back (a
-                # measured 0.1002 against the shipped basin's 0.0891). The
-                # jitter widens with each restart to probe further out.
-                rng = random.Random(1000 + restart + 97 * a.restart_seed)
-                frac = 0.10 * (1 + (restart - 1) % 4)
-                while True:
-                    cur = []
-                    for v, (lo, hi) in zip(base, bounds):
-                        j = max(1, int((hi - lo) * frac / 2))
-                        cur.append(min(hi, max(lo, v + rng.randint(-j, j))))
-                    if _valid(cur):
-                        break
-            cur_loss = _loss(pool, nchunks, cur, k)
-            start_loss = cur_loss
-            print(f"\n--- restart {restart + 1}/{a.restarts} "
-                  f"({'shipped values' if restart == 0 else 'jittered start'}), "
-                  f"train {cur_loss:.6f} ---")
-
-            for rnd in range(1, a.rounds + 1):
-                # Anneal the step: the delta schedule is spread evenly over
-                # the rounds (12 rounds, 3 deltas -> 4 coarse, 4 mid, 4 fine).
-                delta = a.deltas[min((rnd - 1) * len(a.deltas) // a.rounds,
-                                     len(a.deltas) - 1)]
-                t0, changed = time.time(), 0
-                order = list(range(len(PARAMS)))
-                random.Random(restart * 1000 + rnd + 97 * a.restart_seed).shuffle(order)
-                for idx in order:
-                    lo, hi = bounds[idx]
-                    for step in (delta, -delta):
-                        trial = list(cur)
-                        v = trial[idx] + step
-                        if not (lo <= v <= hi) or v == cur[idx]:
-                            continue
-                        trial[idx] = v
-                        if not _valid(trial):
-                            continue
-                        L = _loss(pool, nchunks, trial, k)
-                        if L < cur_loss:
-                            cur, cur_loss, changed = trial, L, changed + 1
+        # Ctrl-C / SIGTERM from here on writes the best-so-far vector
+        # instead of discarding a multi-hour descent.
+        with interruptible.salvage(_salvage, "tuned engine"):
+            for restart in range(a.restarts):
+                # Restart 0 starts from the shipped values; later restarts start
+                # from a random point inside the bounds. Coordinate descent finds
+                # a LOCAL optimum, and restarts are the only axis on which more
+                # compute buys a better answer -- extra rounds just re-confirm
+                # the same optimum once the step size stops moving anything.
+                if restart == 0:
+                    cur = list(base)
+                else:
+                    # Jitter around the shipped values, NOT uniform-random inside
+                    # the bounds: a uniform start in 44 dimensions lands nowhere
+                    # near a chess-sane eval and descent cannot climb back (a
+                    # measured 0.1002 against the shipped basin's 0.0891). The
+                    # jitter widens with each restart to probe further out.
+                    rng = random.Random(1000 + restart + 97 * a.restart_seed)
+                    frac = 0.10 * (1 + (restart - 1) % 4)
+                    while True:
+                        cur = []
+                        for v, (lo, hi) in zip(base, bounds):
+                            j = max(1, int((hi - lo) * frac / 2))
+                            cur.append(min(hi, max(lo, v + rng.randint(-j, j))))
+                        if _valid(cur):
                             break
-                vloss = _loss(pool, nchunks, cur, k, val=True)
-                flag = ""
-                if best_val is None or vloss < best_val:
-                    best_val, best_vec, flag = vloss, list(cur), "  <- best"
-                print(f"  round {rnd:>3}/{a.rounds}  delta {delta:>2}cp  "
-                      f"train {cur_loss:.6f}  val {vloss:.6f}  "
-                      f"({changed:>2} moved, {time.time() - t0:.0f}s){flag}")
-                if not changed and delta == min(a.deltas):
-                    print("  converged")
-                    break
-            results.append((restart, start_loss, cur_loss, vloss))
+                cur_loss = _loss(pool, nchunks, cur, k)
+                start_loss = cur_loss
+                print(f"\n--- restart {restart + 1}/{a.restarts} "
+                      f"({'shipped values' if restart == 0 else 'jittered start'}), "
+                      f"train {cur_loss:.6f} ---")
+
+                for rnd in range(1, a.rounds + 1):
+                    # Anneal the step: the delta schedule is spread evenly over
+                    # the rounds (12 rounds, 3 deltas -> 4 coarse, 4 mid, 4 fine).
+                    delta = a.deltas[min((rnd - 1) * len(a.deltas) // a.rounds,
+                                         len(a.deltas) - 1)]
+                    t0, changed = time.time(), 0
+                    order = list(range(len(PARAMS)))
+                    random.Random(restart * 1000 + rnd + 97 * a.restart_seed).shuffle(order)
+                    for idx in order:
+                        lo, hi = bounds[idx]
+                        for step in (delta, -delta):
+                            trial = list(cur)
+                            v = trial[idx] + step
+                            if not (lo <= v <= hi) or v == cur[idx]:
+                                continue
+                            trial[idx] = v
+                            if not _valid(trial):
+                                continue
+                            L = _loss(pool, nchunks, trial, k)
+                            if L < cur_loss:
+                                cur, cur_loss, changed = trial, L, changed + 1
+                                break
+                    vloss = _loss(pool, nchunks, cur, k, val=True)
+                    flag = ""
+                    if best_val is None or vloss < best_val:
+                        best_val, best_vec, flag = vloss, list(cur), "  <- best"
+                    print(f"  round {rnd:>3}/{a.rounds}  delta {delta:>2}cp  "
+                          f"train {cur_loss:.6f}  val {vloss:.6f}  "
+                          f"({changed:>2} moved, {time.time() - t0:.0f}s){flag}")
+                    if not changed and delta == min(a.deltas):
+                        print("  converged")
+                        break
+                results.append((restart, start_loss, cur_loss, vloss))
 
     print(f"\nshipped eval: train {kloss:.6f}  validation {base_val:.6f}")
     print(f"best found:   validation {best_val:.6f}  "

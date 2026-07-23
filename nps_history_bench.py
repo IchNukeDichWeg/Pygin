@@ -58,6 +58,8 @@ Usage:
         tables) instead of printing. Default path: <results>.md.
 """
 import argparse
+
+import interruptible
 import concurrent.futures as cf
 import glob
 import importlib.util
@@ -394,7 +396,8 @@ def run_all(versions, positions, runs_per_position, seconds_per_run, max_depth,
     # to the ~2x-slower pure-Python eval, corrupting that cell's NPS/depth.
     # Same bug class as the U-04 in-process bench contamination; process
     # isolation removes it for every version at ~1s spawn cost per cell.
-    with cf.ProcessPoolExecutor(max_workers=workers, max_tasks_per_child=1) as ex:
+    with cf.ProcessPoolExecutor(max_workers=workers, max_tasks_per_child=1,
+                                initializer=interruptible.silence_worker) as ex:
         futures = {ex.submit(run_cell_worker, v, name, fen, runs_per_position,
                               seconds_per_run, max_depth): (v, name)
                    for v, name, fen in todo}
@@ -703,4 +706,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Ctrl-C / SIGTERM: one line, no traceback, exit 130.
+    with interruptible.salvage():
+        main()
