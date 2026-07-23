@@ -650,6 +650,23 @@ benchmark" below.
   =1 and all match play are byte-identical). ``TT_BITS=22`` restores v46.
   Snapshotted as Old Engine/47.
 
+* **v53 -> v54 (2026-07-23, lives HERE in ``engine.py``): the PST retune --
+  the second-largest release, and the first time the piece-square tables
+  themselves were fitted.** v53 tuned the 44 scalars *conditioned on* the
+  stock PeSTO tables; v54 adds all 736 table entries (12 tables x 64 minus
+  the 16 impossible pawn squares) to the fit, ``texel.py --pst``, ±25cp
+  bounds, on 5,000,000 own-self-play positions. 735 values moved vs v53.
+  **A/B vs Old Engine/53: +31.20 ±5.6 over 11,668 games @ nodes 1,750,000
+  (54.48%, ptnml 312/1142/2185/1579/616, ratio 1.51), GSPRT[0,2] LLR
+  +7.806 -> ACCEPT** -- both split halves positive (+35.09 / +27.13); a 2k
+  screen had read +32.41. The endgame values continued v53's direction and
+  the king tables shifted hard, which is why matetrack was the gating
+  pre-ship check. Bench signature 1,122,753 -> 1,461,732; both selftest
+  pins re-measured (CE_LADDER d14 1,921,549, REF_NODES 2874). NOTE the
+  held-out loss that screened it (+2.26%) was inflated by the FB-43
+  train/val split leak, fixed the same day -- the A/B, not the loss, is the
+  truth here. Snapshotted Old Engine/54. Re-tune with ``texel.py --pst``.
+
 * **v52 -> v53 (2026-07-22, lives HERE in ``engine.py``): the Texel retune
   -- the largest single gain the project has recorded, and the eval lane's
   first win.** v48-v52 were all search/TT work in ``cengine.py``; this one
@@ -1164,124 +1181,124 @@ class Engine:
     # white pieces look up table[square_mirror(sq)], black look up table[sq].
     # ------------------------------------------------------------------ #
     MG_PAWN_TABLE = [
-            0,   0,   0,   0,   0,   0,  0,   0,
-            98, 134,  61,  95,  68, 126, 34, -11,
-            -6,   7,  26,  31,  65,  56, 25, -20,
-            -14,  13,   6,  21,  23,  12, 17, -23,
-            -27,  -2,  -5,  12,  17,   6, 10, -25,
-            -26,  -4,  -4, -10,   3,   3, 33, -12,
-            -35,  -1, -20, -23, -15,  24, 38, -22,
-            0,   0,   0,   0,   0,   0,  0,   0,
+            0,    0,    0,    0,    0,    0,    0,    0,
+          123,  109,   86,  120,   93,  101,    9,  -36,
+            3,   20,   42,   48,   43,   81,   33,   -5,
+          -15,   -4,    6,   27,   41,   37,    0,  -11,
+          -15,  -16,    3,   18,   10,   25,    5,  -10,
+          -22,  -17,  -13,   -7,   -6,    8,   19,   -5,
+          -23,  -26,  -17,  -31,  -27,   13,   20,  -22,
+            0,    0,    0,    0,    0,    0,    0,    0,
     ]
     EG_PAWN_TABLE = [
-            0,   0,   0,   0,   0,   0,   0,   0,
-            178, 173, 158, 134, 147, 132, 165, 187,
-            94, 100,  85,  67,  56,  53,  82,  84,
-            32,  24,  13,   5,  -2,   4,  17,  17,
-            13,   9,  -3,  -7,  -7,  -8,   3,  -1,
-            4,   7,  -6,   1,   0,  -5,  -1,  -8,
-            13,   8,   8,  10,  13,   0,   2,  -7,
-            0,   0,   0,   0,   0,   0,   0,   0,
+            0,    0,    0,    0,    0,    0,    0,    0,
+          159,  164,  158,  109,  122,  120,  168,  171,
+           92,   79,   60,   42,   31,   28,   57,   59,
+           45,   30,   16,  -11,  -13,   -6,    9,   13,
+           24,   23,    1,  -10,  -12,   -5,   -4,   -2,
+           18,   10,    4,   -3,   -3,    0,  -15,   -3,
+           28,   19,   10,    9,    6,    1,   -9,    0,
+            0,    0,    0,    0,    0,    0,    0,    0,
     ]
     MG_KNIGHT_TABLE = [
-            -167, -89, -34, -49,  61, -97, -15, -107,
-            -73, -41,  72,  36,  23,  62,   7,  -17,
-            -47,  60,  37,  65,  84, 129,  73,   44,
-            -9,  17,  19,  53,  37,  69,  18,   22,
-            -13,   4,  16,  13,  28,  19,  21,   -8,
-            -23,  -9,  12,  10,  19,  17,  25,  -16,
-            -29, -53, -12,  -3,  -1,  18, -14,  -19,
-            -105, -21, -58, -33, -17, -28, -19,  -23,
+         -173,  -67,   -9,  -24,   63,  -73,   10,  -82,
+          -48,  -16,   47,   59,   46,   67,   32,    8,
+          -22,   35,   53,   59,   97,  105,   48,   20,
+           16,   20,   40,   56,   22,   56,   25,   45,
+           -1,   20,   32,   34,   40,   36,   45,   16,
+          -31,   -9,    0,   14,   26,    8,   12,   -3,
+          -32,  -28,  -12,    7,    1,   -4,  -21,   -5,
+          -80,  -42,  -33,  -20,  -17,  -17,  -28,  -48,
     ]
     EG_KNIGHT_TABLE = [
-            -58, -38, -13, -28, -31, -27, -63, -99,
-            -25,  -8, -25,  -2,  -9, -25, -24, -52,
-            -24, -20,  10,   9,  -1,  -9, -19, -41,
-            -17,   3,  22,  22,  22,  11,   8, -18,
-            -18,  -6,  16,  25,  16,  17,   4, -18,
-            -23,  -3,  -1,  15,  10,  -3, -20, -22,
-            -42, -20, -10,  -5,  -2, -20, -23, -44,
-            -29, -51, -23, -15, -22, -18, -50, -64,
+          -33,  -13,   12,   -3,  -23,   -2,  -38,  -74,
+            0,   17,    0,    6,    6,    0,  -14,  -27,
+            1,    4,   13,   17,   -1,   -2,    4,  -16,
+            5,    9,   19,   27,   27,   15,   25,   -3,
+           -9,    2,   19,   21,   19,   13,    4,   -5,
+          -22,   -7,  -10,   11,    5,  -16,  -17,  -32,
+          -44,    4,  -16,  -13,  -10,  -23,   -7,  -39,
+          -34,  -51,  -26,  -17,  -14,  -43,  -38,  -89,
     ]
     MG_BISHOP_TABLE = [
-            -29,   4, -82, -37, -25, -42,   7,  -8,
-            -26,  16, -18, -13,  30,  59,  18, -47,
-            -16,  37,  43,  40,  35,  50,  37,  -2,
-            -4,   5,  19,  50,  37,  37,   7,  -2,
-            -6,  13,  13,  26,  34,  12,  10,   4,
-            0,  15,  15,  15,  14,  27,  18,  10,
-            4,  15,  16,   0,   7,  21,  33,   1,
-            -33,  -3, -14, -21, -13, -12, -39, -21,
+          -36,    9,  -57,  -26,  -29,  -67,  -18,    2,
+          -40,   -9,    7,   12,    5,   34,   -7,  -22,
+            6,   21,   18,   33,   44,   75,   57,   23,
+            4,   22,   14,   43,   32,   37,   20,   -7,
+           15,   -9,   14,   38,   28,    4,   12,   20,
+           -5,   18,   12,   16,   13,    9,   16,   23,
+           17,   -6,   30,   -4,    7,   18,   17,    6,
+          -32,   22,  -11,  -12,  -17,  -23,  -14,  -26,
     ]
     EG_BISHOP_TABLE = [
-            -14, -21, -11,  -8, -7,  -9, -17, -24,
-            -8,  -4,   7, -12, -3, -13,  -4, -14,
-            2,  -8,   0,  -1, -2,   6,   0,   4,
-            -3,   9,  12,   9, 14,  10,   3,   2,
-            -6,   3,  13,  19,  7,  10,  -3,  -9,
-            -12,  -3,   8,  10, 13,   3,  -7, -15,
-            -14, -18,  -7,  -1,  4,  -9, -15, -27,
-            -23,  -9, -23,  -5, -9, -16,  -5, -17,
+           11,    4,   14,   17,   18,   11,    4,  -18,
+           15,   21,   23,   13,   20,    5,   14,   -1,
+           11,   17,   16,   11,   10,   10,   12,   13,
+           -3,   18,   12,   15,    9,    8,    6,    6,
+          -12,   15,   20,   16,    9,   14,    4,  -22,
+            0,    5,   16,   10,   19,    6,  -10,  -13,
+          -19,  -10,   -7,    6,   -3,  -18,  -16,  -42,
+           -1,  -26,  -28,   -7,    2,   -7,  -28,  -17,
     ]
     MG_ROOK_TABLE = [
-            32,  42,  32,  51, 63,  9,  31,  43,
-            27,  32,  58,  62, 80, 67,  26,  44,
-            -5,  19,  26,  36, 17, 45,  61,  16,
-            -24, -11,   7,  26, 24, 35,  -8, -20,
-            -36, -26, -12,  -1,  9, -7,   6, -23,
-            -45, -25, -16, -17,  3,  0,  -5, -33,
-            -44, -16, -20,  -9, -1, 11,  -6, -71,
-            -19, -13,   1,  17, 16,  7, -37, -26,
+           50,   54,   46,   67,   44,   34,   56,   65,
+           19,   10,   39,   64,   67,   80,   50,   69,
+           14,   38,   51,   61,   42,   70,   86,   41,
+            1,   14,    9,   41,   47,   40,   17,    5,
+          -31,  -21,  -16,    6,    8,  -15,   15,    0,
+          -38,  -21,  -16,  -16,   -9,  -13,   19,   -8,
+          -38,  -28,  -22,  -14,  -13,   -9,    5,  -47,
+          -19,   -8,   -4,   -2,    4,   -8,  -12,  -14,
     ]
     EG_ROOK_TABLE = [
-           13, 10, 18, 15, 12,  12,   8,   5,
-            11, 13, 13, 11, -3,   3,   8,   3,
-            7,  7,  7,  5,  4,  -3,  -5,  -3,
-            4,  3, 13,  1,  2,   1,  -1,   2,
-            3,  5,  8,  4, -5,  -6,  -8, -11,
-            -4,  0, -5, -1, -7, -12,  -8, -16,
-            -6, -6,  0,  2, -9,  -9, -11,  -3,
-            -9,  2,  3, -1, -5, -13,   4, -20,
+            3,   11,   13,   -2,   10,   24,   24,   10,
+           11,   15,    7,   -5,   -8,   -3,    8,   -3,
+           31,   22,   17,    5,   18,   21,   11,   16,
+           29,   28,   30,    9,    1,   12,   24,   22,
+           23,   24,   23,    5,   -3,   13,    5,   -1,
+            5,    0,    3,  -10,  -15,  -12,  -23,  -25,
+           -6,   -9,   -8,  -14,  -21,  -34,  -36,  -22,
+          -11,  -15,  -13,  -17,  -27,  -26,  -14,  -26,
     ]
     MG_QUEEN_TABLE = [
-            -28,   0,  29,  12,  59,  44,  43,  45,
-            -24, -39,  -5,   1, -16,  57,  28,  54,
-            -13, -17,   7,   8,  29,  56,  47,  57,
-            -27, -27, -16, -16,  -1,  17,  -2,   1,
-            -9, -26,  -9, -10,  -2,  -4,   3,  -3,
-            -14,   2, -11,  -2,  -5,   2,  14,   5,
-            -35,  -8,  11,   2,   8,  15,  -3,   1,
-            -1, -18,  -9,  10, -15, -25, -31, -50,
+           -3,   -1,    5,   37,   38,   69,   68,   70,
+           -8,  -35,   -5,    2,    1,   36,    7,   69,
+            1,   -1,    8,    3,   31,   71,   72,   35,
+           -2,   -8,   -9,   -5,   17,    2,   17,   10,
+          -14,  -22,   -4,    3,    1,   -7,   14,   11,
+          -16,   -7,   -1,   -7,    0,    4,   15,    7,
+          -10,   -6,    6,    9,    8,   10,   -7,   -2,
+           -8,   -1,    1,    0,   -1,  -32,  -44,  -25,
     ]
     EG_QUEEN_TABLE = [
-            -9,  22,  22,  27,  27,  19,  10,  20,
-            -17,  20,  32,  41,  58,  25,  30,   0,
-            -20,   6,   9,  49,  47,  35,  19,   9,
-            3,  22,  24,  45,  57,  40,  57,  36,
-            -18,  28,  19,  47,  31,  34,  39,  23,
-            -16, -27,  15,   6,   9,  17,  10,   5,
-            -22, -23, -30, -16, -16, -23, -36, -32,
-            -33, -28, -22, -43,  -5, -32, -20, -41,
+           16,   28,   36,   27,   40,   27,   35,   16,
+            8,   45,   57,   66,   83,   50,   55,   25,
+            5,   31,   34,   73,   72,   59,   44,   34,
+            2,   34,   47,   59,   50,   65,   73,   55,
+            7,   41,   23,   38,   30,   41,   21,   33,
+          -19,  -11,    4,    4,    4,    1,  -15,  -20,
+          -25,  -44,  -45,  -39,  -37,  -48,  -61,  -57,
+          -47,  -53,  -47,  -64,  -30,  -57,  -45,  -16,
     ]
     MG_KING_TABLE = [
-            -65,  23,  16, -15, -56, -34,   2,  13,
-            29,  -1, -20,  -7,  -8,  -4, -38, -29,
-            -9,  24,   2, -16, -20,   6,  22, -22,
-            -17, -20, -12, -27, -30, -25, -14, -36,
-            -49,  -1, -27, -39, -46, -44, -33, -51,
-            -14, -14, -22, -46, -44, -30, -15, -27,
-            1,   7,  -8, -64, -43, -16,   9,   8,
-            -15,  36,  12, -54,   8, -28,  24,  14,
+          -40,   48,   41,   10,  -31,   -9,   27,   -8,
+           54,   24,    5,   18,   17,   21,  -13,  -19,
+           16,   49,   27,    9,    5,   23,   47,    3,
+            8,    5,   12,  -26,  -42,   -2,   11,  -33,
+          -24,   24,   -2,  -14,  -21,  -19,   -8,  -51,
+           -8,    9,   -7,  -47,  -19,   -9,    1,  -29,
+            9,  -17,   -5,  -50,  -37,  -19,   23,   28,
+          -40,   24,   -8,  -79,   -9,  -52,   40,   28,
     ]
     EG_KING_TABLE = [
-            -74, -35, -18, -18, -11,  15,   4, -17,
-            -12,  17,  14,  17,  17,  38,  23,  11,
-            10,  17,  23,  15,  20,  45,  44,  13,
-            -8,  22,  24,  27,  26,  33,  26,   3,
-            -18,  -4,  21,  24,  27,  23,   9, -11,
-            -19,  -3,  11,  21,  23,  16,   7,  -9,
-            -27, -11,   4,  13,  14,   4,  -5, -17,
-            -53, -34, -21, -11, -28, -14, -24, -43
+          -76,  -10,    7,    7,   14,   40,   29,  -42,
+            6,   42,   39,   42,   42,   63,   48,   28,
+           27,   42,   48,   40,   45,   70,   69,   38,
+           17,   47,   49,   52,   51,   51,   51,   27,
+            0,   21,   33,   39,   36,   31,   16,    0,
+          -16,    0,   18,   27,   22,   11,   -7,  -17,
+          -28,   -6,   -1,   10,    8,    1,  -23,  -42,
+          -47,  -43,  -21,  -13,  -48,  -19,  -49,  -68,
     ]
 
     # Material values -- RE-TUNED for v53 by texel.py on 4,000,000 quiet
@@ -1300,12 +1317,12 @@ class Engine:
     # 44-parameter fit is the v53 release; see the module docstring.
     # Re-tuning is `python3 texel.py extract && python3 texel.py tune`.
     MG_VALUES = {
-        chess.PAWN: 92, chess.KNIGHT: 307, chess.BISHOP: 323,
-        chess.ROOK: 443, chess.QUEEN: 1152, chess.KING: 0,
+        chess.PAWN: 89, chess.KNIGHT: 306, chess.BISHOP: 322,
+        chess.ROOK: 450, chess.QUEEN: 1076, chess.KING: 0,
     }
     EG_VALUES = {
-        chess.PAWN: 112, chess.KNIGHT: 335, chess.BISHOP: 348,
-        chess.ROOK: 609, chess.QUEEN: 1062, chess.KING: 0,
+        chess.PAWN: 120, chess.KNIGHT: 342, chess.BISHOP: 356,
+        chess.ROOK: 626, chess.QUEEN: 1123, chess.KING: 0,
     }
     # Game-phase contribution of each piece type. The maximum (full opening
     # material) is 24, used to blend the middlegame and endgame scores.
@@ -1407,23 +1424,23 @@ class Engine:
     # improvement confirmed.  Current values retained.
     # ------------------------------------------------------------------ #
     # Bishop pair bonus: worth more in the endgame (fewer pieces to block diags).
-    BISHOP_PAIR_MG = 30
-    BISHOP_PAIR_EG = 63
-    ROOK_OPEN_FILE = 20
-    ROOK_SEMIOPEN_FILE = 15
+    BISHOP_PAIR_MG = 29
+    BISHOP_PAIR_EG = 59
+    ROOK_OPEN_FILE = 22
+    ROOK_SEMIOPEN_FILE = 17
     # #3.x: rook-on-7th. Tapered (mg, eg); bonus applies per rook on the
     # side's 7th rank when the enemy king sits on its back rank OR an
     # enemy pawn still sits on its 7th. EG > MG because the active rook on
     # 7th is most lethal once minor pieces are off and the back rank can't
     # easily be defended.
-    ROOK_ON_7TH_MG = 8
-    ROOK_ON_7TH_EG = 15
+    ROOK_ON_7TH_MG = 0
+    ROOK_ON_7TH_EG = 24
     # Tempo is high by convention -- WDL tuning consistently finds 15-20 optimal.
     TEMPO = 8
 
     DOUBLED_PAWN = 23
-    ISOLATED_PAWN = 10
-    BACKWARD_PAWN = 11
+    ISOLATED_PAWN = 14
+    BACKWARD_PAWN = 13
     # Penalty for a piece pinned (absolutely, to its own king): it cannot move
     # off the pin line, so its real mobility/usefulness is far below what the
     # raw mobility term credits it, and it is a standing tactical target.
@@ -1434,8 +1451,8 @@ class Engine:
     # Passed-pawn bonus indexed by the pawn's rank *from its own side* (0..7).
     # MG table is hand-tuned (tuner collapsed ranks 5-7 to ~20, which is wrong).
     # EG table is tuner output -- back-rank passers are heavily rewarded.
-    PASSED_PAWN_MG = [0, 1, 7, 10, 19, 40, 42, 0]
-    PASSED_PAWN_EG = [0, 2, 2, 26, 43, 43, 43, 0]
+    PASSED_PAWN_MG = [0, 1, 1, 1, 27, 41, 41, 0]
+    PASSED_PAWN_EG = [0, 2, 2, 24, 43, 43, 43, 0]
 
     # Per-piece mobility weight (centipawns per reachable square).
     # Knight kept at 4 -- tuner found 1, but WDL signal for knight mobility is
@@ -1447,9 +1464,9 @@ class Engine:
     # should be active, so EG penalties are near zero.
     KING_RING_ATTACK_MG = 17
     KING_RING_ATTACK_EG = 0
-    KING_SHIELD_MG = 4
+    KING_SHIELD_MG = 10
     KING_SHIELD_EG = 0
-    KING_OPEN_FILE_MG = 23
+    KING_OPEN_FILE_MG = 31
     KING_OPEN_FILE_EG = 0
 
     # Endgame "mop-up": when one side has a decisive non-pawn material edge in
@@ -1730,8 +1747,8 @@ class Engine:
         # Disabling the toggle passes 0/0 to C so the whole threats block
         # collapses to one branch.
         self.use_threats = True
-        self.THREAT_PAWN = 43
-        self.THREAT_MINOR = 40
+        self.THREAT_PAWN = 46
+        self.THREAT_MINOR = 44
 
         # Outpost: bonus for a knight or bishop on a square supported by a
         # friendly pawn and unreachable by any enemy pawn (no enemy pawn on

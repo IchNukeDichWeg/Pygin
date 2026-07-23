@@ -9,8 +9,8 @@ representation, move generation and legality.
 
 ![Strength](https://img.shields.io/badge/strength-~2885_Elo-3fb950)
 ![Speed](https://img.shields.io/badge/speed-3.8M_nps-58a6ff)
-![Versions](https://img.shields.io/badge/versions-53-8b949e)
-![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B253_Elo-f0883e)
+![Versions](https://img.shields.io/badge/versions-54-8b949e)
+![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B284_Elo-f0883e)
 ![Source](https://img.shields.io/badge/source-MIT-green)
 &nbsp;·&nbsp; Built with **[Claude Code](https://claude.com/claude-code)**
 
@@ -21,8 +21,8 @@ representation, move generation and legality.
 | | | | |
 |---|---|---|---|
 | 🏆 **~2885 Elo** | SF-18 UCI_Elo bracket | ⚡ **3.8M nps** | 14.9M at 4 threads |
-| 🧪 **+253 Elo** | A/B-confirmed, v31→v53 | 📈 **~18 ply** | from startpos in 5 s |
-| 🥇 **v53** biggest release | +37.52 ±6.3 / 12,000 games | 📚 **1 dependency** | `python-chess` only |
+| 🧪 **+284 Elo** | A/B-confirmed, v31→v54 | 📈 **~18 ply** | from startpos in 5 s |
+| 🥇 **v53+v54** eval lane | +37.52 & +31.20, the two biggest | 📚 **1 dependency** | `python-chess` only |
 
 <table>
 <tr>
@@ -36,7 +36,7 @@ representation, move generation and legality.
 </table>
 
 - **Top row — self-play.** Every C-era version (v31+) is A/B-tested against the
-  one before it: gains stacked (**+253 Elo**) and single-thread speed (**1.61×**).
+  one before it: gains stacked (**+284 Elo**) and single-thread speed (**1.61×**).
   The v30→v31 C rewrite (~34× faster, +215 odds-derived) is off the left edge,
   so v31 is the honest zero.
 - **Bottom row — vs Stockfish 18 at full strength.** The external check: knight
@@ -69,14 +69,14 @@ representation, move generation and legality.
 
 ## Version progression
 
-- **53 versions**, each A/B-tested against the one before it.
+- **54 versions**, each A/B-tested against the one before it.
 - Speed = nodes/s and depth from **startpos in 5 s** (book off, best-of-N).
-- **`Elo Δ`** = A/B vs the previous version. **Cumulative ≈ +253 over v31.**
+- **`Elo Δ`** = A/B vs the previous version. **Cumulative ≈ +284 over v31.**
 - Regenerate NPS: `python3 bench_progress.py` (single) · `bench_progress_threads.py 4`;
   the charts above: `python3 make_readme_charts.py`.
 
 > ⚠️ **Scroll the table sideways** — newest (v53) on the left, v1 at the far
-> right. Sweeps run **8 versions concurrently** (2 for the 4-thread column), so
+> right (v54 column added on the next NPS sweep). Sweeps run **8 versions concurrently** (2 for the 4-thread column), so
 > every version sees the same contention and the columns compare *to each
 > other* — but absolute NPS sits ~12% below a solo reading. Don't compare
 > against a pre-2026-07-22 revision.
@@ -92,6 +92,7 @@ representation, move generation and legality.
 <details>
 <summary><b>Every version in full</b> — complete milestone + Elo list</summary>
 
+- **v54** — **PST retune** (736 piece-square entries fitted for the first time, texel.py --pst, 735 values moved; GSPRT[0,2] LLR +7.806, 11.7k games — second-largest release) *(**+31.20 ±5.6**)*
 - **v53** — **Texel eval retune** (44 scalars refitted on 4M own-self-play positions, game-result labels; fourth SPRT accept, LLR +9.918, 12k pooled games — largest single release) *(**+37.52 ±6.3**)*
 - **v52** — null-move refinements (no double null + eval-scaled R; third SPRT accept, 12k pooled games) *(+6.63 ±4.5)*
 - **v51** — root-move LMR (late quiet root scouts reduced; second SPRT accept, 9.3k pooled games) *(+11.12 ±5.3)*
