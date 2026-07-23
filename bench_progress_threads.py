@@ -19,6 +19,8 @@ README; there is nothing reliably measurable there.
 """
 import concurrent.futures, os, subprocess, sys
 
+import interruptible
+
 REPO = os.path.dirname(os.path.abspath(__file__))
 WORKER = os.path.join(REPO, "bench_progress_threads_worker.py")
 THREADS = int(sys.argv[1]) if len(sys.argv) > 1 else 4
