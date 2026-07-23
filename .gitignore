@@ -92,7 +92,9 @@ lichess-big3-resolved.book
 selfplay.py
 selfplay/
 snapshot_v1/
-tune.py
+# tune.py is TRACKED: texel.py vendored its helpers 2026-07-23, but the
+# Python-era tuner itself is still the reference implementation and a fresh
+# clone needs it (a gitignored import crashed a 3.5-hour tune's write-back).
 param_sweep.py
 tuning_config.json
 tactics.py
