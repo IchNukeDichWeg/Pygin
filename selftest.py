@@ -36,7 +36,7 @@ os.chdir(HERE)
 REF_FEN = "r3k2r/8/8/8/8/8/8/R2QK2R w KQkq - 0 1"
 REF_DEPTH = 6
 REF_MOVE = "h1h8"
-REF_NODES = 2950          # update on confirmed search changes (see docstring)
+REF_NODES = 2874          # update on confirmed search changes (see docstring)
 
 # The reference node count pins the CONFIRMED (latest vN) search. A default-ON
 # search feature that is still under A/B legitimately changes the tree, so a
@@ -126,20 +126,20 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
 CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3"
 CE_LADDER = {
-    1: (91, 128),
-    2: (179, 128),
-    3: (380, 128),
-    4: (1107, 91),
-    5: (4605, 91),
-    6: (23575, 56),
-    7: (29844, 56),
-    8: (48539, 64),
-    9: (134861, 92),
-    10: (221843, 63),
-    11: (319681, 68),
-    12: (591594, 68),
-    13: (1205214, 67),
-    14: (2053985, 82),
+    1: (94, 111),
+    2: (212, 111),
+    3: (405, 111),
+    4: (1911, 97),
+    5: (5013, 135),
+    6: (11124, 107),
+    7: (36083, 120),
+    8: (83567, 77),
+    9: (135718, 127),
+    10: (200931, 101),
+    11: (339726, 117),
+    12: (472152, 110),
+    13: (1331881, 96),
+    14: (1921549, 94),
 }
 if os.path.exists("csearch.c"):
     try:

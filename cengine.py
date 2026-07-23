@@ -107,9 +107,14 @@ nodes@1.75M): pooled 12,000 games **+37.52 +/-6.3** (55.38%, ptnml
 the fourth SPRT accept, 2.8x the bound, and by a wide margin the largest
 single gain in the C era (previous best +11.12). The eval lane's first
 win, opened right after the search lane was declared exhausted. Full
-detail in engine.py's version history. Snapshotted Old Engine/53;
-campaigns now run vs Old Engine/53 on SUBSET_SEED 53. Armed candidate:
-none pinned. FI-15 NNUE Phases 1-5
+detail in engine.py's version history. v54 = v53 + the **PST retune**
+(texel.py --pst): the 736 piece-square entries fitted for the first time,
+735 values moved, again NO change in this file. CONFIRMED 2026-07-23 vs Old
+Engine/53 (nodes@1.75M): **+31.20 ±5.6 over 11,668 games** (54.48%, ptnml
+312/1142/2185/1579/616, GSPRT[0,2] LLR +7.806 ACCEPT) -- the second-largest
+release, both split halves positive. Snapshotted Old Engine/54; campaigns
+now run vs Old Engine/54 on SUBSET_SEED 54. Armed candidate: none pinned.
+FI-15 NNUE Phases 1-5
 BUILT-DORMANT 2026-07-18 (abi 19): the full NN-eval infrastructure --
 KA8T king-bucketed features + T16 threats, quantized int16/int8 net,
 F49-31 accumulator stack, hybrid nn_eval-in-negamax/HCE-in-qsearch with
