@@ -72,22 +72,8 @@ representation, move generation and legality.
 - **54 versions**, each A/B-tested against the one before it.
 - Speed = nodes/s and depth from **startpos in 5 s** (book off, best-of-N).
 - **`Elo Δ`** = A/B vs the previous version. **Cumulative ≈ +284 over v31.**
-- Regenerate NPS: `python3 bench_progress.py` (single) · `bench_progress_threads.py 4`;
-  the charts above: `python3 make_readme_charts.py`.
-
-> ⚠️ **Scroll the table sideways** — newest (v53) on the left, v1 at the far
-> right (v54 column added on the next NPS sweep). Sweeps run **8 versions concurrently** (2 for the 4-thread column), so
-> every version sees the same contention and the columns compare *to each
-> other* — but absolute NPS sits ~12% below a solo reading. Don't compare
-> against a pre-2026-07-22 revision.
-
-|  | **v54** | **v53** | **v52** | **v51** | **v50** | **v49** | **v48** | **v47** | **v46** | **v45** | **v44** | **v43** | **v42** | **v41** | **v40** | **v39** | **v38** | **v37** | **v36** | **v35** | **v34** | **v33** | **v32** | **v31** | **v30** | **v29** | **v28** | **v27** | **v26** | **v25** | **v24** | **v23** | **v22** | **v21** | **v20** | **v19** | **v18** | **v17** | **v16** | **v15** | **v14** | **v13** | **v12** | **v11** | **v10** | **v9** | **v8** | **v7** | **v6** | **v5** | **v4** | **v3** | **v2** | **v1** |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **NPS 1T** | 3.69 M | 3.76 M | 3.79 M | 3.79 M | 3.22 M | 3.14 M | 3.07 M | 3.19 M | 3.74 M | 3.38 M | 3.67 M | 3.23 M | 3.31 M | 3.31 M | 3.34 M | 3.36 M | 3.09 M | 3.16 M | 3.19 M | 2.70 M | 2.13 M | 2.11 M | 2.39 M | 2.34 M | 69.04 k | 71.74 k | 69.03 k | 60.25 k | 57.25 k | 49.13 k | 49.21 k | 49.33 k | 48.76 k | 49.23 k | 55.79 k | 45.14 k | 44.79 k | 52.71 k | 35.68 k | 28.71 k | 28.97 k | 26.30 k | 25.81 k | 25.86 k | 23.96 k | 22.32 k | 29.63 k | 26.87 k | 24.69 k | 25.31 k | 26.84 k | 30.14 k | 24.34 k | 13.15 k |
-| **NPS 4T** | 15.04 M | 14.86 M | 13.79 M | 11.39 M | 13.86 M | 13.99 M | 14.01 M | 13.58 M | 14.70 M | 16.29 M | 15.30 M | 11.22 M | 13.19 M | 16.92 M | 14.89 M | 15.56 M | 14.36 M | 13.96 M | 13.09 M | 11.86 M | 9.36 M | 9.12 M | 8.83 M | 8.91 M | 176.27 k | 175.93 k | 173.57 k | 173.26 k | 193.57 k | 199.55 k | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| **Depth** | 17 | 18 | 17 | 18 | 17 | 17 | 17 | 17 | 18 | 18 | 18 | 18 | 17 | 16 | 17 | 17 | 17 | 19 | 21 | 21 | 20 | 22 | 17 | 17 | 12 | 12 | 13 | 13 | 12 | 12 | 12 | 12 | 12 | 12 | 12 | 12 | 11 | 11 | 10 | 10 | 10 | 10 | 10 | 10 | 9 | 9 | 8 | 8 | 8 | 8 | 7 | 7 | 7 | 4 |
-| **Elo Δ** | **+31.20 ±5.6** | **+37.52 ±6.3** | +6.63 ±4.5 | +11.12 ±5.3 | +1.60 ±6.8 | +0.97 ±6.8 | +4.73 ±3.2 | +3.16 ±6.8 | +5.94 ±6.8 | +13.52 ±6.8 | +13.31 ±6.8 | +5.18 ±6.8 | +3.27 ±6.8 | −2.88 ±6.8 | +4.31 ±6.8 | +8.86 ±6.8 | +1.36 ±6.8 | +0.17 ±6.8 | +24.67 ±6.8 | ≈ +72 | +6.81 ±6.8 | +23.52 ±6.8 | +7.30 ±6.8 | ≈ +215 ¹ | +10.91 ±6.8 | +38.34 ±6.9 | +13.13 ±6.0 | +35.17 ±7.7 | +41.90 ±5.7 | +2.91 ±11.6 | +11.75 ±6.8 ² | ≈ +0 est ² | ≈ +8 est ² | +16 ±10 ⁴ | +45 ±11 ⁴ | ≈ +5 est ⁵ | ≈ +0 est ⁵ | +69 ±16 ³ | (in ³) | ≈ +0 est ⁵ | ≈ +8 est ⁵ | ≈ +4 est ⁵ | ≈ +4 est ⁵ | ≈ +3 est ⁵ | ≈ +8 est ⁵ | ≈ +12 est ⁵ | ≈ +12 est ⁵ | ≈ +4 est ⁵ | ≈ +8 est ⁵ | ≈ +3 est ⁵ | ≈ +20 est ⁵ | ≈ +15 est ⁵ | ≈ +120 est ⁵ | — |
-| **Milestone** | **PST retune** | **Texel retune** | null-move refine | root-move LMR | rule50 · TT mate | cuckoo repetition | qsearch TT-quality | TT 192 MB · MultiPV | TT 96 MB | TT value sharpens | TT prefetch | verified-null removed | cannot-win clamp | verified-null policy | FIDE ep hashing | incr. Zobrist · eval-in-TT | score hygiene | exact PV | staged ordering | qsearch TT | check extensions | TT kept warm | IIR | **C search core** | stability time | soft-stop time | speed batch +4% | speed batch +12% | speed batch | 18-item bug block | TT de-branch | Zobrist de-branch | 9 bug fixes | capture history | rook-7th · threats | shared TT · SMP | incremental Zobrist | **movegen → C** | **eval → C** | LMR-divisor tune | Syzygy · IIR · pawn hash | eval retune | check-ext budget | incremental eval | TT two-tier | LMP · history malus | qsearch stand-pat | pin eval | lone-king fix | recapture ext | SEE ordering | mop-up · contempt | PVS · LMR · aspiration | first engine |
+- Full per-version speed/depth/Elo is in the collapsible list below; the
+  charts above summarise it. Regenerate: `bench_progress.py`, `make_readme_charts.py`.
 
 <details>
 <summary><b>Every version in full</b> — complete milestone + Elo list</summary>
