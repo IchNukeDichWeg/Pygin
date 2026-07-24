@@ -276,14 +276,20 @@ def run_worker(shard_path, positions, nodes, seed, book, endgame, eg_men,
                               book=book, book_size=book_size,
                               endgame=endgame, eg_men=eg_men))
         games += 1
-        if games % 20 == 0:
+        if games % 5 == 0:
             # progress beacon for the parent's aggregate ETA line (tiny
-            # atomic-enough single write; parent polls, never blocks)
+            # atomic-enough single write; parent polls, never blocks).
+            # Every 5 games so even short test runs show real numbers.
             try:
                 with open(shard_path + ".progress", "w") as pf:
                     pf.write(f"{games} {len(rows)}")
             except OSError:
                 pass
+    try:                               # final beacon: the parent's last poll
+        with open(shard_path + ".progress", "w") as pf:   # sees full counts
+            pf.write(f"{games} {len(rows)}")
+    except OSError:
+        pass
     if not games_quota:
         rows = rows[:positions]
     arr = np.stack(rows) if rows else np.zeros(0, dtype=RECORD_DTYPE)

@@ -82,6 +82,10 @@ def main():
     ap.add_argument("--sample", type=int, default=200)
     ap.add_argument("--nodes", type=int, default=LABEL_NODES)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--debug", action="store_true",
+                    help="on hard-gate mismatches, re-search each offender "
+                         "3x and report whether the search is stable (input/"
+                         "build drift) or nondeterministic (bad machine)")
     ap.add_argument("--cycle-on-worker", help=argparse.SUPPRESS,
                     action="store_true")
     args = ap.parse_args()
@@ -119,6 +123,25 @@ def main():
     badN = sum(int(s) != int(r["score"]) for s, r in hN)
     print(f"reproduction (hmc==0, HARD GATE): {len(h0)-bad0}/{len(h0)} "
           f"exact ({bad0} mismatches)")
+    if args.debug and bad0:
+        # Diagnosis: re-search each mismatched hmc==0 record 3x more.
+        # 3 equal values != stored -> the search is stable NOW but differed
+        #   at generation time (input/build/config drift between the two);
+        # 3 unequal values -> the search itself is nondeterministic on this
+        #   machine -- report that immediately, do NOT generate on it.
+        shown = 0
+        for s0, r in h0:
+            if int(s0) == int(r["score"]) or shown >= 3:
+                continue
+            shown += 1
+            tries = [research(np.asarray([r]), args.nodes, cycle_on=False)[0]
+                     for _ in range(3)]
+            verdict = ("STABLE-but-different-from-generation"
+                       if len(set(tries + [int(s0)])) == 1
+                       else "NONDETERMINISTIC-on-this-machine")
+            print(f"  DEBUG mismatch {shown}: fen={mk_board(r).fen()!r}\n"
+                  f"    stored={int(r['score'])}  first={int(s0)}  "
+                  f"re-searches={tries}  -> {verdict}")
     print(f"history drift (hmc>0, report):    {len(hN)-badN}/{len(hN)} "
           f"exact ({badN} differ -- residual in-window repetition context)")
 
