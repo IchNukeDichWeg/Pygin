@@ -542,6 +542,8 @@ def cmd_tune(a):
         setattr(eng, t, True)
     base = baseline_vector(eng)
     bounds = bounds_for(base)
+    if a.workers <= 0:            # project convention (match.py / odds.py)
+        a.workers = max(1, os.cpu_count() - 1)
     arr = np.load(a.positions, mmap_mode="r")
     nchunks = a.workers
     ntrain = int(len(arr) * (1.0 - a.val_frac))
@@ -553,6 +555,14 @@ def cmd_tune(a):
             ntrain -= 1
         shared = set(np.unique(g[:ntrain]).tolist()) & set(np.unique(g[ntrain:]).tolist())
         assert not shared, f"FB-43 split leak: {len(shared)} games straddle"
+        # The walk-back above terminates at 0 when every row carries the SAME
+        # game id -- which is what a pre-FB-43 pack unpacks to. Training on an
+        # empty set is not a degraded run, it is a meaningless one.
+        if ntrain == 0:
+            sys.exit("train split is EMPTY: every position carries the same "
+                     "game id, so the FB-43 boundary walk-back consumed the "
+                     "whole set. The positions file is a pre-FB-43 pack -- "
+                     "re-unpack from a game-tagged .npz.")
     else:
         print("  [warn] positions file predates FB-43 (no game id) -- the "
               "val split may leak; re-extract for a clean held-out number")
@@ -884,8 +894,17 @@ def cmd_unpack(a):
     out["bb"][:, 7] = allp & ~bb7[:, 6]                  # occ_b reconstructed
     out["cast"] = z["castmap"][z["cast"]]
     out["turn"], out["ep"], out["res"] = meta[:, 0], meta[:, 1].view("i1"), meta[:, 2]
-    if "game" in z.files:                                # FB-43 (older packs lack it)
+    if "game" in z.files:                                # FB-43
         out["game"] = z["game"]
+    else:
+        # A pre-FB-43 pack has no game ids, and leaving them at zero is NOT
+        # a harmless default: the tuner reads one giant game, walks the split
+        # point back to 0, and silently trains on NOTHING (measured on the
+        # 2026-07-23 release asset). Refuse rather than write that file.
+        sys.exit(f"{a.src} predates FB-43 (no game ids). Unpacking it would "
+                 f"produce a file whose train/val split collapses to 0 train "
+                 f"positions. Re-pack from a game-tagged .npy and re-upload "
+                 f"the release asset.")
     np.save(a.out, out)
     print(f"unpacked {n:,} positions -> {a.out} "
           f"({os.path.getsize(a.out) / 1048576:.0f} MB)")
@@ -1053,7 +1072,8 @@ def main():
     t = sub.add_parser("tune", help="coordinate descent -> engine_tuned.py")
     t.add_argument("--positions", default=POSITIONS_NPY)
     t.add_argument("--out", default=DEFAULT_OUT)
-    t.add_argument("--workers", type=int, default=cores)
+    t.add_argument("--workers", type=int, default=cores,
+                   help="0 = auto (cores - 1), same rule as match.py/odds.py")
     t.add_argument("--rounds", type=int, default=DEFAULT_ROUNDS)
     t.add_argument("--pst", action="store_true",
                    help="also tune the 736 piece-square-table entries (the "
