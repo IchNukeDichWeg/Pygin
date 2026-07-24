@@ -869,6 +869,10 @@ That said, a proper NNUE remains the biggest single upgrade available:
 replacing all hand-crafted terms with learned weights could be worth
 **+200-300 Elo**.
 """
+# Path shim: this script moved into a subfolder on 2026-07-24 but
+# still imports the engine modules that live at the repo root.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 
 import ctypes
 import json
@@ -2286,11 +2290,21 @@ class Engine:
                 self._book_reader = None
         search_dirs = [os.getcwd()]
         try:
-            search_dirs.append(os.path.dirname(os.path.abspath(__file__)))
+            _here = os.path.dirname(os.path.abspath(__file__))
+            # data/ holds the bundled books since the 2026-07-24 reshuffle;
+            # _here covers a PyInstaller bundle and the Old Engine/<N>/ and
+            # Tuned/ snapshots, which are flat copies with the book beside
+            # them. cwd stays first so a local book still wins.
+            search_dirs += [os.path.join(_here, "data"), _here,
+                            os.path.join(_here, os.pardir, "data")]
         except NameError:
             pass
-        for directory in search_dirs:
-            for name in self._book_candidates:
+        # NAME priority beats DIRECTORY priority: Perfect2023 is THE default
+        # book, so it must win wherever it lives. (When the books moved to
+        # data/ on 2026-07-24 the old directory-outer loop silently picked a
+        # stray Elo2400.bin sitting in the cwd instead.)
+        for name in self._book_candidates:
+            for directory in search_dirs:
                 path = os.path.join(directory, name)
                 if os.path.isfile(path):
                     try:

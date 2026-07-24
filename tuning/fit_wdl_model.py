@@ -43,6 +43,10 @@ Needs numpy + scipy (both already installed in this environment, though not
 otherwise used by the project -- only this offline analysis script imports
 them; nothing added to engine.py/match.py's runtime dependencies).
 """
+# Path shim: this script moved into a subfolder on 2026-07-24 but
+# still imports the engine modules that live at the repo root.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 
 import argparse
 import csv
@@ -587,7 +591,8 @@ def main():
     # dormant while it doesn't exist.
     import datetime
     import json
-    model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+    model_path = os.path.join(os.path.dirname(os.path.dirname(
+                                  os.path.abspath(__file__))), "data",
                               "wdl_model.json")
     with open(model_path, "w", encoding="utf-8") as f:
         json.dump({

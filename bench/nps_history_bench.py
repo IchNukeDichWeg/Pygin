@@ -57,6 +57,10 @@ Usage:
         Write a shareable Markdown report FILE (metadata header + HTML
         tables) instead of printing. Default path: <results>.md.
 """
+# Path shim: this script moved into a subfolder on 2026-07-24 but
+# still imports the engine modules that live at the repo root.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 import argparse
 
 import interruptible
@@ -75,7 +79,7 @@ SECONDS_PER_RUN = 3.0
 MAX_DEPTH = 100         # high enough that time, not depth, is always the limit
 WORKERS = 8
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 POSITIONS = [
     ("Startpos",        chess.STARTING_FEN),

@@ -16,12 +16,16 @@ fixed budget mixes speed AND selectivity -- a version that prunes/extends
 differently can reach a different nominal depth at the same NPS, so the
 Elo column (real A/B results, not this bench) is the strength axis.
 """
+# Path shim: this script moved into a subfolder on 2026-07-24 but
+# still imports the engine modules that live at the repo root.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 import concurrent.futures, importlib.util, json, os, subprocess, sys, time
 
 if "-h" in sys.argv or "--help" in sys.argv:
     print(__doc__.strip()); sys.exit(0)
 
-REPO = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SECONDS = float(sys.argv[1]) if len(sys.argv) > 1 else 5.0
 REPS = 5
 JOBS = 8          # concurrent version subprocesses (1 thread each)

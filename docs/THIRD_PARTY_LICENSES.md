@@ -2,7 +2,7 @@
 
 Pygin's own source code is MIT-licensed (see [`LICENSE`](LICENSE)).
 The **released binaries** (`pygin-vNN-<os>-<arch>` on the GitHub Releases
-page, and anything built via `./build_exe.sh` / `make EXE=...`) are a
+page, and anything built via `./scripts/build_exe.sh` / `make EXE=...`) are a
 different story: they BUNDLE third-party components, and the combined
 work is therefore distributed under the terms below. In particular, the
 binaries include python-chess (GPL-3.0+), which makes **GPL-3.0 the
@@ -21,7 +21,7 @@ governing license for the binary distribution as a whole**.
 - Role: board representation, move parsing/legality at the host layer,
   and Polyglot book probing. The C search core is independent of it.
 
-### Perfect2023 opening book (`Perfect2023.bin`)
+### Perfect2023 opening book (`data/Perfect2023.bin`)
 - Author: Sedat Canbaz
 - Distributed freely by its author; bundled here as the default Polyglot
   book with credit and without modification.

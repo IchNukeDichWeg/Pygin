@@ -81,7 +81,7 @@ depth from startpos in 5 s (book off, best-of-N). `Elo Δ` is the A/B result vs
 the previous version, cumulative ≈ +284 over v31.
 
 Full per-version speed/depth/Elo is in the list below; the charts above
-summarise it. Regenerate with `bench_progress.py` and `make_readme_charts.py`.
+summarise it. Regenerate with `bench/bench_progress.py` and `scripts/make_readme_charts.py`.
 
 <details>
 <summary><b>Every version in full</b> — complete milestone + Elo list</summary>
@@ -214,7 +214,7 @@ python3 selftest.py        # health check; exit 0 = OK, chainable
 
 > **Isolated install:** `python3 -m venv .venv && source .venv/bin/activate`, then `./setup.sh`.
 > **Windows:** build a Unix `.so`, so use [WSL](https://learn.microsoft.com/windows/wsl/install) (`wsl --install`) or Git Bash / MSYS2.
-> **Rebuild C by hand:** `python3 eval_build.py && python3 movegen_build.py` (for `csearch.so`, re-run `./setup.sh`).
+> **Rebuild C by hand:** `python3 scripts/eval_build.py && python3 scripts/movegen_build.py` (for `csearch.so`, re-run `./setup.sh`).
 
 ---
 
@@ -277,12 +277,12 @@ GUI options:
 
 | Script | Purpose |
 |---|---|
-| `perft.py` | Move-generator correctness gate vs the published Perft results (`--deep` for the full 1.5 B-node suite). |
-| `profile_bench.py` | Real NPS + a per-function bottleneck breakdown in one pass (`--graph` for an HTML report). |
-| `nps_history_bench.py` | NPS / depth benchmark across the `Old Engine/` snapshots. |
-| `benchmark.py` | NPS / depth / nodes benchmark for the C search core (`--type`, `--threads`, `--hash`, averaged over `--runs`). |
+| `testing/perft.py` | Move-generator correctness gate vs the published Perft results (`--deep` for the full 1.5 B-node suite). |
+| `bench/profile_bench.py` | Real NPS + a per-function bottleneck breakdown in one pass (`--graph` for an HTML report). |
+| `bench/nps_history_bench.py` | NPS / depth benchmark across the `Old Engine/` snapshots. |
+| `bench/benchmark.py` | NPS / depth / nodes benchmark for the C search core (`--type`, `--threads`, `--hash`, averaged over `--runs`). |
 | `cuci.py` | UCI host for the C search core (`Threads` / `OwnBook` / `UseTB` options). |
-| `fit_wdl_model.py` | Fit the win/draw/loss model from match logs (`wdl_model.json`; `wdl.py` reads it). |
+| `tuning/fit_wdl_model.py` | Fit the win/draw/loss model from match logs (`data/wdl_model.json`; `wdl.py` reads it). |
 
 ---
 
@@ -303,6 +303,13 @@ battle_worker.py       per-game worker process used by match.py
 stockfish_engine.py    UCI adapter exposing Stockfish through the same API
 odds.py                material / time-odds match runner
 Old Engine/<N>/        frozen version snapshots (engineN.py + its C sources)
+
+data/                  opening books, EPD position sets, the fitted WDL model
+docs/                  design notes, OpenBench guide, third-party licences
+tuning/                texel.py and the eval-fitting tools
+bench/                 NPS / depth / profiling harnesses
+testing/               perft, SPRT, one-off correctness gates
+scripts/               build, release, export and generator scripts
 ```
 
 `Old Engine/<N>/` holds every historical version, each self-contained. See
@@ -323,4 +330,4 @@ its [README](Old%20Engine/README.md).
 - **Released binaries** bundle [`python-chess`](https://github.com/niklasf/python-chess)
   (GPL-3.0+), so the binary distribution is GPL-3.0 as a whole. Full text,
   source pointers and credits (Perfect2023 book — Sedat Canbaz; UHO suites —
-  Stefan Pohl) in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).
+  Stefan Pohl) in [`THIRD_PARTY_LICENSES.md`](docs/THIRD_PARTY_LICENSES.md).

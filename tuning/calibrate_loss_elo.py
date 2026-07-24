@@ -22,6 +22,10 @@ guide, not a law. Two points make it a trend.
     python3 calibrate_loss_elo.py                       # v53 -> v54 (default)
     python3 calibrate_loss_elo.py <old_eval.py> <elo>   # any other pair
 """
+# Path shim: this script moved into a subfolder on 2026-07-24 but
+# still imports the engine modules that live at the repo root.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 import importlib.util
 import multiprocessing as mp
 import sys
@@ -33,7 +37,8 @@ import engine as E
 
 DEFAULT_OLD = "Old Engine/53/engine_eval.py"
 DEFAULT_ELO = 31.20          # v53 -> v54, 11,668 games, GSPRT[0,2] ACCEPT
-POSITIONS = "texel_positions.npy"
+_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+POSITIONS = _os.path.join(_ROOT, "texel_positions.npy")
 K = 1.1                      # the K a full tune fits on this corpus
 
 
