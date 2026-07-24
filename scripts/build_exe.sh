@@ -1,6 +1,6 @@
 #!/bin/sh
 # Build a self-contained single-file UCI executable of the C-core engine:
-#     ./build_exe.sh          ->  dist/pygin
+#     ./scripts/build_exe.sh          ->  dist/pygin
 #
 # Bundles cuci.py + cengine/engine + csearch.so/eval_c.so/movegen.so +
 # Perfect2023.bin. The result runs on machines WITHOUT Python or the repo
@@ -12,7 +12,9 @@
 # GUIs launch the engine once so this is invisible in play). For instant
 # startup at the cost of a folder instead of a file, swap in --onedir.
 set -e
-cd "$(dirname "$0")"
+# moved to scripts/ on 2026-07-24: run from the repo ROOT, where cuci.py
+# and the .so files live.
+cd "$(dirname "$0")/.."
 for f in csearch.so eval_c.so movegen.so; do
     [ -f "$f" ] || { echo "missing $f -- run ./setup.sh first"; exit 1; }
 done
@@ -21,7 +23,7 @@ python3 -m PyInstaller --onefile --name pygin cuci.py \
     --add-binary "$D/csearch.so:." \
     --add-binary "$D/eval_c.so:." \
     --add-binary "$D/movegen.so:." \
-    --add-data   "$D/Perfect2023.bin:." \
+    --add-data   "$D/data/Perfect2023.bin:." \
     --hidden-import engine --hidden-import chess.polyglot \
     --exclude-module pygame --exclude-module tkinter --exclude-module numpy \
     --exclude-module PySide6 --exclude-module matplotlib --exclude-module flask \

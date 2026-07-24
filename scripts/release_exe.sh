@@ -1,6 +1,6 @@
 #!/bin/sh
 # Publish a version-release executable to GitHub Releases:
-#     ./release_exe.sh 38            -> release "v38" + pygin-v38-macos-arm64
+#     ./scripts/release_exe.sh 38    -> release "v38" + pygin-v38-macos-arm64
 #
 # PART OF THE SNAPSHOT RITUAL: run right after freezing Old Engine/<N>,
 # BEFORE arming the next A/B candidate -- at that moment the live tree's
@@ -11,14 +11,14 @@
 #
 # Requires: gh CLI authenticated once (`gh auth login`), pyinstaller.
 set -e
-cd "$(dirname "$0")"
-[ -n "$1" ] || { echo "usage: ./release_exe.sh <version-number> [notes]"; exit 1; }
+cd "$(dirname "$0")/.."          # repo root (script moved 2026-07-24)
+[ -n "$1" ] || { echo "usage: ./scripts/release_exe.sh <version-number> [notes]"; exit 1; }
 V="$1"
 OS="$(uname -s | tr '[:upper:]' '[:lower:]' | sed 's/darwin/macos/')"
 ARCH="$(uname -m)"
 ASSET="dist/pygin-v${V}-${OS}-${ARCH}"
 
-./build_exe.sh
+./scripts/build_exe.sh
 cp dist/pygin "$ASSET"
 
 NOTES="${2:-Pygin v${V} -- self-contained UCI engine executable (${OS}/${ARCH}).

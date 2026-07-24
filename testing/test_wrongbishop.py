@@ -25,6 +25,10 @@ rule, not of this port. The bishopless case DOES propagate, and is asserted.
 
 Run: python3 test_wrongbishop.py
 """
+# Path shim: this script moved into a subfolder on 2026-07-24 but
+# still imports the engine modules that live at the repo root.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 import json
 import subprocess
 import sys

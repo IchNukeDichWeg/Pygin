@@ -249,7 +249,7 @@ Engine snapshot.
 standard **10,000-game A/B** (5000 positions, per [[match-py-positions-arg]])
 vs the current snapshot, same SPRT/reporting conventions as every other
 item in the ledger. Positive → the usual snapshot ritual (new `Old
-Engine/N`, `release_exe.sh`, CE_LADDER re-pin — though note the ladder's
+Engine/N`, `scripts/release_exe.sh`, CE_LADDER re-pin — though note the ladder's
 whole *methodology* may need rethinking since NN eval scores won't
 node-match the HCE ladder at all; a new NN-era reference ladder gets
 established here, it does not need to match the old one).

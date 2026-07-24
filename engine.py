@@ -201,11 +201,11 @@ benchmark" below.
   shelved experiments" below.
 
 * **v16**: ``_mobility_king_safety_bb`` ported to C (``eval_c.c``, loaded via
-  ``ctypes``; build ``python3 eval_build.py``). 0/10,000 positions differ
+  ``ctypes``; build ``python3 scripts/eval_build.py``). 0/10,000 positions differ
   from the Python path. **NPS 21,369 -> 27,507 (+28.7%)** at fixed depth.
 
 * **v17**: legal + capture move generation ported to C (``movegen.c``; build
-  ``python3 movegen_build.py``; toggle ``use_c_movegen``), reproducing
+  ``python3 scripts/movegen_build.py``; toggle ``use_c_movegen``), reproducing
   python-chess's exact pseudo-legal move order so the search stays
   byte-identical (not just set-equal) after ``order_moves``'s stable sort --
   a prior *staged* movegen that reordered quiet ties lost ≈20 Elo, which is
@@ -654,7 +654,7 @@ benchmark" below.
   the second-largest release, and the first time the piece-square tables
   themselves were fitted.** v53 tuned the 44 scalars *conditioned on* the
   stock PeSTO tables; v54 adds all 736 table entries (12 tables x 64 minus
-  the 16 impossible pawn squares) to the fit, ``texel.py --pst``, ±25cp
+  the 16 impossible pawn squares) to the fit, ``tuning/texel.py --pst``, ±25cp
   bounds, on 5,000,000 own-self-play positions. 735 values moved vs v53.
   **A/B vs Old Engine/53: +31.20 ±5.6 over 11,668 games @ nodes 1,750,000
   (54.48%, ptnml 312/1142/2185/1579/616, ratio 1.51), GSPRT[0,2] LLR
@@ -665,14 +665,14 @@ benchmark" below.
   pins re-measured (CE_LADDER d14 1,921,549, REF_NODES 2874). NOTE the
   held-out loss that screened it (+2.26%) was inflated by the FB-43
   train/val split leak, fixed the same day -- the A/B, not the loss, is the
-  truth here. Snapshotted Old Engine/54. Re-tune with ``texel.py --pst``.
+  truth here. Snapshotted Old Engine/54. Re-tune with ``tuning/texel.py --pst``.
 
 * **v52 -> v53 (2026-07-22, lives HERE in ``engine.py``): the Texel retune
   -- the largest single gain the project has recorded, and the eval lane's
   first win.** v48-v52 were all search/TT work in ``cengine.py``; this one
   is 44 eval scalars and no C change at all, since ``cengine.py`` pushes
   this file's constants into ``csearch.so`` at construction (the eval-param
-  oracle, ``cengine.py:940``). Fitted by ``texel.py`` on 4,000,000 quiet
+  oracle, ``cengine.py:940``). Fitted by ``tuning/texel.py`` on 4,000,000 quiet
   positions from this project's own near-equal self-play logs, labelled
   with the GAME RESULT rather than a Stockfish score -- 1.43%% better on a
   held-out 20%% split, converged across 10 restarts.
@@ -695,7 +695,7 @@ benchmark" below.
   (``CE_LADDER`` d14 1,716,693 -> 2,053,985 and ``REF_NODES`` 3495 ->
   2950; ``--recompute-ladder`` regenerates only the former) and moves the
   bench signature 1,052,763 -> 1,122,753. Snapshotted as Old Engine/53.
-  Re-tune with ``python3 texel.py extract && python3 texel.py tune``.
+  Re-tune with ``python3 tuning/texel.py extract && python3 tuning/texel.py tune``.
 
 Cross-version benchmark
 -----------------------
@@ -954,14 +954,14 @@ try:
     _eval_lib.abi_version.restype = ctypes.c_int
     if _eval_lib.abi_version() != _EVAL_C_ABI:
         raise OSError(f"eval_c.so ABI {_eval_lib.abi_version()} != expected "
-                      f"{_EVAL_C_ABI} (rebuild: python3 eval_build.py)")
+                      f"{_EVAL_C_ABI} (rebuild: python3 scripts/eval_build.py)")
     _USE_C_EVAL = True
 except (OSError, AttributeError) as _e:
     # OSError: .so missing / unloadable / ABI mismatch. AttributeError: stale
     # build missing an expected symbol (abi_version included). Fall back to
     # Python -- loudly: the old silent fallback hid a ~2x slowdown.
     print(f"[engine] WARNING: eval_c.so unavailable ({_e}); pure-Python eval "
-          "fallback is ~2x slower. Rebuild: python3 eval_build.py",
+          "fallback is ~2x slower. Rebuild: python3 scripts/eval_build.py",
           file=sys.stderr)
     _USE_C_EVAL = False
 
@@ -999,11 +999,11 @@ try:
     _mg_lib.abi_version.restype = ctypes.c_int
     if _mg_lib.abi_version() != _MOVEGEN_C_ABI:
         raise OSError(f"movegen.so ABI {_mg_lib.abi_version()} != expected "
-                      f"{_MOVEGEN_C_ABI} (rebuild: python3 movegen_build.py)")
+                      f"{_MOVEGEN_C_ABI} (rebuild: python3 scripts/movegen_build.py)")
     _USE_C_MOVEGEN = True
 except (OSError, AttributeError) as _e:
     print(f"[engine] WARNING: movegen.so unavailable ({_e}); python-chess "
-          "movegen fallback is much slower. Rebuild: python3 movegen_build.py",
+          "movegen fallback is much slower. Rebuild: python3 scripts/movegen_build.py",
           file=sys.stderr)
     _USE_C_MOVEGEN = False
 
@@ -1319,7 +1319,7 @@ class Engine:
     # MG minors and rooks eased off (N 353->307, B 356->323, R 489->443)
     # while the EG gained (B 328->348, R 570->609, Q 1020->1062). The whole
     # 44-parameter fit is the v53 release; see the module docstring.
-    # Re-tuning is `python3 texel.py extract && python3 texel.py tune`.
+    # Re-tuning is `python3 tuning/texel.py extract && python3 tuning/texel.py tune`.
     MG_VALUES = {
         chess.PAWN: 89, chess.KNIGHT: 306, chess.BISHOP: 322,
         chess.ROOK: 450, chess.QUEEN: 1076, chess.KING: 0,
@@ -2286,11 +2286,21 @@ class Engine:
                 self._book_reader = None
         search_dirs = [os.getcwd()]
         try:
-            search_dirs.append(os.path.dirname(os.path.abspath(__file__)))
+            _here = os.path.dirname(os.path.abspath(__file__))
+            # data/ holds the bundled books since the 2026-07-24 reshuffle;
+            # _here covers a PyInstaller bundle and the Old Engine/<N>/ and
+            # Tuned/ snapshots, which are flat copies with the book beside
+            # them. cwd stays first so a local book still wins.
+            search_dirs += [os.path.join(_here, "data"), _here,
+                            os.path.join(_here, os.pardir, "data")]
         except NameError:
             pass
-        for directory in search_dirs:
-            for name in self._book_candidates:
+        # NAME priority beats DIRECTORY priority: Perfect2023 is THE default
+        # book, so it must win wherever it lives. (When the books moved to
+        # data/ on 2026-07-24 the old directory-outer loop silently picked a
+        # stray Elo2400.bin sitting in the cwd instead.)
+        for name in self._book_candidates:
+            for directory in search_dirs:
                 path = os.path.join(directory, name)
                 if os.path.isfile(path):
                     try:

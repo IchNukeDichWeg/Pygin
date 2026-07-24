@@ -44,6 +44,10 @@ Single .so, runtime toggle flips only (same code, like selftest's set_*(0)
 pins) -- NOT two engine versions in one process (that hits the dyld
 cross-contamination trap; see memory/so-cross-contamination).
 """
+# Path shim: this script moved into a subfolder on 2026-07-24 but
+# still imports the engine modules that live at the repo root.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 import sys, os, statistics, math
 import chess
 import cengine
@@ -83,7 +87,7 @@ CALIBRATION = ["tt_eval_sharpen", "see_prune", "root_order", "lmr_hist"]
 def load_positions(n):
     """N full FENs spread evenly across the A/B opening book (UHO), so the
     probe samples the same distribution the real matches draw from."""
-    for path in ("UHO_4060_v4.epd", "fen.txt"):
+    for path in (_repo("data/UHO_4060_v4.epd"), _repo("data/fen.txt")):
         if os.path.isfile(path):
             with open(path) as f:
                 lines = [l.strip() for l in f if l.strip()]

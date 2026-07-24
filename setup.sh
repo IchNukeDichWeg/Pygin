@@ -20,9 +20,9 @@ have () { command -v "$1" >/dev/null 2>&1; }
 # over 100 MB; the .gz is 41 MB). gen_data.py --book samples the plain
 # text by byte offset, so extract once after a fresh pull. -k keeps the
 # .gz so git status stays clean.
-if [ -f UHO_Lichess_4852_v1.epd.gz ] && [ ! -f UHO_Lichess_4852_v1.epd ]; then
-    echo "-> extracting UHO_Lichess_4852_v1.epd (2.63M openings, NNUE datagen book) ..."
-    gunzip -k UHO_Lichess_4852_v1.epd.gz
+if [ -f data/UHO_Lichess_4852_v1.epd.gz ] && [ ! -f data/UHO_Lichess_4852_v1.epd ]; then
+    echo "-> extracting data/UHO_Lichess_4852_v1.epd (2.63M openings, NNUE datagen book) ..."
+    gunzip -k data/UHO_Lichess_4852_v1.epd.gz
 fi
 
 # --- 0. detect OS + package manager ----------------------------------- #

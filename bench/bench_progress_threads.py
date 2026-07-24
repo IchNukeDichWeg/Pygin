@@ -17,6 +17,10 @@ SMP predates v25's "Lazy-SMP production fixes" (v19-24 -- known fragile, see
 that milestone's own description) report an error and get "--" in the
 README; there is nothing reliably measurable there.
 """
+# Path shim: this script moved into a subfolder on 2026-07-24 but
+# still imports the engine modules that live at the repo root.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 import concurrent.futures, os, subprocess, sys
 
 import interruptible
@@ -24,7 +28,7 @@ import interruptible
 if "-h" in sys.argv or "--help" in sys.argv:
     print(__doc__.strip()); sys.exit(0)
 
-REPO = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKER = os.path.join(REPO, "bench_progress_threads_worker.py")
 THREADS = int(sys.argv[1]) if len(sys.argv) > 1 else 4
 SECONDS = float(sys.argv[2]) if len(sys.argv) > 2 else 5.0

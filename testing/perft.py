@@ -10,6 +10,10 @@ against the published values. Any mismatch = move generation is broken.
 
 Exit code 0 = all pass, 1 = any mismatch (usable from other scripts/CI).
 """
+# Path shim: this script moved into a subfolder on 2026-07-24 but
+# still imports the engine modules that live at the repo root.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 import argparse
 import ctypes
 import os
@@ -20,7 +24,9 @@ import chess
 
 import interruptible
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+# The .so files stay at the repo ROOT (the Makefile and every Old Engine/<N>/
+# snapshot expect them flat); this script lives in testing/ since 2026-07-24.
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _lib = ctypes.CDLL(os.path.join(HERE, "movegen.so"))
 _lib.perft.restype = ctypes.c_uint64
 _lib.perft.argtypes = [ctypes.c_uint64] * 8 + [ctypes.c_int, ctypes.c_int,

@@ -56,9 +56,9 @@ import cengine
 from time_manager import calculate_move_time
 import math
 
-# WDL model -- fitted by fit_wdl_model.py (coefficients from wdl_model.json). Converts pygin's own
+# WDL model -- fitted by tuning/fit_wdl_model.py (coefficients from wdl_model.json). Converts pygin's own
 # cp score + game phase into Stockfish-style win/draw/loss permille, so the extension's WDL readout
-# works on pygin too. Local-only (pygin is not in the public fork). Refit via fit_wdl_model.py; do
+# works on pygin too. Local-only (pygin is not in the public fork). Refit via tuning/fit_wdl_model.py; do
 # not hand-edit the coefficients.
 #
 # REFIT 2026-07-24 on the v54 ERA ONLY (`--min-era 54`, 208,822 samples).

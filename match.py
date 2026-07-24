@@ -86,13 +86,13 @@ TC_INCREMENT = 0.20         # used when MODE == "clock": seconds added per move
                             # got ~2x faster and outgrew the old TC.
                             # Cross-era Elo numbers are NOT the same currency.
 
-# --- WDL-based adjudication (OFF until wdl_model.json is calibrated) ------- #
+# --- WDL-based adjudication (OFF until data/wdl_model.json is calibrated) ------- #
 # Shortens decided games: a win is adjudicated when BOTH engines' own
 # reported scores agree the game is over (leader >= +threshold, opponent
 # <= -threshold, each for ADJ_WIN_COUNT consecutive own moves), where the
 # threshold is the cp at which the fitted WDL model says P(win) >= ADJ_WIN_P
 # at the current phase. A draw is adjudicated late in level games. Needs
-# wdl_model.json (written by fit_wdl_model.py); silently stays off without it.
+# data/wdl_model.json (written by tuning/fit_wdl_model.py); silently stays off without it.
 # `--adj off` disables it per run without editing this file. Use that for
 # CROSS-FAMILY matches (e.g. vs stockfish_engine.py): the WDL model is fitted
 # on THIS engine's score scale, so the two-sided agreement rule loses its
@@ -180,6 +180,8 @@ from time_manager import calculate_move_time
 # Optional SPRT early-stop (--sprt). Imported defensively so a broken/missing
 # sprt.py can never take a match down -- the feature just goes unavailable.
 try:
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "testing"))          # moved 2026-07-24
     import sprt as _sprt
 except Exception:
     _sprt = None
@@ -285,8 +287,20 @@ class EngineProcess:
 # ====================================================================== #
 # Helpers
 # ====================================================================== #
+def _data_path(name):
+    """Resolve a bundled data file. Books/EPDs moved to data/ on 2026-07-24;
+    a bare name is still honoured so an explicit --fen-file or a local copy
+    beside the runner keeps working."""
+    if os.path.isabs(name) or os.path.isfile(name):
+        return name
+    here = os.path.dirname(os.path.abspath(__file__))
+    cand = os.path.join(here, "data", name)
+    return cand if os.path.isfile(cand) else name
+
+
 def load_fens(path):
     """Load and validate every position in ``path`` (plain FEN or EPD)."""
+    path = _data_path(path)
     fens = []
     if os.path.isfile(path):
         with open(path, "r", encoding="utf-8") as fh:
@@ -476,8 +490,7 @@ def _wdl_win_threshold(phase):
     if _WDL_THR[0] == "unloaded":
         try:
             import json
-            path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "wdl_model.json")
+            path = _data_path("wdl_model.json")
             with open(path, encoding="utf-8") as f:
                 mod = json.load(f)
             AS, BS = mod["as"], mod["bs"]
@@ -1307,7 +1320,7 @@ def main():
     # imported; then the result loop evaluates the LLR as pairs complete and
     # stops the match the moment a bound is crossed.
     if sprt_enable and _sprt is None:
-        print("!! --sprt requested but sprt.py could not be imported -- "
+        print("!! --sprt requested but testing/sprt.py could not be imported -- "
               "running the full game budget without early-stop.")
     sprt_cfg = None
     if sprt_enable and _sprt is not None:
