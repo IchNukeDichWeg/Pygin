@@ -62,6 +62,18 @@ import importlib.util, json, os, sys, time
 root, path, fen, depth = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
 sys.path[:0] = [root, os.path.join(root, "lib")]
 os.chdir(root)                      # engines resolve .so / data relative to cwd
+# Pin to ONE cpu. On a dual-socket box each fresh subprocess otherwise lands
+# wherever the scheduler likes, and a cross-socket A/B pair reads ~8% apart --
+# measured 2026-07-24 on a 112-thread Intel Gold 6330: raw NPS was bimodal at
+# ~1.53M / ~1.66M, every outlier ratio (0.915 .. 1.075) was a socket mismatch,
+# and the same-socket rounds all read 0.994-0.996. Pinning turns that lottery
+# into a constant.
+cpu = int(sys.argv[5]) if len(sys.argv) > 5 else -1
+if cpu >= 0 and hasattr(os, "sched_setaffinity"):
+    try:
+        os.sched_setaffinity(0, {cpu})
+    except OSError:
+        pass                        # not permitted here; fall back to unpinned
 import chess
 spec = importlib.util.spec_from_file_location("nps13_engine", path)
 mod = importlib.util.module_from_spec(spec)
@@ -89,10 +101,10 @@ print("NPS13 " + json.dumps({"nodes": nodes, "sec": dt}))
 '''
 
 
-def measure(engine_path, fen, depth):
+def measure(engine_path, fen, depth, cpu=-1):
     """One fixed-depth search in a FRESH process. Returns nodes/second."""
     r = subprocess.run([_sys.executable, "-c", _CHILD, _ROOT_, engine_path,
-                        fen, str(depth)],
+                        fen, str(depth), str(cpu)],
                        capture_output=True, text=True, cwd=_ROOT_)
     line = next((l for l in r.stdout.splitlines() if l.startswith("NPS13 ")),
                 None)
@@ -129,6 +141,11 @@ def main():
                     help="search depth (default 13 -- d11 cannot resolve "
                          "sub-1%%, see the module docstring)")
     ap.add_argument("--fen", default=DEFAULT_FEN)
+    ap.add_argument("--cpu", type=int, default=1,
+                    help="pin every measurement to this cpu (default 1; -1 "
+                         "disables). Load-bearing on multi-socket hosts -- see "
+                         "the note in the child. No effect on macOS, which has "
+                         "no sched_setaffinity.")
     a = ap.parse_args()
 
     for p in (a.engine_a, a.engine_b):
@@ -138,7 +155,8 @@ def main():
     print(f"paired d{a.depth} NPS ratios -- B relative to A")
     print(f"  A = {a.engine_a}")
     print(f"  B = {a.engine_b}")
-    print(f"  {a.rounds} rounds (round 1 discarded), fresh process per search\n")
+    print(f"  {a.rounds} rounds (round 1 discarded), fresh process per search"
+          + (f", pinned to cpu {a.cpu}" if a.cpu >= 0 else "") + "\n")
 
     ratios, nodes_a, nodes_b = [], set(), set()
     t_start = time.time()
@@ -146,11 +164,11 @@ def main():
         # Interleave A,B then B,A on alternate rounds so a monotonic drift in
         # machine speed cannot favour whichever engine always goes first.
         if rnd % 2:
-            (nps_a, na), (nps_b, nb) = (measure(a.engine_a, a.fen, a.depth),
-                                        measure(a.engine_b, a.fen, a.depth))
+            (nps_a, na), (nps_b, nb) = (measure(a.engine_a, a.fen, a.depth, a.cpu),
+                                        measure(a.engine_b, a.fen, a.depth, a.cpu))
         else:
-            (nps_b, nb), (nps_a, na) = (measure(a.engine_b, a.fen, a.depth),
-                                        measure(a.engine_a, a.fen, a.depth))
+            (nps_b, nb), (nps_a, na) = (measure(a.engine_b, a.fen, a.depth, a.cpu),
+                                        measure(a.engine_a, a.fen, a.depth, a.cpu))
         nodes_a.add(na)
         nodes_b.add(nb)
         r = nps_b / nps_a
