@@ -57,6 +57,12 @@ other_elo = 2900
 # a stale hardcoded 2600 here went into every PGN header.
 import os                   # config-time env read; harmlessly re-imported below
 stockfish_elo = 2900        # --sf-elo N; <= 0 = full strength
+# FI-88: in CLOCK mode, an engine that manages its own clock (only Stockfish)
+# is handed `go wtime/btime/winc/binc` and budgets each move itself. Set True
+# (--sf-our-clock) for the pre-2026-07-24 behaviour, where Pygin's own
+# time_manager computed the ms for BOTH sides and SF's manager never ran.
+# Our engines are unaffected either way -- they have no internal clock.
+sf_our_clock = False
 
 NUM_GAMES = 5000            # number of starting POSITIONS to play (default when
                             #   no arg passed). Each position is played twice --
@@ -548,8 +554,19 @@ def play_game(round_no, fen, white, black, e1, mode_cfg):
         if is_clock:
             color = board.turn
             budget = calculate_move_time(board, clocks[color], clocks[not color], inc_ms)
-            req_mode, req_value = "time", budget
-            req_timeout = budget / 1000.0 * TIME_OVERSHOOT_FACTOR + TIME_GRACE
+            req_mode = "time"
+            if mode_cfg.get("sf_our_clock"):
+                req_value = budget          # pre-FI-88: our budget drives BOTH
+                req_timeout = budget / 1000.0 * TIME_OVERSHOOT_FACTOR + TIME_GRACE
+            else:
+                # FI-88 (default): carry the raw clocks too. A clock-managing
+                # engine budgets its own move, so the watchdog can no longer be
+                # a multiple of OUR budget -- SF outspending it on a critical
+                # move is the whole point. The honest bound is its REMAINING
+                # clock: past that it has flagged anyway.
+                req_value = (budget, clocks[chess.WHITE], clocks[chess.BLACK],
+                             inc_ms, inc_ms)
+                req_timeout = clocks[color] / 1000.0 + TIME_GRACE
         elif mode_cfg["mode"] == "depth":
             req_mode, req_value = "depth", mode_cfg["depth"]
             req_timeout = DEPTH_SAFETY_CAP
@@ -977,7 +994,7 @@ def _shutdown_workers(workers, in_q, out_q, graceful):
 # Main
 # ====================================================================== #
 def main():
-    global ENGINE_SMP, stockfish_elo
+    global ENGINE_SMP, stockfish_elo, sf_our_clock
     # Apply the engine SMP override FIRST -- the moment any worker (and hence
     # any engine subprocess) is spawned it inherits the current environment,
     # so this must happen before mp.get_context("spawn") or any .start() call
@@ -993,6 +1010,11 @@ def main():
     if smp_override is not None:
         ENGINE_SMP = max(1, int(smp_override))
         print(f"[match] engine SMP: {ENGINE_SMP} worker(s) per engine")
+    if "--sf-our-clock" in sys.argv:        # FI-88 opt-out
+        sys.argv.remove("--sf-our-clock")
+        sf_our_clock = True
+        print("[match] clock mode: OUR time_manager budgets Stockfish too "
+              "(pre-FI-88 behaviour)")
     if "--sf-elo" in sys.argv:
         i = sys.argv.index("--sf-elo")
         if i + 1 < len(sys.argv):
@@ -1129,6 +1151,10 @@ def main():
     mode_cfg = {"mode": MODE, "time_ms": TIME_PER_MOVE_MS, "depth": FIXED_DEPTH,
                 "tc_seconds": TC_SECONDS, "tc_increment": TC_INCREMENT,
                 "nodes": nodes_budget,
+                # FI-88, same re-import reason as ADJUDICATE below: --sf-our-clock
+                # sets a module global in the PARENT, and play_game runs in a
+                # spawned child that would re-import the default.
+                "sf_our_clock": sf_our_clock,
                 # Carried in mode_cfg because `spawn` workers RE-IMPORT this
                 # module: the module-level ADJUDICATE would come back as its
                 # default in every child, which is why this used to travel by

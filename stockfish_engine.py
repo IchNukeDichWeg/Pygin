@@ -105,6 +105,26 @@ class Engine:
     def get_best_move(self, board, depth):
         return self._go(board, f"depth {int(depth)}")
 
+    def get_best_move_clock(self, board, wtime_ms, btime_ms,
+                            winc_ms=0, binc_ms=0):
+        """FI-88: hand Stockfish the CLOCK and let it budget the move itself.
+
+        Every match this project ran before 2026-07-24 drove SF with
+        `go movetime <ms>`, where the ms came from Pygin's OWN
+        time_manager -- so SF's time management, one of its better-tuned
+        components, never ran. Under `go wtime/btime/winc/binc` it decides
+        for itself: more on a critical move, less on a forced one, and it
+        can bank time for the endgame.
+
+        Hosts detect this method with hasattr, so an engine WITHOUT it
+        (ours -- Pygin has no internal clock manager) keeps the movetime
+        path. Callers pass WHITE's and BLACK's clocks, not mover/opponent:
+        SF reads the side to move from the position."""
+        return self._go(board, f"wtime {max(1, int(wtime_ms))} "
+                               f"btime {max(1, int(btime_ms))} "
+                               f"winc {max(0, int(winc_ms))} "
+                               f"binc {max(0, int(binc_ms))}")
+
     def _go(self, board, limit):
         white_to_move = board.turn == chess.WHITE
         self._send(f"position fen {board.fen()}")
