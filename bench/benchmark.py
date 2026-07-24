@@ -27,7 +27,8 @@ Limit types:
 # Path shim: this script moved into a subfolder on 2026-07-24 but
 # still imports the engine modules that live at the repo root.
 import os as _os, sys as _sys
-_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+_ROOT_ = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+_sys.path[:0] = [_ROOT_, _os.path.join(_ROOT_, "lib")]
 import argparse
 import statistics
 import sys
