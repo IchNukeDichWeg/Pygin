@@ -42,6 +42,11 @@ draw the SAME positions, so results stay directly comparable / poolable).
 
 Press Ctrl-C to stop early -- the summary (with Elo so far) is still written.
 """
+# lib/ holds the shared support modules (time_manager, wdl, interruptible,
+# smp, shared_tt) since the 2026-07-24 reshuffle. They stay importable by
+# their plain names, so nothing else in the tree had to change.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "lib"))
 
 # ====================================================================== #
 #  CONFIG  -- edit these
