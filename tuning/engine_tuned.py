@@ -921,8 +921,6 @@ try:
     # from each piece's mobility count, 0 = legacy behaviour).
     _eval_lib.set_mobility_area.argtypes = [ctypes.c_int]
     _eval_lib.set_mobility_area.restype = None
-    _eval_lib.set_xray_mob.argtypes = [ctypes.c_int]      # FI-85
-    _eval_lib.set_xray_mob.restype = None
     # #3.x: threats (pawn -> enemy non-pawn, minor -> enemy major). 0/0 off.
     _eval_lib.set_threats_params.argtypes = [ctypes.c_int, ctypes.c_int]
     _eval_lib.set_threats_params.restype = None
@@ -955,7 +953,8 @@ try:
     # P-12: ABI handshake. Bump together with abi_version() in eval_c.c on
     # any export-signature or semantics change -- a stale-but-loadable .so
     # must be rejected here, not trusted silently.
-    _EVAL_C_ABI = 5      # 5: FI-86 set_mobility_eg; 4: FI-85 set_xray_mob; 3: U-04 kings bb
+    _EVAL_C_ABI = 6      # 6: FI-85 removed (set_xray_mob is a no-op);
+                     # 5: FI-86 set_mobility_eg; 4: FI-85; 3: U-04 kings bb
     _eval_lib.abi_version.restype = ctypes.c_int
     if _eval_lib.abi_version() != _EVAL_C_ABI:
         raise OSError(f"eval_c.so ABI {_eval_lib.abi_version()} != expected "
@@ -1741,16 +1740,8 @@ class Engine:
         # attr (CANTWIN class attr). OFF by default until its own A/B slot.
         self.use_cantwin = False
 
-        # FI-76 (WB-01) wrong-bishop rook-pawn dead draw: CW-01's sibling
-        # truth-gate for the case where the strong side HAS pawns and still
-        # cannot win -- all of them on one rook file, at most one bishop and
-        # it does not control that promotion corner, and a bare defending
-        # king already sitting on it (zero bishops qualifies: bare rook
-        # pawns are drawn too, and gating only the one-bishop case pays the
-        # search to SHED the bishop). Ported bit-exactly to csearch.c;
-        # cengine mirrors this attr (WRONGBISHOP). OFF = v54 eval exactly;
-        # built 2026-07-23, screen PENDING.
-        self.use_wrongbishop = False
+        # FI-76 wrong-bishop clamp REMOVED 2026-07-24 (screen-null +0.17,
+        # ~9% engagement, never propagated to the root). See csearch.c.
 
         # "Trade down when ahead" eval term (see SIMPLIFY_*). A/B verdict: ON
         # scored 47.9% (-14 Elo) over 800 games @0.8s -> it HURTS (likely trades
@@ -2141,7 +2132,6 @@ class Engine:
             _eval_lib.set_rook_on_7th_params(0, 0)
         # #3.x: sync mobility-area toggle.
         _eval_lib.set_mobility_area(1 if self.use_mobility_area else 0)
-        _eval_lib.set_xray_mob(1 if getattr(self, 'use_xray_mob', False) else 0)  # FI-85
         # #3.x: sync threats (0/0 if the toggle is off).
         if self.use_threats:
             _eval_lib.set_threats_params(self.THREAT_PAWN, self.THREAT_MINOR)
@@ -2484,31 +2474,6 @@ class Engine:
                 nn = chess.popcount(board.knights & strong)
                 if nb + nn <= 1 or (nb == 0 and nn == 2):
                     score = 0
-        if self.use_wrongbishop and score != 0:        # FI-76 (see __init__)
-            white_strong = score > 0
-            strong = board.occupied_co[white_strong]
-            weak = board.occupied_co[not white_strong]
-            bb = board.bishops & strong
-            sp = board.pawns & strong
-            if (not (weak & ~board.kings)                 # bare defender
-                    and not ((board.rooks | board.queens
-                              | board.knights) & strong)
-                    and chess.popcount(bb) <= 1 and sp):
-                if not (sp & ~chess.BB_FILE_A):
-                    cfile = 0
-                elif not (sp & ~chess.BB_FILE_H):
-                    cfile = 7
-                else:
-                    cfile = -1
-                if cfile >= 0:
-                    corner = (56 + cfile) if white_strong else cfile
-                    bsq = chess.lsb(bb) if bb else -1   # 0 bishops qualifies
-                    if bsq < 0 or ((((bsq >> 3) ^ bsq) & 1)
-                                   != (((corner >> 3) ^ corner) & 1)):
-                        ksq = chess.lsb(board.kings & weak)
-                        if max(abs((ksq & 7) - (corner & 7)),
-                               abs((ksq >> 3) - (corner >> 3))) <= 1:
-                            score = 0
         return score
 
     def _eval_base_white(self, board):
