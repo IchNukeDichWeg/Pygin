@@ -183,6 +183,17 @@ def main():
         print("  !! node counts varied across rounds -- non-deterministic "
               "search (SMP? book? TB?); the ratios are not trustworthy")
 
+    # A wide spread means the MACHINE moved during the run, not the engine.
+    # Measured here 2026-07-24: the same pair read 0/16 p=0.000 on a quiet box
+    # (spread 0.920..0.986) and 5/16 p=0.210 twenty minutes later while builds
+    # were running (spread 0.907..1.121). Without this line the second run
+    # silently overturns the first.
+    rng = max(ratios) - min(ratios)
+    if rng > 0.10:
+        print(f"\n  !! spread {rng:.3f} is WIDE (>0.10) -- this machine was "
+              f"busy during the run.\n     Re-measure on an idle box before "
+              f"trusting either the median or the sign test.")
+
     if p > 0.05:
         print("\n  VERDICT: not resolved -- the sign test does not exclude "
               "chance. More rounds, or the effect is below this instrument.")
