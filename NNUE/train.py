@@ -125,15 +125,20 @@ def main():
         recs = recs[:args.limit]
     rng = np.random.default_rng(args.seed)
     nval = max(1, int(len(recs) * args.val_frac))
+    val_stride = 0
     if args.chunk:
-        # streaming mode: val = a fixed random sample (in memory), train =
-        # the remaining record RANGE streamed per epoch (approximate
-        # shuffle: chunk order + within-chunk order re-drawn per epoch).
-        val_idx = np.sort(rng.choice(len(recs), nval, replace=False))
-        val = np.asarray(recs[val_idx])
-        val_mask_note = f"{len(recs) - nval} train (streamed) / {nval} val"
-        train_view = recs                     # val overlap: nval/N ~ 0.1%,
-        ntrain = len(recs)                    # negligible for a stream
+        # Streaming mode: a DETERMINISTIC modulo split, so the holdout is a
+        # true holdout. (The previous version sampled val randomly but then
+        # streamed the WHOLE file as train -- every val record was also
+        # trained on, making the val curve optimistic and the "val must not
+        # diverge" check meaningless. The stride split costs nothing, keeps
+        # val spread across all merged sources, and needs no index set.)
+        val_stride = max(2, int(round(1.0 / max(args.val_frac, 1e-9))))
+        val = np.asarray(recs[::val_stride])
+        ntrain = len(recs) - len(val)
+        val_mask_note = (f"{ntrain} train (streamed) / {len(val)} val "
+                         f"(every {val_stride}th record held out, disjoint)")
+        train_view = recs
     else:
         order = rng.permutation(len(recs))
         val = np.asarray(recs[np.sort(order[:nval])])
@@ -157,11 +162,16 @@ def main():
         tot, n = 0.0, 0
         if args.chunk:
             erng = np.random.default_rng(args.seed * 7919 + ep)
-            starts = np.arange(0, ntrain, args.chunk)
+            starts = np.arange(0, len(train_view), args.chunk)
             erng.shuffle(starts)
-            sources = ((prepare(np.asarray(
-                train_view[s:s + args.chunk]), log=lambda *a: None),
-                int(erng.integers(1 << 30))) for s in starts)
+
+            def _chunk(st):
+                sub = np.asarray(train_view[st:st + args.chunk])
+                keep = (np.arange(st, st + len(sub)) % val_stride) != 0
+                return prepare(sub[keep], log=lambda *a: None)
+
+            sources = ((_chunk(st), int(erng.integers(1 << 30)))
+                       for st in starts)
         else:
             sources = ((train_t, args.seed + ep),)
         for tensors, bseed in sources:
