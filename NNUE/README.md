@@ -62,6 +62,15 @@ extracted position — measured yields ~65/game random, ~72/game book,
 ~20/game endgame. The Phase-6 recipe is games-targeted: 750k random +
 50k UHO + 250k endgame ≈ ~57M positions.
 
+Without `--book`, each game opens with a uniform-legal random walk of
+`LABEL_MIN_RANDOM_PLIES..LABEL_MAX_RANDOM_PLIES` plies (6..12). The floor is
+6 because the search is deterministic at fixed nodes, so two games that draw
+the same opening are byte-identical duplicates — and there are only
+perft(4)=197,281 distinct 4-ply lines, which at 750k games means ~17.5k
+collisions (~2% of the slice). perft(6)=119,060,324 makes it ~0. Lowering
+the floor re-introduces duplicate training rows; it does not affect the
+`verify_labels.py` gate either way.
+
 Opening/coverage modes (mixable into a multi-slice dataset via
 `data_format.py merge` — the recommended Phase-6 recipe is random +
 UHO-book + endgame slices):
