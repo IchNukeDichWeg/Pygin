@@ -295,15 +295,16 @@ csearch.c              the whole per-node search loop in C (built to .so)
 eval_c.c / movegen.c   C evaluation and move generation (built to .so)
 Constants.c/.h         magic-bitboard + attack tables (linked into the .so files)
 cuci.py                UCI host for the C search core
-smp.py / shared_tt.py  Lazy-SMP multi-process search + lock-free shared TT (Python engine)
-time_manager.py        time-control budget calculation
-wdl.py                 win/draw/loss model reader (adjudication, GUI eval bars)
 match.py               headless engine-vs-engine match runner
 battle_worker.py       per-game worker process used by match.py
 stockfish_engine.py    UCI adapter exposing Stockfish through the same API
 odds.py                material / time-odds match runner
 Old Engine/<N>/        frozen version snapshots (engineN.py + its C sources)
 
+lib/                   shared support modules: time_manager (clock budgets),
+                       wdl (W/D/L model reader), interruptible (Ctrl-C/SIGTERM
+                       salvage), smp + shared_tt (the PYTHON engine's
+                       multi-process Lazy SMP and its lock-free shared TT)
 data/                  opening books, EPD position sets, the fitted WDL model
 docs/                  design notes, OpenBench guide, third-party licences
 tuning/                texel.py and the eval-fitting tools

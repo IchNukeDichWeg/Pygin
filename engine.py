@@ -869,6 +869,11 @@ That said, a proper NNUE remains the biggest single upgrade available:
 replacing all hand-crafted terms with learned weights could be worth
 **+200-300 Elo**.
 """
+# lib/ holds the shared support modules (time_manager, wdl, interruptible,
+# smp, shared_tt) since the 2026-07-24 reshuffle. They stay importable by
+# their plain names, so nothing else in the tree had to change.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "lib"))
 
 import ctypes
 import json
