@@ -76,8 +76,18 @@ ODDS_GIVEN_BY = "engine_2"
                                         #   v52  81.65% (1000g,  +259 +/-36)
                                         # +52 Elo for +215 of self-play Elo, then
                                         # the ceiling -- rook odds went the same way.
-ODDS_SQUARES = ["f2"]                   # PAWN odds (f-pawn) -- the new active
-                                        # yardstick, the rung with headroom. The
+ODDS_SQUARES = ["f2"]                   # PAWN odds (f-pawn) -- the ACTIVE
+                                        # yardstick, the rung with headroom.
+                                        # FIRST MEASUREMENT 2026-07-24 @v54:
+                                        #   84.88% (2000g, +299.63 +/-29.8)
+                                        #   1531W / 333D / 136L, 45+0.15
+                                        # Confirms the rung has room: knight
+                                        # and queen are at 100%, this is not.
+                                        # CAVEAT: measured under the OLD time
+                                        # regime -- SF was driven by OUR
+                                        # time_manager via `go movetime`, its
+                                        # own manager never ran (see FI-88).
+                                        # The
                                         # f-pawn is the classic odds pawn: only
                                         # the king defends it, so removing it is
                                         # the least positionally-disruptive way

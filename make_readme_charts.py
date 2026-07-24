@@ -37,9 +37,12 @@ ODDS_KNIGHT = [(31, 76.75), (49, 79.05), (52, 81.65), (54, 100.0)]
 # The odds LADDER vs full-strength SF: how big a material handicap the engine
 # can spot it and still win. Latest measurement of each (queen 100/100 games;
 # rook 95.5% at v49; knight saturated at v54, 197 games without a single SF
-# win or draw).
+# win or draw; pawn 84.88% at v54 over 2,000 games -- the only rung with
+# headroom left, which is why it is the active yardstick).
+# NOTE rook < knight is a STALE measurement, not a real inversion: rook was
+# last measured at v49, knight at v54.
 ODDS_LADDER = [("Queen", 100.0, "v-"), ("Rook", 95.5, "v49"),
-               ("Knight", 100.0, "v54")]
+               ("Knight", 100.0, "v54"), ("Pawn", 84.88, "v54")]
 
 W, H = 760, 300
 ML, MR, MT, MB = 58, 22, 44, 34          # margins
