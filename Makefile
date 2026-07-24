@@ -1,10 +1,10 @@
-# OpenBench-compatible build -- see OPENBENCH.md for the full setup.
+# OpenBench-compatible build -- see docs/OPENBENCH.md for the full setup.
 #
 #     make EXE=pygin-<branch>-<sha> [CC=clang] [PY=python3]
 #
 # Produces a single self-contained UCI binary at ./$(EXE): PyInstaller
 # onefile bundling cuci.py + the three C .so libraries + Perfect2023.bin
-# (the same recipe as ./build_exe.sh, parameterized for OpenBench's
+# (the same recipe as ./scripts/build_exe.sh, parameterized for OpenBench's
 # `make EXE=... CC=...` convention). The binary supports `./$(EXE) bench`
 # (argv, prints "<nodes> nodes <nps> nps") as OpenBench workers require.
 #
@@ -46,7 +46,7 @@ $(EXE): csearch.so eval_c.so movegen.so cuci.py cengine.py engine.py time_manage
 	    --add-binary "$(CURDIR)/csearch.so:." \
 	    --add-binary "$(CURDIR)/eval_c.so:." \
 	    --add-binary "$(CURDIR)/movegen.so:." \
-	    --add-data   "$(CURDIR)/Perfect2023.bin:." \
+	    --add-data   "$(CURDIR)/data/Perfect2023.bin:." \
 	    --hidden-import engine --hidden-import chess.polyglot \
 	    --exclude-module pygame --exclude-module tkinter --exclude-module numpy \
 	    --exclude-module PySide6 --exclude-module matplotlib --exclude-module flask \

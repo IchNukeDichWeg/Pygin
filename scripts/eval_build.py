@@ -11,7 +11,9 @@ visible to the slider-attack helpers in eval_c.c (#2.1 / #2.2).
 """
 import platform, subprocess, sys, os
 
-here = os.path.dirname(os.path.abspath(__file__))
+# C sources and the built .so stay at the repo ROOT; this builder moved
+# into scripts/ on 2026-07-24.
+here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 srcs = [os.path.join(here, 'eval_c.c'), os.path.join(here, 'Constants.c')]
 out = os.path.join(here, 'eval_c.so')
 # C-03/C-04: -O3 (more aggressive inlining/unrolling of the popcount-heavy

@@ -75,15 +75,16 @@ except ImportError:
 import engine  # noqa: E402
 
 check("eval_c.so loaded (C eval active)", engine._USE_C_EVAL,
-      "rebuild: python3 eval_build.py" if not engine._USE_C_EVAL else
+      "rebuild: python3 scripts/eval_build.py" if not engine._USE_C_EVAL else
       f"ABI {engine._eval_lib.abi_version()}")
 check("movegen.so loaded (C movegen active)", engine._USE_C_MOVEGEN,
-      "rebuild: python3 movegen_build.py" if not engine._USE_C_MOVEGEN else "")
+      "rebuild: python3 scripts/movegen_build.py" if not engine._USE_C_MOVEGEN else "")
 
 # --- 3. move generation correct (perft spot check via perft.py) --------- #
-r = subprocess.run([sys.executable, "perft.py"], capture_output=True, text=True)
+r = subprocess.run([sys.executable, os.path.join("testing", "perft.py")],
+                   capture_output=True, text=True)
 check("perft quick suite", r.returncode == 0,
-      "run `python3 perft.py` to see the failing position" if r.returncode else "all positions exact")
+      "run `python3 testing/perft.py` to see the failing position" if r.returncode else "all positions exact")
 
 # --- 4. reference search: node-exact + correct move --------------------- #
 random.seed(42)
@@ -558,9 +559,9 @@ if os.path.exists(os.path.join("NNUE", "selftest_nnue.py")):
 
 # --- 6. optional pieces: report, don't fail ------------------------------ #
 print("\noptional:")
-print(f"  {'ok  ' if os.path.exists('wdl_model.json') else 'none'}  wdl_model.json "
-      "(match.py adjudication; fit_wdl_model.py writes it)")
-for book in ("UHO_4060_v4.epd", "fen.txt"):
+print(f"  {'ok  ' if os.path.exists('data/wdl_model.json') else 'none'}  data/wdl_model.json "
+      "(match.py adjudication; tuning/fit_wdl_model.py writes it)")
+for book in ("data/UHO_4060_v4.epd", "data/fen.txt"):
     print(f"  {'ok  ' if os.path.exists(book) else 'none'}  {book}")
 
 # --- 7. Old Engine snapshots ready for A/B? ------------------------------ #

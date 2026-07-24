@@ -99,7 +99,7 @@ this tree: real UCI pondering (go ponder/ponderhit, host layer).
 v53 = v52 + the **Texel eval retune** -- NO change in this file or in
 csearch.c: 44 eval scalars refitted in engine.py, which this module pushes
 into csearch.so at construction (the eval-param oracle, _load_pyengine +
-csearch_set_eval below). Fitted by texel.py on 4M quiet positions from
+csearch_set_eval below). Fitted by tuning/texel.py on 4M quiet positions from
 this project's own self-play logs, labelled with the GAME RESULT.
 CONFIRMED 2026-07-22 (thirty-second campaign vs Old Engine/52,
 nodes@1.75M): pooled 12,000 games **+37.52 +/-6.3** (55.38%, ptnml
@@ -108,7 +108,7 @@ the fourth SPRT accept, 2.8x the bound, and by a wide margin the largest
 single gain in the C era (previous best +11.12). The eval lane's first
 win, opened right after the search lane was declared exhausted. Full
 detail in engine.py's version history. v54 = v53 + the **PST retune**
-(texel.py --pst): the 736 piece-square entries fitted for the first time,
+(tuning/texel.py --pst): the 736 piece-square entries fitted for the first time,
 735 values moved, again NO change in this file. CONFIRMED 2026-07-23 vs Old
 Engine/53 (nodes@1.75M): **+31.20 ±5.6 over 11,668 games** (54.48%, ptnml
 312/1142/2185/1579/616, GSPRT[0,2] LLR +7.806 ACCEPT) -- the second-largest
