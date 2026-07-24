@@ -650,6 +650,23 @@ benchmark" below.
   =1 and all match play are byte-identical). ``TT_BITS=22`` restores v46.
   Snapshotted as Old Engine/47.
 
+* **v53 -> v54 (2026-07-23, lives HERE in ``engine.py``): the PST retune --
+  the second-largest release, and the first time the piece-square tables
+  themselves were fitted.** v53 tuned the 44 scalars *conditioned on* the
+  stock PeSTO tables; v54 adds all 736 table entries (12 tables x 64 minus
+  the 16 impossible pawn squares) to the fit, ``texel.py --pst``, ±25cp
+  bounds, on 5,000,000 own-self-play positions. 735 values moved vs v53.
+  **A/B vs Old Engine/53: +31.20 ±5.6 over 11,668 games @ nodes 1,750,000
+  (54.48%, ptnml 312/1142/2185/1579/616, ratio 1.51), GSPRT[0,2] LLR
+  +7.806 -> ACCEPT** -- both split halves positive (+35.09 / +27.13); a 2k
+  screen had read +32.41. The endgame values continued v53's direction and
+  the king tables shifted hard, which is why matetrack was the gating
+  pre-ship check. Bench signature 1,122,753 -> 1,461,732; both selftest
+  pins re-measured (CE_LADDER d14 1,921,549, REF_NODES 2874). NOTE the
+  held-out loss that screened it (+2.26%) was inflated by the FB-43
+  train/val split leak, fixed the same day -- the A/B, not the loss, is the
+  truth here. Snapshotted Old Engine/54. Re-tune with ``texel.py --pst``.
+
 * **v52 -> v53 (2026-07-22, lives HERE in ``engine.py``): the Texel retune
   -- the largest single gain the project has recorded, and the eval lane's
   first win.** v48-v52 were all search/TT work in ``cengine.py``; this one
@@ -873,6 +890,8 @@ try:
     _eval_lib = ctypes.CDLL(_EVAL_C_PATH)
     _eval_lib.set_mobility_params.argtypes = [ctypes.c_int] * 11
     _eval_lib.set_mobility_params.restype = None
+    _eval_lib.set_mobility_eg.argtypes = [ctypes.c_int] * 4    # FI-86
+    _eval_lib.set_mobility_eg.restype = None
     _eval_lib.mobility_king_safety.argtypes = [
         ctypes.c_uint64, ctypes.c_uint64,   # occ_w, occ_b
         ctypes.c_uint64, ctypes.c_uint64,   # knights, bishops
@@ -897,6 +916,8 @@ try:
     # from each piece's mobility count, 0 = legacy behaviour).
     _eval_lib.set_mobility_area.argtypes = [ctypes.c_int]
     _eval_lib.set_mobility_area.restype = None
+    _eval_lib.set_xray_mob.argtypes = [ctypes.c_int]      # FI-85
+    _eval_lib.set_xray_mob.restype = None
     # #3.x: threats (pawn -> enemy non-pawn, minor -> enemy major). 0/0 off.
     _eval_lib.set_threats_params.argtypes = [ctypes.c_int, ctypes.c_int]
     _eval_lib.set_threats_params.restype = None
@@ -929,7 +950,7 @@ try:
     # P-12: ABI handshake. Bump together with abi_version() in eval_c.c on
     # any export-signature or semantics change -- a stale-but-loadable .so
     # must be rejected here, not trusted silently.
-    _EVAL_C_ABI = 3      # 3: U-04 mobility_king_safety takes a kings bitboard
+    _EVAL_C_ABI = 5      # 5: FI-86 set_mobility_eg; 4: FI-85 set_xray_mob; 3: U-04 kings bb
     _eval_lib.abi_version.restype = ctypes.c_int
     if _eval_lib.abi_version() != _EVAL_C_ABI:
         raise OSError(f"eval_c.so ABI {_eval_lib.abi_version()} != expected "
@@ -1165,9 +1186,9 @@ class Engine:
     # ------------------------------------------------------------------ #
     MG_PAWN_TABLE = [
             0,    0,    0,    0,    0,    0,    0,    0,
-          123,  109,   86,  120,   93,  101,    9,  -36,
-            3,   20,   42,   48,   43,   81,   33,   -5,
-          -15,   -4,    6,   27,   41,   37,    0,  -11,
+          139,  117,  118,  136,  125,   69,  -23,  -44,
+            3,   12,   42,   56,   51,   97,   41,   -5,
+          -15,   -4,    6,   27,   41,   53,    0,  -11,
           -15,  -16,    3,   18,   10,   25,    5,  -10,
           -22,  -17,  -13,   -7,   -6,    8,   19,   -5,
           -23,  -26,  -17,  -31,  -27,   13,   20,  -22,
@@ -1175,113 +1196,113 @@ class Engine:
     ]
     EG_PAWN_TABLE = [
             0,    0,    0,    0,    0,    0,    0,    0,
-          159,  164,  158,  109,  122,  120,  168,  171,
-           92,   79,   60,   42,   31,   28,   57,   59,
-           45,   30,   16,  -11,  -13,   -6,    9,   13,
+          151,  156,  142,  101,   90,  120,  168,  171,
+           92,   79,   60,   34,   15,   12,   49,   59,
+           45,   30,   16,  -11,  -13,  -14,    9,   13,
            24,   23,    1,  -10,  -12,   -5,   -4,   -2,
            18,   10,    4,   -3,   -3,    0,  -15,   -3,
            28,   19,   10,    9,    6,    1,   -9,    0,
             0,    0,    0,    0,    0,    0,    0,    0,
     ]
     MG_KNIGHT_TABLE = [
-         -173,  -67,   -9,  -24,   63,  -73,   10,  -82,
-          -48,  -16,   47,   59,   46,   67,   32,    8,
-          -22,   35,   53,   59,   97,  105,   48,   20,
-           16,   20,   40,   56,   22,   56,   25,   45,
-           -1,   20,   32,   34,   40,   36,   45,   16,
-          -31,   -9,    0,   14,   26,    8,   12,   -3,
-          -32,  -28,  -12,    7,    1,   -4,  -21,   -5,
-          -80,  -42,  -33,  -20,  -17,  -17,  -28,  -48,
+         -173,  -91,  -25,    0,   63,  -97,   42, -106,
+          -16,    8,   39,   59,   62,   51,   48,   24,
+            2,   19,   53,   59,   97,  113,   40,   12,
+           24,   20,   40,   56,   22,   56,   25,   45,
+           -1,   20,   32,   34,   40,   36,   37,   16,
+          -39,   -9,    0,   14,   26,    8,   12,   -3,
+          -32,  -20,  -12,    7,    1,   -4,  -21,   -5,
+          -64,  -42,  -25,  -20,  -17,  -17,  -28,  -64,
     ]
     EG_KNIGHT_TABLE = [
-          -33,  -13,   12,   -3,  -23,   -2,  -38,  -74,
-            0,   17,    0,    6,    6,    0,  -14,  -27,
-            1,    4,   13,   17,   -1,   -2,    4,  -16,
+          -17,   19,   28,   13,  -15,   30,  -14,  -42,
+            0,   17,    8,    6,    6,    0,  -14,  -11,
+           -7,   12,   13,   17,   -1,   -2,   12,    0,
             5,    9,   19,   27,   27,   15,   25,   -3,
-           -9,    2,   19,   21,   19,   13,    4,   -5,
+           -9,    2,   19,   21,   19,   13,   12,   -5,
           -22,   -7,  -10,   11,    5,  -16,  -17,  -32,
-          -44,    4,  -16,  -13,  -10,  -23,   -7,  -39,
-          -34,  -51,  -26,  -17,  -14,  -43,  -38,  -89,
+          -44,   -4,  -16,  -13,  -10,  -15,   -7,  -31,
+          -42,  -59,  -34,  -17,  -14,  -43,  -30,  -81,
     ]
     MG_BISHOP_TABLE = [
-          -36,    9,  -57,  -26,  -29,  -67,  -18,    2,
-          -40,   -9,    7,   12,    5,   34,   -7,  -22,
-            6,   21,   18,   33,   44,   75,   57,   23,
+          -20,   -7,  -33,  -10,  -37,  -99,  -34,  -30,
+          -32,  -17,    7,   20,    5,    2,  -23,   -6,
+           -2,   13,   18,   33,   44,   75,   57,   23,
             4,   22,   14,   43,   32,   37,   20,   -7,
            15,   -9,   14,   38,   28,    4,   12,   20,
            -5,   18,   12,   16,   13,    9,   16,   23,
            17,   -6,   30,   -4,    7,   18,   17,    6,
-          -32,   22,  -11,  -12,  -17,  -23,  -14,  -26,
+          -32,   22,  -11,  -12,  -17,  -23,   10,  -34,
     ]
     EG_BISHOP_TABLE = [
-           11,    4,   14,   17,   18,   11,    4,  -18,
-           15,   21,   23,   13,   20,    5,   14,   -1,
-           11,   17,   16,   11,   10,   10,   12,   13,
+           11,   20,   22,   17,   26,   19,   12,  -10,
+           15,   29,   23,   21,   20,   13,   22,   -1,
+           19,   25,   16,   11,   10,   10,   12,   13,
            -3,   18,   12,   15,    9,    8,    6,    6,
-          -12,   15,   20,   16,    9,   14,    4,  -22,
+           -4,   15,   20,   16,    9,   14,    4,  -22,
             0,    5,   16,   10,   19,    6,  -10,  -13,
           -19,  -10,   -7,    6,   -3,  -18,  -16,  -42,
-           -1,  -26,  -28,   -7,    2,   -7,  -28,  -17,
+           -1,  -26,  -28,   -7,    2,   -7,  -36,  -17,
     ]
     MG_ROOK_TABLE = [
-           50,   54,   46,   67,   44,   34,   56,   65,
-           19,   10,   39,   64,   67,   80,   50,   69,
-           14,   38,   51,   61,   42,   70,   86,   41,
-            1,   14,    9,   41,   47,   40,   17,    5,
-          -31,  -21,  -16,    6,    8,  -15,   15,    0,
+           50,   54,   54,   75,   52,   42,   80,   73,
+           19,   10,   39,   64,   67,   80,   58,   85,
+           14,   38,   51,   61,   74,  102,  110,   73,
+            1,   14,    9,   33,   39,   32,   49,   29,
+          -31,  -21,  -16,    6,    8,  -15,    7,    0,
           -38,  -21,  -16,  -16,   -9,  -13,   19,   -8,
-          -38,  -28,  -22,  -14,  -13,   -9,    5,  -47,
-          -19,   -8,   -4,   -2,    4,   -8,  -12,  -14,
+          -38,  -28,  -22,  -14,  -13,   -9,    5,  -39,
+          -19,   -8,   -4,   -2,    4,   -8,    4,  -14,
     ]
     EG_ROOK_TABLE = [
-            3,   11,   13,   -2,   10,   24,   24,   10,
+            3,   11,   13,   -2,   10,   24,   16,   10,
            11,   15,    7,   -5,   -8,   -3,    8,   -3,
-           31,   22,   17,    5,   18,   21,   11,   16,
-           29,   28,   30,    9,    1,   12,   24,   22,
-           23,   24,   23,    5,   -3,   13,    5,   -1,
+           31,   22,   17,    5,    2,    5,    3,    8,
+           29,   28,   30,    9,    1,   20,   16,   14,
+           23,   24,   23,    5,   -3,   13,   13,   -9,
             5,    0,    3,  -10,  -15,  -12,  -23,  -25,
-           -6,   -9,   -8,  -14,  -21,  -34,  -36,  -22,
-          -11,  -15,  -13,  -17,  -27,  -26,  -14,  -26,
+           -6,   -9,   -8,  -14,  -21,  -34,  -44,  -22,
+          -11,  -15,  -13,  -17,  -27,  -26,  -30,  -34,
     ]
     MG_QUEEN_TABLE = [
-           -3,   -1,    5,   37,   38,   69,   68,   70,
-           -8,  -35,   -5,    2,    1,   36,    7,   69,
-            1,   -1,    8,    3,   31,   71,   72,   35,
-           -2,   -8,   -9,   -5,   17,    2,   17,   10,
+           -3,   -1,   -3,   37,   30,   93,   92,   70,
+           -8,  -43,  -29,    2,    1,   28,   -9,   61,
+           -7,   -9,    0,   -5,   31,   63,   80,   27,
+           -2,   -8,   -9,   -5,   25,    2,   17,   10,
           -14,  -22,   -4,    3,    1,   -7,   14,   11,
           -16,   -7,   -1,   -7,    0,    4,   15,    7,
-          -10,   -6,    6,    9,    8,   10,   -7,   -2,
-           -8,   -1,    1,    0,   -1,  -32,  -44,  -25,
+           -2,   -6,    6,    9,    8,   10,    1,   -2,
+           -8,   -1,    1,    0,    7,  -24,  -28,  -17,
     ]
     EG_QUEEN_TABLE = [
-           16,   28,   36,   27,   40,   27,   35,   16,
-            8,   45,   57,   66,   83,   50,   55,   25,
-            5,   31,   34,   73,   72,   59,   44,   34,
-            2,   34,   47,   59,   50,   65,   73,   55,
-            7,   41,   23,   38,   30,   41,   21,   33,
-          -19,  -11,    4,    4,    4,    1,  -15,  -20,
-          -25,  -44,  -45,  -39,  -37,  -48,  -61,  -57,
-          -47,  -53,  -47,  -64,  -30,  -57,  -45,  -16,
+           24,   36,   52,   35,   56,   27,   27,   24,
+           24,   77,   89,   74,   91,   66,   87,   33,
+           29,   63,   58,   81,   88,   67,   60,   66,
+           -6,   34,   47,   59,   42,   73,   73,   55,
+           15,   33,   23,   38,   30,   33,   13,   25,
+          -19,  -11,    4,    4,    4,    1,  -23,  -20,
+          -33,  -52,  -45,  -39,  -37,  -64,  -93,  -89,
+          -47,  -69,  -63,  -64,  -62,  -89,  -77,  -24,
     ]
     MG_KING_TABLE = [
-          -40,   48,   41,   10,  -31,   -9,   27,   -8,
-           54,   24,    5,   18,   17,   21,  -13,  -19,
-           16,   49,   27,    9,    5,   23,   47,    3,
-            8,    5,   12,  -26,  -42,   -2,   11,  -33,
-          -24,   24,   -2,  -14,  -21,  -19,   -8,  -51,
-           -8,    9,   -7,  -47,  -19,   -9,    1,  -29,
-            9,  -17,   -5,  -50,  -37,  -19,   23,   28,
-          -40,   24,   -8,  -79,   -9,  -52,   40,   28,
+           -8,   80,   73,   42,    1,   23,   59,  -24,
+           86,   56,   37,   34,   49,   53,   19,  -27,
+           48,   65,   27,   25,    5,   -9,   23,   -5,
+           16,    5,  -12,  -42,  -42,    6,   27,  -25,
+          -24,   24,   -2,  -14,  -13,  -19,    0,  -51,
+          -16,    1,  -15,  -55,  -27,  -25,   -7,  -37,
+            1,  -25,  -13,  -58,  -37,  -27,   23,   28,
+          -48,   24,   -8,  -87,   -9,  -60,   40,   36,
     ]
     EG_KING_TABLE = [
-          -76,  -10,    7,    7,   14,   40,   29,  -42,
-            6,   42,   39,   42,   42,   63,   48,   28,
-           27,   42,   48,   40,   45,   70,   69,   38,
-           17,   47,   49,   52,   51,   51,   51,   27,
+          -60,   22,   39,   39,   46,   72,   61,  -34,
+            6,   74,   71,   74,   74,   87,   80,   36,
+           27,   74,   80,   72,   69,   86,   85,   54,
+           17,   55,   57,   60,   51,   51,   51,   27,
             0,   21,   33,   39,   36,   31,   16,    0,
           -16,    0,   18,   27,   22,   11,   -7,  -17,
-          -28,   -6,   -1,   10,    8,    1,  -23,  -42,
-          -47,  -43,  -21,  -13,  -48,  -19,  -49,  -68,
+          -28,   -6,   -1,   10,    8,    1,  -31,  -50,
+          -47,  -51,  -29,  -13,  -56,  -19,  -65,  -92,
     ]
 
     # Material values -- RE-TUNED for v53 by texel.py on 4,000,000 quiet
@@ -1301,7 +1322,7 @@ class Engine:
     # Re-tuning is `python3 texel.py extract && python3 texel.py tune`.
     MG_VALUES = {
         chess.PAWN: 89, chess.KNIGHT: 306, chess.BISHOP: 322,
-        chess.ROOK: 450, chess.QUEEN: 1076, chess.KING: 0,
+        chess.ROOK: 450, chess.QUEEN: 1068, chess.KING: 0,
     }
     EG_VALUES = {
         chess.PAWN: 120, chess.KNIGHT: 342, chess.BISHOP: 356,
@@ -1421,9 +1442,21 @@ class Engine:
     # Tempo is high by convention -- WDL tuning consistently finds 15-20 optimal.
     TEMPO = 8
 
+    # FI-86: these three and MOBILITY_WEIGHT below are the eval's last
+    # PHASE-FLAT scalars -- every neighbouring term is already tapered. A
+    # doubled pawn is a far worse liability in a pawn endgame than at move
+    # 15, so a single number is missing resolution the tuner can use. Each
+    # is now an MG/EG twin blended on the phase, exactly like
+    # KING_RING_ATTACK_MG/_EG. Both halves ship EQUAL, which is
+    # arithmetically identical to the old flat value (integer-exact), so
+    # this build reproduces the v54 bench signature and ladder pins; the
+    # POINT is that texel.py can now move the halves apart.
     DOUBLED_PAWN = 23
     ISOLATED_PAWN = 14
     BACKWARD_PAWN = 13
+    DOUBLED_PAWN_EG = 23
+    ISOLATED_PAWN_EG = 14
+    BACKWARD_PAWN_EG = 13
     # Penalty for a piece pinned (absolutely, to its own king): it cannot move
     # off the pin line, so its real mobility/usefulness is far below what the
     # raw mobility term credits it, and it is a standing tactical target.
@@ -1441,6 +1474,9 @@ class Engine:
     # Knight kept at 4 -- tuner found 1, but WDL signal for knight mobility is
     # thin in the middlegame; 4 is consistent with other HCE engines.
     MOBILITY_WEIGHT = {
+        chess.KNIGHT: 6, chess.BISHOP: 5, chess.ROOK: 3, chess.QUEEN: 3,
+    }
+    MOBILITY_WEIGHT_EG = {
         chess.KNIGHT: 6, chess.BISHOP: 5, chess.ROOK: 3, chess.QUEEN: 3,
     }
     # King-safety MG/EG split: attack/shield matter in MG only; in EG the king
@@ -1700,6 +1736,17 @@ class Engine:
         # attr (CANTWIN class attr). OFF by default until its own A/B slot.
         self.use_cantwin = False
 
+        # FI-76 (WB-01) wrong-bishop rook-pawn dead draw: CW-01's sibling
+        # truth-gate for the case where the strong side HAS pawns and still
+        # cannot win -- all of them on one rook file, at most one bishop and
+        # it does not control that promotion corner, and a bare defending
+        # king already sitting on it (zero bishops qualifies: bare rook
+        # pawns are drawn too, and gating only the one-bishop case pays the
+        # search to SHED the bishop). Ported bit-exactly to csearch.c;
+        # cengine mirrors this attr (WRONGBISHOP). OFF = v54 eval exactly;
+        # built 2026-07-23, screen PENDING.
+        self.use_wrongbishop = False
+
         # "Trade down when ahead" eval term (see SIMPLIFY_*). A/B verdict: ON
         # scored 47.9% (-14 Elo) over 800 games @0.8s -> it HURTS (likely trades
         # into drawn endings), so OFF. (A noisy 100-game/0.15s run had said +;
@@ -1720,6 +1767,10 @@ class Engine:
         # mobility weights as before (no retune yet); subtle eval shift,
         # principled and standard. A/B via this toggle.
         self.use_mobility_area = True
+        # FI-85: battery-transparent slider mobility. False = v54
+        # byte-exact. SCREEN-KILLED 2026-07-23 (-4.52 +/-15.3 @2k); see
+        # cengine.USE_XRAY_MOB for the verdict.
+        self.use_xray_mob = False
 
         # #3.x: threats. Two coarse classes (cheap, big signal):
         #   pawn  -> any enemy non-pawn piece sitting on a square attacked
@@ -2062,6 +2113,14 @@ class Engine:
             self.KING_RING_ATTACK_MG, self.KING_RING_ATTACK_EG,
             self.KING_OPEN_FILE_MG,  self.KING_OPEN_FILE_EG,
         )
+        # FI-86: the EG half of mobility, AFTER set_mobility_params (which
+        # defaults EG := MG, i.e. the pre-FI-86 flat weights).
+        _eval_lib.set_mobility_eg(
+            self.MOBILITY_WEIGHT_EG[chess.KNIGHT],
+            self.MOBILITY_WEIGHT_EG[chess.BISHOP],
+            self.MOBILITY_WEIGHT_EG[chess.ROOK],
+            self.MOBILITY_WEIGHT_EG[chess.QUEEN],
+        )
         # #2.5: sync the rook_files + bishop_pair + mopup constants.
         _eval_lib.set_positional_params(
             self.ROOK_OPEN_FILE, self.ROOK_SEMIOPEN_FILE,
@@ -2077,6 +2136,7 @@ class Engine:
             _eval_lib.set_rook_on_7th_params(0, 0)
         # #3.x: sync mobility-area toggle.
         _eval_lib.set_mobility_area(1 if self.use_mobility_area else 0)
+        _eval_lib.set_xray_mob(1 if getattr(self, 'use_xray_mob', False) else 0)  # FI-85
         # #3.x: sync threats (0/0 if the toggle is off).
         if self.use_threats:
             _eval_lib.set_threats_params(self.THREAT_PAWN, self.THREAT_MINOR)
@@ -2121,6 +2181,7 @@ class Engine:
         # tunable eval scalars (uci TUNABLE_EVAL)
         "ROOK_OPEN_FILE", "ROOK_SEMIOPEN_FILE", "TEMPO",
         "DOUBLED_PAWN", "ISOLATED_PAWN", "BACKWARD_PAWN",
+        "DOUBLED_PAWN_EG", "ISOLATED_PAWN_EG", "BACKWARD_PAWN_EG",  # FI-86
         "BISHOP_PAIR_MG", "BISHOP_PAIR_EG",
         "KING_RING_ATTACK_MG", "KING_RING_ATTACK_EG",
         "KING_SHIELD_MG", "KING_SHIELD_EG",
@@ -2408,6 +2469,31 @@ class Engine:
                 nn = chess.popcount(board.knights & strong)
                 if nb + nn <= 1 or (nb == 0 and nn == 2):
                     score = 0
+        if self.use_wrongbishop and score != 0:        # FI-76 (see __init__)
+            white_strong = score > 0
+            strong = board.occupied_co[white_strong]
+            weak = board.occupied_co[not white_strong]
+            bb = board.bishops & strong
+            sp = board.pawns & strong
+            if (not (weak & ~board.kings)                 # bare defender
+                    and not ((board.rooks | board.queens
+                              | board.knights) & strong)
+                    and chess.popcount(bb) <= 1 and sp):
+                if not (sp & ~chess.BB_FILE_A):
+                    cfile = 0
+                elif not (sp & ~chess.BB_FILE_H):
+                    cfile = 7
+                else:
+                    cfile = -1
+                if cfile >= 0:
+                    corner = (56 + cfile) if white_strong else cfile
+                    bsq = chess.lsb(bb) if bb else -1   # 0 bishops qualifies
+                    if bsq < 0 or ((((bsq >> 3) ^ bsq) & 1)
+                                   != (((corner >> 3) ^ corner) & 1)):
+                        ksq = chess.lsb(board.kings & weak)
+                        if max(abs((ksq & 7) - (corner & 7)),
+                               abs((ksq >> 3) - (corner >> 3))) <= 1:
+                            score = 0
         return score
 
     def _eval_base_white(self, board):
@@ -2843,6 +2929,19 @@ class Engine:
             self._eval_memo[key] = v
         return v
 
+    def _mob_blend(self, pt, phase):
+        """FI-86: phase-blended mobility weight for piece type `pt`.
+
+        Same form and the same clamp as eval_c.c's per-call blend, so the
+        Python fallback and the C path agree. MG == EG returns the flat
+        weight exactly (integer arithmetic), which is why arming both halves
+        equal reproduces the v54 bench signature.
+        """
+        pm = self.PHASE_MAX if self.PHASE_MAX > 0 else 1
+        ph = 0 if phase < 0 else (pm if phase > pm else phase)
+        return (self.MOBILITY_WEIGHT[pt] * ph
+                + self.MOBILITY_WEIGHT_EG[pt] * (pm - ph)) // pm
+
     def _is_endgame(self, board):
         phase = (((board.knights | board.bishops).bit_count()) * 1
                  + (board.rooks.bit_count()) * 2
@@ -2862,23 +2961,30 @@ class Engine:
         key = (wp, bp)
         cached = self._pawn_cache.get(key)
         if cached is None:
-            base = 0
+            # FI-86: doubled/isolated/backward are tapered now, so the
+            # penalty sum is phase-DEPENDENT and can no longer be cached
+            # pre-multiplied. Cache the signed COUNTS instead and apply the
+            # blended scalars at read -- and note this mirrors C exactly:
+            # csearch.c blends each POSITIVE scalar and then multiplies, so
+            # blending a pre-summed (negative) total here would truncate in a
+            # different place AND floor instead of truncate on negatives.
+            dbl_n = iso_n = bwd_n = 0
             passers = []
             for own, opp, sign, color in ((wp, bp, 1, chess.WHITE),
                                           (bp, wp, -1, chess.BLACK)):
                 for f in range(8):
                     c = (own & self._file_bb[f]).bit_count()
                     if c > 1:                              # doubled
-                        base -= sign * self.DOUBLED_PAWN * (c - 1)
+                        dbl_n += sign * (c - 1)
                 passed = self._passed_mask[color]
                 support = self._support_mask[color]
                 stopatk = self._stop_atk_mask[color]
                 for sq in chess.scan_forward(own):
                     f = sq & 7
                     if not (own & self._adj_files_bb[f]):  # isolated
-                        base -= sign * self.ISOLATED_PAWN
+                        iso_n += sign
                     elif not (own & support[sq]) and (opp & stopatk[sq]):
-                        base -= sign * self.BACKWARD_PAWN  # backward
+                        bwd_n += sign                      # backward
                     if not (opp & passed[sq]):             # passed
                         r = sq >> 3
                         passers.append(
@@ -2888,8 +2994,17 @@ class Engine:
             # refills quickly and correctness is unaffected: pure function).
             if len(self._pawn_cache) >= self.PAWN_CACHE_MAX:
                 self._pawn_cache.clear()
-            self._pawn_cache[key] = cached = (base, passers)
-        score, passers = cached
+            self._pawn_cache[key] = cached = (dbl_n, iso_n, bwd_n, passers)
+        dbl_n, iso_n, bwd_n, passers = cached
+        # FI-86 blend: same form as csearch.c's build_pawn_taper, on the same
+        # positive scalars, so the two agree bit for bit. MG == EG collapses
+        # to the flat value exactly -- the byte-identity claim for v54.
+        _pm = self.PHASE_MAX if self.PHASE_MAX > 0 else 1
+        _ph = 0 if phase < 0 else (_pm if phase > _pm else phase)
+        _d = (self.DOUBLED_PAWN * _ph + self.DOUBLED_PAWN_EG * (_pm - _ph)) // _pm
+        _i = (self.ISOLATED_PAWN * _ph + self.ISOLATED_PAWN_EG * (_pm - _ph)) // _pm
+        _b = (self.BACKWARD_PAWN * _ph + self.BACKWARD_PAWN_EG * (_pm - _ph)) // _pm
+        score = -(_d * dbl_n + _i * iso_n + _b * bwd_n)
         taper = self._passed_taper[phase]   # V-06: precomputed [rel] row
         for sign, rel in passers:
             score += sign * taper[rel]
@@ -2950,7 +3065,7 @@ class Engine:
         b_minor_atk = 0
         for pt, bb in ((chess.KNIGHT, knights), (chess.BISHOP, bishops),
                        (chess.ROOK, rooks), (chess.QUEEN, queens)):
-            wt = self.MOBILITY_WEIGHT[pt]
+            wt = self._mob_blend(pt, phase)          # FI-86
             is_minor = pt in (chess.KNIGHT, chess.BISHOP)
             for sq in chess.scan_forward(bb & occ_w):
                 a = am(sq)
@@ -3074,6 +3189,10 @@ class Engine:
         b_minor_atk = 0
         for pt, bb in ((chess.KNIGHT, knights), (chess.BISHOP, bishops),
                        (chess.ROOK, rooks), (chess.QUEEN, queens)):
+            # FI-86: NOT tapered here -- _mobility_bb has no callers (the
+            # live low-phase path is mobility_king_safety), so tapering it
+            # would mean adding a phase arg to dead code. If it is ever
+            # revived, take the weight from _mob_blend(pt, phase).
             w = self.MOBILITY_WEIGHT[pt]
             is_minor = pt in (chess.KNIGHT, chess.BISHOP)
             for sq in chess.scan_forward(bb & occ_w):
