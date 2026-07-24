@@ -30,7 +30,7 @@ representation, move generation and legality.
 <td><img src="docs/speed_progression.svg" width="100%" alt="Single-thread speed as a multiple of v31, ending at 1.61x"/></td>
 </tr>
 <tr>
-<td><img src="docs/odds_knight.svg" width="100%" alt="Knight-odds win rate vs full-strength Stockfish 18: 76.75 percent at v31 rising to 100 percent at v54"/></td>
+<td><img src="docs/odds_knight.svg" width="100%" alt="Odds win rate vs full-strength Stockfish 18: knight 76.75 percent at v31 rising to 100 percent at v54, pawn starting at 84.9 percent at v54"/></td>
 <td><img src="docs/odds_ladder.svg" width="100%" alt="Odds it can spot full-strength Stockfish 18 and still win: queen 100, rook 95.5, knight 100, pawn 84.9 percent"/></td>
 </tr>
 </table>
@@ -40,7 +40,8 @@ representation, move generation and legality.
   The v30→v31 C rewrite (~34× faster, +215 odds-derived) is off the left edge,
   so v31 is the honest zero.
 - **Bottom row — vs Stockfish 18 at full strength.** The external check: knight
-  odds climbing **76.75 → 100%** (v31 → v54, now saturated), and the handicap
+  odds climbed **76.75 → 100%** (v31 → v54) and closed, with **pawn odds**
+  (84.9%) taking over as the live rung, and the handicap
   ladder — it spots SF a **queen** (100%), **rook** (95.5%), **knight** (100%)
   or **pawn** (84.9%) and still wins. Pawn odds is the only rung with headroom
   left, so it is the yardstick now.
