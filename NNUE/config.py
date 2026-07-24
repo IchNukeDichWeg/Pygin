@@ -56,6 +56,29 @@ LABEL_MAX_PLIES = 300    # game cap -> adjudicated draw
 LABEL_ADJ_CP = 1500      # early win adjudication: |score| >= this ...
 LABEL_ADJ_STREAK = 6     # ... for this many consecutive plies
 
+
+def engine_fingerprint(eng):
+    """One-line build+config fingerprint of a constructed engine.
+
+    gen_data prints it once at generation, verify_labels once at audit.
+    The hmc==0 reproduction gate only holds when the two MATCH: a git pull,
+    a rebuild, or a different toggle between generating and auditing makes
+    the search a different function, and the gate then reports mismatches
+    that look like corruption but are just version skew. Printing it turns
+    that failure from mysterious into obvious.
+    """
+    import subprocess
+    try:
+        head = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=REPO_DIR,
+            capture_output=True, text=True, timeout=5).stdout.strip() or "?"
+    except Exception:
+        head = "?"
+    return (f"engine fp: git={head} abi={eng._lib.csearch_abi()} "
+            f"cycle={int(eng.CYCLE_DETECT)} root_lmr={int(eng.ROOT_LMR)} "
+            f"nnue={int(eng.USE_NNUE)}")
+
+
 # --- default paths --------------------------------------------------------
 DATASETS_DIR = os.path.join(NNUE_DIR, "datasets")
 NETS_DIR = os.path.join(NNUE_DIR, "nets")

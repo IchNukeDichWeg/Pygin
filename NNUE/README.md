@@ -3,13 +3,15 @@
 The complete NNUE infrastructure for Pygin: data generation, PyTorch
 trainer, quantized export, C inference (accumulator + NEON/scalar forward),
 and hybrid integration behind one master toggle. **Everything is dormant by
-default** — `cengine.USE_NNUE = False` is byte-exact v50+armed-defaults
-(byte-exact vs the CURRENT confirmed defaults; the bench signature
-re-baselines per ship -- v53 = `1,122,753` as of 2026-07-22. The
-build-out itself was verified against the v50-era 1,083,772/1,508,415
-pair on 2026-07-18).
+default** — with `cengine.USE_NNUE = False` the search is byte-exact vs
+the same build without any of this. The bench signature is NOT a fixed
+number to quote: it re-baselines at every ship and every eval change, so
+verify by COMPARING (run `bench` before and after an NNUE-side change —
+it must not move), never against a number copied from a doc. Reference
+points: the build-out was verified at 1,083,772/1,508,415 (v50 era,
+2026-07-18) and again at 1,122,753 (v53, 2026-07-22).
 
-The frozen architecture/format contract is **DESIGN_nnue.md → "Phase 1 spec
+The frozen architecture/format contract is **docs/DESIGN_nnue.md → "Phase 1 spec
 (FROZEN)"**. Summary: KA8T feature set (8 king buckets, horizontal mirror,
 12 planes, IN=6144/perspective; plain-768 = same code path at KB=1) + T16
 threat encoding (16 int8 aggregate scalars from one attack-union pass),
@@ -65,7 +67,7 @@ Opening/coverage modes (mixable into a multi-slice dataset via
 UHO-book + endgame slices):
 
 ```
---book UHO_Lichess_4852_v1.epd     # start games from random book lines
+--book data/UHO_Lichess_4852_v1.epd   # start games from random book lines
                                    # (O(1) memory: random-offset sampling)
 --endgame [--eg-men 14]            # endgame harvest: early win adjudication
                                    # OFF (games reach real endgames), record
@@ -112,8 +114,9 @@ cengine.Engine.NNUE_FILE = "NNUE/nets/toy.nnue"     # default already this
 ```
 
 `cuci.py`'s fingerprint echoes `use_nnue=` for PGN forensics. Toggle OFF is
-byte-exact vs the current confirmed defaults; run `bench` (v53:
-1,122,753) + `selftest.py` after any change.
+byte-exact vs the same build with it off; after any NNUE-side change run
+`bench` and `selftest.py` and confirm the signature is UNCHANGED from
+before the change (the absolute value moves with every engine ship).
 
 ## Net naming & retirement (mirrors Old Engine/)
 
@@ -127,14 +130,13 @@ repo) — only the Old NNUE README is tracked.
 
 ## Generating real training data (Phase 6, the next step)
 
-On a generation server (~50M positions, see DESIGN_nnue.md for the
+On a generation server (~50M positions, see docs/DESIGN_nnue.md for the
 rationale; TC-free — the labeling budget is fixed NODES, so machine
 speed changes wall clock only, never label quality; split across
 servers with different --seed values and merge):
 
 ```
-nohup python3 NNUE/gen_data.py NNUE/datasets/main50m.pygdata --positions 50000000 --nodes 5000 --workers 95 --seed 1 > gen50m.log 2>&1 &
-tail -f gen50m.log
+python3 NNUE/gen_data.py NNUE/datasets/random750k.pygdata --games 750000 --nodes 5000 --workers 95 --seed 1
 ```
 
 Wall-clock: measured ~70 positions/s per worker locally (~1 s/game at
@@ -148,7 +150,7 @@ source: existing A/B battle logs convert via `logs_to_pygdata.py` (deeper
 Then: `verify_labels.py` on the result, train with `--epochs 20`-ish
 (watch `loss_curve.csv`; val must fall and not diverge), export, run all
 four `verify_c.py` gates + `selfplay_smoke.py`, and only then the 2k
-screen per DESIGN_nnue.md Phase 6.
+screen per docs/DESIGN_nnue.md Phase 6.
 
 ## Measured numbers (2026-07-18, this Mac, toy net)
 

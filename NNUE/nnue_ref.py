@@ -51,8 +51,44 @@ def extract_features(recs):
     occ = {1: recs["occ_w"].astype(np.uint64),
            0: (union & ~recs["occ_w"]).astype(np.uint64)}
 
+    # The piece scan does NOT depend on the perspective -- only the plane
+    # index, king bucket and square-orientation do. So unpack the bitboards
+    # ONCE (24 unpackbits calls instead of 48) and reuse the (row, square)
+    # pairs, their sort order and their per-row ranks for both perspectives.
+    all_rows, all_sqs, all_planes = [], [], []
+    for color in (1, 0):
+        for pt_i, f in enumerate(_PT_BBS):
+            rows, sqs = np.nonzero(_bits(recs[f] & occ[color]))
+            if len(rows) == 0:
+                continue
+            all_rows.append(rows)
+            all_sqs.append(sqs)
+            # plane as seen by the WHITE perspective; BLACK's is +6 mod 12
+            all_planes.append(np.full(len(rows), (0 if color == 1 else 6)
+                                      + pt_i, dtype=np.int64))
+
+    if all_rows:
+        rows = np.concatenate(all_rows)
+        sqs = np.concatenate(all_sqs).astype(np.int64)
+        plane_w = np.concatenate(all_planes)
+        # Scatter into the next free slot per row, VECTORIZED: stable-sort
+        # the pairs by row, then a row's k-th pair gets slot k (rank =
+        # position - row's start). The per-pair Python loop this replaces
+        # cost 17 s per million records -- 23 min/epoch at 82M, ~8 h over a
+        # 20-epoch run. Slot ORDER within a row is irrelevant: the model
+        # sums the embeddings and PAD_IDX embeds to zero.
+        order = np.argsort(rows, kind="stable")
+        rows, sqs, plane_w = rows[order], sqs[order], plane_w[order]
+        counts = np.bincount(rows, minlength=B)
+        starts = np.zeros(B, dtype=np.int64)
+        np.cumsum(counts[:-1], out=starts[1:])
+        rank = np.arange(len(rows), dtype=np.int64) - starts[rows]
+        keep = rank < 32           # >32 men is impossible; belt-and-braces
+        k_rows, k_rank = rows[keep], rank[keep]
+    else:
+        rows = sqs = plane_w = keep = k_rows = k_rank = None
+
     out = {}
-    sq = np.arange(64, dtype=np.int64)
     for persp in (1, 0):                                   # WHITE=1, BLACK=0
         kb = _bits(recs["kings"] & occ[persp])
         ksq = np.argmax(kb, axis=1)                        # kingless -> 0
@@ -68,19 +104,11 @@ def extract_features(recs):
 
         xor_row = (0 if persp == 1 else 56) ^ np.where(mirror, 7, 0)  # [B]
         idx = np.full((B, 32), PAD_IDX, dtype=np.int64)
-        fill = np.zeros(B, dtype=np.int64)
-        for color in (1, 0):
-            for pt_i, f in enumerate(_PT_BBS):
-                plane = (0 if color == persp else 6) + pt_i
-                rows, sqs = np.nonzero(_bits(recs[f] & occ[color]))
-                if len(rows) == 0:
-                    continue
-                feats = (bucket[rows] * 768 + plane * 64
-                         + (sqs ^ xor_row[rows]))
-                # scatter into the next free slot per row
-                for r, ft in zip(rows, feats):
-                    idx[r, fill[r]] = ft
-                    fill[r] += 1
+        if all_rows:
+            plane = plane_w if persp == 1 else (plane_w + 6) % 12
+            feats = (bucket[rows] * 768 + plane * 64
+                     + (sqs ^ xor_row[rows]))
+            idx[k_rows, k_rank] = feats[keep]
         out[persp] = idx
     return out[1], out[0]
 
