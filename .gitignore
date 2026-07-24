@@ -188,3 +188,11 @@ nnue_readme.md
 # confirmed tune lands in engine.py by hand.
 texel_positions.npy
 texel_positions.npz
+
+# MC5 GameGuardian scripts (local-only): fetch output, archives and hand-edits.
+# gg_shim.lua is hand-written source and the only copy of the shims --
+# fetch_gg.py fails without it. Both cases listed: git matches these
+# case-insensitively here, but not on a case-sensitive clone.
+gg_shim.lua
+*mc5*.lua
+*MC5*.lua
