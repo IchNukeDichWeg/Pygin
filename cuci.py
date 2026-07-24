@@ -60,8 +60,16 @@ import math
 # cp score + game phase into Stockfish-style win/draw/loss permille, so the extension's WDL readout
 # works on pygin too. Local-only (pygin is not in the public fork). Refit via fit_wdl_model.py; do
 # not hand-edit the coefficients.
-_WDL_AS = [-98.13639812302142, 391.82136857997517, -477.12164229046346, 281.4266967889727]
-_WDL_BS = [91.02341860207012, -0.9146017347112857, -104.77929399825382, 113.00865534953766]
+#
+# REFIT 2026-07-24 on the v54 ERA ONLY (`--min-era 54`, 208,822 samples).
+# The previous coefficients were fitted across the whole C era, which mixes
+# eval scales -- v53's retune moved the piece values ~10%, so a v52-era cp and
+# a v54-era cp of the same number do not describe the same position, and the
+# fit averaged two scales the engine never uses. Era-pure and smaller beats
+# larger and blended here. Caveat: this corpus is 2 logs / ~2,000 games at one
+# TC, so widen it (more v54+ logs, then refit) before leaning on the tails.
+_WDL_AS = [283.6223990802684, -298.43358870346293, -89.46627098787799, 223.37690242018567]
+_WDL_BS = [350.6355193809549, -461.1351016625684, 139.091857258405, 71.16052125818123]
 _WDL_PHASE_MAX = 24
 _WDL_PHASE_CLAMP_MIN = 6
 
@@ -627,20 +635,12 @@ def main():
                 out("option name OwnBook type check default true")
                 out("option name BookFile type string default <empty>")
                 out("option name UseTB type check default false")
-                # P-26 tuning knobs (chess-tuning-tools): defaults = shipped
-                # v34 values; percent-scaled where the native value is
-                # fractional. Ranges are the tuner's search space.
-                out("option name RFPMargin type spin default 80 min 20 max 300")
-                out("option name RFPDepth type spin default 6 min 2 max 12")
-                out("option name FutMargin type spin default 150 min 40 max 400")
-                out("option name DeltaMargin type spin default 200 min 50 max 500")
-                out("option name LMPScale type spin default 100 min 40 max 250")
-                out("option name LMRDiv type spin default 200 min 120 max 350")
-                out("option name NullBase type spin default 2 min 1 max 4")
-                out("option name NullDiv type spin default 6 min 3 max 12")
-                out("option name AspDelta type spin default 30 min 10 max 120")
-                out("option name SoftStable type spin default 40 min 20 max 70")
-                out("option name SoftUnstable type spin default 80 min 50 max 130")
+                # P-26 tuning knobs are NOT advertised (2026-07-24): they are
+                # search internals with no user-facing meaning, and eleven
+                # extra spins in every GUI's option dialog is noise. The
+                # setoption handlers below still accept them, so
+                # chess-tuning-tools and any script that sets them by name
+                # keeps working -- they are hidden, not removed.
                 out("option name Premove type check default false")
                 out("option name UCI_ShowWDL type check default true")
                 out("option name Ponder type check default false")
