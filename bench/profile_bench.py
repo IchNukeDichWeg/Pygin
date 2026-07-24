@@ -21,6 +21,10 @@ the NPS delta is the measurement). Use --cprofile only when you need exact
 call counts (e.g. "how many dict.get calls") -- it instruments every call so
 its NPS numbers are meaningless.
 """
+# Path shim: this script moved into a subfolder on 2026-07-24 but
+# still imports the engine modules that live at the repo root.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 import argparse
 import collections
 import datetime

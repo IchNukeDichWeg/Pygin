@@ -56,6 +56,10 @@ storm, king-shelter, simplify) are deliberately absent: tuning a weight that
 is multiplied by zero fits noise. MOPUP_* and PHASE_MAX are structural, not
 weights, and stay fixed.
 """
+# Path shim: this script moved into a subfolder on 2026-07-24 but
+# still imports the engine modules that live at the repo root.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 
 import argparse
 import ctypes
@@ -77,8 +81,13 @@ import interruptible
 # ====================================================================== #
 #  CONFIG
 # ====================================================================== #
-POSITIONS_NPY   = "texel_positions.npy"
-DEFAULT_OUT     = "engine_tuned.py"
+# This file moved to tuning/ on 2026-07-24. The positions set stays at the
+# repo ROOT (it is large, gitignored, and downloaded per machine); the tuned
+# candidate is written back to the TRACKED tuning/engine_tuned.py rather than
+# to whatever the cwd happens to be.
+_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+POSITIONS_NPY   = _os.path.join(_ROOT, "texel_positions.npy")
+DEFAULT_OUT     = _os.path.join(_ROOT, "tuning", "engine_tuned.py")
 SKIP_PLIES      = 6        # book positions repeat across games -- drop them
 MAX_PER_GAME    = 12       # evenly spaced, to decorrelate within a game
 TARGET_POSITIONS = 1_000_000
@@ -830,7 +839,7 @@ def _write_back(dst, enable_toggles=()):
         sys.exit(f"write-back: {name} not found in engine.py -- refusing to "
                  f"write a partially-tuned file")
 
-    shutil.copy("engine.py", dst)
+    shutil.copy(_os.path.join(_ROOT, "engine.py"), dst)
     if enable_toggles:
         # The weights only reach the C eval when the toggle is on -- writing
         # fitted values into a file that still says `use_outpost = False`

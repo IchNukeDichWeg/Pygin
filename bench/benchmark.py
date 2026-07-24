@@ -24,6 +24,10 @@ Limit types:
               spent, mirroring cuci's `go movetime` rule (B-05).
     nodes  -- node-limited search; value = node count (C-side abort, FB-09).
 """
+# Path shim: this script moved into a subfolder on 2026-07-24 but
+# still imports the engine modules that live at the repo root.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 import argparse
 import statistics
 import sys

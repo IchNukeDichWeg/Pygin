@@ -11,7 +11,9 @@ visible to the slider-attack helpers in movegen.c (#2.1 / #2.2).
 """
 import platform, subprocess, sys, os
 
-here = os.path.dirname(os.path.abspath(__file__))
+# C sources and the built .so stay at the repo ROOT; this builder moved
+# into scripts/ on 2026-07-24.
+here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 srcs = [os.path.join(here, 'movegen.c'), os.path.join(here, 'Constants.c')]
 out = os.path.join(here, 'movegen.so')
 # C-03/C-04: -O3 + host-core tuning (see eval_build.py's note).

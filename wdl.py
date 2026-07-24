@@ -1,5 +1,5 @@
 """
-wdl.py -- shared W/D/L prediction from the fitted model (wdl_model.json).
+wdl.py -- shared W/D/L prediction from the fitted model (data/wdl_model.json).
 
     from wdl import wdl_white
     w, d, l = wdl_white(score_white_cp, board)   # percentages, White's view
@@ -10,7 +10,7 @@ P(White win) = model(+cp), P(Black win) = model(-cp) and the draw is the
 remainder (clamped at 0 and renormalised -- the low-phase fit can put the
 two win probabilities slightly above 1 combined; see fit_wdl_model.py's
 phase_clamp_min note). Always White's perspective, so the numbers never
-flip with the side to move. Returns None when wdl_model.json is missing.
+flip with the side to move. Returns None when data/wdl_model.json is missing.
 
 Mate-convention scores (|score| >= 999_000, engine.py's MATE_THRESHOLD)
 short-circuit to 100/0/0. The cached model is revalidated against the
@@ -24,7 +24,11 @@ import math
 import os
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
-_MODEL_PATH = os.path.join(_DIR, "wdl_model.json")
+# data/ since the 2026-07-24 reshuffle; the bare _DIR fallback keeps the
+# Old Engine/<N>/ and Tuned/ flat snapshots working.
+_MODEL_PATH = os.path.join(_DIR, "data", "wdl_model.json")
+if not os.path.exists(_MODEL_PATH):
+    _MODEL_PATH = os.path.join(_DIR, "wdl_model.json")
 _MATE_THRESHOLD = 999_000
 
 _model = ["unloaded", None]          # [model dict | None, file mtime]
@@ -32,7 +36,7 @@ _model = ["unloaded", None]          # [model dict | None, file mtime]
 
 def _load():
     """Cached model, revalidated against the file's mtime on every call --
-    a refit (fit_wdl_model.py rewriting wdl_model.json) is picked up by
+    a refit (tuning/fit_wdl_model.py rewriting data/wdl_model.json) is picked up by
     live hosts automatically, no restart or reload() needed."""
     try:
         mtime = os.stat(_MODEL_PATH).st_mtime
