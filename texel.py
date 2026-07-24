@@ -684,6 +684,7 @@ def cmd_tune(a):
                             break
                 cur_loss = _loss(pool, nchunks, cur, k)
                 start_loss = cur_loss
+                round_best, stale = [float("inf")], 0   # --patience state
                 print(f"\n--- restart {restart + 1}/{a.restarts} "
                       f"({'shipped values' if restart == 0 else 'jittered start'}), "
                       f"train {cur_loss:.6f} ---")
@@ -723,6 +724,15 @@ def cmd_tune(a):
                           f"({changed:>2} moved, {time.time() - t0:.0f}s){flag}")
                     if not changed and delta == min(a.deltas):
                         print("  converged")
+                        break
+                    # Early stop on VALIDATION, not train: past the coarse
+                    # phase the descent keeps improving train while val turns
+                    # around, and those rounds are pure wall-clock.
+                    stale = 0 if vloss < round_best[0] else stale + 1
+                    round_best[0] = min(round_best[0], vloss)
+                    if a.patience and stale >= a.patience:
+                        print(f"  early stop: {stale} rounds without a "
+                              f"validation improvement (best {round_best[0]:.6f})")
                         break
                 results.append((restart, start_loss, cur_loss, vloss))
 
@@ -1160,6 +1170,12 @@ def main():
     t.add_argument("--restarts", type=int, default=1,
                    help="independent descents from different starting points, "
                         "keeping the best on held-out data (default 1)")
+    t.add_argument("--patience", type=int, default=2,
+                   help="stop a descent after N consecutive rounds with no "
+                        "validation improvement (default 2; 0 disables). The "
+                        "fine-delta rounds OVERFIT -- the 2026-07-24 PST run "
+                        "bottomed on val at round 4 and got worse through "
+                        "round 12 while train kept falling.")
     t.add_argument("--val-frac", type=float, default=0.2,
                    help="fraction held out to detect overfitting (default 0.2)")
     t.add_argument("--deltas", type=int, nargs="+", default=list(DEFAULT_DELTAS),
