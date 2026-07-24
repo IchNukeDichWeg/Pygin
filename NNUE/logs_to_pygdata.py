@@ -203,10 +203,19 @@ def main():
     lib = load_threat_lib()
     seen = set()
     stats = {"games": 0, "skipped_games": 0, "desync_games": 0,
-             "positions": 0}
+             "positions": 0, "unreadable": 0}
     shards = []
     for i, p in enumerate(paths):
-        rows = convert_log(p, args.allow, lib, seen, stats)
+        try:
+            rows = convert_log(p, args.allow, lib, seen, stats)
+        except OSError as ex:
+            # A whole harvest is 40-90 min over dozens of files; one
+            # unreadable input (deleted mid-run, permissions, bad mount)
+            # must not throw away everything converted so far.
+            print(f"[{i+1}/{len(paths)}] SKIPPED {os.path.basename(p)}: "
+                  f"{ex.__class__.__name__} -- {ex}", flush=True)
+            stats["unreadable"] += 1
+            rows = []
         sp = f"{args.out}.shard{i}"
         write_pygdata(sp, np.stack(rows) if rows else
                       np.zeros(0, dtype=RECORD_DTYPE))
@@ -222,6 +231,9 @@ def main():
     print(f"  skipped {stats['skipped_games']:,} error/unparseable games, "
           f"{stats['desync_games']:,} replay desyncs; global dedup "
           f"{len(seen):,} unique positions kept")
+    if stats["unreadable"]:
+        print(f"  WARNING: {stats['unreadable']} log file(s) could not be "
+              "read at all and contributed nothing (see the SKIPPED lines)")
 
 
 if __name__ == "__main__":
