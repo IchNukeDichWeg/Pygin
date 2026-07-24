@@ -16,7 +16,14 @@
 #include "Constants.h"   /* #2.1/#2.2: magic tables + INBETWEEN_BITBOARDS */
 
 /* ---------- tuning constants (overridden by set_mobility_params) ---------- */
-static int MOB_N = 4, MOB_B = 3, MOB_R = 2, MOB_Q = 1;
+/* FI-86: the four mobility weights are TAPERED (MG/EG twins blended on the
+ * game phase, exactly like SHIELD/RING/OPEN below). Both halves equal is
+ * arithmetically identical to the old flat weight -- (v*p + v*(pm-p))/pm ==
+ * v exactly in integers -- which is the byte-identity argument for the
+ * first build. MOB_* below are the blended values, recomputed once per
+ * mobility_king_safety call rather than per piece. */
+static int MOB_N_MG = 4, MOB_B_MG = 3, MOB_R_MG = 2, MOB_Q_MG = 1;
+static int MOB_N_EG = 4, MOB_B_EG = 3, MOB_R_EG = 2, MOB_Q_EG = 1;
 int PHASE_MAX = 24;    /* FB-06: non-static -- csearch.c's taper reads it */
 static int SHIELD_MG = 5,  SHIELD_EG = 2;
 static int RING_MG   = 13, RING_EG   = 0;
@@ -119,11 +126,24 @@ void set_mobility_params(int mob_n, int mob_b, int mob_r, int mob_q,
                          int ring_mg,   int ring_eg,
                          int open_mg,   int open_eg)
 {
-    MOB_N = mob_n; MOB_B = mob_b; MOB_R = mob_r; MOB_Q = mob_q;
+    /* Legacy flat entry (abi <= 4): both halves take the same value, which
+     * reproduces the pre-FI-86 behaviour exactly. set_mobility_eg overrides
+     * the EG half afterwards; engine.py's sync calls both, in that order. */
+    MOB_N_MG = MOB_N_EG = mob_n; MOB_B_MG = MOB_B_EG = mob_b;
+    MOB_R_MG = MOB_R_EG = mob_r; MOB_Q_MG = MOB_Q_EG = mob_q;
     PHASE_MAX = phase_max;
     SHIELD_MG = shield_mg; SHIELD_EG = shield_eg;
     RING_MG   = ring_mg;   RING_EG   = ring_eg;
     OPEN_MG   = open_mg;   OPEN_EG   = open_eg;
+}
+
+/* FI-86: the EG half of the four mobility weights. Separate setter rather
+ * than widening set_mobility_params, so a host that never calls it keeps
+ * the flat behaviour (EG == MG) instead of silently zeroing the endgame. */
+void set_mobility_eg(int mob_n_eg, int mob_b_eg, int mob_r_eg, int mob_q_eg)
+{
+    MOB_N_EG = mob_n_eg; MOB_B_EG = mob_b_eg;
+    MOB_R_EG = mob_r_eg; MOB_Q_EG = mob_q_eg;
 }
 
 /* ---------- file masks (same layout as python-chess: a1=bit0, h8=bit63) -- */
@@ -278,6 +298,17 @@ int mobility_king_safety(
     uint64_t wring = (wksq >= 0) ? KING_ATT[wksq] : 0ULL;
     uint64_t bring = (bksq >= 0) ? KING_ATT[bksq] : 0ULL;
     int score      = 0;
+
+    /* FI-86: blend the four mobility weights ONCE per call, not per piece.
+     * Identical to the old flat constants while MG == EG (integer exact).
+     * Clamp phase the same way the callers do -- a phase above PHASE_MAX
+     * would otherwise extrapolate past the MG end of the taper. */
+    const int mob_pm = PHASE_MAX > 0 ? PHASE_MAX : 1;
+    const int mob_ph = phase < 0 ? 0 : (phase > mob_pm ? mob_pm : phase);
+    const int MOB_N = (MOB_N_MG * mob_ph + MOB_N_EG * (mob_pm - mob_ph)) / mob_pm;
+    const int MOB_B = (MOB_B_MG * mob_ph + MOB_B_EG * (mob_pm - mob_ph)) / mob_pm;
+    const int MOB_R = (MOB_R_MG * mob_ph + MOB_R_EG * (mob_pm - mob_ph)) / mob_pm;
+    const int MOB_Q = (MOB_Q_MG * mob_ph + MOB_Q_EG * (mob_pm - mob_ph)) / mob_pm;
     int w_ring_att = 0;
     int b_ring_att = 0;
     uint64_t t;
@@ -817,7 +848,9 @@ int see(uint64_t pawns, uint64_t knights, uint64_t bishops, uint64_t rooks,
  * exported signature or the semantics of an existing export change, so a
  * stale-but-loadable .so is rejected at load instead of silently
  * mis-evaluating. */
-int abi_version(void) { return 4; }   /* 2: C-18 folded mopup into
+int abi_version(void) { return 5; }   /* 2: C-18 folded mopup into
                                        *    mobility_king_safety at phase <= 6
                                        * 3: U-04 mobility_king_safety takes a
-                                       *    kings bitboard, not wksq/bksq ints */
+                                       *    kings bitboard, not wksq/bksq ints
+                                       * 4: FI-85 set_xray_mob
+                                       * 5: FI-86 set_mobility_eg */

@@ -1046,8 +1046,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (FI-76's set_wrongbishop is abi 28) -- bump with csearch_abi.
-        if lib.csearch_abi() < 28:
+        # (FI-86's csearch_set_pawn_eg is abi 29) -- bump with csearch_abi.
+        if lib.csearch_abi() < 29:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -1225,6 +1225,10 @@ class Engine:
             eng.MOPUP_MIN_ADV, eng.MOPUP_STRONG_CMD_WEIGHT,
             eng.MOPUP_STRONG_KING_WEIGHT,
         )
+        # FI-86: the EG halves, AFTER csearch_set_eval (which defaults them
+        # flat and is what builds the taper the first time).
+        lib.csearch_set_pawn_eg(eng.DOUBLED_PAWN_EG, eng.ISOLATED_PAWN_EG,
+                                eng.BACKWARD_PAWN_EG)
         # 3. contempt draw scoring.
         lib.csearch_set_draw(eng.CONTEMPT, eng.DRAW_AVOID_MARGIN)
         self.contempt = eng.CONTEMPT     # FB-34: fingerprint honesty (cuci

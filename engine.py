@@ -890,6 +890,8 @@ try:
     _eval_lib = ctypes.CDLL(_EVAL_C_PATH)
     _eval_lib.set_mobility_params.argtypes = [ctypes.c_int] * 11
     _eval_lib.set_mobility_params.restype = None
+    _eval_lib.set_mobility_eg.argtypes = [ctypes.c_int] * 4    # FI-86
+    _eval_lib.set_mobility_eg.restype = None
     _eval_lib.mobility_king_safety.argtypes = [
         ctypes.c_uint64, ctypes.c_uint64,   # occ_w, occ_b
         ctypes.c_uint64, ctypes.c_uint64,   # knights, bishops
@@ -948,7 +950,7 @@ try:
     # P-12: ABI handshake. Bump together with abi_version() in eval_c.c on
     # any export-signature or semantics change -- a stale-but-loadable .so
     # must be rejected here, not trusted silently.
-    _EVAL_C_ABI = 4      # 4: FI-85 set_xray_mob; 3: U-04 mobility_king_safety kings bb
+    _EVAL_C_ABI = 5      # 5: FI-86 set_mobility_eg; 4: FI-85 set_xray_mob; 3: U-04 kings bb
     _eval_lib.abi_version.restype = ctypes.c_int
     if _eval_lib.abi_version() != _EVAL_C_ABI:
         raise OSError(f"eval_c.so ABI {_eval_lib.abi_version()} != expected "
@@ -1440,9 +1442,21 @@ class Engine:
     # Tempo is high by convention -- WDL tuning consistently finds 15-20 optimal.
     TEMPO = 8
 
-    DOUBLED_PAWN = 23
-    ISOLATED_PAWN = 14
+    # FI-86: these three and MOBILITY_WEIGHT below are the eval's last
+    # PHASE-FLAT scalars -- every neighbouring term is already tapered. A
+    # doubled pawn is a far worse liability in a pawn endgame than at move
+    # 15, so a single number is missing resolution the tuner can use. Each
+    # is now an MG/EG twin blended on the phase, exactly like
+    # KING_RING_ATTACK_MG/_EG. Both halves ship EQUAL, which is
+    # arithmetically identical to the old flat value (integer-exact), so
+    # this build reproduces the v54 bench signature and ladder pins; the
+    # POINT is that texel.py can now move the halves apart.
+    DOUBLED_PAWN = 23           # MG half (name kept: it is what the tuner,
+    ISOLATED_PAWN = 14          # the C setter and every doc already call it)
     BACKWARD_PAWN = 13
+    DOUBLED_PAWN_EG = 23
+    ISOLATED_PAWN_EG = 14
+    BACKWARD_PAWN_EG = 13
     # Penalty for a piece pinned (absolutely, to its own king): it cannot move
     # off the pin line, so its real mobility/usefulness is far below what the
     # raw mobility term credits it, and it is a standing tactical target.
@@ -1459,7 +1473,10 @@ class Engine:
     # Per-piece mobility weight (centipawns per reachable square).
     # Knight kept at 4 -- tuner found 1, but WDL signal for knight mobility is
     # thin in the middlegame; 4 is consistent with other HCE engines.
-    MOBILITY_WEIGHT = {
+    MOBILITY_WEIGHT = {          # FI-86: the MG half (see DOUBLED_PAWN)
+        chess.KNIGHT: 6, chess.BISHOP: 5, chess.ROOK: 3, chess.QUEEN: 3,
+    }
+    MOBILITY_WEIGHT_EG = {
         chess.KNIGHT: 6, chess.BISHOP: 5, chess.ROOK: 3, chess.QUEEN: 3,
     }
     # King-safety MG/EG split: attack/shield matter in MG only; in EG the king
@@ -2096,6 +2113,14 @@ class Engine:
             self.KING_RING_ATTACK_MG, self.KING_RING_ATTACK_EG,
             self.KING_OPEN_FILE_MG,  self.KING_OPEN_FILE_EG,
         )
+        # FI-86: the EG half of mobility, AFTER set_mobility_params (which
+        # defaults EG := MG, i.e. the pre-FI-86 flat weights).
+        _eval_lib.set_mobility_eg(
+            self.MOBILITY_WEIGHT_EG[chess.KNIGHT],
+            self.MOBILITY_WEIGHT_EG[chess.BISHOP],
+            self.MOBILITY_WEIGHT_EG[chess.ROOK],
+            self.MOBILITY_WEIGHT_EG[chess.QUEEN],
+        )
         # #2.5: sync the rook_files + bishop_pair + mopup constants.
         _eval_lib.set_positional_params(
             self.ROOK_OPEN_FILE, self.ROOK_SEMIOPEN_FILE,
@@ -2156,6 +2181,7 @@ class Engine:
         # tunable eval scalars (uci TUNABLE_EVAL)
         "ROOK_OPEN_FILE", "ROOK_SEMIOPEN_FILE", "TEMPO",
         "DOUBLED_PAWN", "ISOLATED_PAWN", "BACKWARD_PAWN",
+        "DOUBLED_PAWN_EG", "ISOLATED_PAWN_EG", "BACKWARD_PAWN_EG",  # FI-86
         "BISHOP_PAIR_MG", "BISHOP_PAIR_EG",
         "KING_RING_ATTACK_MG", "KING_RING_ATTACK_EG",
         "KING_SHIELD_MG", "KING_SHIELD_EG",
@@ -2903,6 +2929,19 @@ class Engine:
             self._eval_memo[key] = v
         return v
 
+    def _mob_blend(self, pt, phase):
+        """FI-86: phase-blended mobility weight for piece type `pt`.
+
+        Same form and the same clamp as eval_c.c's per-call blend, so the
+        Python fallback and the C path agree. MG == EG returns the flat
+        weight exactly (integer arithmetic), which is why arming both halves
+        equal reproduces the v54 bench signature.
+        """
+        pm = self.PHASE_MAX if self.PHASE_MAX > 0 else 1
+        ph = 0 if phase < 0 else (pm if phase > pm else phase)
+        return (self.MOBILITY_WEIGHT[pt] * ph
+                + self.MOBILITY_WEIGHT_EG[pt] * (pm - ph)) // pm
+
     def _is_endgame(self, board):
         phase = (((board.knights | board.bishops).bit_count()) * 1
                  + (board.rooks.bit_count()) * 2
@@ -2922,23 +2961,30 @@ class Engine:
         key = (wp, bp)
         cached = self._pawn_cache.get(key)
         if cached is None:
-            base = 0
+            # FI-86: doubled/isolated/backward are tapered now, so the
+            # penalty sum is phase-DEPENDENT and can no longer be cached
+            # pre-multiplied. Cache the signed COUNTS instead and apply the
+            # blended scalars at read -- and note this mirrors C exactly:
+            # csearch.c blends each POSITIVE scalar and then multiplies, so
+            # blending a pre-summed (negative) total here would truncate in a
+            # different place AND floor instead of truncate on negatives.
+            dbl_n = iso_n = bwd_n = 0
             passers = []
             for own, opp, sign, color in ((wp, bp, 1, chess.WHITE),
                                           (bp, wp, -1, chess.BLACK)):
                 for f in range(8):
                     c = (own & self._file_bb[f]).bit_count()
                     if c > 1:                              # doubled
-                        base -= sign * self.DOUBLED_PAWN * (c - 1)
+                        dbl_n += sign * (c - 1)
                 passed = self._passed_mask[color]
                 support = self._support_mask[color]
                 stopatk = self._stop_atk_mask[color]
                 for sq in chess.scan_forward(own):
                     f = sq & 7
                     if not (own & self._adj_files_bb[f]):  # isolated
-                        base -= sign * self.ISOLATED_PAWN
+                        iso_n += sign
                     elif not (own & support[sq]) and (opp & stopatk[sq]):
-                        base -= sign * self.BACKWARD_PAWN  # backward
+                        bwd_n += sign                      # backward
                     if not (opp & passed[sq]):             # passed
                         r = sq >> 3
                         passers.append(
@@ -2948,8 +2994,17 @@ class Engine:
             # refills quickly and correctness is unaffected: pure function).
             if len(self._pawn_cache) >= self.PAWN_CACHE_MAX:
                 self._pawn_cache.clear()
-            self._pawn_cache[key] = cached = (base, passers)
-        score, passers = cached
+            self._pawn_cache[key] = cached = (dbl_n, iso_n, bwd_n, passers)
+        dbl_n, iso_n, bwd_n, passers = cached
+        # FI-86 blend: same form as csearch.c's build_pawn_taper, on the same
+        # positive scalars, so the two agree bit for bit. MG == EG collapses
+        # to the flat value exactly -- the byte-identity claim for v54.
+        _pm = self.PHASE_MAX if self.PHASE_MAX > 0 else 1
+        _ph = 0 if phase < 0 else (_pm if phase > _pm else phase)
+        _d = (self.DOUBLED_PAWN * _ph + self.DOUBLED_PAWN_EG * (_pm - _ph)) // _pm
+        _i = (self.ISOLATED_PAWN * _ph + self.ISOLATED_PAWN_EG * (_pm - _ph)) // _pm
+        _b = (self.BACKWARD_PAWN * _ph + self.BACKWARD_PAWN_EG * (_pm - _ph)) // _pm
+        score = -(_d * dbl_n + _i * iso_n + _b * bwd_n)
         taper = self._passed_taper[phase]   # V-06: precomputed [rel] row
         for sign, rel in passers:
             score += sign * taper[rel]
@@ -3010,7 +3065,7 @@ class Engine:
         b_minor_atk = 0
         for pt, bb in ((chess.KNIGHT, knights), (chess.BISHOP, bishops),
                        (chess.ROOK, rooks), (chess.QUEEN, queens)):
-            wt = self.MOBILITY_WEIGHT[pt]
+            wt = self._mob_blend(pt, phase)          # FI-86
             is_minor = pt in (chess.KNIGHT, chess.BISHOP)
             for sq in chess.scan_forward(bb & occ_w):
                 a = am(sq)
@@ -3134,6 +3189,10 @@ class Engine:
         b_minor_atk = 0
         for pt, bb in ((chess.KNIGHT, knights), (chess.BISHOP, bishops),
                        (chess.ROOK, rooks), (chess.QUEEN, queens)):
+            # FI-86: NOT tapered here -- _mobility_bb has no callers (the
+            # live low-phase path is mobility_king_safety), so tapering it
+            # would mean adding a phase arg to dead code. If it is ever
+            # revived, take the weight from _mob_blend(pt, phase).
             w = self.MOBILITY_WEIGHT[pt]
             is_minor = pt in (chess.KNIGHT, chess.BISHOP)
             for sq in chess.scan_forward(bb & occ_w):

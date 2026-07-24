@@ -117,6 +117,10 @@ PARAMS = (
     + [(f"PASSED_PAWN_EG[{i}]", "PASSED_PAWN_EG", i) for i in range(1, 7)]
     + [(n, n, None) for n in (
         "DOUBLED_PAWN", "ISOLATED_PAWN", "BACKWARD_PAWN",
+        # FI-86: the EG twins. These are the NEW degrees of freedom -- the
+        # MG names above are the old flat scalars, so a tune that leaves
+        # these at their shipped (equal) values reproduces the flat eval.
+        "DOUBLED_PAWN_EG", "ISOLATED_PAWN_EG", "BACKWARD_PAWN_EG",
         "BISHOP_PAIR_MG", "BISHOP_PAIR_EG",
         "ROOK_OPEN_FILE", "ROOK_SEMIOPEN_FILE",
         "ROOK_ON_7TH_MG", "ROOK_ON_7TH_EG",
@@ -127,6 +131,8 @@ PARAMS = (
         "TEMPO")]
     + [(f"MOBILITY_WEIGHT[{chess.piece_name(pt)}]", "MOBILITY_WEIGHT", pt)
        for pt in (chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN)]
+    + [(f"MOBILITY_WEIGHT_EG[{chess.piece_name(pt)}]", "MOBILITY_WEIGHT_EG", pt)
+       for pt in (chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN)]   # FI-86
 )
 
 
@@ -237,7 +243,7 @@ def bounds_for(vec):
     for (label, _, _), v in zip(PARAMS, vec):
         if label.split("[")[0] in PST_TABLES:
             out.append((v - PST_BOUND, v + PST_BOUND))   # may go negative
-        elif label.startswith("MOBILITY_WEIGHT"):
+        elif label.startswith("MOBILITY_WEIGHT"):   # incl. _EG (FI-86)
             out.append((max(0, v - 4), v + 4))
         else:
             span = max(BOUND_MIN, int(abs(v) * BOUND_FRAC))
@@ -448,6 +454,8 @@ def _push(eng, lib, E):
         IA(eng.PASSED_PAWN_MG), IA(eng.PASSED_PAWN_EG),
         eng.MOPUP_MIN_ADV, eng.MOPUP_STRONG_CMD_WEIGHT,
         eng.MOPUP_STRONG_KING_WEIGHT)
+    lib.csearch_set_pawn_eg(eng.DOUBLED_PAWN_EG, eng.ISOLATED_PAWN_EG,   # FI-86
+                            eng.BACKWARD_PAWN_EG)
 
 
 def _chunk(cid):
@@ -772,14 +780,15 @@ def _write_back(dst, enable_toggles=()):
             f"{v[chess.QUEEN]}, chess.KING: 0,",
             "    }",
         ])
-    mob = E.MOBILITY_WEIGHT
-    _replace_dict_block(lines, "MOBILITY_WEIGHT", [
-        "    MOBILITY_WEIGHT = {",
-        f"        chess.KNIGHT: {mob[chess.KNIGHT]}, chess.BISHOP: "
-        f"{mob[chess.BISHOP]}, chess.ROOK: {mob[chess.ROOK]}, "
-        f"chess.QUEEN: {mob[chess.QUEEN]},",
-        "    }",
-    ])
+    for _attr in ("MOBILITY_WEIGHT", "MOBILITY_WEIGHT_EG"):   # FI-86
+        _m = getattr(E, _attr)
+        _replace_dict_block(lines, _attr, [
+            f"    {_attr} = {{",
+            f"        chess.KNIGHT: {_m[chess.KNIGHT]}, chess.BISHOP: "
+            f"{_m[chess.BISHOP]}, chess.ROOK: {_m[chess.ROOK]}, "
+            f"chess.QUEEN: {_m[chess.QUEEN]},",
+            "    }",
+        ])
     for attr in ("PASSED_PAWN_MG", "PASSED_PAWN_EG"):
         pat = re.compile(r'^(\s+' + attr + r'\s*=\s*)\[.*\]')
         for i, line in enumerate(lines):
