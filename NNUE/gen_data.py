@@ -40,11 +40,16 @@ byte-identical threat inputs (threat_ver stamps the dataset).
 
 Parallelism: the parent spawns worker SUBPROCESSES (fresh process per
 engine, per the repo's one-process-one-config .so rule), each writing a
-shard; shards are merged into the final file. On a generation server just
-pass --workers <cores-1> (e.g. 95). Fixed-NODE labeling means a slower
-server changes only wall clock, never label quality; multiple servers can
-split a slice by running different --seed values into different output
-files and merging (data_format.py merge).
+shard; shards are merged into the final file. --workers 0 (the default)
+means all cores but one, exactly like match.py. Fixed-NODE labeling means
+a slower server changes only wall clock, never label quality.
+
+TWO SERVERS, one logical run: same --seed on both, box A --offset 0 and
+box B --offset 1000 (match.py's offset idea applied to worker seeds --
+worker seed = seed*100003 + offset + w, so any gap wider than either
+box's worker count yields disjoint games; the parent refuses an offset
+smaller than its own worker count). Merge the two outputs at the end
+with data_format.py merge.
 """
 
 import argparse
@@ -314,14 +319,17 @@ def main():
                          "(position count varies, ~65/game random, "
                          "~72/game book, ~20/game endgame)")
     ap.add_argument("--nodes", type=int, default=LABEL_NODES)
-    ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--workers", type=int, default=0,
+                    help="0 (default) = all cores but one, match.py's rule")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--offset", type=int, default=0,
                     help="worker-seed offset for splitting ONE logical run "
-                         "across servers: box A --offset 0, box B --offset "
-                         "<A's worker count> (same --seed on both) -- the "
-                         "boxes then behave like one big pool with disjoint "
-                         "games; merge the outputs afterwards")
+                         "across servers (match.py's offset idea): same "
+                         "--seed on both boxes, box A --offset 0, box B "
+                         "--offset 1000. Any gap larger than either box's "
+                         "worker count gives disjoint games -- round "
+                         "numbers work regardless of core counts. Merge "
+                         "the outputs afterwards.")
     ap.add_argument("--book", help="plain-FEN/EPD file: start games from a "
                                    "random line (e.g. UHO_Lichess_4852_v1."
                                    "epd) instead of random opening plies")
@@ -341,6 +349,19 @@ def main():
                    args.book, args.endgame, args.eg_men,
                    games_quota=args.games)
         return
+
+    # --- parent only (workers inherit an explicit count from below) ---
+    if args.workers <= 0:                  # match.py's --workers 0 rule
+        import multiprocessing as mp
+        args.workers = max(1, mp.cpu_count() - 1)
+        print(f"gen_data: --workers 0 -> {args.workers} "
+              f"(cpu_count {mp.cpu_count()} - 1)", flush=True)
+    if args.offset and args.offset < args.workers:
+        sys.exit(f"gen_data: --offset {args.offset} is smaller than "
+                 f"--workers {args.workers}; the seed ranges would OVERLAP "
+                 "and both boxes would generate some identical games. Use a "
+                 "round offset larger than either box's worker count "
+                 "(e.g. 1000).")
 
     per = (args.positions + args.workers - 1) // args.workers
     per_g = (args.games + args.workers - 1) // args.workers if args.games \
