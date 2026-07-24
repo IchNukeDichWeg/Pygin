@@ -347,21 +347,6 @@ if os.path.exists("csearch.c"):
             ce._lib.set_hist_keep(0)
         except AttributeError:
             pass                       # pre-FI-12 csearch.so
-        # FI-85 x-ray mobility: SCREEN-KILLED 2026-07-23 (-4.52 +/-15.3 @2k).
-        # Default is 0 again, so this pin is belt-and-braces -- keep it, it
-        # is what makes the ladder measure v54 if the toggle is ever re-armed.
-        try:
-            ce._lib.set_xray_mob(0)
-        except AttributeError:
-            pass                       # pre-FI-85 eval_c
-        # FI-76 wrong-bishop clamp: SCREEN-NULL 2026-07-24 (+0.17 +/-15.3
-        # @2k, ~9% pair engagement). Default is 0 again, so this pin is
-        # belt-and-braces -- keep it: it is what makes the ladder measure v54
-        # if WRONGBISHOP is ever re-armed.
-        try:
-            ce._lib.set_wrongbishop(0)
-        except AttributeError:
-            pass                       # pre-FI-76 csearch.so
         # FI-63 quiet check-evasion cap: CLOSED AS DEAD GATE 2026-07-21
         # pre-A/B (harmful at cap 2 -- +10.5% nodes + matetrack -18 mates;
         # vacuous at cap>=3). Default 0, so this pin is belt-and-braces.
