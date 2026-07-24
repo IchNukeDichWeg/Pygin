@@ -39,13 +39,12 @@ ODDS_KNIGHT = [(31, 76.75), (49, 79.05), (52, 81.65), (54, 100.0)]
 # dot beside the closed knight line rather than a one-point "trend".
 ODDS_PAWN = [(54, 84.88)]
 # The odds LADDER vs full-strength SF: how big a material handicap the engine
-# can spot it and still win. Latest measurement of each (queen 100/100 games;
-# rook 95.5% at v49; knight saturated at v54, 197 games without a single SF
-# win or draw; pawn 84.88% at v54 over 2,000 games -- the only rung with
-# headroom left, which is why it is the active yardstick).
-# NOTE rook < knight is a STALE measurement, not a real inversion: rook was
-# last measured at v49, knight at v54.
-ODDS_LADDER = [("Queen", 100.0, "v-"), ("Rook", 95.5, "v49"),
+# can spot it and still win. Latest measurement of each. Queen, rook and
+# knight are all SATURATED at v54 -- rook was re-measured 2026-07-24 (106
+# games, zero SF wins and zero draws) and the old 95.5% turned out to be a
+# stale v49 number, not a real inversion under knight. Pawn is the only rung
+# with headroom left, which is why it is the active yardstick.
+ODDS_LADDER = [("Queen", 100.0, "v-"), ("Rook", 100.0, "v54"),
                ("Knight", 100.0, "v54"), ("Pawn", 84.88, "v54")]
 
 W, H = 760, 300

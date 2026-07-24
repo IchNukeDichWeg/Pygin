@@ -31,7 +31,7 @@ representation, move generation and legality.
 </tr>
 <tr>
 <td><img src="docs/odds_knight.svg" width="100%" alt="Odds win rate vs full-strength Stockfish 18: knight 76.75 percent at v31 rising to 100 percent at v54, pawn starting at 84.9 percent at v54"/></td>
-<td><img src="docs/odds_ladder.svg" width="100%" alt="Odds it can spot full-strength Stockfish 18 and still win: queen 100, rook 95.5, knight 100, pawn 84.9 percent"/></td>
+<td><img src="docs/odds_ladder.svg" width="100%" alt="Odds it can spot full-strength Stockfish 18 and still win: queen 100, rook 100, knight 100, pawn 84.9 percent"/></td>
 </tr>
 </table>
 
@@ -42,8 +42,8 @@ representation, move generation and legality.
 - **Bottom row — vs Stockfish 18 at full strength.** The external check: knight
   odds climbed **76.75 → 100%** (v31 → v54) and closed, with **pawn odds**
   (84.9%) taking over as the live rung, and the handicap
-  ladder — it spots SF a **queen** (100%), **rook** (95.5%), **knight** (100%)
-  or **pawn** (84.9%) and still wins. Pawn odds is the only rung with headroom
+  ladder — it spots SF a **queen**, **rook** or **knight** (all 100%), or a
+  **pawn** (84.9%), and still wins. Pawn odds is the only rung with headroom
   left, so it is the yardstick now.
 
 ### Two engines, one eval
@@ -63,8 +63,10 @@ representation, move generation and legality.
   76.75% → 79.05% → 81.65% → **100%** (v31 → v49 → v52 → v54) and is now
   **saturated** — the PST candidate that shipped as v54 took 197 games without
   conceding a single win or draw. Queen (100%) and rook (95.5%) went the
-  same way. **Pawn odds (f2)** is the active rung: **84.88%** over 2,000 games
-  at v54 (+299.63 ±29.8, 1531–333–136), the one handicap SF still scores against.
+  same way — rook re-measured at v54 went **106 games without conceding a win
+  or a draw**, retiring the stale 95.5% from v49. **Pawn odds (f2)** is the
+  active rung: **84.88%** over 2,000 games at v54 (+299.63 ±29.8, 1531–333–136),
+  the one handicap SF still scores against.
 - **vs its own Python engine: 1,815–0–40.** No rating quoted — the gap is past
   what Elo can express. The Python engine alone is **~2440–2450** (level with
   SF-18 at UCI_Elo 2450).
