@@ -144,6 +144,26 @@ dist/
 !/Old Engine/
 !/NNUE/
 !/docs/
+# 2026-07-24 reshuffle: the source folders are tracked too. Without these the
+# `/*/` rule above silently swallows every NEW file added to them -- the moved
+# files stayed tracked only because `git mv` keeps them in the index.
+!/lib/
+!/bench/
+!/testing/
+!/tuning/
+!/scripts/
+!/data/
+# ...but data/ holds generated and oversized artifacts: setup.sh gunzips the
+# 174 MB EPD from the tracked .gz, and it must not be committed.
+data/UHO_Lichess_4852_v1.epd
+# testing/ pre-dates the reshuffle and is mostly LOCAL scratch (one-off engine
+# variants, ad-hoc benches, scratch EPDs). Only the four tracked gates moved in
+# there, so ignore the folder's contents and re-admit those by name.
+/testing/*
+!/testing/perft.py
+!/testing/sprt.py
+!/testing/scaling_probe.py
+!/testing/test_wrongbishop.py
 # FI-15: NNUE code/docs are tracked; datasets, checkpoints, weight files and
 # the training venv are local-only (large binaries, PUBLIC repo).
 NNUE/datasets/
