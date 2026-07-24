@@ -437,16 +437,17 @@ class Engine:
     # FI-76 (WB-01) wrong-bishop rook-pawn dead draw: CW-01's sibling gate
     # for the case the strong side HAS pawns and still cannot win (all on
     # one rook file, wrong-coloured bishop for that corner, bare defending
-    # king already within one move of it). ARMED CANDIDATE 2026-07-23 for
-    # the 2k screen (>= +15 earns a 10k); False = v54 node-exact, and the
-    # selftest pins it off so the ladder keeps measuring v54. Priced +0 --
-    # the honest case is the CW-01 correctness class, not Elo, and see
-    # test_wrongbishop.py: the clamp is exact statically but does NOT
-    # propagate to the root of a bishop draw (the one drawing reply is a
-    # quiet king move the deep tree prunes; Stockfish reads the same FEN
-    # +1.06 at d24). Bit-exact twin of engine.py's use_wrongbishop,
-    # mirrored below so the GUI eval bar and the search never disagree.
-    WRONGBISHOP = True
+    # king already within one move of it). SCREEN-NULL 2026-07-24 ->
+    # DORMANT: +0.17 +/-15.3 @2k (nodes 1.75M vs Old Engine/54, seed 54;
+    # halves +0.69 and -0.35, pooled ptnml 1/43/910/46/0). No 10k spent.
+    # The ptnml is the finding: under --nodes both engines are deterministic
+    # and identical EXCEPT this clamp, so a pair can only leave the middle
+    # bucket if the clamp changed play -- 910/1000 pairs sat in it, i.e. the
+    # gate engaged in ~9% of pairs, and inside that subset it was 46 up / 44
+    # down. Not harmful, just nearly vacuous from book openings, and it never
+    # delivered the practical fix anyway (the clamp does not propagate to the
+    # root; see test_wrongbishop.py). Mechanism stays in-tree at abi 28.
+    WRONGBISHOP = False
 
     # NV-01 verification isolation: RESOLVED into v43 (eleventh 50+0.20
     # campaign, A/B vs Old Engine/42 2026-07-11: +5.18 +/-6.8 @10k for the
