@@ -34,6 +34,10 @@ DATA = {
 # 197 games, zero SF wins and zero draws. Knight odds is a closed rung now;
 # pawn odds (f2) is the live yardstick, not yet measured.
 ODDS_KNIGHT = [(31, 76.75), (49, 79.05), (52, 81.65), (54, 100.0)]
+# Pawn odds (f2) is the ACTIVE rung -- the only handicap SF still scores
+# against. One measurement so far (v54, 2,000 games), so it draws as a lone
+# dot beside the closed knight line rather than a one-point "trend".
+ODDS_PAWN = [(54, 84.88)]
 # The odds LADDER vs full-strength SF: how big a material handicap the engine
 # can spot it and still win. Latest measurement of each (queen 100/100 games;
 # rook 95.5% at v49; knight saturated at v54, 197 games without a single SF
@@ -98,15 +102,23 @@ def _chart(title, unit, xs, ys, colour, fmt, y0=None, ymax=None):
     return "\n".join(s)
 
 
-def _line_points(title, unit, pts, colour, ylo, yhi):
-    """A sparse line chart (few, irregular x) with a labelled dot per point."""
-    xs = [p[0] for p in pts]
-    px = lambda x: ML + (x - xs[0]) / (xs[-1] - xs[0]) * (W - ML - MR)
+def _line_points(title, unit, series, ylo, yhi):
+    """Sparse line chart (few, irregular x), one labelled dot per point.
+
+    `series` is [(name, colour, pts)]. A series with a single point draws
+    as a lone dot -- deliberate: pawn odds has exactly one measurement, and
+    a one-point "trend" line would be a drawn claim we cannot support.
+    """
+    xs = sorted({p[0] for _, _, pts in series for p in pts})
+    span = (xs[-1] - xs[0]) or 1
+    px = lambda x: ML + (x - xs[0]) / span * (W - ML - MR)
     py = lambda y: H - MB - (y - ylo) / (yhi - ylo) * (H - MT - MB)
     s = [SVG_OPEN]
-    s.append(f'<defs><linearGradient id="g{colour[1:]}" x1="0" y1="0" x2="0" y2="1">'
-             f'<stop offset="0" stop-color="{colour}" stop-opacity="0.28"/>'
-             f'<stop offset="1" stop-color="{colour}" stop-opacity="0"/></linearGradient></defs>')
+    s.append('<defs>' + "".join(
+        f'<linearGradient id="g{c[1:]}" x1="0" y1="0" x2="0" y2="1">'
+        f'<stop offset="0" stop-color="{c}" stop-opacity="0.28"/>'
+        f'<stop offset="1" stop-color="{c}" stop-opacity="0"/></linearGradient>'
+        for _, c, _ in series) + '</defs>')
     s.append(f'<text x="{ML}" y="24" fill="{AXIS}" font-size="15" font-weight="700">{title}</text>')
     s.append(f'<text x="{W-MR}" y="24" fill="{AXIS}" font-size="12" text-anchor="end">{unit}</text>')
     for i in range(5):
@@ -114,23 +126,39 @@ def _line_points(title, unit, pts, colour, ylo, yhi):
         s.append(f'<line x1="{ML}" y1="{yy:.1f}" x2="{W-MR}" y2="{yy:.1f}" stroke="{GRID}"/>')
         s.append(f'<text x="{ML-8}" y="{yy+4:.1f}" fill="{AXIS}" font-size="11" '
                  f'text-anchor="end">{yv:.0f}%</text>')
-    P = [(px(x), py(y)) for x, y, *_ in pts]
-    area = f'M{P[0][0]:.1f},{py(ylo):.1f} ' + " ".join(f'L{x:.1f},{y:.1f}' for x, y in P) \
-        + f' L{P[-1][0]:.1f},{py(ylo):.1f} Z'
-    s.append(f'<path d="{area}" fill="url(#g{colour[1:]})"/>')
-    s.append(f'<polyline points="{" ".join(f"{x:.1f},{y:.1f}" for x,y in P)}" '
-             f'fill="none" stroke="{colour}" stroke-width="2.5" stroke-linejoin="round"/>')
-    for i, ((x, y), (cx, cy)) in enumerate(zip(pts, P)):
-        s.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="4" fill="{colour}"/>')
-        # a value label on the last dot would overhang the viewBox: right-align it
-        anchor, tx = ("end", W - MR) if cx > W - MR - 30 else ("middle", cx)
-        # ...and a steep NEXT segment would draw straight through a centred
-        # label (v52's 81.65% vs the climb to 100%), so push that one left
-        if i + 1 < len(P) and P[i + 1][1] < cy - 40:
-            anchor, tx = "end", cx - 7
-        s.append(f'<text x="{tx:.1f}" y="{cy-11:.1f}" fill="{colour}" font-size="12.5" '
-                 f'font-weight="700" text-anchor="{anchor}">{y:.2f}%</text>')
-        s.append(f'<text x="{cx:.1f}" y="{H-12}" fill="{AXIS}" font-size="11" '
+    for name, colour, pts in series:
+        P = [(px(x), py(y)) for x, y, *_ in pts]
+        if len(P) > 1:
+            area = f'M{P[0][0]:.1f},{py(ylo):.1f} ' \
+                + " ".join(f'L{x:.1f},{y:.1f}' for x, y in P) \
+                + f' L{P[-1][0]:.1f},{py(ylo):.1f} Z'
+            s.append(f'<path d="{area}" fill="url(#g{colour[1:]})"/>')
+            s.append(f'<polyline points="{" ".join(f"{x:.1f},{y:.1f}" for x,y in P)}" '
+                     f'fill="none" stroke="{colour}" stroke-width="2.5" '
+                     f'stroke-linejoin="round"/>')
+        for i, ((x, y), (cx, cy)) in enumerate(zip(pts, P)):
+            s.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="4" fill="{colour}"/>')
+            # a value label on the last dot would overhang the viewBox: right-align it
+            anchor, tx = ("end", W - MR) if cx > W - MR - 30 else ("middle", cx)
+            # a lone dot at the right edge would put its value on top of the
+            # other series' line -- hang it to the LEFT of the dot instead
+            if len(P) == 1 and cx > W - MR - 30:
+                anchor, tx = "end", cx - 9
+            # ...and a steep NEXT segment would draw straight through a centred
+            # label (v52's 81.65% vs the climb to 100%), so push that one left
+            if i + 1 < len(P) and P[i + 1][1] < cy - 40:
+                anchor, tx = "end", cx - 7
+            s.append(f'<text x="{tx:.1f}" y="{cy-11:.1f}" fill="{colour}" font-size="12.5" '
+                     f'font-weight="700" text-anchor="{anchor}">{y:.2f}%</text>')
+        # series name rides the FIRST dot, so the two lines are tellable apart
+        # -- flipped to the left when that dot is hard against the right edge
+        # (the single-point pawn series sits on the last x)
+        nx, nanch = ((P[0][0] - 9, "end") if P[0][0] > W - MR - 40
+                     else (P[0][0] + 9, "start"))
+        s.append(f'<text x="{nx:.1f}" y="{P[0][1]+16:.1f}" fill="{colour}" '
+                 f'font-size="12" font-weight="600" text-anchor="{nanch}">{name}</text>')
+    for x in xs:
+        s.append(f'<text x="{px(x):.1f}" y="{H-12}" fill="{AXIS}" font-size="11" '
                  f'text-anchor="middle">v{x}</text>')
     s.append('</svg>')
     return "\n".join(s)
@@ -183,8 +211,9 @@ def main():
         "Single-thread speed", "x v31", vs, mult, "#58a6ff",
         lambda y: f"{y:.2f}x", y0=0.8, ymax=1.7))
     open("docs/odds_knight.svg", "w").write(_line_points(
-        "Knight odds win% vs full-strength SF-18", "saturated at v54",
-        ODDS_KNIGHT, "#a371f7", 74, 102))
+        "Odds win% vs full-strength SF-18", "knight closed -> pawn active",
+        [("knight", "#a371f7", ODDS_KNIGHT), ("pawn", "#3fb950", ODDS_PAWN)],
+        74, 102))
     open("docs/odds_ladder.svg", "w").write(_bars(
         "Odds it can spot full-strength SF-18 and still win", "latest each",
         ODDS_LADDER, "#f0883e"))
