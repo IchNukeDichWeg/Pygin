@@ -50,7 +50,14 @@ THREAT_VER = 1           # bump when the T16 formulas change (forces regen)
 LABEL_NODES = 5000       # fixed node budget per labeling search
 LABEL_MAX_ABS_CP = 2000  # drop positions with |search score| above this
 LABEL_MAX_HMC = 40       # drop rule-50-window shuffle states (F5-19 rider)
-LABEL_MIN_RANDOM_PLIES = 4   # opening randomization band (uniform legal)
+LABEL_MIN_RANDOM_PLIES = 6   # opening randomization band (uniform legal).
+                             # 6, not 4: there are only perft(4)=197,281
+                             # distinct 4-ply lines, so a 750k-game random
+                             # slice collides ~17.5k times (~2% of games are
+                             # a byte-identical replay of another -- the
+                             # search is deterministic at fixed nodes, so an
+                             # identical opening yields an identical game).
+                             # perft(6)=119,060,324 makes that ~0.
 LABEL_MAX_RANDOM_PLIES = 12
 LABEL_MAX_PLIES = 300    # game cap -> adjudicated draw
 LABEL_ADJ_CP = 1500      # early win adjudication: |score| >= this ...
