@@ -368,15 +368,9 @@ class Engine:
     # as USE_KING_SHELTER; False = v37 eval exactly.
     USE_OUTPOST = False
 
-    # FI-85: battery-transparent (x-ray) slider mobility. Lives on
-    # cengine because it is an eval A/B toggle, mirrored onto _py below.
-    # False = v54 byte-exact. SCREEN-KILLED 2026-07-23: -4.52 +/-15.3 @2k
-    # (nodes 1.75M vs Old Engine/54, seed 54; halves -13.21 and +4.17,
-    # ptnml 48/255/417/235/45, pair ratio 0.92). No 10k spent. The -23%
-    # d13 node reshape was real but bought nothing: batteries were not the
-    # gap. C-era static-eval add-ons now 0-for-4 (shelter -4.27, outpost
-    # -0.90, with-dormant -8.14, xray -4.52) -- do not re-try.
-    USE_XRAY_MOB = False
+    # FI-85 x-ray slider mobility REMOVED 2026-07-24: SCREEN-KILLED
+    # (-4.52 +/-15.3, do-not-retry) and its gating in all six slider loops
+    # cost NPS while dormant. See eval_c.c.
 
     # CB-01 correctness batch (LIVE CANDIDATE, fifth 50+0.20-era campaign,
     # A/B vs Old Engine/37 PENDING; selftest pins the ladder to off).
@@ -434,20 +428,10 @@ class Engine:
     # oracle differential clean over 389 positions. False = v41 eval.
     CANTWIN = True
 
-    # FI-76 (WB-01) wrong-bishop rook-pawn dead draw: CW-01's sibling gate
-    # for the case the strong side HAS pawns and still cannot win (all on
-    # one rook file, wrong-coloured bishop for that corner, bare defending
-    # king already within one move of it). SCREEN-NULL 2026-07-24 ->
-    # DORMANT: +0.17 +/-15.3 @2k (nodes 1.75M vs Old Engine/54, seed 54;
-    # halves +0.69 and -0.35, pooled ptnml 1/43/910/46/0). No 10k spent.
-    # The ptnml is the finding: under --nodes both engines are deterministic
-    # and identical EXCEPT this clamp, so a pair can only leave the middle
-    # bucket if the clamp changed play -- 910/1000 pairs sat in it, i.e. the
-    # gate engaged in ~9% of pairs, and inside that subset it was 46 up / 44
-    # down. Not harmful, just nearly vacuous from book openings, and it never
-    # delivered the practical fix anyway (the clamp does not propagate to the
-    # root; see test_wrongbishop.py). Mechanism stays in-tree at abi 28.
-    WRONGBISHOP = False
+    # FI-76 wrong-bishop clamp REMOVED 2026-07-24: SCREEN-NULL (+0.17
+    # +/-15.3, ~9% pair engagement, 46 up / 44 down inside it) and it cost
+    # per-node work at both eval return sites while gated off. See csearch.c
+    # for the do-not-re-add condition.
 
     # NV-01 verification isolation: RESOLVED into v43 (eleventh 50+0.20
     # campaign, A/B vs Old Engine/42 2026-07-11: +5.18 +/-6.8 @10k for the
@@ -1031,9 +1015,7 @@ class Engine:
         # embedded engine BEFORE _sync_c_params pushes them into csearch.so.
         self._py.use_king_shelter = bool(self.USE_KING_SHELTER)
         self._py.use_outpost = bool(self.USE_OUTPOST)
-        self._py.use_xray_mob = bool(self.USE_XRAY_MOB)     # FI-85
         self._py.use_cantwin = bool(self.CANTWIN)          # CW-01 mirror
-        self._py.use_wrongbishop = bool(self.WRONGBISHOP)  # FI-76 mirror
         # FI-27: mirror simplify too -- flipping USE_SIMPLIFY for its queued
         # re-test must not split the GUI eval bar (evaluate_position -> _py)
         # from the C search's eval. And use_pin_eval is the ONE
@@ -1046,8 +1028,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (FI-86's csearch_set_pawn_eg is abi 29) -- bump with csearch_abi.
-        if lib.csearch_abi() < 29:
+        # (abi 30 = FI-85/FI-76 removal) -- bump with csearch_abi.
+        if lib.csearch_abi() < 30:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -1093,7 +1075,7 @@ class Engine:
               self.NULL_NODOUBLE, self.NULL_EVALR, self.QS_EVASION_CAP,
               self.SINGULAR, self.SE_MIN_DEPTH, self.SE_MARGIN, self.SE_BUDGET,
               self.KILLER_INHERIT, self.QUIET_MALUS_ALL, self.HIST_KEEP,
-            self.QS_TTFIRST, self.USE_XRAY_MOB, self.WRONGBISHOP)
+            self.QS_TTFIRST)
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
@@ -1124,7 +1106,6 @@ class Engine:
         lib.set_qs_evict_max(int(self.QS_EVICT_MAX))           # FI-08/Q-03
         lib.set_cb2(1 if self.CB2 else 0)                      # CB-02
         lib.set_cantwin(1 if self.CANTWIN else 0)              # CW-01
-        lib.set_wrongbishop(1 if self.WRONGBISHOP else 0)      # FI-76
         lib.set_lmr_hist(int(self.LMR_HIST))                   # FI-04
         lib.set_tt_eval_sharpen(1 if self.TT_EVAL_SHARPEN else 0)  # FI-25
         lib.set_see_prune(1 if self.SEE_PRUNE else 0)          # FI-18
