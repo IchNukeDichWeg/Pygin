@@ -201,11 +201,11 @@ benchmark" below.
   shelved experiments" below.
 
 * **v16**: ``_mobility_king_safety_bb`` ported to C (``eval_c.c``, loaded via
-  ``ctypes``; build ``python3 eval_build.py``). 0/10,000 positions differ
+  ``ctypes``; build ``python3 scripts/eval_build.py``). 0/10,000 positions differ
   from the Python path. **NPS 21,369 -> 27,507 (+28.7%)** at fixed depth.
 
 * **v17**: legal + capture move generation ported to C (``movegen.c``; build
-  ``python3 movegen_build.py``; toggle ``use_c_movegen``), reproducing
+  ``python3 scripts/movegen_build.py``; toggle ``use_c_movegen``), reproducing
   python-chess's exact pseudo-legal move order so the search stays
   byte-identical (not just set-equal) after ``order_moves``'s stable sort --
   a prior *staged* movegen that reordered quiet ties lost ≈20 Elo, which is
@@ -654,7 +654,7 @@ benchmark" below.
   the second-largest release, and the first time the piece-square tables
   themselves were fitted.** v53 tuned the 44 scalars *conditioned on* the
   stock PeSTO tables; v54 adds all 736 table entries (12 tables x 64 minus
-  the 16 impossible pawn squares) to the fit, ``texel.py --pst``, ±25cp
+  the 16 impossible pawn squares) to the fit, ``tuning/texel.py --pst``, ±25cp
   bounds, on 5,000,000 own-self-play positions. 735 values moved vs v53.
   **A/B vs Old Engine/53: +31.20 ±5.6 over 11,668 games @ nodes 1,750,000
   (54.48%, ptnml 312/1142/2185/1579/616, ratio 1.51), GSPRT[0,2] LLR
@@ -665,14 +665,14 @@ benchmark" below.
   pins re-measured (CE_LADDER d14 1,921,549, REF_NODES 2874). NOTE the
   held-out loss that screened it (+2.26%) was inflated by the FB-43
   train/val split leak, fixed the same day -- the A/B, not the loss, is the
-  truth here. Snapshotted Old Engine/54. Re-tune with ``texel.py --pst``.
+  truth here. Snapshotted Old Engine/54. Re-tune with ``tuning/texel.py --pst``.
 
 * **v52 -> v53 (2026-07-22, lives HERE in ``engine.py``): the Texel retune
   -- the largest single gain the project has recorded, and the eval lane's
   first win.** v48-v52 were all search/TT work in ``cengine.py``; this one
   is 44 eval scalars and no C change at all, since ``cengine.py`` pushes
   this file's constants into ``csearch.so`` at construction (the eval-param
-  oracle, ``cengine.py:940``). Fitted by ``texel.py`` on 4,000,000 quiet
+  oracle, ``cengine.py:940``). Fitted by ``tuning/texel.py`` on 4,000,000 quiet
   positions from this project's own near-equal self-play logs, labelled
   with the GAME RESULT rather than a Stockfish score -- 1.43%% better on a
   held-out 20%% split, converged across 10 restarts.
@@ -695,7 +695,7 @@ benchmark" below.
   (``CE_LADDER`` d14 1,716,693 -> 2,053,985 and ``REF_NODES`` 3495 ->
   2950; ``--recompute-ladder`` regenerates only the former) and moves the
   bench signature 1,052,763 -> 1,122,753. Snapshotted as Old Engine/53.
-  Re-tune with ``python3 texel.py extract && python3 texel.py tune``.
+  Re-tune with ``python3 tuning/texel.py extract && python3 tuning/texel.py tune``.
 
 Cross-version benchmark
 -----------------------
@@ -869,11 +869,11 @@ That said, a proper NNUE remains the biggest single upgrade available:
 replacing all hand-crafted terms with learned weights could be worth
 **+200-300 Elo**.
 """
-# Path shim: this script moved into a subfolder on 2026-07-24 but
-# still imports the engine modules that live at the repo root.
+# lib/ holds the shared support modules (time_manager, wdl, interruptible,
+# smp, shared_tt) since the 2026-07-24 reshuffle. They stay importable by
+# their plain names, so nothing else in the tree had to change.
 import os as _os, sys as _sys
-_ROOT_ = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
-_sys.path[:0] = [_ROOT_, _os.path.join(_ROOT_, "lib")]
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "lib"))
 
 import ctypes
 import json
@@ -959,14 +959,14 @@ try:
     _eval_lib.abi_version.restype = ctypes.c_int
     if _eval_lib.abi_version() != _EVAL_C_ABI:
         raise OSError(f"eval_c.so ABI {_eval_lib.abi_version()} != expected "
-                      f"{_EVAL_C_ABI} (rebuild: python3 eval_build.py)")
+                      f"{_EVAL_C_ABI} (rebuild: python3 scripts/eval_build.py)")
     _USE_C_EVAL = True
 except (OSError, AttributeError) as _e:
     # OSError: .so missing / unloadable / ABI mismatch. AttributeError: stale
     # build missing an expected symbol (abi_version included). Fall back to
     # Python -- loudly: the old silent fallback hid a ~2x slowdown.
     print(f"[engine] WARNING: eval_c.so unavailable ({_e}); pure-Python eval "
-          "fallback is ~2x slower. Rebuild: python3 eval_build.py",
+          "fallback is ~2x slower. Rebuild: python3 scripts/eval_build.py",
           file=sys.stderr)
     _USE_C_EVAL = False
 
@@ -1004,11 +1004,11 @@ try:
     _mg_lib.abi_version.restype = ctypes.c_int
     if _mg_lib.abi_version() != _MOVEGEN_C_ABI:
         raise OSError(f"movegen.so ABI {_mg_lib.abi_version()} != expected "
-                      f"{_MOVEGEN_C_ABI} (rebuild: python3 movegen_build.py)")
+                      f"{_MOVEGEN_C_ABI} (rebuild: python3 scripts/movegen_build.py)")
     _USE_C_MOVEGEN = True
 except (OSError, AttributeError) as _e:
     print(f"[engine] WARNING: movegen.so unavailable ({_e}); python-chess "
-          "movegen fallback is much slower. Rebuild: python3 movegen_build.py",
+          "movegen fallback is much slower. Rebuild: python3 scripts/movegen_build.py",
           file=sys.stderr)
     _USE_C_MOVEGEN = False
 
@@ -1191,9 +1191,9 @@ class Engine:
     # ------------------------------------------------------------------ #
     MG_PAWN_TABLE = [
             0,    0,    0,    0,    0,    0,    0,    0,
-          139,  117,  118,  136,  125,   69,  -23,  -44,
-            3,   12,   42,   56,   51,   97,   41,   -5,
-          -15,   -4,    6,   27,   41,   53,    0,  -11,
+          123,  109,   86,  120,   93,  101,    9,  -36,
+            3,   20,   42,   48,   43,   81,   33,   -5,
+          -15,   -4,    6,   27,   41,   37,    0,  -11,
           -15,  -16,    3,   18,   10,   25,    5,  -10,
           -22,  -17,  -13,   -7,   -6,    8,   19,   -5,
           -23,  -26,  -17,  -31,  -27,   13,   20,  -22,
@@ -1201,113 +1201,113 @@ class Engine:
     ]
     EG_PAWN_TABLE = [
             0,    0,    0,    0,    0,    0,    0,    0,
-          151,  156,  142,  101,   90,  120,  168,  171,
-           92,   79,   60,   34,   15,   12,   49,   59,
-           45,   30,   16,  -11,  -13,  -14,    9,   13,
+          159,  164,  158,  109,  122,  120,  168,  171,
+           92,   79,   60,   42,   31,   28,   57,   59,
+           45,   30,   16,  -11,  -13,   -6,    9,   13,
            24,   23,    1,  -10,  -12,   -5,   -4,   -2,
            18,   10,    4,   -3,   -3,    0,  -15,   -3,
            28,   19,   10,    9,    6,    1,   -9,    0,
             0,    0,    0,    0,    0,    0,    0,    0,
     ]
     MG_KNIGHT_TABLE = [
-         -173,  -91,  -25,    0,   63,  -97,   42, -106,
-          -16,    8,   39,   59,   62,   51,   48,   24,
-            2,   19,   53,   59,   97,  113,   40,   12,
-           24,   20,   40,   56,   22,   56,   25,   45,
-           -1,   20,   32,   34,   40,   36,   37,   16,
-          -39,   -9,    0,   14,   26,    8,   12,   -3,
-          -32,  -20,  -12,    7,    1,   -4,  -21,   -5,
-          -64,  -42,  -25,  -20,  -17,  -17,  -28,  -64,
+         -173,  -67,   -9,  -24,   63,  -73,   10,  -82,
+          -48,  -16,   47,   59,   46,   67,   32,    8,
+          -22,   35,   53,   59,   97,  105,   48,   20,
+           16,   20,   40,   56,   22,   56,   25,   45,
+           -1,   20,   32,   34,   40,   36,   45,   16,
+          -31,   -9,    0,   14,   26,    8,   12,   -3,
+          -32,  -28,  -12,    7,    1,   -4,  -21,   -5,
+          -80,  -42,  -33,  -20,  -17,  -17,  -28,  -48,
     ]
     EG_KNIGHT_TABLE = [
-          -17,   19,   28,   13,  -15,   30,  -14,  -42,
-            0,   17,    8,    6,    6,    0,  -14,  -11,
-           -7,   12,   13,   17,   -1,   -2,   12,    0,
+          -33,  -13,   12,   -3,  -23,   -2,  -38,  -74,
+            0,   17,    0,    6,    6,    0,  -14,  -27,
+            1,    4,   13,   17,   -1,   -2,    4,  -16,
             5,    9,   19,   27,   27,   15,   25,   -3,
-           -9,    2,   19,   21,   19,   13,   12,   -5,
+           -9,    2,   19,   21,   19,   13,    4,   -5,
           -22,   -7,  -10,   11,    5,  -16,  -17,  -32,
-          -44,   -4,  -16,  -13,  -10,  -15,   -7,  -31,
-          -42,  -59,  -34,  -17,  -14,  -43,  -30,  -81,
+          -44,    4,  -16,  -13,  -10,  -23,   -7,  -39,
+          -34,  -51,  -26,  -17,  -14,  -43,  -38,  -89,
     ]
     MG_BISHOP_TABLE = [
-          -20,   -7,  -33,  -10,  -37,  -99,  -34,  -30,
-          -32,  -17,    7,   20,    5,    2,  -23,   -6,
-           -2,   13,   18,   33,   44,   75,   57,   23,
+          -36,    9,  -57,  -26,  -29,  -67,  -18,    2,
+          -40,   -9,    7,   12,    5,   34,   -7,  -22,
+            6,   21,   18,   33,   44,   75,   57,   23,
             4,   22,   14,   43,   32,   37,   20,   -7,
            15,   -9,   14,   38,   28,    4,   12,   20,
            -5,   18,   12,   16,   13,    9,   16,   23,
            17,   -6,   30,   -4,    7,   18,   17,    6,
-          -32,   22,  -11,  -12,  -17,  -23,   10,  -34,
+          -32,   22,  -11,  -12,  -17,  -23,  -14,  -26,
     ]
     EG_BISHOP_TABLE = [
-           11,   20,   22,   17,   26,   19,   12,  -10,
-           15,   29,   23,   21,   20,   13,   22,   -1,
-           19,   25,   16,   11,   10,   10,   12,   13,
+           11,    4,   14,   17,   18,   11,    4,  -18,
+           15,   21,   23,   13,   20,    5,   14,   -1,
+           11,   17,   16,   11,   10,   10,   12,   13,
            -3,   18,   12,   15,    9,    8,    6,    6,
-           -4,   15,   20,   16,    9,   14,    4,  -22,
+          -12,   15,   20,   16,    9,   14,    4,  -22,
             0,    5,   16,   10,   19,    6,  -10,  -13,
           -19,  -10,   -7,    6,   -3,  -18,  -16,  -42,
-           -1,  -26,  -28,   -7,    2,   -7,  -36,  -17,
+           -1,  -26,  -28,   -7,    2,   -7,  -28,  -17,
     ]
     MG_ROOK_TABLE = [
-           50,   54,   54,   75,   52,   42,   80,   73,
-           19,   10,   39,   64,   67,   80,   58,   85,
-           14,   38,   51,   61,   74,  102,  110,   73,
-            1,   14,    9,   33,   39,   32,   49,   29,
-          -31,  -21,  -16,    6,    8,  -15,    7,    0,
+           50,   54,   46,   67,   44,   34,   56,   65,
+           19,   10,   39,   64,   67,   80,   50,   69,
+           14,   38,   51,   61,   42,   70,   86,   41,
+            1,   14,    9,   41,   47,   40,   17,    5,
+          -31,  -21,  -16,    6,    8,  -15,   15,    0,
           -38,  -21,  -16,  -16,   -9,  -13,   19,   -8,
-          -38,  -28,  -22,  -14,  -13,   -9,    5,  -39,
-          -19,   -8,   -4,   -2,    4,   -8,    4,  -14,
+          -38,  -28,  -22,  -14,  -13,   -9,    5,  -47,
+          -19,   -8,   -4,   -2,    4,   -8,  -12,  -14,
     ]
     EG_ROOK_TABLE = [
-            3,   11,   13,   -2,   10,   24,   16,   10,
+            3,   11,   13,   -2,   10,   24,   24,   10,
            11,   15,    7,   -5,   -8,   -3,    8,   -3,
-           31,   22,   17,    5,    2,    5,    3,    8,
-           29,   28,   30,    9,    1,   20,   16,   14,
-           23,   24,   23,    5,   -3,   13,   13,   -9,
+           31,   22,   17,    5,   18,   21,   11,   16,
+           29,   28,   30,    9,    1,   12,   24,   22,
+           23,   24,   23,    5,   -3,   13,    5,   -1,
             5,    0,    3,  -10,  -15,  -12,  -23,  -25,
-           -6,   -9,   -8,  -14,  -21,  -34,  -44,  -22,
-          -11,  -15,  -13,  -17,  -27,  -26,  -30,  -34,
+           -6,   -9,   -8,  -14,  -21,  -34,  -36,  -22,
+          -11,  -15,  -13,  -17,  -27,  -26,  -14,  -26,
     ]
     MG_QUEEN_TABLE = [
-           -3,   -1,   -3,   37,   30,   93,   92,   70,
-           -8,  -43,  -29,    2,    1,   28,   -9,   61,
-           -7,   -9,    0,   -5,   31,   63,   80,   27,
-           -2,   -8,   -9,   -5,   25,    2,   17,   10,
+           -3,   -1,    5,   37,   38,   69,   68,   70,
+           -8,  -35,   -5,    2,    1,   36,    7,   69,
+            1,   -1,    8,    3,   31,   71,   72,   35,
+           -2,   -8,   -9,   -5,   17,    2,   17,   10,
           -14,  -22,   -4,    3,    1,   -7,   14,   11,
           -16,   -7,   -1,   -7,    0,    4,   15,    7,
-           -2,   -6,    6,    9,    8,   10,    1,   -2,
-           -8,   -1,    1,    0,    7,  -24,  -28,  -17,
+          -10,   -6,    6,    9,    8,   10,   -7,   -2,
+           -8,   -1,    1,    0,   -1,  -32,  -44,  -25,
     ]
     EG_QUEEN_TABLE = [
-           24,   36,   52,   35,   56,   27,   27,   24,
-           24,   77,   89,   74,   91,   66,   87,   33,
-           29,   63,   58,   81,   88,   67,   60,   66,
-           -6,   34,   47,   59,   42,   73,   73,   55,
-           15,   33,   23,   38,   30,   33,   13,   25,
-          -19,  -11,    4,    4,    4,    1,  -23,  -20,
-          -33,  -52,  -45,  -39,  -37,  -64,  -93,  -89,
-          -47,  -69,  -63,  -64,  -62,  -89,  -77,  -24,
+           16,   28,   36,   27,   40,   27,   35,   16,
+            8,   45,   57,   66,   83,   50,   55,   25,
+            5,   31,   34,   73,   72,   59,   44,   34,
+            2,   34,   47,   59,   50,   65,   73,   55,
+            7,   41,   23,   38,   30,   41,   21,   33,
+          -19,  -11,    4,    4,    4,    1,  -15,  -20,
+          -25,  -44,  -45,  -39,  -37,  -48,  -61,  -57,
+          -47,  -53,  -47,  -64,  -30,  -57,  -45,  -16,
     ]
     MG_KING_TABLE = [
-           -8,   80,   73,   42,    1,   23,   59,  -24,
-           86,   56,   37,   34,   49,   53,   19,  -27,
-           48,   65,   27,   25,    5,   -9,   23,   -5,
-           16,    5,  -12,  -42,  -42,    6,   27,  -25,
-          -24,   24,   -2,  -14,  -13,  -19,    0,  -51,
-          -16,    1,  -15,  -55,  -27,  -25,   -7,  -37,
-            1,  -25,  -13,  -58,  -37,  -27,   23,   28,
-          -48,   24,   -8,  -87,   -9,  -60,   40,   36,
+          -40,   48,   41,   10,  -31,   -9,   27,   -8,
+           54,   24,    5,   18,   17,   21,  -13,  -19,
+           16,   49,   27,    9,    5,   23,   47,    3,
+            8,    5,   12,  -26,  -42,   -2,   11,  -33,
+          -24,   24,   -2,  -14,  -21,  -19,   -8,  -51,
+           -8,    9,   -7,  -47,  -19,   -9,    1,  -29,
+            9,  -17,   -5,  -50,  -37,  -19,   23,   28,
+          -40,   24,   -8,  -79,   -9,  -52,   40,   28,
     ]
     EG_KING_TABLE = [
-          -60,   22,   39,   39,   46,   72,   61,  -34,
-            6,   74,   71,   74,   74,   87,   80,   36,
-           27,   74,   80,   72,   69,   86,   85,   54,
-           17,   55,   57,   60,   51,   51,   51,   27,
+          -76,  -10,    7,    7,   14,   40,   29,  -42,
+            6,   42,   39,   42,   42,   63,   48,   28,
+           27,   42,   48,   40,   45,   70,   69,   38,
+           17,   47,   49,   52,   51,   51,   51,   27,
             0,   21,   33,   39,   36,   31,   16,    0,
           -16,    0,   18,   27,   22,   11,   -7,  -17,
-          -28,   -6,   -1,   10,    8,    1,  -31,  -50,
-          -47,  -51,  -29,  -13,  -56,  -19,  -65,  -92,
+          -28,   -6,   -1,   10,    8,    1,  -23,  -42,
+          -47,  -43,  -21,  -13,  -48,  -19,  -49,  -68,
     ]
 
     # Material values -- RE-TUNED for v53 by texel.py on 4,000,000 quiet
@@ -1324,10 +1324,10 @@ class Engine:
     # MG minors and rooks eased off (N 353->307, B 356->323, R 489->443)
     # while the EG gained (B 328->348, R 570->609, Q 1020->1062). The whole
     # 44-parameter fit is the v53 release; see the module docstring.
-    # Re-tuning is `python3 texel.py extract && python3 texel.py tune`.
+    # Re-tuning is `python3 tuning/texel.py extract && python3 tuning/texel.py tune`.
     MG_VALUES = {
         chess.PAWN: 89, chess.KNIGHT: 306, chess.BISHOP: 322,
-        chess.ROOK: 450, chess.QUEEN: 1068, chess.KING: 0,
+        chess.ROOK: 450, chess.QUEEN: 1076, chess.KING: 0,
     }
     EG_VALUES = {
         chess.PAWN: 120, chess.KNIGHT: 342, chess.BISHOP: 356,
@@ -1456,8 +1456,8 @@ class Engine:
     # arithmetically identical to the old flat value (integer-exact), so
     # this build reproduces the v54 bench signature and ladder pins; the
     # POINT is that texel.py can now move the halves apart.
-    DOUBLED_PAWN = 23
-    ISOLATED_PAWN = 14
+    DOUBLED_PAWN = 23           # MG half (name kept: it is what the tuner,
+    ISOLATED_PAWN = 14          # the C setter and every doc already call it)
     BACKWARD_PAWN = 13
     DOUBLED_PAWN_EG = 23
     ISOLATED_PAWN_EG = 14
@@ -1478,7 +1478,7 @@ class Engine:
     # Per-piece mobility weight (centipawns per reachable square).
     # Knight kept at 4 -- tuner found 1, but WDL signal for knight mobility is
     # thin in the middlegame; 4 is consistent with other HCE engines.
-    MOBILITY_WEIGHT = {
+    MOBILITY_WEIGHT = {          # FI-86: the MG half (see DOUBLED_PAWN)
         chess.KNIGHT: 6, chess.BISHOP: 5, chess.ROOK: 3, chess.QUEEN: 3,
     }
     MOBILITY_WEIGHT_EG = {
