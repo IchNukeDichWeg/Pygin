@@ -45,11 +45,13 @@ means all cores but one, exactly like match.py. Fixed-NODE labeling means
 a slower server changes only wall clock, never label quality.
 
 TWO SERVERS, one logical run: same --seed on both, box A --offset 0 and
-box B --offset 1000 (match.py's offset idea applied to worker seeds --
-worker seed = seed*100003 + offset + w, so any gap wider than either
-box's worker count yields disjoint games; the parent refuses an offset
-smaller than its own worker count). Merge the two outputs at the end
-with data_format.py merge.
+box B --offset <above its worker count> (e.g. 375000). NOT match.py's
+offset semantics: there offset slices a shared position pool and must
+equal the other window's size, whereas here worker seed = seed*100003 +
+offset + w, so the only requirement is that the two seed blocks do not
+collide (the parent refuses an offset below its own worker count).
+Verified: offsets 0 / 1000 / 375000 are mutually disjoint. Merge the
+outputs at the end with data_format.py merge.
 """
 
 import argparse
@@ -323,13 +325,15 @@ def main():
                     help="0 (default) = all cores but one, match.py's rule")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--offset", type=int, default=0,
-                    help="worker-seed offset for splitting ONE logical run "
-                         "across servers (match.py's offset idea): same "
+                    help="split ONE logical run across servers: same "
                          "--seed on both boxes, box A --offset 0, box B "
-                         "--offset 1000. Any gap larger than either box's "
-                         "worker count gives disjoint games -- round "
-                         "numbers work regardless of core counts. Merge "
-                         "the outputs afterwards.")
+                         "--offset <anything above the worker count> "
+                         "(e.g. 375000 or 1000 -- both work). NOTE this is "
+                         "NOT match.py's offset: there it indexes a shared "
+                         "position pool (pool[offset:offset+n]) and must "
+                         "equal the other window's size; here it shifts the "
+                         "worker SEEDS (seed*100003 + offset + w), so only "
+                         "non-collision matters. Merge the outputs after.")
     ap.add_argument("--book", help="plain-FEN/EPD file: start games from a "
                                    "random line (e.g. UHO_Lichess_4852_v1."
                                    "epd) instead of random opening plies")
