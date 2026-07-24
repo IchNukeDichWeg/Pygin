@@ -22,6 +22,11 @@ variables (``N_WORKERS``, ``STOCKFISH_ELO``, ``ENGINE_SMP``) -- no shell
 loops or env vars needed. Each worker process loads its own engine pair
 once and plays its share of the games; results stream back to one log/PGN.
 """
+# lib/ holds the shared support modules (time_manager, wdl, interruptible,
+# smp, shared_tt) since the 2026-07-24 reshuffle. They stay importable by
+# their plain names, so nothing else in the tree had to change.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "lib"))
 
 # ====================================================================== #
 #  CONFIG  -- edit these
