@@ -27,6 +27,10 @@ Protocol
 parent -> worker:
     ("move", fen, mode, value, max_depth)   mode in {"time", "depth"}
                                             value = milliseconds (time) or plies
+                                            FI-88: in CLOCK mode "time" carries
+                                            (budget_ms, wtime, btime, winc, binc)
+                                            -- clock-managing engines (Stockfish)
+                                            use the clocks, ours the budget
                                             fen may also be (start_fen, [ucis])
                                             -- the game's full move history, so
                                             the engine's repetition detection
@@ -207,7 +211,21 @@ def engine_worker(conn, engine_path, use_book, pv_uci=False, book_path=None,
             # mid-search would desync the two.
             t0 = time.perf_counter()
             if mode == "time":
-                move = engine.get_best_move_timed(board, value / 1000.0, max_depth)
+                # FI-88: in clock mode the parent sends the budget it computed
+                # (index 0, byte-identical to the pre-FI-88 number) PLUS the
+                # raw clocks. An engine that manages its own clock -- only
+                # Stockfish -- gets the clocks; ours gets the budget exactly
+                # as before, so this is a no-op for every Pygin-vs-Pygin run.
+                if isinstance(value, tuple):
+                    budget_ms, wt, bt, wi, bi = value
+                    if hasattr(engine, "get_best_move_clock"):
+                        move = engine.get_best_move_clock(board, wt, bt, wi, bi)
+                    else:
+                        move = engine.get_best_move_timed(
+                            board, budget_ms / 1000.0, max_depth)
+                else:
+                    move = engine.get_best_move_timed(
+                        board, value / 1000.0, max_depth)
             elif mode == "nodes":
                 # --nodes mode: fixed node budget via FB-09. The assert
                 # refuses pre-FB-09 builds, which silently IGNORE the attr
