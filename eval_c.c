@@ -25,6 +25,20 @@
 static int MOB_N_MG = 4, MOB_B_MG = 3, MOB_R_MG = 2, MOB_Q_MG = 1;
 static int MOB_N_EG = 4, MOB_B_EG = 3, MOB_R_EG = 2, MOB_Q_EG = 1;
 int PHASE_MAX = 24;    /* FB-06: non-static -- csearch.c's taper reads it */
+/* [phase][N,B,R,Q] -- rebuilt by the setters, read once per eval node. */
+static int MOB_TAPER[25][4];
+
+static void build_mob_taper(void)
+{
+    int pm = (PHASE_MAX > 0 && PHASE_MAX <= 24) ? PHASE_MAX : 24;
+    const int mg[4] = {MOB_N_MG, MOB_B_MG, MOB_R_MG, MOB_Q_MG};
+    const int eg[4] = {MOB_N_EG, MOB_B_EG, MOB_R_EG, MOB_Q_EG};
+    for (int ph = 0; ph <= 24; ph++) {
+        int p = ph > pm ? pm : ph;
+        for (int i = 0; i < 4; i++)
+            MOB_TAPER[ph][i] = (mg[i] * p + eg[i] * (pm - p)) / pm;
+    }
+}
 static int SHIELD_MG = 5,  SHIELD_EG = 2;
 static int RING_MG   = 13, RING_EG   = 0;
 static int OPEN_MG   = 28, OPEN_EG   = 2;
@@ -135,6 +149,7 @@ void set_mobility_params(int mob_n, int mob_b, int mob_r, int mob_q,
     SHIELD_MG = shield_mg; SHIELD_EG = shield_eg;
     RING_MG   = ring_mg;   RING_EG   = ring_eg;
     OPEN_MG   = open_mg;   OPEN_EG   = open_eg;
+    build_mob_taper();                 /* FI-86 */
 }
 
 /* FI-86: the EG half of the four mobility weights. Separate setter rather
@@ -144,6 +159,7 @@ void set_mobility_eg(int mob_n_eg, int mob_b_eg, int mob_r_eg, int mob_q_eg)
 {
     MOB_N_EG = mob_n_eg; MOB_B_EG = mob_b_eg;
     MOB_R_EG = mob_r_eg; MOB_Q_EG = mob_q_eg;
+    build_mob_taper();                 /* FI-86 */
 }
 
 /* ---------- file masks (same layout as python-chess: a1=bit0, h8=bit63) -- */
@@ -299,16 +315,15 @@ int mobility_king_safety(
     uint64_t bring = (bksq >= 0) ? KING_ATT[bksq] : 0ULL;
     int score      = 0;
 
-    /* FI-86: blend the four mobility weights ONCE per call, not per piece.
-     * Identical to the old flat constants while MG == EG (integer exact).
-     * Clamp phase the same way the callers do -- a phase above PHASE_MAX
-     * would otherwise extrapolate past the MG end of the taper. */
-    const int mob_pm = PHASE_MAX > 0 ? PHASE_MAX : 1;
-    const int mob_ph = phase < 0 ? 0 : (phase > mob_pm ? mob_pm : phase);
-    const int MOB_N = (MOB_N_MG * mob_ph + MOB_N_EG * (mob_pm - mob_ph)) / mob_pm;
-    const int MOB_B = (MOB_B_MG * mob_ph + MOB_B_EG * (mob_pm - mob_ph)) / mob_pm;
-    const int MOB_R = (MOB_R_MG * mob_ph + MOB_R_EG * (mob_pm - mob_ph)) / mob_pm;
-    const int MOB_Q = (MOB_Q_MG * mob_ph + MOB_Q_EG * (mob_pm - mob_ph)) / mob_pm;
+    /* FI-86: the four blended mobility weights, read from a per-phase table
+     * built by the setters. The first cut computed them inline here -- four
+     * integer DIVISIONS on the per-node eval path -- and nps13.py measured
+     * the cost at -2.76% NPS (16/16 rounds, p=0.000) even though the build
+     * was node-identical. Node-exact is not the same as free. Same table
+     * trick csearch.c's passer/pawn tapers already use. */
+    const int mob_ph = phase < 0 ? 0 : (phase > 24 ? 24 : phase);
+    const int MOB_N = MOB_TAPER[mob_ph][0], MOB_B = MOB_TAPER[mob_ph][1];
+    const int MOB_R = MOB_TAPER[mob_ph][2], MOB_Q = MOB_TAPER[mob_ph][3];
     int w_ring_att = 0;
     int b_ring_att = 0;
     uint64_t t;
