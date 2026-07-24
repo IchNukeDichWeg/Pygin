@@ -138,6 +138,13 @@ VERBOSE_MOVES         = False           # mirror every move to the terminal
                                         # (per-move info is ALWAYS written to log)
 
 # --- Misc ------------------------------------------------------------- #
+# FI-88: in "clock" mode an engine that manages its own clock (only Stockfish)
+# is handed `go wtime/btime/winc/binc` and budgets each move itself. True
+# (--sf-our-clock) restores the pre-2026-07-24 behaviour, where OUR
+# time_manager computed the ms for both sides and SF's manager never ran --
+# which is how every published odds number up to and including the 2026-07-24
+# pawn-odds run (84.88%) was measured. Our engines are unaffected either way.
+SF_OUR_CLOCK          = False
 ENGINE_USE_BOOK       = False           # disable opening books for an odds match
 MAX_PLIES             = 300             # hard cap -> adjudicated draw (odds games can grind)
 MAX_DEPTH_CAP         = 50              # safety cap on timed-search depth
@@ -168,7 +175,7 @@ import interruptible
 # by environment variable -- no hidden env switches.)
 # ---------------------------------------------------------------------- #
 def _apply_config(cfg=None):
-    global NUM_GAMES, N_WORKERS, STOCKFISH_ELO, ENGINE_SMP
+    global NUM_GAMES, N_WORKERS, STOCKFISH_ELO, ENGINE_SMP, SF_OUR_CLOCK
     global ENGINE_1_PATH, ENGINE_2_PATH, ODDS_GIVEN_BY, ODDS_SQUARES
     global ENGINE_1_CLOCK_SECONDS, ENGINE_1_CLOCK_INCREMENT
     global ENGINE_2_CLOCK_SECONDS, ENGINE_2_CLOCK_INCREMENT
@@ -178,6 +185,7 @@ def _apply_config(cfg=None):
     if N_WORKERS <= 0:                    # 0 / auto => all cores but one (match.py rule)
         N_WORKERS = max(1, multiprocessing.cpu_count() - 1)
     STOCKFISH_ELO = int(g("stockfish_elo", STOCKFISH_ELO))
+    SF_OUR_CLOCK = bool(g("sf_our_clock", SF_OUR_CLOCK))   # FI-88
     ENGINE_SMP = int(g("smp", ENGINE_SMP))
     ENGINE_1_PATH = g("engine1", ENGINE_1_PATH)
     ENGINE_2_PATH = g("engine2", ENGINE_2_PATH)
@@ -481,8 +489,17 @@ def play_game(round_no, p_white, p_black, odds_giver, mate_score,
         t0 = time.time()
         try:
             if req_mode == "time":
-                move = mover.engine.get_best_move_timed(
-                    board, req_value / 1000.0, MAX_DEPTH_CAP)
+                # FI-88: hand a clock-managing engine (only Stockfish) the raw
+                # clocks so its own time manager runs; ours has none, so it
+                # keeps the budget calculate_move_time just produced.
+                if (mover.mode == "clock" and not SF_OUR_CLOCK
+                        and hasattr(mover.engine, "get_best_move_clock")):
+                    move = mover.engine.get_best_move_clock(
+                        board, p_white.clock_ms, p_black.clock_ms,
+                        p_white.clock_inc_ms, p_black.clock_inc_ms)
+                else:
+                    move = mover.engine.get_best_move_timed(
+                        board, req_value / 1000.0, MAX_DEPTH_CAP)
             else:
                 move = mover.engine.get_best_move(board, int(req_value))
         except Exception as ex:
@@ -719,6 +736,10 @@ def main():
     ap.add_argument("--odds-squares", help="comma list of squares to remove, e.g. d1 (queen) or 'none'")
     ap.add_argument("--odds-given-by", choices=("engine_1", "engine_2", "none"))
     ap.add_argument("--tc-seconds", type=float); ap.add_argument("--tc-inc", type=float)
+    ap.add_argument("--sf-our-clock", action="store_true", default=None,
+                    help="FI-88 opt-out: let OUR time_manager budget Stockfish's "
+                         "moves too (the pre-2026-07-24 behaviour). Default is "
+                         "off -- SF gets go wtime/btime and manages itself.")
     a = ap.parse_args()
     if a.positions is not None:
         a.num_games = a.positions * 2   # colour-alternating pairs
