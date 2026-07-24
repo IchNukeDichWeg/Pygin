@@ -2,7 +2,7 @@
 
 # Pygin
 
-**A from-scratch chess engine in Python + C** — hand-written search and
+**A from-scratch chess engine in Python + C.** Hand-written search and
 evaluation, no NNUE, no external engine.<br/>
 [`python-chess`](https://pypi.org/project/chess/) is used *only* for board
 representation, move generation and legality.
@@ -20,9 +20,9 @@ representation, move generation and legality.
 
 | | | | |
 |---|---|---|---|
-| 🏆 **~2885 Elo** | SF-18 UCI_Elo bracket | ⚡ **3.8M nps** | 14.9M at 4 threads |
-| 🧪 **+284 Elo** | A/B-confirmed, v31→v54 | 📈 **~18 ply** | from startpos in 5 s |
-| 🥇 **v53+v54** eval lane | +37.52 & +31.20, the two biggest | 📚 **1 dependency** | `python-chess` only |
+| **~2885 Elo** | SF-18 UCI_Elo bracket | **3.8M nps** | 14.9M at 4 threads |
+| **+284 Elo** | A/B-confirmed, v31→v54 | **~18 ply** | from startpos in 5 s |
+| **v53+v54** eval lane | +37.52 & +31.20, the two biggest | **1 dependency** | `python-chess` only |
 
 <table>
 <tr>
@@ -35,50 +35,53 @@ representation, move generation and legality.
 </tr>
 </table>
 
-- **Top row — self-play.** Every C-era version (v31+) is A/B-tested against the
-  one before it: gains stacked (**+284 Elo**) and single-thread speed (**1.58×**).
-  The v30→v31 C rewrite (~34× faster, +215 odds-derived) is off the left edge,
-  so v31 is the honest zero.
-- **Bottom row — vs Stockfish 18 at full strength.** The external check: knight
-  odds climbed **76.75 → 100%** (v31 → v54) and closed. On the handicap
-  ladder it now spots SF a **queen**, **rook** or **knight** — all at 100% —
-  or a **pawn** at **84.9%**, and still wins. Pawn odds is the only rung with
-  headroom left, so it is the yardstick now.
+Top row, self-play: every C-era version (v31+) is A/B-tested against the one
+before it. Gains stacked to +284 Elo, single-thread speed to 1.58×. The v30→v31
+C rewrite (~34× faster, +215 odds-derived) is off the left edge, so v31 is the
+honest zero.
+
+Bottom row, vs Stockfish 18 at full strength: knight odds climbed 76.75 → 100%
+(v31 → v54) and closed. On the handicap ladder Pygin now spots SF a queen, rook
+or knight, all at 100%, or a pawn at 84.9%, and still wins. Pawn odds is the
+only rung with headroom left, so it is the yardstick now.
 
 ### Two engines, one eval
 
-- **`cengine.py` + `csearch.c`** — the **C search core**, the strongest engine.
-  The *whole* per-node loop runs in C (board, ordering, TT, pruning, quiescence,
-  bit-exact eval). Python keeps only the root: iterative deepening, time
-  management, book. **~50× the Python core.**
-- **`engine.py`** — the reference Python engine and the **single source of eval
-  truth**: the C core reads every eval parameter from it at startup.
+`cengine.py` + `csearch.c` are the C search core, the strongest engine. The
+whole per-node loop runs in C (board, ordering, TT, pruning, quiescence,
+bit-exact eval); Python keeps only the root, meaning iterative deepening, time
+management and the book. About 50× the Python core.
+
+`engine.py` is the reference Python engine and the single source of eval truth:
+the C core reads every eval parameter from it at startup.
 
 ### Measured strength
 
-- **~2885 Elo** — SF-18 UCI_Elo bracket (v51): **62.5%** over the 2850 cap,
-  **46.4%** under 2900, 2,000 games each. A class bracket, not a rating.
-- **Odds vs full-strength SF-18** — the external yardstick. Knight odds ran
-  76.75% → 79.05% → 81.65% → **100%** (v31 → v49 → v52 → v54) and is now
-  **saturated** — the PST candidate that shipped as v54 took 197 games without
-  conceding a single win or draw. Queen and rook went the same way: rook,
-  re-measured at v54, took **106 games without conceding a win or a draw**
-  (retiring a stale 95.5% from v49). **Pawn odds (f2)** is the only rung left:
-  **84.88%** over 2,000 games at v54 (+299.63 ±29.8, 1531–333–136) — the one
-  handicap SF still scores against.
-- **vs its own Python engine: 1,815–0–40.** No rating quoted — the gap is past
-  what Elo can express. The Python engine alone is **~2440–2450** (level with
-  SF-18 at UCI_Elo 2450).
+**~2885 Elo** on the SF-18 UCI_Elo bracket (v51): 62.5% over the 2850 cap,
+46.4% under 2900, 2,000 games each. That is a class bracket, not a rating.
+
+**Odds vs full-strength SF-18** is the external yardstick. Knight odds ran
+76.75% → 79.05% → 81.65% → 100% (v31 → v49 → v52 → v54) and is now saturated:
+the PST candidate that shipped as v54 took 197 games without conceding a win or
+a draw. Queen and rook went the same way. Rook, re-measured at v54, took 106
+games without conceding a win or a draw, retiring a stale 95.5% from v49. Pawn
+odds (f2) is the only rung left, at 84.88% over 2,000 games at v54 (+299.63
+±29.8, 1531–333–136), and the one handicap SF still scores against.
+
+**vs its own Python engine: 1,815–0–40.** No rating is quoted; the gap is past
+what Elo can express. The Python engine alone is ~2440–2450, level with SF-18
+at UCI_Elo 2450.
 
 ---
 
 ## Version progression
 
-- **54 versions**, each A/B-tested against the one before it.
-- Speed = nodes/s and depth from **startpos in 5 s** (book off, best-of-N).
-- **`Elo Δ`** = A/B vs the previous version. **Cumulative ≈ +284 over v31.**
-- Full per-version speed/depth/Elo is in the collapsible list below; the
-  charts above summarise it. Regenerate: `bench_progress.py`, `make_readme_charts.py`.
+54 versions, each A/B-tested against the one before it. Speed is nodes/s and
+depth from startpos in 5 s (book off, best-of-N). `Elo Δ` is the A/B result vs
+the previous version, cumulative ≈ +284 over v31.
+
+Full per-version speed/depth/Elo is in the list below; the charts above
+summarise it. Regenerate with `bench_progress.py` and `make_readme_charts.py`.
 
 <details>
 <summary><b>Every version in full</b> — complete milestone + Elo list</summary>
@@ -143,27 +146,28 @@ representation, move generation and legality.
 <details>
 <summary><b>Reading the table</b> (footnotes & caveats)</summary>
 
-- **Elo Δ** — A/B vs the previous version (C-era = 10,000 games). Not summable
-  across the whole column: TCs differ (Python era assorted ⁴, v32–36 at 45+0.10,
-  v37–47 at 50+0.20, v48+ on `--nodes`).
-- **`est` ⁵** — feature-based estimate, not an A/B. The real anchor is ≈2442 by v25.
-- **Bundled A/Bs** — v16+v17 vs v15 = +69 ±16 ³; v22–24 vs v21 = +11.75 ±6.8 ²;
+- **Elo Δ** is the A/B vs the previous version (C-era = 10,000 games). It is
+  not summable across the whole column, because the TCs differ (Python era
+  assorted ⁴, v32–36 at 45+0.10, v37–47 at 50+0.20, v48+ on `--nodes`).
+- **`est` ⁵** is a feature-based estimate, not an A/B. The real anchor is ≈2442
+  by v25.
+- **Bundled A/Bs:** v16+v17 vs v15 = +69 ±16 ³; v22–24 vs v21 = +11.75 ±6.8 ²;
   v31's ≈+215 ¹ is odds-derived.
-- **NPS 4T** — "—" for v1–24 (no reliable SMP). v25–30 multi-process,
+- **NPS 4T** is "—" for v1–24 (no reliable SMP). v25–30 were multi-process,
   v31+ pthread Lazy-SMP, so the v30→v31 jump is partly methodology.
 
 </details>
 
-### Milestones that moved the needle
+### The biggest jumps
 
 | Jump | NPS | What |
 |---|---|---|
 | **v15→v17** | 28.7k → 52.7k | eval, then movegen ported to C (byte-identical) |
 | **v25→v28** | 49.1k → 69.0k | node-identical speed batches |
-| **v30→v31** | 69.0k → **2.34M (~34×)** | whole per-node loop moves to C — *the* jump |
+| **v30→v31** | 69.0k → **2.34M (~34×)** | whole per-node loop moves to C |
 | **v34→v36** | 2.13M → 3.19M | noisy-only qsearch gen + staged ordering |
-| **v43→v44** | 3.23M → 3.67M | TT prefetch — **+13.31 Elo**, ~2.7 Elo per 1% NPS |
-| **v53** | — | Texel eval retune — **+37.52 Elo**, biggest single release |
+| **v43→v44** | 3.23M → 3.67M | TT prefetch: +13.31 Elo, ~2.7 Elo per 1% NPS |
+| **v53** | — | Texel eval retune: +37.52 Elo, biggest single release |
 
 *Not visible as NPS:* v39→v40 (ep-key merge) and the v41→v43 verified-null
 removal are nodes-to-depth gains at flat speed.
@@ -172,20 +176,20 @@ removal are nodes-to-depth gains at flat speed.
 
 ## Features
 
-- **Search** — negamax/alpha-beta, PVS, iterative deepening, aspiration windows,
+- Search: negamax/alpha-beta, PVS, iterative deepening, aspiration windows,
   transposition table, quiescence.
-- **Selectivity** — null-move, reverse-futility & futility pruning, LMR + LMP,
+- Selectivity: null-move, reverse-futility and futility pruning, LMR + LMP,
   check / single-reply / passed-pawn extensions.
-- **Move ordering** — TT move, MVV-LVA + capture history, killers, counter-moves,
+- Move ordering: TT move, MVV-LVA + capture history, killers, counter-moves,
   history heuristic, SEE.
-- **Evaluation** — tapered HCE (material + PSQT, pawn structure, king safety,
+- Evaluation: tapered HCE (material + PSQT, pawn structure, king safety,
   mobility, rook files, bishop pair, threats, endgame mop-up), ported to C.
-- **C internals** — magic-bitboard movegen reproducing python-chess's order
-  byte-for-byte; whole per-node search loop in C; bit-exact eval port verified
-  over **3M positions**.
-- **Lazy SMP** — pthreads + lock-free shared TT (UCI `Threads`); Python engine
+- C internals: magic-bitboard movegen reproducing python-chess's order
+  byte-for-byte, the whole per-node search loop in C, and a bit-exact eval port
+  verified over 3M positions.
+- Lazy SMP: pthreads + lock-free shared TT (UCI `Threads`); the Python engine
   has a multi-process variant.
-- **Optional** — bundled Polyglot book (`Perfect2023.bin`), online Syzygy probing.
+- Optional: bundled Polyglot book (`Perfect2023.bin`), online Syzygy probing.
 
 ---
 
@@ -201,8 +205,8 @@ cd Pygin
 on Linux), builds the C libraries, best-effort builds the `Old Engine/`
 snapshots, and self-tests.
 
-**Needs:** Python 3.10+ · a C compiler (`clang`/`gcc`) · `python-chess` (only
-dependency) · Stockfish *(optional, for strength/odds testing)*.
+Needs Python 3.10+, a C compiler (`clang`/`gcc`), `python-chess` (the only
+dependency), and Stockfish if you want strength/odds testing.
 
 ```bash
 python3 selftest.py        # health check; exit 0 = OK, chainable
@@ -224,11 +228,11 @@ per-game log and PGN.
 python3 match.py cengine.py "Old Engine/34/engine34.py" 100 0 --workers 4
 ```
 
-- **Positional args:** `engine1 engine2 NUM_POSITIONS OFFSET` — each position is
+- Positional args are `engine1 engine2 NUM_POSITIONS OFFSET`. Each position is
   played both colours, so games = `NUM_POSITIONS × 2`.
-- **Flags:** `--workers 0` = cores−1 · `--adj on|off` adjudication ·
-  `--sf-elo N` · `--smp N` · `--book1/--book2 PATH` · `--start-pos True`.
-- **Openings:** defaults to bundled `UHO_4060_v4.epd`. Larger sets from the
+- Flags: `--workers 0` = cores−1, `--adj on|off` adjudication, `--sf-elo N`,
+  `--smp N`, `--book1/--book2 PATH`, `--start-pos True`.
+- Openings default to the bundled `UHO_4060_v4.epd`. Larger sets are in the
   [Stockfish books repo](https://github.com/official-stockfish/books); point
   `FEN_FILE` at one.
 
@@ -238,9 +242,9 @@ python3 match.py cengine.py "Old Engine/34/engine34.py" 100 0 --workers 4
 python3 match.py engine.py stockfish_engine.py 100 0 --sf-elo 2000   # 0 = full strength
 ```
 
-**Material / time odds** — configured in `odds.py`'s `CONFIG` block (default is
-pawn odds, `f2`). Each worker runs **two** engines, so use `--workers ≤ cores/2`
-so a real clock TC isn't starved by oversubscription:
+**Material / time odds** are configured in `odds.py`'s `CONFIG` block (the
+default is pawn odds, `f2`). Each worker runs two engines, so use
+`--workers ≤ cores/2` or a real clock TC gets starved by oversubscription:
 
 ```bash
 python3 odds.py --positions 500 --workers 5
@@ -266,23 +270,6 @@ GUI options:
 | `UCI_ShowWDL` | check | true | — | Emit `wdl` on info lines (opt-out for strict arenas) |
 | `Clear Hash` | button | — | — | Wipe the transposition table without `ucinewgame` |
 | `Contempt` | spin | 50 | −100–100 | Draw score bias (cp) when ahead/behind |
-
-Search-tuning knobs (P-26) — defaults are the shipped values; exposed for
-automated tuning (chess-tuning-tools), most users should leave them alone:
-
-| Option | Type | Default | Range | Purpose |
-|:-------|:-----|--------:|:------|:--------|
-| `RFPMargin` | spin | 80 | 20–300 | Reverse-futility margin (cp) |
-| `RFPDepth` | spin | 6 | 2–12 | Reverse-futility max depth |
-| `FutMargin` | spin | 150 | 40–400 | Futility-pruning margin (cp) |
-| `DeltaMargin` | spin | 200 | 50–500 | Quiescence delta-pruning margin (cp) |
-| `LMPScale` | spin | 100 | 40–250 | Late-move-pruning count scale (%) |
-| `LMRDiv` | spin | 200 | 120–350 | Late-move-reduction divisor (×100) |
-| `NullBase` | spin | 2 | 1–4 | Null-move base reduction |
-| `NullDiv` | spin | 6 | 3–12 | Null-move depth divisor |
-| `AspDelta` | spin | 30 | 10–120 | Aspiration window delta (cp) |
-| `SoftStable` | spin | 40 | 20–70 | Soft-stop time fraction, stable best move (%) |
-| `SoftUnstable` | spin | 80 | 50–130 | Soft-stop time fraction, best move flips (%) |
 
 ---
 
@@ -318,14 +305,15 @@ odds.py                material / time-odds match runner
 Old Engine/<N>/        frozen version snapshots (engineN.py + its C sources)
 ```
 
-`Old Engine/<N>/` holds every historical version, each self-contained — see
+`Old Engine/<N>/` holds every historical version, each self-contained. See
 its [README](Old%20Engine/README.md).
 
 ---
 
 ## Notes
 
-- C `.so` files are **not** committed — platform-specific, built by `setup.sh`.
+- C `.so` files are not committed. They are platform-specific and built by
+  `setup.sh`.
 - If a `.so` won't load, the engine falls back to pure Python (correct, slower);
   the self-test reports which path is active.
 
