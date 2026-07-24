@@ -951,6 +951,29 @@ static int g_eval_ready = 0;
 static int g_mg_pst[7][64], g_eg_pst[7][64];        /* by PT 1..6 */
 static int g_mg_val[7], g_eg_val[7], g_phase_w[7];
 static int g_tempo, g_doubled, g_isolated, g_backward;
+/* FI-86: EG halves of the three pawn-structure scalars (MG halves are the
+ * g_* above). Defaulted equal by csearch_set_eval, so a host that never
+ * calls csearch_set_pawn_eg keeps the pre-FI-86 flat behaviour. The blend
+ * is precomputed per phase into g_pawn_taper -- pawn_structure runs at
+ * every eval node, so it must not do three divisions per call. */
+static int g_doubled_eg, g_isolated_eg, g_backward_eg;
+static int g_pawn_taper[25][3];        /* [phase][doubled|isolated|backward] */
+
+/* FI-86: same blend and the same PHASE_MAX clamp as the FB-17 passer taper
+ * right below -- keeping the two identical is what makes "MG == EG is
+ * byte-exact" true for BOTH tables at once. */
+static void build_pawn_taper(void)
+{
+    extern int PHASE_MAX;
+    int pm = (PHASE_MAX > 0 && PHASE_MAX <= 24) ? PHASE_MAX : 24;
+    const int mg[3] = {g_doubled, g_isolated, g_backward};
+    const int eg[3] = {g_doubled_eg, g_isolated_eg, g_backward_eg};
+    for (int ph = 0; ph <= 24; ph++) {
+        int p = ph > pm ? pm : ph;
+        for (int i = 0; i < 3; i++)
+            g_pawn_taper[ph][i] = (mg[i] * p + eg[i] * (pm - p)) / pm;
+    }
+}
 static int g_passed_taper[25][8];                   /* [phase][rel rank] */
 static int g_mopup_min, g_mopup_scmd, g_mopup_sking;
 
@@ -973,6 +996,10 @@ void csearch_set_eval(const int* mg_pst, const int* eg_pst,  /* [6*64] P,N,B,R,Q
     }
     g_tempo = tempo; g_doubled = doubled;
     g_isolated = isolated; g_backward = backward;
+    /* FI-86: default the EG halves to the MG values -- flat, i.e. exactly
+     * the pre-FI-86 eval. csearch_set_pawn_eg overrides them afterwards and
+     * rebuilds the taper; engine.py's sync calls it right after this. */
+    g_doubled_eg = doubled; g_isolated_eg = isolated; g_backward_eg = backward;
     g_mopup_min = mopup_min;
     g_mopup_scmd = mopup_strong_cmd; g_mopup_sking = mopup_strong_king;
     /* FB-17: build the taper against the SYNCED PHASE_MAX (sync order
@@ -989,7 +1016,19 @@ void csearch_set_eval(const int* mg_pst, const int* eg_pst,  /* [6*64] P,N,B,R,Q
                     (passed_mg[rel] * p + passed_eg[rel] * (pm - p)) / pm;
         }
     }
+    build_pawn_taper();                /* FI-86 (flat until set_pawn_eg) */
     g_eval_ready = 1;
+}
+
+/* FI-86: EG halves of doubled/isolated/backward, then rebuild the taper.
+ * Must be called AFTER csearch_set_eval (which defaults them flat and sets
+ * PHASE_MAX's dependants); engine.py's _sync_c_params does exactly that. */
+void csearch_set_pawn_eg(int doubled_eg, int isolated_eg, int backward_eg)
+{
+    g_doubled_eg = doubled_eg;
+    g_isolated_eg = isolated_eg;
+    g_backward_eg = backward_eg;
+    build_pawn_taper();
 }
 
 /* Doubled / isolated / backward / passed, White's perspective. */
@@ -997,6 +1036,9 @@ static int pawn_structure(uint64_t wp, uint64_t bp, int phase)
 {
     int s = 0;
     const int* taper = g_passed_taper[phase > 24 ? 24 : phase]; /* FB-17 */
+    /* FI-86: phase-blended pawn scalars, same [phase] lookup as the passers */
+    const int* pt = g_pawn_taper[phase > 24 ? 24 : (phase < 0 ? 0 : phase)];
+    const int g_doubled = pt[0], g_isolated = pt[1], g_backward = pt[2];
     for (int f = 0; f < 8; f++) {
         int c = __builtin_popcountll(wp & FILE_BB8[f]);
         if (c > 1) s -= g_doubled * (c - 1);
@@ -3884,7 +3926,8 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted, &second);
 }
 
-int csearch_abi(void) { return 28; }  /* 28 = FI-76 set_wrongbishop;
+int csearch_abi(void) { return 29; }  /* 29 = FI-86 csearch_set_pawn_eg;
+                                       * 28 = FI-76 set_wrongbishop;
                                        * 27 = FI-67 set_qs_ttfirst;
                                        * 26 = FI-12 set_hist_keep;
                                        * 25 = FI-59/60 set_killer_inherit/set_quiet_malus_all;
