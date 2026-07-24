@@ -10,14 +10,26 @@ factor. Applied to the clean split, the same rule rejects everything.
 This measures the conversion directly: take two shipped versions whose A/B
 Elo is known, evaluate BOTH on the current clean split, and divide.
 
-    v53 -> v54 (PST retune, +31.20 +/- 5.6 Elo over 11,668 games)
-        = +0.196% clean held-out
-        => ~159 Elo per 1% clean held-out
-        => the +15 Elo screen gate is ~0.094% clean, NOT 1%
+TWO POINTS NOW, AND THEY DO NOT LIE ON A LINE:
 
-RE-RUN THIS when a new eval release lands an A/B result: the number above is
-ONE point fitted through the origin, so treat it as an order-of-magnitude
-guide, not a law. Two points make it a trend.
+    v53 -> v54 PST retune   +0.196% clean  ->  +31.20 +/- 5.6 Elo  (11,668 games)
+    2026-07-24 PST retune   +0.085% clean  ->   -4.92 +/- 7.4 Elo   (8,474 games)
+
+The first point alone suggested ~159 Elo per 1% clean, which predicted +13.5
+for the second. It measured NEGATIVE -- the 95% CI (-12.3 .. +2.5) excludes
+the prediction outright. So the ratio is NOT a line through the origin, and
+extrapolating it downward is exactly the mistake the old ">= 1%" rule existed
+to prevent.
+
+WHAT TO CONCLUDE: a clean held-out gain only carries Elo once it is LARGE.
++0.196% converted; +0.085% -- less than half of it -- converted to nothing.
+Treat anything under ~0.15% clean as unproven, and do not price a candidate
+in Elo from its loss at all. The loss picks which candidate to test; only the
+A/B says what it is worth.
+
+RE-RUN THIS when a new eval release lands an A/B result, and add the point
+above rather than replacing it. A third point is what turns two contradictory
+readings into a usable curve.
 
     python3 calibrate_loss_elo.py                       # v53 -> v54 (default)
     python3 calibrate_loss_elo.py <old_eval.py> <elo>   # any other pair
@@ -87,8 +99,10 @@ def main():
         return
     per_pct = known_elo / gain
     print(f"\n{gain:+.3f}% clean held-out  ==  {known_elo:+.2f} Elo (measured)")
-    print(f"=> ~{per_pct:.0f} Elo per 1% clean held-out")
-    print(f"=> a +15 Elo screen needs ~{15 / per_pct:.3f}% clean held-out")
+    print(f"   (ratio for THIS pair: ~{per_pct:.0f} Elo per 1% clean)")
+    print("   NOTE: the ratio does not extrapolate downward -- a +0.085%\n"
+          "   candidate measured -4.92 Elo over 8,474 games. See the module\n"
+          "   docstring; use the loss to RANK candidates, not to price them.")
 
 
 if __name__ == "__main__":
