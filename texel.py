@@ -534,6 +534,9 @@ def cmd_tune(a):
             print("     (--include-rejected re-enables them anyway)")
         PARAMS = PARAMS + dormant_params(dormant)
     if a.pst:
+        if a.pst_bound:
+            global PST_BOUND
+            PST_BOUND = a.pst_bound
         PARAMS = PARAMS + pst_params()
         print(f"PST tuning ON: +{len(pst_params())} table entries "
               f"(+/-{PST_BOUND}cp each), {len(PARAMS)} params total")
@@ -1075,6 +1078,10 @@ def main():
     t.add_argument("--workers", type=int, default=cores,
                    help="0 = auto (cores - 1), same rule as match.py/odds.py")
     t.add_argument("--rounds", type=int, default=DEFAULT_ROUNDS)
+    t.add_argument("--pst-bound", type=int, default=None,
+                   help="per-square +/- bound for --pst (default 25). Many "
+                        "v54 squares sit AT the 25 rail, so the optimum is "
+                        "outside it -- widen to explore past that.")
     t.add_argument("--pst", action="store_true",
                    help="also tune the 736 piece-square-table entries (the "
                         "stock PeSTO tables, never fitted for this engine)")
