@@ -87,8 +87,7 @@ ODDS_SQUARES = ["f2"]                   # PAWN odds (f-pawn) -- the ACTIVE
                                         # regime -- SF was driven by OUR
                                         # time_manager via `go movetime`, its
                                         # own manager never ran (see FI-88).
-                                        # The
-                                        # f-pawn is the classic odds pawn: only
+                                        # The f-pawn is the classic odds pawn: only
                                         # the king defends it, so removing it is
                                         # the least positionally-disruptive way
                                         # to be down exactly one pawn (it also
@@ -803,12 +802,18 @@ def main():
                  f"given by {giver_name}") if giver_name else "none"
     sf_desc = ("FULL strength" if STOCKFISH_ELO <= 0
                else f"UCI_Elo {STOCKFISH_ELO}")
+    # FI-88: the regime belongs in the log. Numbers from the two are NOT
+    # comparable (SF budgeting its own moves is a real strength difference),
+    # and everything published before 2026-07-24 is "our time_manager".
+    clock_desc = ("our time_manager budgets BOTH (pre-FI-88)" if SF_OUR_CLOCK
+                  else "SF manages its own clock (go wtime/btime)")
 
     banner = (f"Odds match: {p1_name}  vs  {p2_name}\n"
               f"Interpreter: {interp}\n"
               f"Engine 1: {desc1}\n"
               f"Engine 2: {desc2}   (STOCKFISH_ELO={STOCKFISH_ELO} -> {sf_desc})\n"
               f"Material odds: {odds_desc}\n"
+              f"Time regime: {clock_desc}\n"
               f"Games: {NUM_GAMES}   Workers: {N_WORKERS}   ENGINE_SMP: {ENGINE_SMP}\n"
               f"(Engine 1 plays {ENGINE_1_PLAYS_FIRST} in Game 1, colors alternate)\n"
               f"Log: {log_path}\n"
@@ -819,6 +824,7 @@ def main():
                  f"Interpreter: {interp}\n"
                  f"Engine 1: {desc1}   Engine 2: {desc2} ({sf_desc})\n"
                  f"Material odds: {odds_desc}\n"
+                 f"Time regime: {clock_desc}\n"
                  f"Games scheduled: {NUM_GAMES}   Workers: {N_WORKERS}\n"
                  f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
         fh.flush()
