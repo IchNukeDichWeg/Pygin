@@ -353,10 +353,10 @@ if os.path.exists("csearch.c"):
             ce._lib.set_xray_mob(0)
         except AttributeError:
             pass                       # pre-FI-85 eval_c
-        # FI-76 wrong-bishop clamp: ARMED CANDIDATE 2026-07-23, screen
-        # PENDING. LOAD-BEARING -- cengine's class default carries the armed
-        # value for match play, so the ladder must force it OFF or it
-        # measures the candidate instead of v54.
+        # FI-76 wrong-bishop clamp: SCREEN-NULL 2026-07-24 (+0.17 +/-15.3
+        # @2k, ~9% pair engagement). Default is 0 again, so this pin is
+        # belt-and-braces -- keep it: it is what makes the ladder measure v54
+        # if WRONGBISHOP is ever re-armed.
         try:
             ce._lib.set_wrongbishop(0)
         except AttributeError:
