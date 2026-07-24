@@ -58,15 +58,22 @@ def read_pygdata(path):
     return data
 
 
+MERGE_CHUNK = 1 << 20              # records per write (~88 MB)
+
+
 def merge_pygdata(out_path, shard_paths):
-    total = 0
+    """Concatenate .pygdata files. Streams in MERGE_CHUNK-record blocks:
+    the inputs are mmaps, so materialising a whole part (np.asarray(p)
+    .tobytes()) would peak at that part's full size in RAM -- 4+ GB for a
+    real slice, and the Phase-6 merge concatenates several of those."""
     parts = [read_pygdata(p) for p in shard_paths]
     total = sum(len(p) for p in parts)
     with open(out_path, "wb") as f:
         f.write(_HDR.pack(DATA_MAGIC, DATA_VERSION, RECORD_SIZE,
                           total, THREAT_VER, 0))
         for p in parts:
-            f.write(np.asarray(p).tobytes())
+            for i in range(0, len(p), MERGE_CHUNK):
+                f.write(np.ascontiguousarray(p[i:i + MERGE_CHUNK]).tobytes())
     return total
 
 

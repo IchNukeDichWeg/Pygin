@@ -33,7 +33,7 @@ sys.path.insert(0, REPO_DIR)
 
 import chess
 
-from config import LABEL_NODES
+from config import LABEL_NODES, engine_fingerprint
 from data_format import read_pygdata
 
 
@@ -64,6 +64,9 @@ def research(records, nodes, cycle_on):
                                         # defaults, same as the generator)
 
     eng = AuditEngine()
+    if not cycle_on:                       # the gate pass, not the report
+        print(engine_fingerprint(eng)
+              + "   <- must MATCH the generation run's", flush=True)
     eng.use_book = False
     eng.use_tb = False
     eng.smp_workers = 1

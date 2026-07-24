@@ -32,7 +32,10 @@
  * mover's perspective from the child board (bucket/mirror may change); the
  * opponent perspective updates incrementally (kings are ordinary planes
  * there). Every g_use_nnue==0 path compiles to an untaken branch: toggle
- * off is byte-exact v50 (bench 1,083,772 armed / 1,508,415 ROOT_LMR-off).
+ * off is byte-exact vs the same build without NNUE (verified at bench
+ * 1,083,772/1,508,415 in the v50 era and 1,122,753 at v53; the signature
+ * itself re-baselines per ship -- compare before/after, never to a
+ * number quoted in a comment).
  */
 
 #define NN_H_MAX   256          /* compile-time ceiling; file's H <= this  */

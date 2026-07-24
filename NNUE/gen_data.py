@@ -66,7 +66,8 @@ import chess
 
 from config import (LABEL_NODES, LABEL_MAX_ABS_CP, LABEL_MAX_HMC,
                     LABEL_MIN_RANDOM_PLIES, LABEL_MAX_RANDOM_PLIES,
-                    LABEL_MAX_PLIES, LABEL_ADJ_CP, LABEL_ADJ_STREAK)
+                    LABEL_MAX_PLIES, LABEL_ADJ_CP, LABEL_ADJ_STREAK,
+                    engine_fingerprint)
 from data_format import RECORD_DTYPE, write_pygdata, merge_pygdata
 
 
@@ -265,6 +266,9 @@ def run_worker(shard_path, positions, nodes, seed, book, endgame, eg_men,
     position (position count becomes the variable). games_quota == 0: play
     until `positions` are collected (game count becomes the variable)."""
     eng = make_label_engine()
+    if shard_path.endswith("shard0"):      # once per run, not once per worker
+        print(engine_fingerprint(eng) + "   <- must MATCH verify_labels'",
+              flush=True)
     contempt = eng._py.CONTEMPT
     mopup_min = eng._py.MOPUP_MIN_ADV
     rng = random.Random(seed)
