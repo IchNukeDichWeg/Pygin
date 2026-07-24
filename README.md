@@ -31,7 +31,7 @@ representation, move generation and legality.
 </tr>
 <tr>
 <td><img src="docs/odds_knight.svg" width="100%" alt="Knight-odds win rate vs full-strength Stockfish 18: 76.75 percent at v31 rising to 100 percent at v54"/></td>
-<td><img src="docs/odds_ladder.svg" width="100%" alt="Odds it can spot full-strength Stockfish 18 and still win: queen 100, rook 95.5, knight 100 percent"/></td>
+<td><img src="docs/odds_ladder.svg" width="100%" alt="Odds it can spot full-strength Stockfish 18 and still win: queen 100, rook 95.5, knight 100, pawn 84.9 percent"/></td>
 </tr>
 </table>
 
@@ -41,8 +41,9 @@ representation, move generation and legality.
   so v31 is the honest zero.
 - **Bottom row — vs Stockfish 18 at full strength.** The external check: knight
   odds climbing **76.75 → 100%** (v31 → v54, now saturated), and the handicap
-  ladder — it spots SF a **queen** (100%), **rook** (95.5%) or **knight** (100%)
-  and still wins. Pawn odds (f2) is the next rung down.
+  ladder — it spots SF a **queen** (100%), **rook** (95.5%), **knight** (100%)
+  or **pawn** (84.9%) and still wins. Pawn odds is the only rung with headroom
+  left, so it is the yardstick now.
 
 ### Two engines, one eval
 
@@ -61,7 +62,8 @@ representation, move generation and legality.
   76.75% → 79.05% → 81.65% → **100%** (v31 → v49 → v52 → v54) and is now
   **saturated** — the PST candidate that shipped as v54 took 197 games without
   conceding a single win or draw. Queen (100%) and rook (95.5%) went the
-  same way. **Pawn odds (f2)** is the active rung with headroom left.
+  same way. **Pawn odds (f2)** is the active rung: **84.88%** over 2,000 games
+  at v54 (+299.63 ±29.8, 1531–333–136), the one handicap SF still scores against.
 - **vs its own Python engine: 1,815–0–40.** No rating quoted — the gap is past
   what Elo can express. The Python engine alone is **~2440–2450** (level with
   SF-18 at UCI_Elo 2450).
