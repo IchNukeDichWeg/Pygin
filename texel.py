@@ -512,6 +512,59 @@ def _loss(pool, nchunks, vec, k, val=False):
     return tot / n
 
 
+# ---------------------------------------------------------------------- #
+#  Live progress bar (tune)
+# ---------------------------------------------------------------------- #
+# A PST round scans ~790 parameters and takes >10 minutes with no output at
+# all, which is indistinguishable from a hang on a rented box. This draws an
+# in-place line with an ETA for the current round.
+#
+# isatty-gated for the same reason match.py's bar is: piping through `tee`
+# turns every \r into another line and buries the log. When it is off, a
+# plain marker every 25% still lands in the redirected output.
+_BAR_ON = sys.stdout.isatty()
+_BAR_W = 28
+_bar_last = [-1]
+
+
+def _bar(label, done, total, t0, changed):
+    if total <= 0:
+        return
+    frac = done / total
+    if not _BAR_ON:
+        q = int(frac * 4)
+        if q != _bar_last[0]:
+            _bar_last[0] = q
+            if q:
+                print(f"    {label}  {frac * 100:.0f}%  ({changed} moved)",
+                      flush=True)
+        return
+    el = time.time() - t0
+    eta = (el / frac - el) if frac > 0.02 else None
+    fill = int(frac * _BAR_W)
+    sys.stdout.write(
+        f"\r  [{'#' * fill}{'-' * (_BAR_W - fill)}] {label}  "
+        f"{done}/{total} ({frac * 100:.0f}%)  {changed} moved  "
+        f"{_hms(el)} elapsed" + (f"  ETA {_hms(eta)}" if eta else "") + "   ")
+    sys.stdout.flush()
+
+
+def _bar_clear():
+    _bar_last[0] = -1
+    if _BAR_ON:
+        sys.stdout.write("\r" + " " * 110 + "\r")
+        sys.stdout.flush()
+
+
+def _hms(sec):
+    sec = int(sec)
+    if sec >= 3600:
+        return f"{sec // 3600}h{(sec % 3600) // 60:02d}m"
+    if sec >= 60:
+        return f"{sec // 60}m{sec % 60:02d}s"
+    return f"{sec}s"
+
+
 def cmd_tune(a):
     if os.path.basename(a.out) in ("engine.py", "cengine.py"):
         sys.exit("refusing to overwrite the live engine -- pick another --out")
@@ -612,7 +665,7 @@ def cmd_tune(a):
                 # a LOCAL optimum, and restarts are the only axis on which more
                 # compute buys a better answer -- extra rounds just re-confirm
                 # the same optimum once the step size stops moving anything.
-                if restart == 0:
+                if restart == 0 and not a.skip_base:
                     cur = list(base)
                 else:
                     # Jitter around the shipped values, NOT uniform-random inside
@@ -643,7 +696,10 @@ def cmd_tune(a):
                     t0, changed = time.time(), 0
                     order = list(range(len(PARAMS)))
                     random.Random(restart * 1000 + rnd + 97 * a.restart_seed).shuffle(order)
-                    for idx in order:
+                    for _done, idx in enumerate(order):
+                        _bar(f"r{restart + 1}/{a.restarts} "
+                             f"round {rnd}/{a.rounds} d{delta}cp",
+                             _done, len(order), t0, changed)
                         lo, hi = bounds[idx]
                         for step in (delta, -delta):
                             trial = list(cur)
@@ -657,6 +713,7 @@ def cmd_tune(a):
                             if L < cur_loss:
                                 cur, cur_loss, changed = trial, L, changed + 1
                                 break
+                    _bar_clear()
                     vloss = _loss(pool, nchunks, cur, k, val=True)
                     flag = ""
                     if best_val is None or vloss < best_val:
@@ -1085,6 +1142,12 @@ def main():
     t.add_argument("--pst", action="store_true",
                    help="also tune the 736 piece-square-table entries (the "
                         "stock PeSTO tables, never fitted for this engine)")
+    t.add_argument("--skip-base", action="store_true",
+                   help="skip the restart-0 descent from the SHIPPED values. "
+                        "That descent is deterministic, so two machines "
+                        "running --restarts N both compute it identically -- "
+                        "give one machine this flag and the pair covers 2N-1 "
+                        "distinct basins instead of 2N-2 plus a duplicate.")
     t.add_argument("--restart-seed", type=int, default=0,
                    help="offsets the jitter seeds, so two machines running "
                         "the same command explore DIFFERENT restarts")
