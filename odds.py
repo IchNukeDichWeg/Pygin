@@ -65,7 +65,13 @@ ODDS_GIVEN_BY = "engine_2"
 # Presets (uncomment ONE). The square is always written from White's side and
 # mirrors automatically, so "f2" == the f-pawn regardless of who gives odds.
 # ODDS_SQUARES = ["d1"]                 # Queen odds       (Q on d1, saturated 100%)
-# ODDS_SQUARES = ["a1"]                 # Rook odds        (Ra1, saturated 95.5% @v49)
+# ODDS_SQUARES = ["a1"]                 # Rook odds        (Ra1) -- SATURATED:
+                                        # re-measured 2026-07-24 @v54, 106
+                                        # games, ZERO SF wins and zero draws.
+                                        # The old 95.5% was a stale v49 number
+                                        # (it read BELOW knight, which cannot
+                                        # be right -- a rook is ~500cp and also
+                                        # costs SF queenside castling).
 # ODDS_SQUARES = ["b1"]                 # Knight odds      (Nb1) -- SATURATED: the
                                         # v53 PST candidate ran it to ~100% (0
                                         # SF wins/draws over 197 games). The
