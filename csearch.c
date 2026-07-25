@@ -204,6 +204,13 @@ typedef struct {
     int ep;                   /* en-passant target square, or -1 */
     uint64_t castling;        /* bitboard of rook home squares with rights */
     uint64_t key;             /* FI-01: Zobrist, maintained by apply_move */
+    /* FI-42: tapered-material/PST accumulator, maintained by apply_move on
+     * exactly the squares FI-01's Zobrist update already touches. eval_white
+     * used to rebuild these with 12 ctz loops over up to 32 pieces at EVERY
+     * eval. Integer addition is order-independent, so the incremental sum is
+     * bit-identical to the loop's -- see acc_from_scratch, which stays as the
+     * oracle and is the differential gate. */
+    int a_mg, a_eg, a_ph;
 } Board;
 
 /* FI-01: full-state key computation -- the ORACLE for the incremental
@@ -225,6 +232,40 @@ static uint64_t key_from_scratch(const Board* b)
     return k;
 }
 
+static int g_mg_pst[7][64], g_eg_pst[7][64];        /* by PT 1..6 */
+static int g_mg_val[7], g_eg_val[7], g_phase_w[7];
+
+/* FI-42: the accumulator's ONE definition of a piece's contribution. White
+ * adds and reads the mirrored square, Black subtracts and reads it straight;
+ * phase always adds. eval_white's old loops and apply_move's incremental
+ * update now both go through this, so they cannot drift apart. */
+#define ACC_TERM(c, pt, sq, sign)                                             \
+    do {                                                                      \
+        int _i = ((c) == WHITE) ? ((sq) ^ 56) : (sq);                         \
+        int _s = ((c) == WHITE) ? (sign) : -(sign);                           \
+        _mg += _s * (g_mg_val[pt] + g_mg_pst[pt][_i]);                        \
+        _eg += _s * (g_eg_val[pt] + g_eg_pst[pt][_i]);                        \
+        _ph += g_phase_w[pt];                                                 \
+    } while (0)
+
+#define ACC_ADD(mg, eg, ph, c, pt, sq)                                        \
+    do { int _mg = mg, _eg = eg, _ph = ph;                                    \
+         ACC_TERM(c, pt, sq, +1);                                             \
+         (mg) = _mg; (eg) = _eg; (ph) = _ph; } while (0)
+
+#define ACC_REMOVE(mg, eg, ph, c, pt, sq)                                     \
+    do { int _mg = mg, _eg = eg, _ph = ph;                                    \
+         ACC_TERM(c, pt, sq, -1);                                             \
+         _ph -= 2 * g_phase_w[pt];   /* ACC_TERM always adds phase */         \
+         (mg) = _mg; (eg) = _eg; (ph) = _ph; } while (0)
+
+/* FI-42: defined next to eval_white (it needs the g_*_pst tables, which are
+ * declared far below); make_board is the ONE place a Board enters the C side
+ * from Python, so seeding the accumulator here covers every entry -- and it
+ * also re-reads the eval params, so a Texel retune between searches can never
+ * leave a stale accumulator behind. */
+static void acc_from_scratch(Board* b);
+
 static Board make_board(uint64_t pawns, uint64_t knights, uint64_t bishops,
                         uint64_t rooks, uint64_t queens, uint64_t kings,
                         uint64_t occ_w, uint64_t occ_b,
@@ -236,6 +277,7 @@ static Board make_board(uint64_t pawns, uint64_t knights, uint64_t bishops,
     b.occ[BLACK] = occ_b; b.occ[WHITE] = occ_w;
     b.turn = turn; b.ep = ep; b.castling = castling;
     b.key = key_from_scratch(&b);      /* FI-01: once per entry from Python */
+    acc_from_scratch(&b);              /* FI-42: same -- once per entry */
     return b;
 }
 
@@ -875,9 +917,16 @@ static void apply_move(Board* b, uint32_t mv)
      * every generator); the ZKEY differential is the correctness gate. */
     uint64_t zkey = b->key ^ Z_TURN;
     int victim = (mv >> MV_SHIFT_VICTIM) & 7;
-    if (victim)
-        zkey ^= Z_PSQ[them][victim][(capmask == tb)
-                                    ? to : __builtin_ctzll(capmask)];
+    /* FI-42: the accumulator rides the SAME squares as the Zobrist update
+     * below -- every ACC_ADD/ACC_SUB here pairs with a Z_PSQ XOR. `us` adds
+     * with the mirrored index and `them` subtracts (or the reverse for
+     * Black), exactly as eval_white's two loops do; phase always adds. */
+    int acc_mg = b->a_mg, acc_eg = b->a_eg, acc_ph = b->a_ph;
+    if (victim) {
+        int vsq = (capmask == tb) ? to : (int)__builtin_ctzll(capmask);
+        ACC_REMOVE(acc_mg, acc_eg, acc_ph, them, victim, vsq);
+        zkey ^= Z_PSQ[them][victim][vsq];
+    }
 
     /* FI-66: targeted single-board updates instead of blanket sweeps.
      * The first six Board members are declared in exact PT order, so
@@ -899,6 +948,8 @@ static void apply_move(Board* b, uint32_t mv)
 
     int finalpt = promo ? promo : movpt;
     zkey ^= Z_PSQ[us][movpt][from] ^ Z_PSQ[us][finalpt][to];   /* FI-01 */
+    ACC_REMOVE(acc_mg, acc_eg, acc_ph, us, movpt, from);       /* FI-42 */
+    ACC_ADD(acc_mg, acc_eg, acc_ph, us, finalpt, to);
     bb[finalpt - 1] |= tb;
     b->occ[us] = (b->occ[us] & nfrom) | tb;
 
@@ -910,6 +961,8 @@ static void apply_move(Board* b, uint32_t mv)
         b->rooks   = (b->rooks   & ~rfb) | rtb;
         b->occ[us] = (b->occ[us] & ~rfb) | rtb;
         zkey ^= Z_PSQ[us][4][rf] ^ Z_PSQ[us][4][rt];           /* FI-01 */
+        ACC_REMOVE(acc_mg, acc_eg, acc_ph, us, PT_ROOK, rf);   /* FI-42 */
+        ACC_ADD(acc_mg, acc_eg, acc_ph, us, PT_ROOK, rt);
     }
 
     uint64_t cr = b->castling;
@@ -928,6 +981,7 @@ static void apply_move(Board* b, uint32_t mv)
     b->ep = new_ep;
     b->turn = them;
     b->key = zkey;
+    b->a_mg = acc_mg; b->a_eg = acc_eg; b->a_ph = acc_ph;      /* FI-42 */
 }
 
 
@@ -1013,8 +1067,7 @@ static int game_phase(const Board* b)
  * the earlier NPS harnesses keep working unchanged.
  * ====================================================================== */
 static int g_eval_ready = 0;
-static int g_mg_pst[7][64], g_eg_pst[7][64];        /* by PT 1..6 */
-static int g_mg_val[7], g_eg_val[7], g_phase_w[7];
+/* declared above apply_move (FI-42's accumulator macros read them) */
 static int g_tempo, g_doubled, g_isolated, g_backward;
 /* FI-86: EG halves of the three pawn-structure scalars (MG halves are the
  * g_* above). Defaulted equal by csearch_set_eval, so a host that never
@@ -1166,7 +1219,9 @@ static inline int cantwin_clamp(const Board* b, int s)
  */
 void set_wrongbishop(int v) { (void)v; }
 
-static int eval_white(const Board* b)
+/* The ORACLE: the pre-FI-42 loop, kept verbatim. make_board seeds from it,
+ * and cs_acc_check() re-derives it for the differential gate. */
+static void acc_from_scratch(Board* b)
 {
     uint64_t occ_w = b->occ[WHITE], occ_b = b->occ[BLACK];
     const uint64_t bbs[7] = {0, b->pawns, b->knights, b->bishops,
@@ -1185,6 +1240,52 @@ static int eval_white(const Board* b)
             mg -= mv + mgt[i]; eg -= ev + egt[i]; phase += pw;
         }
     }
+    b->a_mg = mg; b->a_eg = eg; b->a_ph = phase;
+}
+
+/* FI-42 differential: recompute from scratch and report any disagreement.
+ * Exported so a test can walk a real tree and assert 0 mismatches -- the
+ * same shape as FI-01's ZKEY gate, which is what caught its castling case. */
+int cs_acc_check(const Board* b)
+{
+    Board t = *b;
+    acc_from_scratch(&t);
+    return (t.a_mg == b->a_mg && t.a_eg == b->a_eg && t.a_ph == b->a_ph);
+}
+
+/* Walk every legal line to `depth`, applying REAL moves, and count the nodes
+ * where the incremental accumulator disagrees with the oracle. Castling,
+ * promotion and en-passant trees are the ones that matter -- FI-01's Zobrist
+ * bug was a castling case, and this is the same gate for the same reason. */
+static uint64_t acc_walk(Board* b, int depth)
+{
+    uint64_t bad = cs_acc_check(b) ? 0 : 1;
+    if (depth <= 0) return bad;
+    uint32_t moves[256];
+    int n = gen_legal(b, moves);
+    for (int i = 0; i < n; i++) {
+        Board c = *b;
+        apply_move(&c, moves[i]);
+        bad += acc_walk(&c, depth - 1);
+    }
+    return bad;
+}
+
+uint64_t cs_acc_walk(uint64_t pawns, uint64_t knights, uint64_t bishops,
+                     uint64_t rooks, uint64_t queens, uint64_t kings,
+                     uint64_t occ_w, uint64_t occ_b,
+                     int turn, int ep, uint64_t castling, int depth)
+{
+    Board b = make_board(pawns, knights, bishops, rooks, queens, kings,
+                         occ_w, occ_b, turn, ep, castling);
+    return acc_walk(&b, depth);
+}
+
+static int eval_white(const Board* b)
+{
+    uint64_t occ_w = b->occ[WHITE], occ_b = b->occ[BLACK];
+    /* FI-42: was 12 ctz loops over up to 32 pieces, every eval. */
+    int mg = b->a_mg, eg = b->a_eg, phase = b->a_ph;
     /* FB-06: PHASE_MAX is a synced eval tunable (eval_c.c, set_mobility_
      * params) -- the hardcoded 24 here would silently desync on a retune. */
     extern int PHASE_MAX;
