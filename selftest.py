@@ -674,7 +674,24 @@ if os.path.exists("cuci.py"):
           said and len(fps) == 2 and "hash_bits=23" in fps[1],
           "" if said else "no info string for Hash 200")
 
-# --- 5j. NNUE unit checks (FI-15, dormant build-out) --------------------- #
+# --- 5j. FI-82: SPRT tranche pooling (harness, no games played) ---------- #
+# The pooled statistic decides campaigns; the two ways to corrupt it are
+# pooling the wrong experiment and pooling overlapping shards. Subprocess so a
+# match.py import cannot disturb anything above.
+_t_sprt = os.path.join("testing", "test_sprt_resume.py")
+if os.path.exists(_t_sprt):
+    try:
+        r = subprocess.run([sys.executable, _t_sprt],
+                           capture_output=True, text=True, timeout=180)
+        check("SPRT resume: pooling, fingerprint + offset refusals (FI-82)",
+              r.returncode == 0,
+              "" if r.returncode == 0
+              else (r.stdout + r.stderr).strip().splitlines()[-1][:90])
+    except subprocess.TimeoutExpired:
+        check("SPRT resume: pooling, fingerprint + offset refusals (FI-82)",
+              False, "timeout")
+
+# --- 5k. NNUE unit checks (FI-15, dormant build-out) --------------------- #
 # Runs in a SUBPROCESS: cengine's FB-04 one-process-one-config rule forbids
 # a second, differently-configured Engine in this process. Exit 42 = no net
 # file on disk = SKIP (the build is dormant until a net is trained); the
