@@ -77,8 +77,49 @@ def merge_pygdata(out_path, shard_paths):
     return total
 
 
+def check_pygdata(path):
+    """Header vs actual byte length. Returns (count, ok, detail).
+
+    The point is transfers between machines: a truncated copy still has a
+    valid-looking header and a plausible size, and read_pygdata() mmaps it
+    happily -- the shortfall only surfaces later as garbage records. Here
+    the header states the record count, so the exact expected file size is
+    known and truncation is arithmetic, not a guess."""
+    with open(path, "rb") as f:
+        magic, ver, rsize, count, tver, _ = _HDR.unpack(f.read(HEADER_SIZE))
+    want = HEADER_SIZE + count * rsize
+    have = os.path.getsize(path)
+    if magic != DATA_MAGIC:
+        return count, False, f"bad magic {magic!r}"
+    if rsize != RECORD_SIZE or ver != DATA_VERSION or tver != THREAT_VER:
+        return count, False, (f"ver={ver} recsize={rsize} threat_ver={tver} "
+                              f"(expected {DATA_VERSION}/{RECORD_SIZE}/"
+                              f"{THREAT_VER})")
+    if have != want:
+        return count, False, (f"TRUNCATED: {have:,} bytes on disk, header "
+                              f"says {want:,} (short by {want - have:,})")
+    return count, True, f"{have / 1e9:.2f} GB"
+
+
 if __name__ == "__main__":
     import sys
+    if len(sys.argv) >= 3 and sys.argv[1] == "check":
+        # python3 NNUE/data_format.py check FILE [FILE ...]
+        total, bad = 0, 0
+        for p in sys.argv[2:]:
+            try:
+                n, ok, detail = check_pygdata(p)
+            except Exception as e:                  # unreadable / too short
+                print(f"  FAIL  {os.path.basename(p)}: {e}")
+                bad += 1
+                continue
+            print(f"  {'OK  ' if ok else 'FAIL'}  {os.path.basename(p)}: "
+                  f"{n:,} records  {detail}")
+            total += n if ok else 0
+            bad += 0 if ok else 1
+        print(f"{len(sys.argv) - 2} file(s), {total:,} records intact, "
+              f"{bad} bad")
+        raise SystemExit(1 if bad else 0)
     if len(sys.argv) >= 4 and sys.argv[1] == "merge":
         # python3 NNUE/data_format.py merge OUT IN1 IN2 [...]
         n = merge_pygdata(sys.argv[2], sys.argv[3:])
@@ -99,4 +140,11 @@ if __name__ == "__main__":
         p2 = os.path.join(d, "m.pygdata")
         assert merge_pygdata(p2, [p, p]) == 6
         assert read_pygdata(p2)["score"][4] == -20
+        # check_pygdata: intact passes, and one byte short is caught
+        n, ok, _ = check_pygdata(p)
+        assert (n, ok) == (3, True)
+        with open(p, "r+b") as f:
+            f.truncate(os.path.getsize(p) - 1)
+        n, ok, detail = check_pygdata(p)
+        assert not ok and "TRUNCATED" in detail, detail
     print("data_format self-check OK")
