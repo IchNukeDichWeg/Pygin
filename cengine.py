@@ -964,14 +964,20 @@ class Engine:
     # 2026-07-22; built-out and verified against the v50-era 1,083,772 /
     # 1,508,415 pair); no real net exists yet -- Phases 6-8 (50M
     # dataset, bootstrap, 2k screen -> 10k A/B) decide if this ever flips.
-    # Net naming convention (mirrors Old Engine/): the live net is
-    # NNUE/nets/nnue_net_vN.nnue (minor bump vN.M for small same-data
-    # fixes); retired nets move FLAT into "NNUE/Old NNUE/". toy.nnue is
-    # the pipeline-proof artifact, not a version. This default names the
-    # FIRST real net; it is only read when USE_NNUE is True (load fails
-    # loudly if the file does not exist -- no silent HCE fallback).
+    # Net naming convention: NNUE/nets/nnue_vN_<first 12 hex of the file's
+    # own sha256>.nnue -- Stockfish's scheme (nn-<12 hex>.nnue), so a net
+    # can never be silently swapped for a different net under the same
+    # name; vN keeps the human-readable ORDER the hash cannot express
+    # (minor bump vN.M for small same-data fixes). NNUE/train.py stamps
+    # the hash on at export (config.stamp_net_hash); retired nets move
+    # FLAT into "NNUE/Old NNUE/". toy.nnue is the pipeline-proof artifact,
+    # not a version, and is exempt from the hash.
+    # The line below is a PLACEHOLDER: no real net exists yet, so there is
+    # no hash to name. Phase 7 replaces it with the actual v1 filename the
+    # trainer printed. Only read when USE_NNUE is True (load fails loudly
+    # if the file does not exist -- no silent HCE fallback).
     USE_NNUE = False
-    NNUE_FILE = os.path.join("NNUE", "nets", "nnue_net_v1.nnue")
+    NNUE_FILE = os.path.join("NNUE", "nets", "nnue_v1_PLACEHOLDER.nnue")
 
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
