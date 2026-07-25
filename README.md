@@ -30,8 +30,8 @@ representation, move generation and legality.
 <td><img src="docs/speed_progression.svg" width="100%" alt="Single-thread speed as a multiple of v31, ending at 1.58x"/></td>
 </tr>
 <tr>
-<td><img src="docs/odds_knight.svg" width="100%" alt="Odds win rate vs full-strength Stockfish 18: knight 76.75 percent at v31 rising to 100 percent at v54, pawn starting at 84.9 percent at v54"/></td>
-<td><img src="docs/odds_ladder.svg" width="100%" alt="Odds it can spot full-strength Stockfish 18 and still win: queen 100, rook 100, knight 100, pawn 84.9 percent"/></td>
+<td><img src="docs/odds_knight.svg" width="100%" alt="Odds win rate vs full-strength Stockfish 18: knight 76.75 percent at v31 rising to 100 percent at v54, pawn at 87.7 percent at v54"/></td>
+<td><img src="docs/odds_ladder.svg" width="100%" alt="Odds it can spot full-strength Stockfish 18 and still win: queen 100, rook 100, knight 100, pawn 87.7 percent"/></td>
 </tr>
 </table>
 
@@ -42,7 +42,7 @@ honest zero.
 
 Bottom row, vs Stockfish 18 at full strength: knight odds climbed 76.75 → 100%
 (v31 → v54) and closed. On the handicap ladder Pygin now spots SF a queen, rook
-or knight, all at 100%, or a pawn at 84.9%, and still wins. Pawn odds is the
+or knight, all at 100%, or a pawn at 87.7%, and still wins. Pawn odds is the
 only rung with headroom left, so it is the yardstick now.
 
 ### Two engines, one eval
@@ -65,8 +65,12 @@ the C core reads every eval parameter from it at startup.
 the PST candidate that shipped as v54 took 197 games without conceding a win or
 a draw. Queen and rook went the same way. Rook, re-measured at v54, took 106
 games without conceding a win or a draw, retiring a stale 95.5% from v49. Pawn
-odds (f2) is the only rung left, at 84.88% over 2,000 games at v54 (+299.63
-±29.8, 1531–333–136), and the one handicap SF still scores against.
+odds (f2) is the only rung left, at 87.66% over 1,900 games at v54 (+339.63
+±41.0 on the 1,500-game half), and the one handicap SF still scores against.
+Stockfish manages its own clock in that run. Under the older setup, where
+Pygin's time manager budgeted both sides, the same rung read 84.88% — our
+manager was over-feeding SF by ~370 ms a move, so the old figure understated
+the gap by +2.78% ±2.16.
 
 **vs its own Python engine: 1,815–0–40.** No rating is quoted; the gap is past
 what Elo can express. The Python engine alone is ~2440–2450, level with SF-18
