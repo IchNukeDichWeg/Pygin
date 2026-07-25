@@ -32,6 +32,21 @@ The protocol, and why each part of it is load-bearing:
     silently share them (the .so cross-contamination rule). Every single
     measurement here is its own interpreter.
 
+THE RESOLUTION FLOOR (learned the hard way, 2026-07-25)
+-------------------------------------------------------
+The sign test bounds WITHIN-run noise. It says nothing about run-to-run
+drift, and the missing control was the obvious one: re-measure the SAME
+BINARY. On an idle, pinned Gold 6330, one unchanged build read **+0.06%**
+and then **+0.23%** vs the same baseline -- a 0.17-point gap at p=0.720 and
+p=0.001 respectively. Both runs were internally clean; the instrument was
+simply being asked a question finer than it can answer.
+
+So: a tight spread and a p=0.001 do NOT license a 0.2% claim. Use
+`--repeat 3` and treat the between-run spread as the floor. Anything priced
+under ~1% needs the repeat; anything priced under the observed floor is not
+decidable here at all, and no number of rounds fixes that (FI-72, priced
+<=0.3%, was reverted for exactly this reason rather than for reading bad).
+
 ACCEPTANCE GATE (the entry's own test): re-measure a known pair and
 reproduce its recorded verdict. A harness that cannot recover the number
 that produced a shipped decision is not the instrument that produced it.
@@ -146,6 +161,13 @@ def main():
                          "disables). Load-bearing on multi-socket hosts -- see "
                          "the note in the child. No effect on macOS, which has "
                          "no sched_setaffinity.")
+    ap.add_argument("--repeat", type=int, default=1,
+                    help="repeat the WHOLE run N times and report the "
+                         "between-run spread. The within-run spread and sign "
+                         "test do NOT bound run-to-run drift: measured "
+                         "2026-07-25, one identical binary read +0.06%% and "
+                         "then +0.23%%. Use --repeat 3 before believing any "
+                         "effect under ~1%%.")
     a = ap.parse_args()
 
     for p in (a.engine_a, a.engine_b):
@@ -158,6 +180,25 @@ def main():
     print(f"  {a.rounds} rounds (round 1 discarded), fresh process per search"
           + (f", pinned to cpu {a.cpu}" if a.cpu >= 0 else "") + "\n")
 
+    t_start = time.time()
+    medians = []
+    for run in range(1, a.repeat + 1):
+        if a.repeat > 1:
+            print(f"  --- run {run}/{a.repeat} ---")
+        medians.append(run_once(a))
+    if a.repeat > 1:
+        drift = max(medians) - min(medians)
+        print(f"\n  {a.repeat} independent runs of the SAME pair: "
+              + ", ".join(f"{(m - 1) * 100:+.2f}%" for m in medians))
+        print(f"  between-run spread {drift * 100:.2f} percentage points -- "
+              f"this, NOT the sign test, is the resolution floor.")
+        print(f"  Effects smaller than {drift * 100:.2f}% are UNRESOLVED by "
+              f"this instrument no matter how good the p-value looks.")
+    print(f"\n  total elapsed {time.time() - t_start:.0f}s")
+
+
+def run_once(a):
+    """One complete measurement; returns the median ratio."""
     ratios, nodes_a, nodes_b = [], set(), set()
     t_start = time.time()
     for rnd in range(1, a.rounds + 1):
@@ -218,6 +259,12 @@ def main():
     else:
         print(f"\n  VERDICT: {'B faster' if med > 1 else 'B slower'} by "
               f"{abs(med - 1) * 100:.2f}% (median)")
+        if abs(med - 1) < 0.01:
+            print("  ...but this is under 1%: the sign test bounds WITHIN-run "
+                  "noise only.\n     Re-run with --repeat 3 -- one identical "
+                  "binary has read +0.06% and +0.23%\n     in consecutive runs "
+                  "on an idle pinned box (2026-07-25).")
+    return med
 
 
 if __name__ == "__main__":
