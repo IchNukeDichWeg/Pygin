@@ -73,7 +73,7 @@ import chess
 
 from config import (LABEL_NODES, LABEL_MAX_ABS_CP, LABEL_MAX_HMC,
                     LABEL_MIN_RANDOM_PLIES, LABEL_MAX_RANDOM_PLIES,
-                    LABEL_MAX_PLIES, LABEL_ADJ_CP, LABEL_ADJ_STREAK,
+                    LABEL_MAX_PLIES, LABEL_ADJ_CP, LABEL_ADJ_STREAK, LABEL_TT_BITS,
                     engine_fingerprint)
 from data_format import RECORD_DTYPE, write_pygdata, merge_pygdata
 
@@ -90,6 +90,21 @@ def make_label_engine():
                                # defaults -- FI-56 confirmed into v51, so
                                # labels now come from the strongest
                                # confirmed search, per F5-19)
+        TT_BITS = LABEL_TT_BITS   # 2^16 x 24B = 1.5 MB, NOT the 48 MB
+                               # default. The loop below cs_tt_reset()s
+                               # before EVERY labeling search (a cold TT is
+                               # what makes a label reproducible), so the
+                               # table is memset once per move: 48 MB of
+                               # memset to serve a 5,000-node search that
+                               # touches ~100 KB of it. That is ~500x more
+                               # memory traffic than the search itself, and
+                               # it is shared-bus work, so it gets WORSE the
+                               # more workers a box has -- the reason a
+                               # 111-worker server read an ETA ~7x above the
+                               # estimate taken from a small local run.
+                               # 5,000 nodes cannot fill 65,536 entries, so
+                               # nothing collides and label quality is
+                               # unchanged; verify_labels.py mirrors this.
 
     eng = LabelEngine()
     eng.use_book = False
@@ -282,7 +297,9 @@ def run_worker(shard_path, positions, nodes, seed, book, endgame, eg_men,
     book_size = os.path.getsize(book) if book else 0
     rows = []
     games = 0
-    while (games < games_quota) if games_quota else (len(rows) < positions):
+    stopped = False
+    try:
+      while (games < games_quota) if games_quota else (len(rows) < positions):
         rows.extend(play_game(eng, rng, nodes, contempt, mopup_min,
                               book=book, book_size=book_size,
                               endgame=endgame, eg_men=eg_men))
@@ -296,6 +313,15 @@ def run_worker(shard_path, positions, nodes, seed, book, endgame, eg_men,
                     pf.write(f"{games} {len(rows)}")
             except OSError:
                 pass
+    except KeyboardInterrupt:
+        # Ctrl-C in the terminal signals the whole process group, so EVERY
+        # worker lands here at once. Swallow it: 111 simultaneous tracebacks
+        # are unreadable, and the parent already reports the stop. Fall
+        # through to the write below -- the games played so far are real
+        # data, and a partial shard is a valid .pygdata file (merge and the
+        # label audit take any number of records), so an interrupted run is
+        # salvage, not loss.
+        stopped = True
     try:                               # final beacon: the parent's last poll
         with open(shard_path + ".progress", "w") as pf:   # sees full counts
             pf.write(f"{games} {len(rows)}")
@@ -305,8 +331,9 @@ def run_worker(shard_path, positions, nodes, seed, book, endgame, eg_men,
         rows = rows[:positions]
     arr = np.stack(rows) if rows else np.zeros(0, dtype=RECORD_DTYPE)
     write_pygdata(shard_path, arr)
-    print(f"[worker seed={seed}] done: {len(arr)} positions "
-          f"from {games} games -> {shard_path}", flush=True)
+    print(f"[worker seed={seed}] {'STOPPED' if stopped else 'done'}: "
+          f"{len(arr)} positions from {games} games -> {shard_path}",
+          flush=True)
 
 
 def main():
@@ -392,7 +419,8 @@ def main():
     games_mode = bool(args.games)
     target = (per_g if games_mode else per) * args.workers
     unit = "games" if games_mode else "positions"
-    while any(p.poll() is None for p in procs):
+    try:
+      while any(p.poll() is None for p in procs):
         time.sleep(30)
         g_done = p_done = 0
         for sp in shards:
@@ -413,6 +441,12 @@ def main():
               f"({100.0 * done / max(1, target):.1f}%)"
               f"{extra}  rate {rate:,.0f}/s  elapsed {elapsed/3600:.2f}h  "
               f"ETA {eta/3600:.2f}h", flush=True)
+    except KeyboardInterrupt:
+        # Same SIGINT already reached every worker; each one writes the games
+        # it finished and exits 0. Just wait for them, then merge as usual --
+        # the output is a smaller but completely valid dataset.
+        print("\ngen_data: interrupted -- waiting for workers to write the "
+              "games they already finished (a few seconds)...", flush=True)
 
     fails = sum(p.wait() != 0 for p in procs)
     if fails:
