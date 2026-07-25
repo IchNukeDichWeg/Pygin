@@ -113,7 +113,23 @@ detail in engine.py's version history. v54 = v53 + the **PST retune**
 Engine/53 (nodes@1.75M): **+31.20 ±5.6 over 11,668 games** (54.48%, ptnml
 312/1142/2185/1579/616, GSPRT[0,2] LLR +7.806 ACCEPT) -- the second-largest
 release, both split halves positive. Snapshotted Old Engine/54; campaigns
-now run vs Old Engine/54 on SUBSET_SEED 54. Armed candidate: none pinned.
+now run vs Old Engine/54 on SUBSET_SEED 54.
+v55 = v54 + **two node-identical SPEED changes** -- the first release in the
+C era that buys no new moves at all, only more of them per second. FI-11
+pin-aware legality (one pinned mask per node makes legality free for unpinned
+ordinary movers out of check; king/ep/in-check keep the full scan) and FI-42
+the (mg,eg,phase) accumulator on Board (apply_move maintains the tapered
+material+PST sum on the squares FI-01's Zobrist update already touches, so
+eval_white's 12 ctz loops over 32 pieces are gone). Both are bit-identical --
+**bench signature 1,461,732 UNCHANGED**, ladder node-exact, perft --deep
+1.49B clean, and a 117M-node accumulator differential -- so NO A/B slot was
+spent and the ledger's Elo total is untouched. NPS, on the FI-84 instrument
+with its new --repeat control: **+8.3% on x86** (Gold 6330, 48/48 rounds,
+between-run spread 0.05) and **+13.5% on arm64**. FI-42 is ~+8 points of that
+on BOTH machines; FI-11 is +5% on arm64 and a wash on x86, which is the
+release's other lesson -- deleting work travels across architectures,
+reorganising branches does not. Snapshotted Old Engine/55; campaigns now run
+vs Old Engine/55 on SUBSET_SEED 55. Armed candidate: none pinned.
 FI-15 NNUE Phases 1-5
 BUILT-DORMANT 2026-07-18 (abi 19): the full NN-eval infrastructure --
 KA8T king-bucketed features + T16 threats, quantized int16/int8 net,
@@ -960,8 +976,9 @@ class Engine:
     # 6144->2x256->528->32->32->1 quantized int16/int8 (DESIGN_nnue.md
     # "Phase 1 spec" is the frozen contract; NNUE/README.md has every
     # command). False = the CURRENT confirmed defaults BYTE-EXACT (the
-    # bench signature re-baselines per ship: v53 = 1,122,753 as of
-    # 2026-07-22; built-out and verified against the v50-era 1,083,772 /
+    # bench signature re-baselines per ship, but NOT for a node-identical
+    # one: v54 = v55 = 1,461,732 (the v55 speed pair changed no node),
+    # v53 = 1,122,753; built-out and verified against the v50-era 1,083,772 /
     # 1,508,415 pair); no real net exists yet -- Phases 6-8 (50M
     # dataset, bootstrap, 2k screen -> 10k A/B) decide if this ever flips.
     # Net naming convention: NNUE/nets/nnue_vN_<first 12 hex of the file's

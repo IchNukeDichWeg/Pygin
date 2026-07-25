@@ -131,6 +131,12 @@ def random_book_fen(path, size, rng):
     return line.decode("ascii", "replace").strip()
 
 
+def fmt_dur(sec):
+    """Minutes below an hour, hours above it. '0.03h elapsed, ETA 0.76h'
+    is unreadable at the scale most slices actually run at."""
+    return f"{sec / 60:.0f}m" if sec < 3600 else f"{sec / 3600:.2f}h"
+
+
 def cantwin_shaped(board, score_w):
     """F5-19: would the CW-01 clamp (or its horizon shadow) shape this
     label? Conservative: uses the SEARCH score's sign as the favored-side
@@ -439,8 +445,8 @@ def main():
                  else f"  games played {g_done:,}")
         print(f"progress: {done:,}/{target:,} {unit} "
               f"({100.0 * done / max(1, target):.1f}%)"
-              f"{extra}  rate {rate:,.0f}/s  elapsed {elapsed/3600:.2f}h  "
-              f"ETA {eta/3600:.2f}h", flush=True)
+              f"{extra}  rate {rate:,.0f}/s  elapsed {fmt_dur(elapsed)}  "
+              f"ETA {fmt_dur(eta)}", flush=True)
     except KeyboardInterrupt:
         # Same SIGINT already reached every worker; each one writes the games
         # it finished and exits 0. Just wait for them, then merge as usual --
