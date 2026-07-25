@@ -128,8 +128,18 @@ with its new --repeat control: **+8.3% on x86** (Gold 6330, 48/48 rounds,
 between-run spread 0.05) and **+13.5% on arm64**. FI-42 is ~+8 points of that
 on BOTH machines; FI-11 is +5% on arm64 and a wash on x86, which is the
 release's other lesson -- deleting work travels across architectures,
-reorganising branches does not. Snapshotted Old Engine/55; campaigns now run
-vs Old Engine/55 on SUBSET_SEED 55. Armed candidate: none pinned.
+reorganising branches does not. CONFIRMED 2026-07-25 vs Old Engine/54 (TIMED 50+0.20 on
+an Intel Gold 6330, 108 workers): **+9.66 +/-8.2 over 6,874 games** (51.39%,
+ptnml 133/783/1460/866/188, pair ratio 1.15, normalized +21.18, GSPRT[0,4]
+LLR +2.946 > +2.944 ACCEPT, stopped early) -- the C era's sixth SPRT accept.
+TIMED on purpose: the --nodes instrument reads exactly zero for a
+node-identical change (both sides search the same tree, and its NPS
+calibration would cancel the speed being tested). THE CALIBRATION THIS BOUGHT:
++8.34% NPS -> +9.66 Elo = **~1.16 Elo per 1% NPS**, the LOW end of the
+historical 1-2.7 band (v39 ~1, v44 ~2.7) -- so future bench items are worth
+about a point per percent, which prices FI-83 (0-3%) at 0-3.5 Elo and makes
+the NPS lane a minor one from here. Snapshotted Old Engine/55; campaigns now
+run vs Old Engine/55 on SUBSET_SEED 55. Armed candidate: none pinned.
 FI-15 NNUE Phases 1-5
 BUILT-DORMANT 2026-07-18 (abi 19): the full NN-eval infrastructure --
 KA8T king-bucketed features + T16 threats, quantized int16/int8 net,

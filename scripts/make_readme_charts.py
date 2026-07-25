@@ -26,12 +26,12 @@ DATA = {
     47: (3.16, 3.19), 48: (4.73, 3.07), 49: (0.97, 3.14), 50: (1.60, 3.22),
     51: (11.12, 3.79), 52: (6.63, 3.79), 53: (37.52, 3.76),
     54: (31.20, 3.69),
-    # v55 = the node-identical speed pair (FI-11 + FI-42). Elo 0.0 because it
-    # is NOT banked: a speed change owes a TIMED A/B (the --nodes instrument
-    # reads zero for it by construction), and the Elo it will bank is
-    # architecture-dependent. Speed extends v54's 3.69x by the house
-    # instrument's paired arm64 ratio (+13.5%, bench/nps13.py --repeat 3).
-    55: (0.0, 4.19),
+    # v55 = the node-identical speed pair (FI-11 + FI-42), CONFIRMED
+    # +9.66 +/-8.2 @6,874 games on a TIMED 50+0.20 A/B (the --nodes
+    # instrument reads zero for it by construction). Speed extends v54's
+    # 3.69x by the arm64 paired ratio (+13.5%); the Elo is the x86 figure
+    # (+8.34% there), so this row mixes machines by necessity.
+    55: (9.66, 4.19),
 }
 
 # Knight odds win% vs FULL-STRENGTH Stockfish 18 -- the external yardstick.
