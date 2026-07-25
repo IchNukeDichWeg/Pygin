@@ -3889,6 +3889,11 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
  * history/countermoves per move; TT persists -- the driver calls
  * cs_tt_reset() only after an irreversible root move), arms the deadline
  * and stores the game-history keys for repetition detection. */
+/* FI-47 S-06: per-MOVE generation. A pooled helper compares it to what it
+ * last saw and applies cs_search_begin's own table policy when it changes,
+ * so persistence across ITERATIONS never becomes persistence across MOVES. */
+static uint64_t g_move_gen = 0;
+
 void cs_search_begin(const uint64_t* hist, int nhist, double budget_sec)
 {
     g_nodes = 0;
@@ -3917,6 +3922,9 @@ void cs_search_begin(const uint64_t* hist, int nhist, double budget_sec)
     }
     memset(g_ctx, 0, sizeof(g_ctx));
     g_root_pv_len = 0;                   /* PV-01: fresh line per game move */
+    __atomic_fetch_add(&g_move_gen, 1, __ATOMIC_RELAXED);  /* FI-47 S-06:
+                                         * tells a pooled helper to apply the
+                                         * same per-move table policy above */
     g_seldepth = 0;                      /* FI-13a: per-move seldepth */
     g_helper_nodes = 0;                  /* Lazy-SMP helper node aggregate */
     if (g_tt == NULL && g_use_tt) {
@@ -4114,17 +4122,134 @@ void set_threads(int n) { g_threads = (n < 1) ? 1 : (n > 256 ? 256 : n); }
 
 typedef struct { Board b; int depth, hmc; uint32_t prev; } HelperArg;
 
+/* ---------------------------------------------------------------------- *
+ * FI-47 S-06: PERSISTENT helper pool.
+ *
+ * Helpers used to be pthread_create'd fresh inside every ID iteration, which
+ * meant every iteration's helpers began with ZEROED history, killers, counter
+ * and continuation tables -- while the main thread carried ~17 iterations of
+ * accumulated ordering. Helpers therefore filled the shared TT with
+ * near-unordered searches: the one channel Lazy SMP has, fed badly.
+ *
+ * The pool creates each helper ONCE and signals it per iteration, so its
+ * ordering tables survive from one iteration to the next. Two properties are
+ * preserved deliberately:
+ *   * PER-MOVE semantics are unchanged. cs_search_begin clears the main
+ *     thread's tables every move (or halves history under FI-12); helpers
+ *     mirror that on the first iteration of each move via g_move_gen, so a
+ *     helper never carries ordering ACROSS moves when the main thread does
+ *     not. Only the within-move carry is new -- that is the whole item.
+ *   * Node accounting is unchanged. g_nodes is __thread and now persists, so
+ *     each helper contributes the DELTA it searched this iteration; the
+ *     cumulative-per-move meaning of g_helper_nodes is identical to before.
+ *
+ * At Threads=1 no helper is ever created, so the shipped config is
+ * node-identical by construction.
+ * ---------------------------------------------------------------------- */
+static pthread_mutex_t g_pool_mx = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  g_pool_go = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t  g_pool_done = PTHREAD_COND_INITIALIZER;
+static pthread_t g_pool_tid[256];
+static HelperArg g_pool_arg[256];
+static int      g_pool_n     = 0;   /* threads alive */
+static int      g_pool_want  = 0;   /* helpers active this iteration */
+static int      g_pool_busy  = 0;   /* still running this generation */
+static int      g_pool_quit  = 0;
+static uint64_t g_pool_gen   = 0;   /* bumped per iteration */
+
+/* Mirror cs_search_begin's per-move table policy inside a helper. */
+static void helper_new_move(void)
+{
+    if (g_hist_keep) {                       /* FI-12: halve, don't wipe */
+        for (int c = 0; c < 2; c++)
+            for (int i = 0; i < 4096; i++) g_history[c][i] /= 2;
+    } else {
+        memset(g_history, 0, sizeof(g_history));
+    }
+    memset(g_killers, 0, sizeof(g_killers));
+    memset(g_counter, 0, sizeof(g_counter));
+    if (g_cont_hist) {
+        memset(g_cont1, 0, sizeof(g_cont1));
+        memset(g_cont2, 0, sizeof(g_cont2));
+    }
+    memset(g_ctx, 0, sizeof(g_ctx));
+}
+
 static void* helper_entry(void* p)
 {
-    HelperArg* a = (HelperArg*)p;
+    int idx = (int)(intptr_t)p;
+    uint64_t seen_iter = 0, seen_move = 0;
     g_is_helper = 1;
     g_nodes = 0;
-    int score, done, second;
-    root_search(&a->b, a->depth, -CS_INF, CS_INF, a->prev, a->hmc,
-                &score, &done, &second);
-    __atomic_fetch_add(&g_helper_nodes, g_nodes, __ATOMIC_RELAXED);
+    for (;;) {
+        HelperArg a;
+        pthread_mutex_lock(&g_pool_mx);
+        while (!g_pool_quit && g_pool_gen == seen_iter)
+            pthread_cond_wait(&g_pool_go, &g_pool_mx);
+        if (g_pool_quit) { pthread_mutex_unlock(&g_pool_mx); break; }
+        seen_iter = g_pool_gen;
+        int active = (idx < g_pool_want);
+        a = g_pool_arg[idx];
+        uint64_t mgen = g_move_gen;
+        pthread_mutex_unlock(&g_pool_mx);
+
+        if (active) {
+            if (mgen != seen_move) {         /* first iteration of a new move */
+                helper_new_move();
+                seen_move = mgen;
+            }
+            uint64_t before = g_nodes;
+            int score, done, second;
+            root_search(&a.b, a.depth, -CS_INF, CS_INF, a.prev, a.hmc,
+                        &score, &done, &second);
+            __atomic_fetch_add(&g_helper_nodes, g_nodes - before,
+                               __ATOMIC_RELAXED);
+        }
+        pthread_mutex_lock(&g_pool_mx);
+        if (--g_pool_busy == 0) pthread_cond_signal(&g_pool_done);
+        pthread_mutex_unlock(&g_pool_mx);
+    }
     return NULL;
 }
+
+/* Tear the pool down (Threads changed, or shutdown). Safe when empty. */
+static void pool_stop(void)
+{
+    if (g_pool_n == 0) return;
+    pthread_mutex_lock(&g_pool_mx);
+    g_pool_quit = 1;
+    g_pool_gen++;                            /* wake everyone to see the quit */
+    pthread_cond_broadcast(&g_pool_go);
+    pthread_mutex_unlock(&g_pool_mx);
+    for (int i = 0; i < g_pool_n; i++) pthread_join(g_pool_tid[i], NULL);
+    g_pool_n = 0;
+    g_pool_quit = 0;
+    g_pool_gen = 0;
+}
+
+/* Grow the pool to `n` helpers. Shrinking tears down and rebuilds -- Threads
+ * changes happen between games, never inside a search. */
+static int pool_start(int n)
+{
+    if (n == g_pool_n) return g_pool_n;
+    pool_stop();
+    pthread_attr_t attr;
+    if (pthread_attr_init(&attr) != 0) return 0;
+    pthread_attr_setstacksize(&attr, 8u << 20);   /* BUG-05: darwin's 512 KB */
+    for (int i = 0; i < n; i++) {
+        if (pthread_create(&g_pool_tid[i], &attr, helper_entry,
+                           (void*)(intptr_t)i) != 0) {
+            g_pool_n = i;                    /* run with what we got */
+            pthread_attr_destroy(&attr);
+            return g_pool_n;
+        }
+    }
+    pthread_attr_destroy(&attr);
+    g_pool_n = n;
+    return n;
+}
+
+void cs_pool_shutdown(void) { pool_stop(); }
 
 /* One ID iteration: root PVS inside [alpha, beta), plus Lazy-SMP helpers
  * when set_threads(N>1). Returns the best move's 15-bit key. Outputs:
@@ -4148,37 +4273,46 @@ uint32_t cs_search_root(uint64_t pawns, uint64_t knights, uint64_t bishops,
                          occ_w, occ_b, turn, ep, castling);
 
     /* Helpers only pay off once the tree is non-trivial. */
-    pthread_t tids[256];
-    HelperArg args[256];
     int nh = (g_threads > 1 && depth >= 4) ? g_threads - 1 : 0;
     HSTOP_SET(0);
-    /* BUG-05: darwin gives secondary threads a 512 KB stack (the main
-     * thread gets 8 MB); a deep line's negamax+qsearch frames (~2-3 KB
-     * each, moves[256]/quiets[256] buffers) get thin there. Match the
-     * main thread. */
-    pthread_attr_t attr;
-    pthread_attr_init(&attr);
-    pthread_attr_setstacksize(&attr, 8u << 20);
-    for (int i = 0; i < nh; i++) {
-        args[i].b = b;
-        args[i].depth = depth + (i & 1);   /* half at depth, half deeper */
-        args[i].hmc = hmc;
-        args[i].prev = prev_key;
-        if (pthread_create(&tids[i], &attr, helper_entry, &args[i]) != 0) {
-            nh = i;                        /* spawn failed: run what we got */
-            break;
+    /* FI-47 S-06: the pool is created once and signalled per iteration, so a
+     * helper keeps the ordering tables it built in the previous iteration
+     * instead of restarting from zero. Sizing happens here because Threads
+     * can change between games; it never changes inside a search. */
+    if (nh) {
+        nh = pool_start(nh);               /* may return fewer on failure */
+        for (int i = 0; i < nh; i++) {
+            g_pool_arg[i].b = b;
+            g_pool_arg[i].depth = depth + (i & 1); /* half at depth, half deeper */
+            g_pool_arg[i].hmc = hmc;
+            g_pool_arg[i].prev = prev_key;
         }
     }
-    pthread_attr_destroy(&attr);
 
     int score, done, second;
-    uint32_t mv = root_search(&b, depth, alpha, beta, prev_key, hmc,
-                              &score, &done, &second);
-
+    uint32_t mv;
     if (nh) {
-        HSTOP_SET(1);
-        for (int i = 0; i < nh; i++) pthread_join(tids[i], NULL);
+        /* Helpers run WHILE the main thread searches: dispatch, search, then
+         * stop them and collect. The wait below is the join this replaces. */
+        pthread_mutex_lock(&g_pool_mx);
+        g_pool_want = nh;
+        g_pool_busy = g_pool_n;
+        g_pool_gen++;
+        pthread_cond_broadcast(&g_pool_go);
+        pthread_mutex_unlock(&g_pool_mx);
+
+        mv = root_search(&b, depth, alpha, beta, prev_key, hmc,
+                         &score, &done, &second);
+
+        HSTOP_SET(1);                      /* helpers unwind at their next poll */
+        pthread_mutex_lock(&g_pool_mx);
+        while (g_pool_busy > 0)
+            pthread_cond_wait(&g_pool_done, &g_pool_mx);
+        pthread_mutex_unlock(&g_pool_mx);
         HSTOP_SET(0);
+    } else {
+        mv = root_search(&b, depth, alpha, beta, prev_key, hmc,
+                         &score, &done, &second);
     }
     *out_done = done;
     *out_aborted = ABORT_GET() ? 1 : 0;
