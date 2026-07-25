@@ -49,6 +49,7 @@ from data_format import read_pygdata
 from model import NNUEModel
 from nnue_ref import extract_features, QuantNet
 
+VAL_BLOCK = 5000       # records per held-out block (see val_block_mask)
 LAMBDA = 0.75          # search-score vs game-WDL blend
 RESULT_CP = 300        # a won game pulls the label by this many cp
 
@@ -98,6 +99,77 @@ def evaluate(model, tensors, bs):
     return tot / max(1, n)
 
 
+def val_block_mask(idx, stride, block):
+    """True where record index `idx` belongs to the held-out set: every
+    `stride`-th CONTIGUOUS BLOCK of `block` records.
+
+    Why blocks and not `recs[::stride]`: gen_data writes each game's
+    positions contiguously (~65 per game) and RECORD_DTYPE's `result` is the
+    GAME's WDL, shared by every record of that game. Taking every 20th record
+    therefore puts 3-4 positions of every game in val and the other ~62 in
+    train -- measured 100.0% of val games also present in train. Adjacent
+    plies differ by one move, so the model can read a val position's answer
+    off its own siblings, and val stops measuring generalisation. It is
+    record-disjoint but not GAME-disjoint, and the label is per-game.
+
+    Contiguous blocks make the split game-granular: only the two games
+    straddling each block boundary leak. Measured over the first 4M records
+    at 5% held out -- every-20th-record 100.0%, 500-blocks 33.7%,
+    2000-blocks 9.9%, 5000-blocks 3.9%, 20000-blocks 1.0%. 5000 is the
+    default: near-clean, and still ~30 blocks inside the smallest merged
+    slice (endgame_b, 3.0M) so val stays spread over all six sources."""
+    return ((idx // block) % stride) == 0
+
+
+def val_indices(n, stride, block):
+    """The held-out indices, built without materialising arange(n) -- at 82M
+    records that alone would be 660 MB."""
+    return np.concatenate([np.arange(s, min(s + block, n))
+                           for s in range(0, n, block * stride)])
+
+
+def eval_net(args, recs):
+    """Score an exported .nnue on the GAME-GRANULAR holdout and report.
+
+    Scores the quantized net through nnue_ref's exact integer forward -- the
+    artifact that actually ships, not the float model -- so the number needs
+    no trust in the export. Reports against a predict-the-mean baseline,
+    because an MSE in cp/400 units means nothing on its own."""
+    from nnue_ref import QuantNet, extract_features
+    stride = max(2, int(round(1.0 / max(args.val_frac, 1e-9))))
+    idx = val_indices(len(recs), stride, args.val_block)
+    if len(idx) > args.eval_sample:
+        # linspace, NOT idx[::len//sample]: integer division collapses the
+        # stride to 1 whenever the ratio is under 2, and the slice then just
+        # truncates to the head of the file -- which is one slice
+        # (random_a), not a sample of the merged set.
+        idx = idx[np.linspace(0, len(idx) - 1,
+                              args.eval_sample).astype(np.int64)]
+    val = np.asarray(recs[idx])
+    print(f"{args.eval_net}: scoring {len(val):,} held-out positions "
+          f"(every {stride}th block of {args.val_block:,} records)",
+          flush=True)
+
+    q = QuantNet.load(args.eval_net)
+    idx_w, idx_b = extract_features(val)
+    target = prepare(val, log=lambda *a: None)[3].numpy()
+    pad = len(q.w1)
+    pred = np.empty(len(val), dtype=np.float32)
+    for i in range(len(val)):
+        pred[i] = q.forward([x for x in idx_w[i] if x != pad],
+                            [x for x in idx_b[i] if x != pad],
+                            val["threat"][i], int(val["stm"][i])) / OUT_CP
+        if (i + 1) % 10_000 == 0:
+            print(f"  {i + 1:,}/{len(val):,}", flush=True)
+
+    mse = float(((pred - target) ** 2).mean())
+    base = float(target.var())
+    print(f"\n  held-out MSE   {mse:.6f}   RMSE {mse ** 0.5 * OUT_CP:6.1f} cp")
+    print(f"  baseline       {base:.6f}   RMSE {base ** 0.5 * OUT_CP:6.1f} cp"
+          f"   (predict the mean)")
+    print(f"  R^2            {1 - mse / base:+.4f}")
+
+
 def export_nnue(model, path):
     sd = {k: v.detach().cpu().numpy() for k, v in model.state_dict().items()}
     w1 = sd["ft.weight"][:-1]                    # drop the PAD row
@@ -123,6 +195,17 @@ def main():
     ap.add_argument("--batch", type=int, default=8192)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--val-frac", type=float, default=0.05)
+    ap.add_argument("--val-block", type=int, default=VAL_BLOCK,
+                    help="records per held-out block (default %d). Blocks, "
+                         "not strided records, so the holdout is GAME-"
+                         "granular -- see val_block_mask()." % VAL_BLOCK)
+    ap.add_argument("--eval-net", metavar="NET",
+                    help="score an exported .nnue on the held-out split and "
+                         "exit -- no training. Gives the honest val number "
+                         "for a net whose run used a leaky split.")
+    ap.add_argument("--eval-sample", type=int, default=50_000,
+                    help="positions to score in --eval-net (default 50,000; "
+                         "the reference forward is one position at a time)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--limit", type=int, help="use only the first N records")
     ap.add_argument("--chunk", type=int, default=0,
@@ -150,28 +233,22 @@ def main():
     recs = read_pygdata(args.dataset)              # mmap, read-only
     if args.limit:
         recs = recs[:args.limit]
+    if args.eval_net:
+        eval_net(args, recs)
+        return
     rng = np.random.default_rng(args.seed)
-    nval = max(1, int(len(recs) * args.val_frac))
-    val_stride = 0
+    val_stride = max(2, int(round(1.0 / max(args.val_frac, 1e-9))))
+    val = np.asarray(recs[val_indices(len(recs), val_stride, args.val_block)])
+    ntrain = len(recs) - len(val)
+    val_mask_note = (f"{ntrain} train / {len(val)} val (every "
+                     f"{val_stride}th block of {args.val_block:,} records, "
+                     f"game-granular)")
     if args.chunk:
-        # Streaming mode: a DETERMINISTIC modulo split, so the holdout is a
-        # true holdout. (The previous version sampled val randomly but then
-        # streamed the WHOLE file as train -- every val record was also
-        # trained on, making the val curve optimistic and the "val must not
-        # diverge" check meaningless. The stride split costs nothing, keeps
-        # val spread across all merged sources, and needs no index set.)
-        val_stride = max(2, int(round(1.0 / max(args.val_frac, 1e-9))))
-        val = np.asarray(recs[::val_stride])
-        ntrain = len(recs) - len(val)
-        val_mask_note = (f"{ntrain} train (streamed) / {len(val)} val "
-                         f"(every {val_stride}th record held out, disjoint)")
         train_view = recs
     else:
-        order = rng.permutation(len(recs))
-        val = np.asarray(recs[np.sort(order[:nval])])
-        train = np.asarray(recs[np.sort(order[nval:])])
-        val_mask_note = f"{len(train)} train / {nval} val"
-        ntrain = len(train)
+        keep = ~val_block_mask(np.arange(len(recs)), val_stride,
+                               args.val_block)
+        train = np.asarray(recs[keep])
     print(f"dataset {args.dataset}: {val_mask_note}")
     if not args.chunk:
         train_t = prepare(train)
@@ -194,7 +271,8 @@ def main():
 
             def _chunk(st):
                 sub = np.asarray(train_view[st:st + args.chunk])
-                keep = (np.arange(st, st + len(sub)) % val_stride) != 0
+                keep = ~val_block_mask(np.arange(st, st + len(sub)),
+                                       val_stride, args.val_block)
                 return prepare(sub[keep], log=lambda *a: None)
 
             sources = ((_chunk(st), int(erng.integers(1 << 30)))
