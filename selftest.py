@@ -527,6 +527,87 @@ if os.path.exists("csearch.c"):
               acc_bad == 0,
               f"{acc_bad} mismatches over 3 trees at d{acc_depth}")
 
+        # --- 5g1b. FI-16: movegen split consistency ----------------------- #
+        # csearch.c carries FIVE generators that must agree by construction
+        # (gen_legal, gen_noisy, gen_captures, gen_quiets, has_legal_quiet),
+        # plus movegen.c's independent copy next door. perft.py drives
+        # movegen.so and therefore cannot see csearch.c's generators at all;
+        # the ladder and bench catch a divergence only INDIRECTLY, as a node
+        # count change. Two direct gates instead:
+        #   (a) the four split invariants at every node of a real tree walk
+        #   (b) csearch's gen_legal vs movegen.so's, move for move
+        MGC_WHY = {1: "captures+quiets != gen_legal", 2: "noisy not a subset",
+                   4: "has_legal_quiet disagrees", 8: "move_from_key broke"}
+        ce._lib.cs_movegen_walk.restype = _ct.c_uint64
+        ce._lib.cs_movegen_walk.argtypes = [_ct.c_uint64] * 8 + [
+            _ct.c_int, _ct.c_int, _ct.c_uint64, _ct.c_int]
+        MGC_FENS = (
+            chess.STARTING_FEN,
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+            "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
+        )
+        mgc_bad, mgc_flags = 0, 0
+        for fen_mg in MGC_FENS:
+            bd = chess.Board(fen_mg)
+            r_mg = ce._lib.cs_movegen_walk(
+                bd.pawns, bd.knights, bd.bishops, bd.rooks, bd.queens, bd.kings,
+                bd.occupied_co[chess.WHITE], bd.occupied_co[chess.BLACK],
+                1 if bd.turn == chess.WHITE else 0,
+                bd.ep_square if bd.ep_square is not None else -1,
+                bd.clean_castling_rights(), 3)
+            mgc_bad += r_mg & 0xFFFFFFFF
+            mgc_flags |= r_mg >> 32
+        check("FI-16: csearch's five generators agree (split invariants)",
+              mgc_bad == 0,
+              f"{mgc_bad} bad nodes: "
+              + ", ".join(v for k, v in MGC_WHY.items() if mgc_flags & k))
+
+        # (b) the two INDEPENDENT gen_legal implementations must emit the same
+        # move set. This is what makes perft's 1.5B nodes cover csearch too:
+        # perft only ever exercised movegen.so's copy.
+        mg_path = os.path.join(HERE, "movegen.so")
+        if os.path.exists(mg_path):
+            mgso = _ct.CDLL(mg_path)
+            mgso.generate_legal.restype = _ct.c_int
+            mgso.generate_legal.argtypes = [_ct.c_uint64] * 8 + [
+                _ct.c_int, _ct.c_int, _ct.c_uint64,
+                _ct.POINTER(_ct.c_uint32 * 256)]
+            ce._lib.cs_gen_legal_list.restype = _ct.c_int
+            ce._lib.cs_gen_legal_list.argtypes = [_ct.c_uint64] * 8 + [
+                _ct.c_int, _ct.c_int, _ct.c_uint64,
+                _ct.POINTER(_ct.c_uint32 * 256)]
+            buf_a, buf_b = (_ct.c_uint32 * 256)(), (_ct.c_uint32 * 256)()
+            random.seed(16)
+            bd = chess.Board()
+            split_ok, split_n, split_fen = True, 0, ""
+            for _ in range(1500):
+                if bd.is_game_over() or bd.fullmove_number > 120:
+                    bd = chess.Board()
+                    continue
+                if not bd.is_check():          # movegen.so refuses in check
+                    args = (bd.pawns, bd.knights, bd.bishops, bd.rooks,
+                            bd.queens, bd.kings,
+                            bd.occupied_co[chess.WHITE],
+                            bd.occupied_co[chess.BLACK],
+                            1 if bd.turn == chess.WHITE else 0,
+                            bd.ep_square if bd.ep_square is not None else -1,
+                            bd.clean_castling_rights())
+                    n_a = mgso.generate_legal(*args, _ct.byref(buf_a))
+                    n_b = ce._lib.cs_gen_legal_list(*args, _ct.byref(buf_b))
+                    if n_a >= 0:
+                        keys_a = sorted(buf_a[i] & 0x7FFF for i in range(n_a))
+                        keys_b = sorted(buf_b[i] for i in range(n_b))
+                        split_n += 1
+                        if keys_a != keys_b:
+                            split_ok, split_fen = False, bd.fen()
+                            break
+                bd.push(random.choice(list(bd.legal_moves)))
+            check("FI-16: csearch and movegen.so generate the same moves",
+                  split_ok and split_n > 800,
+                  f"{split_n} positions agree" if split_ok
+                  else f"DIVERGED on {split_fen}")
+
         # --- 5g2. PM-01 certification honours its wall-clock contract ---- #
         # FB-45: PREMOVE_CAP_S only blocks NEW sub-searches, so the true
         # bound is CAP_S + one (now capped) sub-search. Assert the bound and
