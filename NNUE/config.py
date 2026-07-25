@@ -48,6 +48,13 @@ THREAT_VER = 1           # bump when the T16 formulas change (forces regen)
 
 # --- label rules (Phase 2) ------------------------------------------------
 LABEL_NODES = 5000       # fixed node budget per labeling search
+LABEL_TT_BITS = 16       # 2^16 x 24B = 1.5 MB TT for LABELING only (the
+                         # engine's own default is 21 = 48 MB). Labels are
+                         # made with a cold TT per move, so the table is
+                         # memset once per move; at 5000 nodes a 48 MB wipe
+                         # is ~500x the memory traffic of the search it
+                         # serves. gen_data and verify_labels MUST agree on
+                         # this -- it is part of what the hard gate replays.
 LABEL_MAX_ABS_CP = 2000  # drop positions with |search score| above this
 LABEL_MAX_HMC = 40       # drop rule-50-window shuffle states (F5-19 rider)
 LABEL_MIN_RANDOM_PLIES = 6   # opening randomization band (uniform legal).
@@ -83,7 +90,7 @@ def engine_fingerprint(eng):
         head = "?"
     return (f"engine fp: git={head} abi={eng._lib.csearch_abi()} "
             f"cycle={int(eng.CYCLE_DETECT)} root_lmr={int(eng.ROOT_LMR)} "
-            f"nnue={int(eng.USE_NNUE)}")
+            f"nnue={int(eng.USE_NNUE)} tt={int(eng.TT_BITS)}")
 
 
 # --- default paths --------------------------------------------------------

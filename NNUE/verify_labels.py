@@ -33,7 +33,7 @@ sys.path.insert(0, REPO_DIR)
 
 import chess
 
-from config import LABEL_NODES, engine_fingerprint
+from config import LABEL_NODES, LABEL_TT_BITS, engine_fingerprint
 from data_format import read_pygdata
 
 
@@ -62,6 +62,13 @@ def research(records, nodes, cycle_on):
         CYCLE_DETECT = bool(cycle_on)   # must mirror gen_data's LabelEngine
         USE_NNUE = False                # (all other toggles = confirmed
                                         # defaults, same as the generator)
+        TT_BITS = LABEL_TT_BITS         # MUST mirror gen_data's LabelEngine:
+                                        # TT size changes which entries
+                                        # survive, so it changes the search,
+                                        # so it changes the score this audit
+                                        # is trying to reproduce. A mismatch
+                                        # here fails the hard gate with what
+                                        # looks like data corruption.
 
     eng = AuditEngine()
     if not cycle_on:                       # the gate pass, not the report
