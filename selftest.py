@@ -529,7 +529,75 @@ if os.path.exists("csearch.c"):
         check("C core (cengine) searches", False,
               f"{type(ex).__name__}: {ex} -- rebuild csearch.so via ./setup.sh")
 
-# --- 5h. cuci UCI host: protocol round-trip ------------------------------ #
+# --- 5h. FI-87: has_legal_quiet's subsumption claim ---------------------- #
+# csearch.c's has_legal_quiet (the qsearch stalemate scan that decides
+# draw-vs-eval when gen_noisy is empty) deliberately skips castling and
+# double pushes, on the asserted claim that both are SUBSUMED: castling legal
+# => the K->f king step is legal, a legal double push => the single push is
+# legal. The claim was only ever a comment. It is a property of chess, not of
+# the C code, so python-chess is the oracle: if it ever goes false the scan
+# starts calling live positions stalemate -- a silent scoring bug, not a crash.
+#
+# Corpus note (the coverage is deliberately lopsided, because the claim is):
+#   * the DOUBLE-PUSH half is randomly stressed -- sparse endgame positions
+#     reach "only a pawn push is quiet" often (negative control: excluding
+#     single pushes instead makes this very check fire within 4k positions,
+#     so the harness has teeth). Full-game playouts never get that tight.
+#   * the CASTLING half is over-determined and cannot be stressed randomly:
+#     O-O legal requires f1/g1 empty and f1 unattacked, so Kf1 AND Rf1/Rg1
+#     are legal quiets too. Crafted positions pin it; the argument carries it.
+random.seed(87)
+pos_checked, subsumption_ok, bad_fen = 0, True, ""
+CRAFTED = [
+    "4k3/8/8/8/8/8/8/R3K2R w KQ - 0 1",         # castling available
+    "r3k2r/8/8/8/8/8/8/4K3 b kq - 0 1",
+    "4k3/8/8/8/8/8/4P3/4K3 w - - 0 1",          # double push available
+    "7k/5K2/8/8/8/8/8/5R2 b - - 0 1",           # black nearly stalemated
+    "k7/P7/K7/8/8/8/8/8 b - - 0 1",             # black IS stalemated
+    "8/8/8/8/8/1r6/P7/K7 w - - 0 1",            # pinned pawn, king moves only
+    "1r4k1/8/8/3P4/8/K7/2q5/8 w - - 0 1",       # only quiet IS the pawn push
+]
+boards = [chess.Board(f) for f in CRAFTED]
+b_pl = chess.Board()
+for _ in range(2000):                     # seeded playout sweep (broad)
+    if b_pl.is_game_over() or b_pl.fullmove_number > 120:
+        b_pl = chess.Board()
+        continue
+    boards.append(b_pl.copy())
+    b_pl.push(random.choice(list(b_pl.legal_moves)))
+while len(boards) < 6000:                 # sparse endgames (the tight ones)
+    sb = chess.Board(None)
+    sqs = random.sample(range(64), random.randint(3, 5))
+    sb.set_piece_at(sqs[0], chess.Piece(chess.KING, chess.WHITE))
+    sb.set_piece_at(sqs[1], chess.Piece(chess.KING, chess.BLACK))
+    for s in sqs[2:]:
+        pt = random.choice([chess.PAWN, chess.KNIGHT, chess.BISHOP,
+                            chess.ROOK, chess.QUEEN])
+        if pt == chess.PAWN and chess.square_rank(s) in (0, 7):
+            pt = chess.QUEEN                   # no pawns on the back ranks
+        sb.set_piece_at(s, chess.Piece(pt, random.choice([True, False])))
+    sb.turn = random.choice([chess.WHITE, chess.BLACK])
+    if sb.is_valid():
+        boards.append(sb)
+for bq in boards:
+    if bq.is_check():                     # scan is only used out of check
+        continue
+    quiets = [m for m in bq.legal_moves if not bq.is_capture(m)]
+    scanned = [m for m in quiets          # what has_legal_quiet actually looks at
+               if not bq.is_castling(m)
+               and not (bq.piece_type_at(m.from_square) == chess.PAWN
+                        and abs(chess.square_rank(m.to_square)
+                                - chess.square_rank(m.from_square)) == 2)]
+    pos_checked += 1
+    if bool(quiets) != bool(scanned):
+        subsumption_ok, bad_fen = False, bq.fen()
+        break
+check("FI-87: castling/double-push subsumed by has_legal_quiet's scan",
+      subsumption_ok and pos_checked > 4000,
+      f"{pos_checked} positions" if subsumption_ok
+      else f"COUNTEREXAMPLE: {bad_fen}")
+
+# --- 5i. cuci UCI host: protocol round-trip ------------------------------ #
 # The UCI host carries every external consumer (GUIs, Mephisto, matetrack,
 # a future OpenBench); a broken handshake or a silent bestmove regression
 # must fail here, not in the field.
@@ -563,7 +631,7 @@ if os.path.exists("cuci.py"):
           said and len(fps) == 2 and "hash_bits=23" in fps[1],
           "" if said else "no info string for Hash 200")
 
-# --- 5i. NNUE unit checks (FI-15, dormant build-out) --------------------- #
+# --- 5j. NNUE unit checks (FI-15, dormant build-out) --------------------- #
 # Runs in a SUBPROCESS: cengine's FB-04 one-process-one-config rule forbids
 # a second, differently-configured Engine in this process. Exit 42 = no net
 # file on disk = SKIP (the build is dormant until a net is trained); the
