@@ -28,6 +28,7 @@ import os
 import random
 import subprocess
 import sys
+import threading
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -504,7 +505,6 @@ if os.path.exists("csearch.c"):
         # bound is CAP_S + one (now capped) sub-search. Assert the bound and
         # that every certified pair is legal -- a premove that is wrong or
         # late is worse than no premove at all.
-        import threading                                   # noqa: E402
         import cuci                                        # noqa: E402
         b0 = chess.Board()
         mv0 = ce.get_best_move_timed(b0, 1.0, max_depth=99)
@@ -617,6 +617,49 @@ if os.path.exists("cuci.py"):
         uci_ok = False
     check("cuci UCI round-trip (uciok/readyok/legal bestmove)", uci_ok,
           bm if bm else "no bestmove line -- see `python3 cuci.py` by hand")
+
+    # FB-44: real ponder round-trip, and the release watcher must leave the
+    # NEXT search alone. Must be PACED (Popen, not run(input=...)): a batch
+    # stdin hands the host `quit` while the search is still running, so every
+    # bestmove comes back instantly and the check asserts nothing.
+    # This is a regression guard, not a reproduction -- the window is
+    # microseconds (the search sets `holding` on every exit path, so a
+    # released watcher wakes while the host is still inside join()), which is
+    # why the fix is by construction. A watcher that fires on the wrong search
+    # -- or a swap_lock deadlock -- shows up here as a short/missing search.
+    pp = subprocess.Popen([sys.executable, "cuci.py"], stdin=subprocess.PIPE,
+                          stdout=subprocess.PIPE, text=True, bufsize=1)
+    wd = threading.Timer(60, pp.kill); wd.start()   # readline() must not wedge
+
+    def _send(s):
+        pp.stdin.write(s + "\n"); pp.stdin.flush()
+
+    def _bestmove():
+        while True:
+            ln = pp.stdout.readline()
+            if not ln or ln.startswith("bestmove "):
+                return ln.strip()
+
+    _send("uci"); _send("setoption name Ponder value true")
+    _send("setoption name OwnBook value false")   # a book hit is instant
+    _send("position startpos moves e2e4")
+    _send("go ponder wtime 300000 btime 300000")
+    time.sleep(0.4)
+    _send("ponderhit")
+    time.sleep(0.1)
+    _send("stop")
+    bm_p = _bestmove()
+    _send("position startpos moves e2e4 e7e5")
+    t_pon = time.perf_counter()
+    _send("go movetime 1200")
+    bm_2 = _bestmove()
+    dt_pon = time.perf_counter() - t_pon
+    _send("quit"); pp.wait(timeout=20); wd.cancel()
+    check("ponder round-trip + watcher leaves the next search alone (FB-44)",
+          bm_p.startswith("bestmove ") and bm_2.startswith("bestmove ")
+          and dt_pon >= 1.0,
+          f"ponder -> {bm_p or 'NOTHING'}; next go took {dt_pon:.2f}s "
+          f"of its 1.20s (short = truncated by a stale watcher)")
 
     # FB-46: Hash lands on a power-of-two ENTRY count, so 200 MB becomes 192.
     # The round-down must be announced and the fingerprint must show it (a
