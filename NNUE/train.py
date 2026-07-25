@@ -11,6 +11,12 @@ per epoch, and exports the best-val model to the .nnue quantized format.
 After export it cross-checks: quantized-reference forward vs the float
 model on a sample (reports MAE in cp -- quantization noise, expected small).
 
+NAMING: the exported file is renamed to carry the first 12 hex of its own
+sha256 (config.stamp_net_hash), Stockfish-style -- pass
+`--out NNUE/nets/nnue_v1.nnue` and you get `nnue_v1_52724f038139.nnue`.
+The printed "exported ... -> PATH" line is the real name; use THAT in
+--net flags and in cengine.NNUE_FILE. `toy.nnue` is exempt (not a version).
+
 Label: u = LAMBDA * clamp(score, +/-2000)/400
          + (1-LAMBDA) * result * RESULT_CP/400        (White POV, then
 flipped to stm POV to match the net's output convention).
@@ -38,7 +44,7 @@ sys.path.insert(0, NNUE_DIR)
 import torch
 
 from config import (OUT_CP, THREAT_DIM, QA, CHECKPOINTS_DIR, TOY_NET,
-                    LABEL_MAX_ABS_CP)
+                    LABEL_MAX_ABS_CP, stamp_net_hash)
 from data_format import read_pygdata
 from model import NNUEModel
 from nnue_ref import extract_features, QuantNet
@@ -206,6 +212,7 @@ def main():
     model.load_state_dict(torch.load(
         os.path.join(CHECKPOINTS_DIR, "best.pt"), weights_only=True))
     q = export_nnue(model, args.out)
+    args.out = stamp_net_hash(args.out)     # -> nnue_v1_<12 hex>.nnue
     print(f"exported best (epoch {best_epoch}, val {best_val:.6f}) "
           f"-> {args.out}")
 
