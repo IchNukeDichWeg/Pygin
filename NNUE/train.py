@@ -114,6 +114,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("dataset")
     ap.add_argument("--out", default=TOY_NET)
+    ap.add_argument("--export-only", action="store_true",
+                    help="skip training: export checkpoints/best.pt to --out "
+                         "and exit. Recovery for a run that died after some "
+                         "epochs (there is no resume; best.pt is the only "
+                         "thing that survives).")
     ap.add_argument("--epochs", type=int, default=40)
     ap.add_argument("--batch", type=int, default=8192)
     ap.add_argument("--lr", type=float, default=1e-3)
@@ -126,6 +131,22 @@ def main():
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
+    if args.export_only:
+        # Recovery path. best.pt is written every time val improves, but only
+        # the export turns it into a .nnue -- so a run that dies at epoch 15
+        # (crash, OOM, machine sleep, closed terminal) leaves hours of work on
+        # disk in a form nothing can load. There is no resume, so without this
+        # the only option is to train again from scratch.
+        model = NNUEModel()
+        ck = os.path.join(CHECKPOINTS_DIR, "best.pt")
+        if not os.path.exists(ck):
+            sys.exit(f"train --export-only: no {ck} to export")
+        model.load_state_dict(torch.load(ck, weights_only=True))
+        export_nnue(model, args.out)
+        out = stamp_net_hash(args.out)
+        print(f"exported checkpoints/best.pt (RECOVERED, epoch unknown -- "
+              f"read checkpoints/loss_curve.csv for the val curve) -> {out}")
+        return
     recs = read_pygdata(args.dataset)              # mmap, read-only
     if args.limit:
         recs = recs[:args.limit]
