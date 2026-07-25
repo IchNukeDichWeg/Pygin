@@ -321,6 +321,66 @@ static inline int in_check(const Board* b)
     return sq_attacked_by_them(b, ksq);
 }
 
+/* ---------- FI-11: pin-aware legality fast path -------------------------- */
+/* legal() pays a full king-attack scan for EVERY pseudo-legal move. But out
+ * of check, an ordinary move can only expose our own king if its mover is
+ * ABSOLUTELY PINNED -- so one pinned mask per node makes legality free for
+ * every unpinned ordinary mover, and legal() is left for the rest.
+ *
+ * The three exclusions are exact, and each one is load-bearing:
+ *   - KING moves: the king itself relocates, so occ2 and the attacked square
+ *     both differ; pins say nothing about them.
+ *   - EN PASSANT: TWO pieces leave the board and they can leave the SAME
+ *     RANK, so neither of them need be pinned for the capture to expose the
+ *     king (8/8/8/K2pP2q/8/8/8/k -- the classic horror case).
+ *   - IN CHECK: legality depends on the checker (block/capture/evade), not
+ *     on pins at all.
+ * Everything else keeps calling legal() unchanged, so the emitted move SET
+ * and ORDER are identical by construction: this is a speed change only, and
+ * it is gated by perft --deep plus the node-exact ladder. */
+typedef struct {
+    uint64_t pinned;      /* our pieces absolutely pinned to our king */
+    int slow_all;         /* 1 = in check / kingless: every move takes legal() */
+} LegalCtx;
+
+static inline LegalCtx legal_ctx(const Board* b)
+{
+    LegalCtx c;
+    c.pinned = 0;
+    c.slow_all = 1;
+    int us = b->turn;
+    uint64_t kbb = b->kings & b->occ[us];
+    if (!kbb) return c;                   /* kingless test position */
+    int ksq = __builtin_ctzll(kbb);
+    if (sq_attacked_by_them(b, ksq)) return c;          /* in check */
+    uint64_t occ = b->occ[0] | b->occ[1];
+    uint64_t them = b->occ[us ^ 1];
+    /* Snipers = enemy sliders that would hit the king on an EMPTY board
+     * (magic lookup with occ=0 is the full ray). A sniper pins iff exactly
+     * one piece stands between it and the king, and that piece is ours. */
+    uint64_t snipers = (rook_attacks(ksq, 0)   & (b->rooks   | b->queens) & them)
+                     | (bishop_attacks(ksq, 0) & (b->bishops | b->queens) & them);
+    for (; snipers; snipers &= snipers - 1) {
+        int s = __builtin_ctzll(snipers);
+        /* INBETWEEN_BITBOARDS includes the far endpoint -- mask it off. */
+        uint64_t between = INBETWEEN_BITBOARDS[ksq][s] & ~(1ULL << s) & occ;
+        if (between && !(between & (between - 1)))
+            c.pinned |= between & b->occ[us];
+    }
+    c.slow_all = 0;
+    return c;
+}
+
+/* Drop-in for legal() inside the generators. `is_king`/`is_ep` are known for
+ * free at every call site (the generator already branched on piece type). */
+static inline int legal_q(const Board* b, const LegalCtx* c,
+                          int from, int to, int is_ep, int is_king)
+{
+    if (!c->slow_all && !is_king && !is_ep && !((1ULL << from) & c->pinned))
+        return 1;                         /* legal by construction */
+    return legal(b, from, to, is_ep);
+}
+
 /* ---------- legal move generation (python-chess pseudo-legal order) ------- */
 /* Emits in exactly generate_pseudo_legal_moves order, minus illegal moves.
  * Correct SET in every position; correct ORDER when not in check. */
@@ -331,6 +391,7 @@ static int gen_legal(const Board* b, uint32_t* out)
     uint64_t empty = ~occ;
     uint64_t t, a;
     int from, to;
+    LegalCtx lc = legal_ctx(b);   /* FI-11 */
 
     /* 1. non-pawn piece moves: all of (N|B|R|Q|K), descending from-square;
      *    for each, targets descending. (King's normal moves included here.)
@@ -349,7 +410,7 @@ static int gen_legal(const Board* b, uint32_t* out)
                                           bishop_attacks(from, occ);      mover_pt = PT_QUEEN;  }
         for (a = att & ~own; a; a &= ~(1ULL << to)) {
             to = 63 - __builtin_clzll(a);
-            if (legal(b, from, to, 0)) {
+            if (legal_q(b, &lc, from, to, 0, mover_pt == PT_KING)) {
                 int victim_pt = ((1ULL << to) & enemy) ? board_piece_type_at(b, to) : 0;
                 out[cnt++] = MOVE_TAG(from, to, 0, mover_pt, victim_pt, 0);
             }
@@ -391,14 +452,14 @@ static int gen_legal(const Board* b, uint32_t* out)
             to = 63 - __builtin_clzll(a);
             int promo = (us == WHITE) ? (to >= 56) : (to < 8);
             if (promo) {
-                if (legal(b, from, to, 0)) {
+                if (legal_q(b, &lc, from, to, 0, 0)) {
                     int victim_pt = board_piece_type_at(b, to);
                     out[cnt++] = MOVE_TAG(from, to, 5, PT_PAWN, victim_pt, 0);
                     out[cnt++] = MOVE_TAG(from, to, 4, PT_PAWN, victim_pt, 0);
                     out[cnt++] = MOVE_TAG(from, to, 3, PT_PAWN, victim_pt, 0);
                     out[cnt++] = MOVE_TAG(from, to, 2, PT_PAWN, victim_pt, 0);
                 }
-            } else if (legal(b, from, to, 0)) {
+            } else if (legal_q(b, &lc, from, to, 0, 0)) {
                 int victim_pt = board_piece_type_at(b, to);
                 out[cnt++] = MOVE_TAG(from, to, 0, PT_PAWN, victim_pt, 0);
             }
@@ -412,13 +473,13 @@ static int gen_legal(const Board* b, uint32_t* out)
         from = (us == WHITE) ? to - 8 : to + 8;
         int promo = (us == WHITE) ? (to >= 56) : (to < 8);
         if (promo) {
-            if (legal(b, from, to, 0)) {
+            if (legal_q(b, &lc, from, to, 0, 0)) {
                 out[cnt++] = MOVE_TAG(from, to, 5, PT_PAWN, 0, 0);
                 out[cnt++] = MOVE_TAG(from, to, 4, PT_PAWN, 0, 0);
                 out[cnt++] = MOVE_TAG(from, to, 3, PT_PAWN, 0, 0);
                 out[cnt++] = MOVE_TAG(from, to, 2, PT_PAWN, 0, 0);
             }
-        } else if (legal(b, from, to, 0)) {
+        } else if (legal_q(b, &lc, from, to, 0, 0)) {
             out[cnt++] = MOVE_TAG(from, to, 0, PT_PAWN, 0, 0);
         }
     }
@@ -429,14 +490,14 @@ static int gen_legal(const Board* b, uint32_t* out)
     for (a = dbl; a; a &= ~(1ULL << to)) {
         to = 63 - __builtin_clzll(a);
         from = (us == WHITE) ? to - 16 : to + 16;
-        if (legal(b, from, to, 0)) out[cnt++] = MOVE_TAG(from, to, 0, PT_PAWN, 0, 0);
+        if (legal_q(b, &lc, from, to, 0, 0)) out[cnt++] = MOVE_TAG(from, to, 0, PT_PAWN, 0, 0);
     }
 
     /* 6. en passant, descending capturer-square. Victim is always a pawn. */
     if (b->ep >= 0 && !((1ULL << b->ep) & occ)) {
         for (t = pawns & PAWN_ATT[them][b->ep]; t; t &= ~(1ULL << from)) {
             from = 63 - __builtin_clzll(t);
-            if (legal(b, from, b->ep, 1))
+            if (legal_q(b, &lc, from, b->ep, 1, 0))
                 out[cnt++] = MOVE_TAG(from, b->ep, 0, PT_PAWN, PT_PAWN, 1);
         }
     }
@@ -457,6 +518,7 @@ static int gen_noisy(const Board* b, uint32_t* out)
     uint64_t empty = ~occ;
     uint64_t t, a;
     int from, to;
+    LegalCtx lc = legal_ctx(b);   /* FI-11 */
 
     uint64_t nonpawns = (b->knights | b->bishops | b->rooks | b->queens | b->kings) & own;
     for (t = nonpawns; t; t &= ~(1ULL << from)) {
@@ -471,7 +533,7 @@ static int gen_noisy(const Board* b, uint32_t* out)
                                           bishop_attacks(from, occ);      mover_pt = PT_QUEEN;  }
         for (a = att & enemy; a; a &= ~(1ULL << to)) {      /* captures only */
             to = 63 - __builtin_clzll(a);
-            if (legal(b, from, to, 0))
+            if (legal_q(b, &lc, from, to, 0, mover_pt == PT_KING))
                 out[cnt++] = MOVE_TAG(from, to, 0, mover_pt,
                                       board_piece_type_at(b, to), 0);
         }
@@ -485,14 +547,14 @@ static int gen_noisy(const Board* b, uint32_t* out)
             to = 63 - __builtin_clzll(a);
             int promo = (us == WHITE) ? (to >= 56) : (to < 8);
             if (promo) {
-                if (legal(b, from, to, 0)) {
+                if (legal_q(b, &lc, from, to, 0, 0)) {
                     int victim_pt = board_piece_type_at(b, to);
                     out[cnt++] = MOVE_TAG(from, to, 5, PT_PAWN, victim_pt, 0);
                     out[cnt++] = MOVE_TAG(from, to, 4, PT_PAWN, victim_pt, 0);
                     out[cnt++] = MOVE_TAG(from, to, 3, PT_PAWN, victim_pt, 0);
                     out[cnt++] = MOVE_TAG(from, to, 2, PT_PAWN, victim_pt, 0);
                 }
-            } else if (legal(b, from, to, 0)) {
+            } else if (legal_q(b, &lc, from, to, 0, 0)) {
                 out[cnt++] = MOVE_TAG(from, to, 0, PT_PAWN,
                                       board_piece_type_at(b, to), 0);
             }
@@ -506,7 +568,7 @@ static int gen_noisy(const Board* b, uint32_t* out)
     for (a = single; a; a &= ~(1ULL << to)) {
         to = 63 - __builtin_clzll(a);
         from = (us == WHITE) ? to - 8 : to + 8;
-        if (legal(b, from, to, 0)) {
+        if (legal_q(b, &lc, from, to, 0, 0)) {
             out[cnt++] = MOVE_TAG(from, to, 5, PT_PAWN, 0, 0);
             out[cnt++] = MOVE_TAG(from, to, 4, PT_PAWN, 0, 0);
             out[cnt++] = MOVE_TAG(from, to, 3, PT_PAWN, 0, 0);
@@ -517,7 +579,7 @@ static int gen_noisy(const Board* b, uint32_t* out)
     if (b->ep >= 0 && !((1ULL << b->ep) & occ)) {           /* en passant */
         for (t = pawns & PAWN_ATT[them][b->ep]; t; t &= ~(1ULL << from)) {
             from = 63 - __builtin_clzll(t);
-            if (legal(b, from, b->ep, 1))
+            if (legal_q(b, &lc, from, b->ep, 1, 0))
                 out[cnt++] = MOVE_TAG(from, b->ep, 0, PT_PAWN, PT_PAWN, 1);
         }
     }
@@ -537,6 +599,7 @@ static int has_legal_quiet(const Board* b)
     uint64_t own = b->occ[us], occ = own | b->occ[us ^ 1];
     uint64_t empty = ~occ;
     uint64_t t, a;
+    LegalCtx lc = legal_ctx(b);   /* FI-11 */
 
     uint64_t nonpawns = (b->knights | b->bishops | b->rooks | b->queens | b->kings) & own;
     for (t = nonpawns; t; t &= ~(1ULL << cnt_from)) {
@@ -550,7 +613,7 @@ static int has_legal_quiet(const Board* b)
                                       | bishop_attacks(cnt_from, occ);
         for (a = att & empty; a; a &= ~(1ULL << to)) {
             to = 63 - __builtin_clzll(a);
-            if (legal(b, cnt_from, to, 0)) return 1;
+            if (legal_q(b, &lc, cnt_from, to, 0, (b->kings & fb) != 0)) return 1;
         }
     }
     uint64_t pawns = b->pawns & own;
@@ -558,7 +621,7 @@ static int has_legal_quiet(const Board* b)
     for (a = single; a; a &= ~(1ULL << to)) {
         to = 63 - __builtin_clzll(a);
         int from = (us == WHITE) ? to - 8 : to + 8;
-        if (legal(b, from, to, 0)) return 1;
+        if (legal_q(b, &lc, from, to, 0, 0)) return 1;
     }
     return 0;
 }
@@ -576,6 +639,7 @@ static int gen_captures(const Board* b, uint32_t* out)
     uint64_t own = b->occ[us], enemy = b->occ[them], occ = own | enemy;
     uint64_t t, a;
     int from, to;
+    LegalCtx lc = legal_ctx(b);   /* FI-11 */
 
     uint64_t nonpawns = (b->knights | b->bishops | b->rooks | b->queens | b->kings) & own;
     for (t = nonpawns; t; t &= ~(1ULL << from)) {
@@ -590,7 +654,7 @@ static int gen_captures(const Board* b, uint32_t* out)
                                           bishop_attacks(from, occ);      mover_pt = PT_QUEEN;  }
         for (a = att & enemy; a; a &= ~(1ULL << to)) {
             to = 63 - __builtin_clzll(a);
-            if (legal(b, from, to, 0))
+            if (legal_q(b, &lc, from, to, 0, mover_pt == PT_KING))
                 out[cnt++] = MOVE_TAG(from, to, 0, mover_pt,
                                       board_piece_type_at(b, to), 0);
         }
@@ -602,14 +666,14 @@ static int gen_captures(const Board* b, uint32_t* out)
             to = 63 - __builtin_clzll(a);
             int promo = (us == WHITE) ? (to >= 56) : (to < 8);
             if (promo) {
-                if (legal(b, from, to, 0)) {
+                if (legal_q(b, &lc, from, to, 0, 0)) {
                     int victim_pt = board_piece_type_at(b, to);
                     out[cnt++] = MOVE_TAG(from, to, 5, PT_PAWN, victim_pt, 0);
                     out[cnt++] = MOVE_TAG(from, to, 4, PT_PAWN, victim_pt, 0);
                     out[cnt++] = MOVE_TAG(from, to, 3, PT_PAWN, victim_pt, 0);
                     out[cnt++] = MOVE_TAG(from, to, 2, PT_PAWN, victim_pt, 0);
                 }
-            } else if (legal(b, from, to, 0)) {
+            } else if (legal_q(b, &lc, from, to, 0, 0)) {
                 out[cnt++] = MOVE_TAG(from, to, 0, PT_PAWN,
                                       board_piece_type_at(b, to), 0);
             }
@@ -618,7 +682,7 @@ static int gen_captures(const Board* b, uint32_t* out)
     if (b->ep >= 0 && !((1ULL << b->ep) & occ)) {           /* en passant */
         for (t = pawns & PAWN_ATT[them][b->ep]; t; t &= ~(1ULL << from)) {
             from = 63 - __builtin_clzll(t);
-            if (legal(b, from, b->ep, 1))
+            if (legal_q(b, &lc, from, b->ep, 1, 0))
                 out[cnt++] = MOVE_TAG(from, b->ep, 0, PT_PAWN, PT_PAWN, 1);
         }
     }
@@ -632,6 +696,7 @@ static int gen_quiets(const Board* b, uint32_t* out)
     uint64_t empty = ~occ;
     uint64_t t, a;
     int from, to;
+    LegalCtx lc = legal_ctx(b);   /* FI-11 */
 
     uint64_t nonpawns = (b->knights | b->bishops | b->rooks | b->queens | b->kings) & own;
     for (t = nonpawns; t; t &= ~(1ULL << from)) {
@@ -646,7 +711,7 @@ static int gen_quiets(const Board* b, uint32_t* out)
                                           bishop_attacks(from, occ);      mover_pt = PT_QUEEN;  }
         for (a = att & empty; a; a &= ~(1ULL << to)) {
             to = 63 - __builtin_clzll(a);
-            if (legal(b, from, to, 0))
+            if (legal_q(b, &lc, from, to, 0, mover_pt == PT_KING))
                 out[cnt++] = MOVE_TAG(from, to, 0, mover_pt, 0, 0);
         }
     }
@@ -678,13 +743,13 @@ static int gen_quiets(const Board* b, uint32_t* out)
         from = (us == WHITE) ? to - 8 : to + 8;
         int promo = (us == WHITE) ? (to >= 56) : (to < 8);
         if (promo) {
-            if (legal(b, from, to, 0)) {
+            if (legal_q(b, &lc, from, to, 0, 0)) {
                 out[cnt++] = MOVE_TAG(from, to, 5, PT_PAWN, 0, 0);
                 out[cnt++] = MOVE_TAG(from, to, 4, PT_PAWN, 0, 0);
                 out[cnt++] = MOVE_TAG(from, to, 3, PT_PAWN, 0, 0);
                 out[cnt++] = MOVE_TAG(from, to, 2, PT_PAWN, 0, 0);
             }
-        } else if (legal(b, from, to, 0)) {
+        } else if (legal_q(b, &lc, from, to, 0, 0)) {
             out[cnt++] = MOVE_TAG(from, to, 0, PT_PAWN, 0, 0);
         }
     }
@@ -693,7 +758,7 @@ static int gen_quiets(const Board* b, uint32_t* out)
     for (a = dbl; a; a &= ~(1ULL << to)) {
         to = 63 - __builtin_clzll(a);
         from = (us == WHITE) ? to - 16 : to + 16;
-        if (legal(b, from, to, 0)) out[cnt++] = MOVE_TAG(from, to, 0, PT_PAWN, 0, 0);
+        if (legal_q(b, &lc, from, to, 0, 0)) out[cnt++] = MOVE_TAG(from, to, 0, PT_PAWN, 0, 0);
     }
     return cnt;
 }
