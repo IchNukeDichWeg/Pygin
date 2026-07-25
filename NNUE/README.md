@@ -129,13 +129,31 @@ before the change (the absolute value moves with every engine ship).
 
 ## Net naming & retirement (mirrors Old Engine/)
 
-Live net: `NNUE/nets/nnue_net_vN.nnue` — vN bumps per bootstrap round /
-retrain on new data; a small same-data fix bumps the minor
-(`nnue_net_v1.1.nnue`). Retired nets move FLAT into `NNUE/Old NNUE/`
-(`mv NNUE/nets/nnue_net_v1.nnue "NNUE/Old NNUE/"`). `toy.nnue` is the
-pipeline-proof artifact, not a version. cengine's `NNUE_FILE` default
-names the current live net; all `.nnue` files are gitignored (public
-repo) — only the Old NNUE README is tracked.
+Live net: **`NNUE/nets/nnue_vN_<12 hex>.nnue`** — e.g.
+`nnue_v1_52724f038139.nnue`. The suffix is the first 12 hex characters of
+the file's own sha256, Stockfish's `nn-<12 hex>.nnue` convention. A net is
+an opaque 3 MB blob, so two different nets under one filename are
+undetectable by eye — and that is exactly what silently invalidates an
+A/B (you think you screened v2 and you screened v1). With the hash in the
+name, a mismatched net is a wrong *filename*, which is impossible to miss.
+`vN` stays because the hash says nothing about ORDER, and the ordering is
+the part a human reads: vN bumps per bootstrap round / retrain on new
+data, a small same-data fix bumps the minor (`nnue_v1.1_<hash>.nnue`).
+
+`NNUE/train.py` applies the hash itself at export
+(`config.stamp_net_hash`): pass `--out NNUE/nets/nnue_v1.nnue` and it
+writes, hashes, renames, and prints the real name in its
+`exported ... -> PATH` line. Use that printed name in `--net` flags and in
+`cengine.NNUE_FILE`. Re-stamping is idempotent (an existing hash suffix is
+replaced, not appended).
+
+Retired nets move FLAT into `NNUE/Old NNUE/`
+(`mv NNUE/nets/nnue_v1_<hash>.nnue "NNUE/Old NNUE/"`). `toy.nnue` is the
+pipeline-proof artifact, not a version, and is **exempt** from the hash —
+`selftest_nnue.py` and `selfplay_smoke.py` open it by fixed path. cengine's
+`NNUE_FILE` default names the current live net (a placeholder until v1
+exists); all `.nnue` files are gitignored (public repo) — only the Old
+NNUE README is tracked.
 
 ## Generating real training data (Phase 6, the next step)
 
