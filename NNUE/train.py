@@ -191,30 +191,46 @@ def main():
                 n += len(y)
         return tot / n
 
+    stopped = False
     with open(curve_path, "w", newline="") as cf:
         cw = csv.writer(cf)
         cw.writerow(["epoch", "train_mse", "val_mse"])
-        for ep in range(args.epochs):
-            t0 = time.time()
-            tr = train_one_epoch(ep)
-            va = evaluate(model, val_t, args.batch)
-            cw.writerow([ep, f"{tr:.6f}", f"{va:.6f}"])
-            cf.flush()
-            marker = ""
-            if va < best_val:
-                best_val, best_epoch = va, ep
-                torch.save(model.state_dict(),
-                           os.path.join(CHECKPOINTS_DIR, "best.pt"))
-                marker = "  *best"
-            print(f"epoch {ep:3d}  train {tr:.6f}  val {va:.6f}  "
-                  f"({time.time()-t0:.1f}s){marker}", flush=True)
+        try:
+            for ep in range(args.epochs):
+                t0 = time.time()
+                tr = train_one_epoch(ep)
+                va = evaluate(model, val_t, args.batch)
+                cw.writerow([ep, f"{tr:.6f}", f"{va:.6f}"])
+                cf.flush()
+                marker = ""
+                if va < best_val:
+                    best_val, best_epoch = va, ep
+                    torch.save(model.state_dict(),
+                               os.path.join(CHECKPOINTS_DIR, "best.pt"))
+                    marker = "  *best"
+                print(f"epoch {ep:3d}  train {tr:.6f}  val {va:.6f}  "
+                      f"({time.time()-t0:.1f}s){marker}", flush=True)
+        except KeyboardInterrupt:
+            # A full run is hours, so stopping early has to be a normal exit,
+            # not a traceback: the export below is the ONLY thing that turns
+            # best.pt into a usable .nnue, and skipping it would throw away
+            # every completed epoch. Val loss flattens well before the epoch
+            # budget, so "watch it and stop when it plateaus" is the expected
+            # way to use this -- it must produce a net.
+            stopped = True
+            print(f"\ntraining interrupted after {best_epoch + 1} completed "
+                  f"epoch(s) -- exporting the best one", flush=True)
 
+    if best_epoch < 0:
+        sys.exit("train: interrupted before the first epoch finished; no net "
+                 "written (checkpoints/best.pt is from an earlier run and is "
+                 "NOT this dataset's -- exporting it would be a silent lie)")
     model.load_state_dict(torch.load(
         os.path.join(CHECKPOINTS_DIR, "best.pt"), weights_only=True))
     q = export_nnue(model, args.out)
     args.out = stamp_net_hash(args.out)     # -> nnue_v1_<12 hex>.nnue
-    print(f"exported best (epoch {best_epoch}, val {best_val:.6f}) "
-          f"-> {args.out}")
+    print(f"exported best (epoch {best_epoch}, val {best_val:.6f}"
+          f"{', STOPPED EARLY' if stopped else ''}) -> {args.out}")
 
     # quantization sanity: float vs quantized-reference on a sample (cp MAE)
     model.eval()
