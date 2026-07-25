@@ -32,7 +32,11 @@ Options:
                                               skip PM-01 certification)
     Move Overhead (spin 0..5000, default 40) -- per-move clock slack, ms
     Hash          (spin 2..6144 MB, default 192) -- C TT size (FI-10;
-                                              resize wipes the table)
+                                              resize wipes the table; the
+                                              table is a power-of-two ENTRY
+                                              count, so a request rounds DOWN
+                                              and FB-46 says so in an
+                                              info string)
     (+ the P-26 tuning spins; `bench [depth]` prints the OpenBench nodes
     signature -- CONFIG-RELATIVE: it re-baselines after every tree-changing
     ship, so compare only within one confirmed version; `go nodes N` is
@@ -277,8 +281,9 @@ def _emit_multipv(engine, board, best_mv, k, budget, white_to_move, stop_evt):
 # Quality gate: the answer must be depth-stable (d6 and d9 agree) -- a missing
 # reply costs one normal round-trip; a wrong one would cost a game. The
 # certification searches warm the TT with exactly the position the next move
-# will face (a free poor-man's ponder), and the loop bails on stop_evt (a new
-# go/stop/ucinewgame joins within one ms-scale step).
+# will face (a free poor-man's ponder), and the loop bails on stop_evt between
+# sub-searches -- a new go/stop/ucinewgame aborts the in-flight one (FB-32) and
+# joins within one ms-scale step.
 # --------------------------------------------------------------------------- #
 PREMOVE_CHECK_DEPTH = 6
 PREMOVE_TABLE_DEPTH = 9
@@ -288,7 +293,19 @@ PREMOVE_MIN_LINE = 10    # a choice-pair may only be played while the line
                          # reply consumes 2 plies of the searched line, so a
                          # d13 search affords 1 pair (13-2=11 ok, 13-4=9 no),
                          # d14+ affords the max 2, below d12 none at all
-PREMOVE_CAP_S = 0.1      # hard wall-clock cap (user: bullet-safe)
+PREMOVE_CAP_S = 0.1      # budget checkpoint: no NEW sub-search starts past it
+PREMOVE_SEARCH_CAP_S = 0.25   # FB-45: and each sub-search carries its own
+                         # deadline, so the true wall-clock bound on the whole
+                         # certification is CAP_S + SEARCH_CAP_S = 0.35 s --
+                         # spent on the OPPONENT's clock and abortable by
+                         # go/stop (FB-32). Before this the cap was tested only
+                         # BETWEEN searches, so one full d9/d10 ran past it
+                         # unbounded and "bullet-safe" was not guaranteed.
+                         # Sized ~5x a normal d9 (~35 ms at 4M nps): a search
+                         # that actually hits it is pathological, and its pair
+                         # is DISCARDED rather than certified from a shallower
+                         # result -- never trade the depth-stability gate for
+                         # the bound (a wrong premove costs a game).
 
 
 def certify_premoves(engine, board, my_move, stop_evt):
@@ -302,6 +319,15 @@ def certify_premoves(engine, board, my_move, stop_evt):
         nothing to search)."""
     import time as _t
     t_end = _t.perf_counter() + PREMOVE_CAP_S
+
+    def cert_search(pos, depth):
+        """FB-45: a bounded sub-search. The deadline makes PREMOVE_CAP_S a
+        real bound instead of a between-search checkpoint; a search that did
+        not REACH `depth` returns None so a truncated result can never be
+        certified while wearing the deeper search's name."""
+        mv = engine.get_best_move_timed(pos, PREMOVE_SEARCH_CAP_S, depth)
+        return None if engine.last_depth < depth else mv
+
     pv = (engine.last_pv or "").split()      # read BEFORE any cert search
     d0 = engine.last_depth or 0              # the searched line's depth
     b = board.copy()
@@ -319,7 +345,7 @@ def certify_premoves(engine, board, my_move, stop_evt):
             bb = b.copy(); bb.push(r)
             if bb.is_game_over():
                 break
-            m = engine.get_best_move(bb, PREMOVE_FORCED_DEPTH)
+            m = cert_search(bb, PREMOVE_FORCED_DEPTH)
             if m is None:
                 break
             chain.append((r, m))
@@ -346,11 +372,11 @@ def certify_premoves(engine, board, my_move, stop_evt):
         bb = b.copy(); bb.push(r)
         if bb.is_game_over():
             break
-        m6 = engine.get_best_move(bb, PREMOVE_CHECK_DEPTH)
+        m6 = cert_search(bb, PREMOVE_CHECK_DEPTH)
         s6 = engine.last_score
-        if stop_evt.is_set() or _t.perf_counter() > t_end:
+        if m6 is None or stop_evt.is_set() or _t.perf_counter() > t_end:
             break
-        m9 = engine.get_best_move(bb, PREMOVE_TABLE_DEPTH)
+        m9 = cert_search(bb, PREMOVE_TABLE_DEPTH)
         s9 = engine.last_score
         if m9 is None or m6 != m9 or abs(s9 - s6) > 60:
             break                            # not depth-stable: stop here
