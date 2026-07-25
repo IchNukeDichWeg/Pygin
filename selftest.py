@@ -500,6 +500,33 @@ if os.path.exists("csearch.c"):
               mv_smp is not None and mv_smp in chess.Board().legal_moves,
               f"depth {ce.last_depth}, move {mv_smp}")
 
+        # --- 5g1. FI-42: eval accumulator vs the from-scratch oracle ----- #
+        # apply_move maintains (mg, eg, phase) incrementally on the same
+        # squares FI-01's Zobrist update touches. cs_acc_walk applies REAL
+        # moves over the whole tree and recomputes from scratch at every
+        # node; the castling / promotion / en-passant trees are the ones
+        # that matter (FI-01's own bug was a castling case).
+        import ctypes as _ct                                # noqa: E402
+        ce._lib.cs_acc_walk.restype = _ct.c_uint64
+        ce._lib.cs_acc_walk.argtypes = [_ct.c_uint64] * 8 + [
+            _ct.c_int, _ct.c_int, _ct.c_uint64, _ct.c_int]
+        acc_bad, acc_depth = 0, 4
+        for fen_acc in (
+                chess.STARTING_FEN,
+                "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+                "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8"):
+            bd_acc = chess.Board(fen_acc)
+            acc_bad += ce._lib.cs_acc_walk(
+                bd_acc.pawns, bd_acc.knights, bd_acc.bishops, bd_acc.rooks,
+                bd_acc.queens, bd_acc.kings,
+                bd_acc.occupied_co[chess.WHITE], bd_acc.occupied_co[chess.BLACK],
+                1 if bd_acc.turn == chess.WHITE else 0,
+                bd_acc.ep_square if bd_acc.ep_square is not None else -1,
+                bd_acc.clean_castling_rights(), acc_depth)
+        check("FI-42: eval accumulator matches the oracle on every node",
+              acc_bad == 0,
+              f"{acc_bad} mismatches over 3 trees at d{acc_depth}")
+
         # --- 5g2. PM-01 certification honours its wall-clock contract ---- #
         # FB-45: PREMOVE_CAP_S only blocks NEW sub-searches, so the true
         # bound is CAP_S + one (now capped) sub-search. Assert the bound and
