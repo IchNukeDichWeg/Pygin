@@ -498,6 +498,33 @@ if os.path.exists("csearch.c"):
         check("C core SMP smoke (4 threads, 0.5s)",
               mv_smp is not None and mv_smp in chess.Board().legal_moves,
               f"depth {ce.last_depth}, move {mv_smp}")
+
+        # --- 5g2. PM-01 certification honours its wall-clock contract ---- #
+        # FB-45: PREMOVE_CAP_S only blocks NEW sub-searches, so the true
+        # bound is CAP_S + one (now capped) sub-search. Assert the bound and
+        # that every certified pair is legal -- a premove that is wrong or
+        # late is worse than no premove at all.
+        import threading                                   # noqa: E402
+        import cuci                                        # noqa: E402
+        b0 = chess.Board()
+        mv0 = ce.get_best_move_timed(b0, 1.0, max_depth=99)
+        t_pm = time.perf_counter()
+        chain = cuci.certify_premoves(ce, b0, mv0, threading.Event())
+        dt_pm = time.perf_counter() - t_pm
+        bound = cuci.PREMOVE_CAP_S + cuci.PREMOVE_SEARCH_CAP_S
+        bb = b0.copy(); bb.push(mv0)
+        chain_ok = True
+        for r_pm, m_pm in chain:
+            if r_pm not in bb.legal_moves:
+                chain_ok = False; break
+            bb.push(r_pm)
+            if m_pm not in bb.legal_moves:
+                chain_ok = False; break
+            bb.push(m_pm)
+        check("PM-01 certification inside its wall-clock bound (FB-45)",
+              chain_ok and dt_pm <= bound + 0.1,
+              f"{dt_pm * 1000:.0f} ms vs {bound * 1000:.0f} ms bound, "
+              f"{len(chain)} pair(s){'' if chain_ok else ', ILLEGAL PAIR'}")
     except Exception as ex:
         check("C core (cengine) searches", False,
               f"{type(ex).__name__}: {ex} -- rebuild csearch.so via ./setup.sh")
