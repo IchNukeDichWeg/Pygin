@@ -35,9 +35,14 @@ DATA = {
 # pawn odds (f2) is the live yardstick, not yet measured.
 ODDS_KNIGHT = [(31, 76.75), (49, 79.05), (52, 81.65), (54, 100.0)]
 # Pawn odds (f2) is the ACTIVE rung -- the only handicap SF still scores
-# against. One measurement so far (v54, 2,000 games), so it draws as a lone
-# dot beside the closed knight line rather than a one-point "trend".
-ODDS_PAWN = [(54, 84.88)]
+# against. One version measured so far (v54), so it draws as a lone dot beside
+# the closed knight line rather than a one-point "trend".
+# 87.66% is the pooled NEW-regime figure (1,900 games: 1,500 + 400), i.e. SF
+# managing its own clock via go wtime/btime (FI-88). The pre-FI-88 number was
+# 84.88% over 2,000 games, when OUR time_manager budgeted SF's moves -- that
+# turned out to OVER-feed it (~926ms/move where SF gives itself 549ms median),
+# so the old figure UNDERSTATED us by +2.78% +/-2.16 (z=2.53).
+ODDS_PAWN = [(54, 87.66)]
 # The odds LADDER vs full-strength SF: how big a material handicap the engine
 # can spot it and still win. Latest measurement of each. Queen, rook and
 # knight are all SATURATED at v54 -- rook was re-measured 2026-07-24 (106
@@ -45,7 +50,7 @@ ODDS_PAWN = [(54, 84.88)]
 # stale v49 number, not a real inversion under knight. Pawn is the only rung
 # with headroom left, which is why it is the active yardstick.
 ODDS_LADDER = [("Queen", 100.0, "v-"), ("Rook", 100.0, "v54"),
-               ("Knight", 100.0, "v54"), ("Pawn", 84.88, "v54")]
+               ("Knight", 100.0, "v54"), ("Pawn", 87.66, "v54")]
 
 W, H = 760, 300
 ML, MR, MT, MB = 58, 22, 44, 34          # margins
