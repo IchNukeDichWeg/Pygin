@@ -423,6 +423,14 @@ def main():
     engine._lib.set_null_move(engine._null_base, engine._null_div)
     board = chess.Board()
     search_thread = None
+    # FB-44: the ponderhit release watcher wakes up to `budget` seconds later
+    # and stops "the search" -- but engine._abort is PROCESS-wide, so if a new
+    # `go` started meanwhile it would truncate THAT search instead. The
+    # watcher therefore checks that the thread it was armed for is still the
+    # live one, and this lock makes the check-then-stop atomic against the go
+    # handler's swap (identity IS the generation counter: every go builds a
+    # fresh thread object).
+    swap_lock = threading.Lock()
     pending_hash_mb = None                   # FB-25: Hash sent mid-search
     engine.show_wdl = True                   # FI-45: UCI_ShowWDL default
     dbg = {"on": False}                      # FI-45: `debug on` channels
@@ -916,8 +924,10 @@ def main():
                                                       # or bailed), so the
                                                       # FB-32 next-go promise
                                                       # holds on FB-14 too
-                search_thread = go(tokens[1:])
-                search_thread.start()
+                with swap_lock:              # FB-44: go() clears _abort, so
+                    search_thread = go(tokens[1:])   # an old ponder watcher
+                    search_thread.start()    # must not fire across this swap
+
             elif cmd == "stop":
                 if searching():
                     engine.stop()
@@ -960,10 +970,14 @@ def main():
                     if pbudget is not None:
                         def _release(th=search_thread, budget=pbudget):
                             th.holding.wait(timeout=budget)
-                            engine.stop()      # no-op if already finished;
-                            th.stop_evt.set()  # stray _abort cleared by the
-                        threading.Thread(      # next go() (FB-21)
-                            target=_release, daemon=True).start()
+                            with swap_lock:    # FB-44: only stop the search
+                                if search_thread is not th:   # this watcher
+                                    return     # was armed for -- a newer go
+                                engine.stop()  # owns the process-wide _abort
+                                th.stop_evt.set()   # now, and stopping it
+                        threading.Thread(           # would truncate a search
+                            target=_release, daemon=True).start()   # that
+                                                    # never asked to be timed
             elif cmd == "quit":
                 if searching():
                     engine.stop()
