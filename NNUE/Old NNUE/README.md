@@ -2,17 +2,30 @@
 
 Naming convention (mirrors Old Engine/):
 
-- The LIVE net is `NNUE/nets/nnue_net_vN.nnue` (v1, v2, ... — one bump
-  per bootstrap round / retrain on new data).
+- The LIVE net is `NNUE/nets/nnue_vN_<12 hex>.nnue`, e.g.
+  `nnue_v1_52724f038139.nnue`. The suffix is the first 12 hex characters
+  of the file's own sha256 — Stockfish's `nn-<12 hex>.nnue` convention.
+  `vN` bumps once per bootstrap round / retrain on new data.
+- `NNUE/train.py` applies the hash itself at export
+  (`config.stamp_net_hash`) and prints the final path; nobody computes it
+  by hand.
 - A small fix on the same data (re-export, tweak, short retrain) bumps
-  the minor: `nnue_net_v1.1.nnue`.
+  the minor: `nnue_v1.1_<hash>.nnue`. The content hash changes too — that
+  is the point, a re-export is a different file and gets a different name.
 - When a new net replaces the live one, `mv` the old file HERE — flat,
-  no subfolders. Keep the filename as-is so the history stays readable:
+  no subfolders. Keep the filename as-is; the hash IS the provenance:
 
-      mv NNUE/nets/nnue_net_v1.nnue "NNUE/Old NNUE/"
+      mv NNUE/nets/nnue_v1_52724f038139.nnue "NNUE/Old NNUE/"
 
 - `toy.nnue` is not a version: it is the pipeline-proof artifact
-  (trained on the 100k smoke set) and stays in NNUE/nets/.
+  (trained on the 100k smoke set), stays in NNUE/nets/, and is exempt
+  from the hash because the selftest and smoke open it by fixed path.
+
+Why the hash is in the name at all: a net is an opaque 3 MB blob, so two
+different nets under one filename are indistinguishable by eye — and that
+is precisely the mistake that silently invalidates an A/B (you believe you
+screened v2; you screened v1). With the content hash in the name, a
+mismatched net is a wrong FILENAME, which is impossible to miss.
 
 The `.nnue` files themselves are gitignored everywhere (public repo, no
 binaries) — this folder tracks only this README; the weight files live

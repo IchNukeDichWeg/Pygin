@@ -91,3 +91,37 @@ DATASETS_DIR = os.path.join(NNUE_DIR, "datasets")
 NETS_DIR = os.path.join(NNUE_DIR, "nets")
 CHECKPOINTS_DIR = os.path.join(NNUE_DIR, "checkpoints")
 TOY_NET = os.path.join(NETS_DIR, "toy.nnue")
+
+# --- net naming -----------------------------------------------------------
+NET_HASH_CHARS = 12      # Stockfish's nn-<12 hex>.nnue convention
+
+
+def stamp_net_hash(path):
+    """Rename a just-written .nnue to `<stem>_<first 12 of sha256>.nnue`
+    and return the new path. Ours reads `nnue_v1_52724f038139.nnue`.
+
+    Why the content hash is IN the name (Stockfish's reason): a net is an
+    opaque 3 MB blob, so two different nets under one filename are
+    undetectable by eye, and that is exactly the mistake that silently
+    invalidates an A/B -- you think you screened v2 and you screened v1.
+    With the hash in the name, a mismatched net is a wrong FILENAME, which
+    is impossible to miss. The version prefix stays because the hash alone
+    says nothing about ORDER; `v2` before `v3` is the part a human reads.
+
+    `toy.nnue` is exempt: it is the plumbing-test artifact, not a version,
+    and selftest_nnue.py / selfplay_smoke.py open it by fixed path.
+    Re-stamping is idempotent -- an existing hash suffix is replaced, not
+    appended, so re-running the trainer on its own output is safe.
+    """
+    import hashlib
+    import re
+    stem = os.path.basename(path)
+    if stem == os.path.basename(TOY_NET):
+        return path
+    with open(path, "rb") as fh:
+        h = hashlib.sha256(fh.read()).hexdigest()[:NET_HASH_CHARS]
+    stem = re.sub(r"\.nnue$", "", stem)
+    stem = re.sub(r"_[0-9a-f]{%d}$" % NET_HASH_CHARS, "", stem)
+    new = os.path.join(os.path.dirname(path), f"{stem}_{h}.nnue")
+    os.replace(path, new)
+    return new
