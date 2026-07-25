@@ -1877,15 +1877,9 @@ static uint64_t g_hist[CS_HIST_MAX];
 static int g_nhist = 0;
 
 static int g_contempt = 50, g_draw_margin = 200;
-/* FI-72: |contempt|, precomputed. draw_score can only return -contempt, 0 or
- * +contempt, so its maximum is |contempt| whichever SIGN the contempt has --
- * a raw `alpha < g_contempt` pregate would be wrong for draw-seeking
- * (negative) contempt, where the biggest return is -g_contempt. */
-static int g_contempt_abs = 50;
 void csearch_set_draw(int contempt, int margin)
 {
     g_contempt = contempt; g_draw_margin = margin;
-    g_contempt_abs = contempt < 0 ? -contempt : contempt;
 }
 
 /* v30 ``use_simplify`` port, re-gated for the >=500cp re-test (the 200cp
@@ -3086,12 +3080,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
      * In-tree only (never the root), never in check (the shuffle move
      * would rarely be a legal evasion), alpha-raise not hard return (a
      * PV node keeps searching for better than the draw). */
-    /* FI-72: `alpha < d` cannot hold once alpha >= |contempt| (draw_score's
-     * largest possible return), so hoisting that bound skips draw_score's 10
-     * popcounts at those nodes with provably identical outcome AND identical
-     * node count. upcoming_repetition was already short-circuited by the
-     * `alpha < d &&` below -- only draw_score is saved here. */
-    if (g_cycle && ply > 0 && !in_chk && hmc >= 3 && alpha < g_contempt_abs) {
+    if (g_cycle && ply > 0 && !in_chk && hmc >= 3) {
         int d = draw_score(b);
         if (alpha < d && upcoming_repetition(b, key, ply, hmc)) {
             alpha = d;
