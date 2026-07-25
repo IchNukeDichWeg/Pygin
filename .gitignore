@@ -216,3 +216,6 @@ texel_positions.npz
 gg_shim.lua
 *mc5*.lua
 *MC5*.lua
+
+# NNUE handoff note (local-only, like nnue_readme.md)
+NNUE_HANDOFF.md
