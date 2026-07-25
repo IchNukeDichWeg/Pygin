@@ -523,6 +523,19 @@ if os.path.exists("cuci.py"):
     check("cuci UCI round-trip (uciok/readyok/legal bestmove)", uci_ok,
           bm if bm else "no bestmove line -- see `python3 cuci.py` by hand")
 
+    # FB-46: Hash lands on a power-of-two ENTRY count, so 200 MB becomes 192.
+    # The round-down must be announced and the fingerprint must show it (a
+    # second `uci` reprints the fingerprint).
+    r = subprocess.run(
+        [sys.executable, "cuci.py"],
+        input="uci\nsetoption name Hash value 200\nuci\nquit\n",
+        capture_output=True, text=True, timeout=120)
+    said = "info string Hash 200 MB rounded down to 192 MB" in r.stdout
+    fps = [l for l in r.stdout.splitlines() if " hash_bits=" in l]
+    check("cuci Hash round-down is reported (FB-46)",
+          said and len(fps) == 2 and "hash_bits=23" in fps[1],
+          "" if said else "no info string for Hash 200")
+
 # --- 5i. NNUE unit checks (FI-15, dormant build-out) --------------------- #
 # Runs in a SUBPROCESS: cengine's FB-04 one-process-one-config rule forbids
 # a second, differently-configured Engine in this process. Exit 42 = no net
