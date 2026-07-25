@@ -25,6 +25,7 @@
 
 #include <stdint.h>
 #include <stddef.h>   /* FI-66: offsetof for the layout assert */
+#include <stdlib.h>   /* FI-16: qsort for the movegen multiset check */
 #include <stdio.h>
 #include "Constants.h"   /* #2.1/#2.2: magic tables + INBETWEEN_BITBOARDS */
 
@@ -1269,6 +1270,131 @@ static uint64_t acc_walk(Board* b, int depth)
         bad += acc_walk(&c, depth - 1);
     }
     return bad;
+}
+
+/* ---------------------------------------------------------------------- *
+ * FI-16: movegen split-consistency gate.
+ *
+ * csearch.c carries FIVE generators that must agree by construction --
+ * gen_legal, gen_noisy, gen_captures, gen_quiets, has_legal_quiet -- plus
+ * movegen.c's independent gen_legal next door. A movegen change has to land
+ * in all of them, and until now nothing checked that it did: perft.py drives
+ * movegen.so, so it cannot see csearch.c's generators at all, and the ladder
+ * and bench signature only catch a divergence INDIRECTLY, as a node-count
+ * change. This turns "one stale variant plays a wrong move someday" into a
+ * red selftest line naming the invariant that broke.
+ *
+ * Invariants, all checked at every node of a real tree walk:
+ *   1 captures + quiets is exactly gen_legal, as a MULTISET
+ *   2 gen_noisy is a subset of gen_legal
+ *   3 has_legal_quiet agrees with "gen_quiets emitted something"
+ *   4 move_from_key round-trips every generated move
+ * 1-3 are only defined out of check (the split's own caveat), so in check
+ * only 4 runs -- and the walk visits in-check nodes for it.
+ * ---------------------------------------------------------------------- */
+#define MGC_PARTITION  1
+#define MGC_NOISY_SUB  2
+#define MGC_QUIET_FLAG 4
+#define MGC_KEY_RT     8
+
+static int mgc_cmp_u32(const void* a, const void* b)
+{
+    uint32_t x = *(const uint32_t*)a, y = *(const uint32_t*)b;
+    return (x > y) - (x < y);
+}
+
+/* The 15-bit key (from|to|promo) is the identity a split must preserve;
+ * the ordering tags above it are per-generator by design. */
+static int mgc_keys(const uint32_t* mv, int n, uint32_t* out)
+{
+    for (int i = 0; i < n; i++) out[i] = mv[i] & 0x7FFF;
+    qsort(out, (size_t)n, sizeof(uint32_t), mgc_cmp_u32);
+    return n;
+}
+
+static int movegen_check(const Board* b)
+{
+    uint32_t all[256], cap[256], qui[256], noi[256];
+    uint32_t ka[256], kb[256], kn[256];
+    int bad = 0;
+    int n_all = gen_legal(b, all);
+
+    /* 4: every generated move must survive a key round-trip. */
+    for (int i = 0; i < n_all; i++) {
+        uint32_t back = move_from_key(b, all[i] & 0x7FFF);
+        if ((back & 0x7FFF) != (all[i] & 0x7FFF)) { bad |= MGC_KEY_RT; break; }
+    }
+
+    if (in_check(b)) return bad;          /* 1-3 are out-of-check only */
+
+    int n_c = gen_captures(b, cap), n_q = gen_quiets(b, qui);
+    if (n_c + n_q != n_all) {
+        bad |= MGC_PARTITION;
+    } else {
+        mgc_keys(all, n_all, ka);
+        for (int i = 0; i < n_c; i++) kb[i] = cap[i] & 0x7FFF;
+        for (int i = 0; i < n_q; i++) kb[n_c + i] = qui[i] & 0x7FFF;
+        qsort(kb, (size_t)(n_c + n_q), sizeof(uint32_t), mgc_cmp_u32);
+        for (int i = 0; i < n_all; i++)
+            if (ka[i] != kb[i]) { bad |= MGC_PARTITION; break; }
+    }
+
+    int n_n = mgc_keys(noi, gen_noisy(b, noi), kn);
+    mgc_keys(all, n_all, ka);
+    for (int i = 0, j = 0; i < n_n; i++) {      /* subset: both sorted */
+        while (j < n_all && ka[j] < kn[i]) j++;
+        if (j >= n_all || ka[j] != kn[i]) { bad |= MGC_NOISY_SUB; break; }
+        j++;
+    }
+
+    if ((has_legal_quiet(b) != 0) != (n_q > 0)) bad |= MGC_QUIET_FLAG;
+    return bad;
+}
+
+/* Walk real moves to `depth`, OR-ing every node's violations into the high
+ * bits and counting the offending nodes in the low 32. */
+static uint64_t mgc_walk(Board* b, int depth)
+{
+    int bad = movegen_check(b);
+    uint64_t acc = bad ? (1ull | ((uint64_t)bad << 32)) : 0;
+    if (depth <= 0) return acc;
+    uint32_t moves[256];
+    int n = gen_legal(b, moves);
+    for (int i = 0; i < n; i++) {
+        Board c = *b;
+        apply_move(&c, moves[i]);
+        uint64_t r = mgc_walk(&c, depth - 1);
+        acc = (acc & 0xFFFFFFFFull) + (r & 0xFFFFFFFFull)
+            | ((acc | r) & 0xFFFFFFFF00000000ull);
+    }
+    return acc;
+}
+
+uint64_t cs_movegen_walk(uint64_t pawns, uint64_t knights, uint64_t bishops,
+                         uint64_t rooks, uint64_t queens, uint64_t kings,
+                         uint64_t occ_w, uint64_t occ_b,
+                         int turn, int ep, uint64_t castling, int depth)
+{
+    Board b = make_board(pawns, knights, bishops, rooks, queens, kings,
+                         occ_w, occ_b, turn, ep, castling);
+    return mgc_walk(&b, depth);
+}
+
+/* csearch's OWN gen_legal, exported so the harness can diff it against
+ * movegen.so's independent copy -- the "seven places" half of this item,
+ * and the reason perft.py alone was never enough: it drives movegen.so. */
+int cs_gen_legal_list(uint64_t pawns, uint64_t knights, uint64_t bishops,
+                      uint64_t rooks, uint64_t queens, uint64_t kings,
+                      uint64_t occ_w, uint64_t occ_b,
+                      int turn, int ep, uint64_t castling, uint32_t* out)
+{
+    Board b = make_board(pawns, knights, bishops, rooks, queens, kings,
+                         occ_w, occ_b, turn, ep, castling);
+    uint32_t mv[256];
+    int n = gen_legal(&b, mv);
+    for (int i = 0; i < n; i++) out[i] = mv[i] & 0x7FFF;
+    qsort(out, (size_t)n, sizeof(uint32_t), mgc_cmp_u32);
+    return n;
 }
 
 uint64_t cs_acc_walk(uint64_t pawns, uint64_t knights, uint64_t bishops,
