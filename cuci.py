@@ -109,6 +109,27 @@ def out(line):
     print(line, flush=True)
 
 
+TT_ENTRY_BYTES = 24          # csearch.c TTEntry -- keep in sync with the C side
+
+
+def apply_hash(engine, mb):
+    """FI-10: Hash MB -> power-of-two TT bits, applied to the C table.
+
+    FB-46: the table can only be a power of two, so a request lands on the
+    largest size <= it (200 MB -> 192, 400 -> 384). Say so instead of
+    silently shrinking. Caller must guarantee the engine is idle -- a resize
+    is a realloc.
+    """
+    mb = max(2, min(6144, int(mb)))
+    bits = (mb * 1024 * 1024 // TT_ENTRY_BYTES).bit_length() - 1
+    engine._lib.set_tt_bits(bits)
+    engine.TT_BITS = bits                    # FB-30: fingerprint honesty
+    actual = (1 << bits) * TT_ENTRY_BYTES // (1024 * 1024)
+    if actual != mb:
+        out(f"info string Hash {mb} MB rounded down to {actual} MB "
+            f"(power-of-two table)")
+
+
 def info_line(rec, white_to_move, engine, multipv=None, board=None):
     """Map a cengine record dict (White-POV, v30 mate convention) to UCI.
     `multipv` (int) tags the line for MultiPV consumers; None = untagged
@@ -779,11 +800,7 @@ def main():
                     engine.move_overhead_ms = max(0, int(value))
                 elif name == "hash":                    # FI-10: MB -> bits
                     if not searching():                 # resize = realloc;
-                        mb = max(2, min(6144, int(value)))   # never mid-search
-                        entries = mb * 1024 * 1024 // 24
-                        bits = entries.bit_length() - 1
-                        engine._lib.set_tt_bits(bits)
-                        engine.TT_BITS = bits   # FB-30: fingerprint honesty
+                        apply_hash(engine, value)        # never mid-search
                         pending_hash_mb = None
                     else:                               # FB-25: defer, don't
                         pending_hash_mb = int(value)    # silently drop
@@ -802,12 +819,9 @@ def main():
                     search_thread.stop_evt.set()
                     search_thread.join()
                 if pending_hash_mb is not None:      # FB-32: resize BEFORE the
-                    mb = max(2, min(6144, pending_hash_mb))   # reset, so the
-                    entries = mb * 1024 * 1024 // 24  # new game starts at the
-                    bits = entries.bit_length() - 1   # requested size
-                    engine._lib.set_tt_bits(bits)
-                    engine.TT_BITS = bits
-                    pending_hash_mb = None
+                    apply_hash(engine, pending_hash_mb)   # reset, so the new
+                    pending_hash_mb = None                # game starts at the
+                                                          # requested size
                 engine._lib.cs_tt_reset()
                 engine.last_score = 0        # reset the TB difficulty gate
                 board = chess.Board()
@@ -869,14 +883,13 @@ def main():
                     else:
                         continue             # actively searching; ignore
                 if pending_hash_mb is not None:      # FB-25/FB-35: apply the
-                    mb = max(2, min(6144, pending_hash_mb))   # deferred Hash
-                    entries = mb * 1024 * 1024 // 24  # AFTER the holding
-                    bits = entries.bit_length() - 1   # release above --
-                    engine._lib.set_tt_bits(bits)     # idle is guaranteed
-                    engine.TT_BITS = bits    # FB-30   # here (joined or
-                    pending_hash_mb = None            # bailed), so the FB-32
-                                                      # next-go promise holds
-                                                      # on the FB-14 path too
+                    apply_hash(engine, pending_hash_mb)   # deferred Hash AFTER
+                    pending_hash_mb = None                # the holding release
+                                                      # above -- idle is
+                                                      # guaranteed here (joined
+                                                      # or bailed), so the
+                                                      # FB-32 next-go promise
+                                                      # holds on FB-14 too
                 search_thread = go(tokens[1:])
                 search_thread.start()
             elif cmd == "stop":
