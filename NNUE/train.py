@@ -201,7 +201,14 @@ def main():
                        for st in starts)
         else:
             sources = ((train_t, args.seed + ep),)
-        for tensors, bseed in sources:
+        # Per-chunk heartbeat: an epoch over 82M records is ~40 chunks and
+        # many minutes, and prepare()'s own logging is suppressed in chunk
+        # mode, so without this the run prints NOTHING between epoch lines --
+        # indistinguishable from a hang on an overnight run. Plain lines, not
+        # an in-place bar, so they survive redirection to a log.
+        nchunk = len(starts) if args.chunk else 1
+        t_ep = time.time()
+        for ci, (tensors, bseed) in enumerate(sources, 1):
             for iu, it, th, y in batches(tensors, args.batch, seed=bseed):
                 opt.zero_grad()
                 loss = torch.nn.functional.mse_loss(model(iu, it, th), y)
@@ -210,6 +217,12 @@ def main():
                 model.clip_weights()          # QAT: stay in-range always
                 tot += loss.item() * len(y)
                 n += len(y)
+            if nchunk > 1:
+                el = time.time() - t_ep
+                print(f"  epoch {ep:3d}  chunk {ci:3d}/{nchunk}  "
+                      f"train {tot / n:.6f}  {el / 60:.1f}m elapsed  "
+                      f"epoch ETA {el / ci * (nchunk - ci) / 60:.1f}m",
+                      flush=True)
         return tot / n
 
     stopped = False
