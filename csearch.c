@@ -2012,6 +2012,17 @@ static uint64_t g_helper_nodes = 0;     /* Lazy-SMP helper node aggregate
  * correctness batch writes qsearch keys here too (gated on g_score_hyg;
  * without hygiene only negamax plies are written, as before). */
 static __thread uint64_t g_path[CS_MAXPLY + 62];
+/* FB-12 rider (thread g_hist through cs_search_root with an abi bump):
+ * NOT DONE, and deliberately -- 2026-07-25. The game history is written ONLY
+ * by cs_search_begin and read-only for the whole search, so helpers racing it
+ * is impossible by construction (ThreadSanitizer agrees: 0 reports at
+ * Threads=4). The cross-INSTANCE hazard the rider names is real but already
+ * closed twice over: cengine's _SEARCH_LOCK serialises every search in the
+ * process, and FB-04 refuses a second differently-configured Engine outright.
+ * So the rider would spend an abi bump and a wider C API to defend a case
+ * two existing guards already cover -- and this project charges real NPS for
+ * carrying complexity that buys nothing (FI-85/FI-76 cost 0.5%). Revisit only
+ * if the search is ever entered concurrently from two instances. */
 static uint64_t g_hist[CS_HIST_MAX];
 static int g_nhist = 0;
 
@@ -2853,6 +2864,25 @@ static void tt_store_terminal(TTEntry* t, uint64_t key, int val, int ply)
     tt_store_raw(t, key, sv, 0, 200, TT_EXACT, TT_EVAL_NONE);
 }
 
+/* FB-12(c), the qsearch-store clobber, RESOLVED-AS-ACCEPTED 2026-07-25.
+ *
+ * Every TT store here is snapshot -> decide -> write, and under Lazy SMP
+ * another thread can replace the slot between the decide and the write. So a
+ * store can clobber an entry the replacement policy would have protected --
+ * a deeper one, or a fresher generation. That is a LOGICAL race (TOCTOU),
+ * not a data race: FB-12's atomics mean there is no UB and ThreadSanitizer
+ * reports nothing (verified, testing/tsan_smp.c).
+ *
+ * ACCEPTED, deliberately. Closing it needs a compare-and-swap loop on key_x
+ * in the hottest store path in the engine, and the damage it prevents is
+ * bounded at "one TT entry lost" -- costing nodes, never correctness, since
+ * a wrong entry cannot produce an illegal move (the TT move is matched
+ * against generated moves, never played directly). Every strong engine makes
+ * the same trade. g_qs_evict_max (FI-08) already bounds the worst case for
+ * old-generation entries when it is armed.
+ *
+ * Written down so the next reader knows it was measured and chosen, not
+ * missed -- and does not "fix" it with a CAS that costs NPS for nothing. */
 static inline void qs_tt_store(TTEntry* t, uint64_t key, int val, int ply,
                                uint32_t move, int flag, int ev,
                                int depth)  /* FI-52: depth; FI-71: slot in */
