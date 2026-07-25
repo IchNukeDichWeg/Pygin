@@ -11,12 +11,16 @@ differential 0 mismatches over ~117M nodes -- it simply reaches them faster:
 +8.3% NPS on x86 (Gold 6330, 48/48 rounds, between-run spread 0.05) and
 +13.5% on arm64.
 
-NO A/B was spent and NO Elo is banked. Per the P-22 lesson in
-docs/DESIGN_c_search_core.md a node-identical speed change still owes a
-TIMED A/B -- and it must be timed, because the --nodes instrument reads
-exactly zero for a change that buys no new nodes. Expected +8 to +22 Elo at
-the historical 1-2.7 Elo per 1% conversions, and the figure is
-ARCHITECTURE-DEPENDENT for the first time in this ledger.
+CONFIRMED 2026-07-25 vs Old Engine/54, TIMED 50+0.20 on an Intel Gold 6330:
++9.66 +/-8.2 over 6,874 games (51.39%, ptnml 133/783/1460/866/188, pair
+ratio 1.15, normalized +21.18, GSPRT[0,4] LLR +2.946 > +2.944 ACCEPT,
+stopped early) -- the sixth SPRT accept. Timed on purpose: the --nodes
+instrument reads exactly zero for a change that buys no new nodes, and its
+NPS calibration would cancel the very speed under test. The conversion this
+bought: +8.34% NPS -> +9.66 Elo = ~1.16 Elo per 1% NPS, the low end of the
+historical 1-2.7 band. Note the gain is ARCHITECTURE-DEPENDENT for the first
+time in this ledger (+8.3% x86 vs +13.5% arm64), so the banked Elo describes
+the x86 machine the games were played on.
 
 C sources frozen alongside; ./setup.sh builds this directory's .so files.
 
