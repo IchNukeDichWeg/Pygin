@@ -1549,6 +1549,22 @@ void set_tt_bits(int bits)
 
 /* FI-13a: TT utilization in permille (UCI `hashfull`) -- samples 1000
  * evenly-spaced slots; an all-zero entry image means never written. */
+/* FB-12: THE snapshot primitive. `TTEntry e = *t;` on a slot another thread
+ * may be writing is a data race, and the danger is not the hardware -- it is
+ * that the compiler may legally re-read a field at the point of use instead
+ * of reusing the copy, which would validate one version of the entry and
+ * consume another, silently defeating the XOR check. Three relaxed atomic
+ * loads make the snapshot real. Every reader of a live slot goes through
+ * here. */
+static inline TTEntry tt_snapshot(const TTEntry* t)
+{
+    TTEntry e;
+    e.key_x = __atomic_load_n(&t->key_x, __ATOMIC_RELAXED);
+    e.d1    = __atomic_load_n(&t->d1,    __ATOMIC_RELAXED);
+    e.d2    = __atomic_load_n(&t->d2,    __ATOMIC_RELAXED);
+    return e;
+}
+
 int cs_hashfull(void)
 {
     if (g_tt == NULL) return 0;
@@ -1557,7 +1573,8 @@ int cs_hashfull(void)
         const TTEntry* t = &g_tt[(uint64_t)i * (TT_SIZE - 1) / 999];  /* FB-32:
                                      * spans 0..TT_SIZE-1; the old TT_SIZE/1000
                                      * stride never sampled the table tail */
-        if (t->key_x | t->d1 | t->d2) used++;
+        TTEntry e = tt_snapshot(t);        /* FB-12 */
+        if (e.key_x | e.d1 | e.d2) used++;
     }
     return used;
 }
@@ -1577,13 +1594,24 @@ static inline void tt_store_raw(TTEntry* t, uint64_t key, int value,
                 | ((uint64_t)(uint16_t)flag << 16)
                 | ((uint64_t)(uint16_t)g_gen << 32)
                 | ((uint64_t)(uint16_t)(int16_t)ev << 48);   /* FI-03 */
-    t->d1 = d1; t->d2 = d2; t->key_x = key ^ d1 ^ d2;
+    /* FB-12: relaxed ATOMIC stores. The table is shared by every Lazy-SMP
+     * thread with no lock (by design), so these were a plain data race --
+     * UB, which licenses the compiler to assume no other thread writes.
+     * Relaxed atomics compile to the same str on arm64 and x86-64 (no
+     * fence, no cost) and take that licence away. Ordering is deliberately
+     * NOT requested: the XOR check below is order-INDEPENDENT -- any mix of
+     * words from two different stores fails it unless the mismatched words
+     * are bit-identical anyway, so a release/acquire pair would buy nothing
+     * the checksum does not already give. */
+    __atomic_store_n(&t->d1, d1, __ATOMIC_RELAXED);
+    __atomic_store_n(&t->d2, d2, __ATOMIC_RELAXED);
+    __atomic_store_n(&t->key_x, key ^ d1 ^ d2, __ATOMIC_RELAXED);
 }
 
 /* Snapshot the slot and reconstruct its key; 0 = miss (or torn write). */
 static inline int tt_load(const TTEntry* t, uint64_t key, TTEntry* out)
 {
-    TTEntry e = *t;
+    TTEntry e = tt_snapshot(t);
     if ((e.key_x ^ e.d1 ^ e.d2) != key) return 0;
     *out = e;
     return 1;
@@ -1919,8 +1947,18 @@ static inline uint64_t now_ns(void)
 }
 
 static uint64_t g_deadline = 0;         /* absolute ns; 0 = no time limit */
-static volatile int g_abort = 0;        /* deadline / cs_stop: unwinds ALL threads */
-static volatile int g_hstop = 0;        /* main root finished: helpers unwind */
+/* FB-12: plain ints accessed through relaxed atomics, NOT volatile. volatile
+ * stops the compiler caching the value but promises nothing about atomicity,
+ * so concurrent access was still formally a race; relaxed atomics are the
+ * real contract and cost nothing (a bare ldr/str on both targets). Relaxed
+ * is right here: these are one-way flags whose only requirement is that the
+ * value eventually becomes visible, never that it orders other memory. */
+static int g_abort = 0;                 /* deadline / cs_stop: unwinds ALL threads */
+static int g_hstop = 0;                 /* main root finished: helpers unwind */
+#define ABORT_GET()     __atomic_load_n(&g_abort, __ATOMIC_RELAXED)
+#define ABORT_SET(v)    __atomic_store_n(&g_abort, (v), __ATOMIC_RELAXED)
+#define HSTOP_GET()     __atomic_load_n(&g_hstop, __ATOMIC_RELAXED)
+#define HSTOP_SET(v)    __atomic_store_n(&g_hstop, (v), __ATOMIC_RELAXED)
 static __thread int g_is_helper = 0;    /* set at helper-thread entry */
 
 /* True while THIS thread must abandon its search: global abort (deadline /
@@ -1930,7 +1968,7 @@ static __thread int g_is_helper = 0;    /* set at helper-thread entry */
  * its children's 0s used to flood the TT with garbage entries at real
  * depths, poisoning every later search: 4-thread play missed forced mates
  * that 1-thread found instantly). */
-#define CS_UNWINDING() (g_abort || (g_is_helper && g_hstop))
+#define CS_UNWINDING() (ABORT_GET() || (g_is_helper && HSTOP_GET()))
 
 /* Node-entry poll (negamax + qsearch): every 4096 nodes check the clock.
  * At ~2.5M nps that is ~1.6 ms granularity -- finer than v30's poll.
@@ -1943,15 +1981,15 @@ void set_node_limit(uint64_t n) { g_node_limit = n; }
 
 #define CS_TIME_CHECK() do { \
         if ((g_nodes & 4095) == 0) { \
-            if (g_deadline && now_ns() >= g_deadline) g_abort = 1; \
+            if (g_deadline && now_ns() >= g_deadline) ABORT_SET(1); \
             if (g_node_limit && !g_is_helper && g_nodes >= g_node_limit) \
-                g_abort = 1; \
+                ABORT_SET(1); \
         } \
         if (CS_UNWINDING()) return 0; \
     } while (0)
 
 /* Host-requested abort (UCI `stop`): same unwind path as the deadline. */
-void cs_stop(void) { g_abort = 1; }
+void cs_stop(void) { ABORT_SET(1); }
 
 /* FI-13a: selective depth -- deepest ply touched since cs_search_begin
  * (main thread; extensions + qsearch included). For UCI `seldepth`. */
@@ -2822,7 +2860,7 @@ static inline void qs_tt_store(TTEntry* t, uint64_t key, int val, int ply,
     /* FI-71: the slot pointer is computed once at the probe and threaded
      * in -- every call site is inside `if (use_qtt ...)`, and g_tt cannot
      * change mid-search, so it is never NULL here. Byte-identical output. */
-    TTEntry cur = *t;
+    TTEntry cur = tt_snapshot(t);   /* FB-12 */
     uint64_t ck = cur.key_x ^ cur.d1 ^ cur.d2;
     int replace = (ck == key)
                 ? (TT_DEPTH(cur) <= depth            /* was <= 0; == at depth 0 */
@@ -3380,7 +3418,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                             /* CB-02(a)/FB-22: obey the replacement policy;
                              * never clobber a DEEPER entry, and keep a
                              * same-key entry's move (ordering asset). */
-                            TTEntry cur = *tte;
+                            TTEntry cur = tt_snapshot(tte);   /* FB-12 */
                             uint64_t ck = cur.key_x ^ cur.d1 ^ cur.d2;
                             if (ck == key) {
                                 if (depth >= TT_DEPTH(cur)
@@ -3661,7 +3699,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
      * reaching here, but a garbage store would poison EVERY later search
      * through the shared, persistent table). */
     if (g_use_tt && tte && !CS_UNWINDING()) {   /* FB-13b: tte NULL when TT-less */
-        TTEntry cur = *tte;
+        TTEntry cur = tt_snapshot(tte);   /* FB-12 */
         uint64_t cur_key = cur.key_x ^ cur.d1 ^ cur.d2;
         /* FI-48: flag hoisted above the replace test (the shield needs it). */
         int flag = (best <= alpha_orig) ? TT_UPPER
@@ -3698,7 +3736,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
 void cs_search_begin(const uint64_t* hist, int nhist, double budget_sec)
 {
     g_nodes = 0;
-    g_abort = 0;
+    ABORT_SET(0);
     g_deadline = (budget_sec > 0.0)
                ? now_ns() + (uint64_t)(budget_sec * 1e9) : 0;
     g_nhist = 0;
@@ -3858,12 +3896,12 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
                 if (R > depth - 2) R = depth - 2;
             }
             v = -negamax(&c, depth - 1 - R, -alpha - 1, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX, g_se_budget);
-            if (R && v > alpha && !g_abort && !(g_is_helper && g_hstop))
+            if (R && v > alpha && !ABORT_GET() && !(g_is_helper && HSTOP_GET()))
                 v = -negamax(&c, depth - 1, -alpha - 1, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX, g_se_budget);
             if (v > alpha && v < beta)
                 v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX, g_se_budget);
         }
-        if (g_abort || (g_is_helper && g_hstop))
+        if (ABORT_GET() || (g_is_helper && HSTOP_GET()))
             break;                                   /* v is garbage */
         (*out_done)++;
         if (record) {                                /* FI-06: subtree size */
@@ -3896,7 +3934,7 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
     /* Root TT store (feeds the next iteration's ordering + the PV walk).
      * Suppressed during a MultiPV exclusion search: a 2nd-best line's move
      * must never replace the root's true best in the persistent table. */
-    if (g_use_tt && g_tt && !g_abort && !(g_is_helper && g_hstop)
+    if (g_use_tt && g_tt && !ABORT_GET() && !(g_is_helper && HSTOP_GET())
             && *out_done > 0 && !g_rx_n) {
         int flag = (best <= alpha_orig) ? TT_UPPER
                  : (best >= beta)       ? TT_LOWER : TT_EXACT;
@@ -3957,7 +3995,7 @@ uint32_t cs_search_root(uint64_t pawns, uint64_t knights, uint64_t bishops,
     pthread_t tids[256];
     HelperArg args[256];
     int nh = (g_threads > 1 && depth >= 4) ? g_threads - 1 : 0;
-    g_hstop = 0;
+    HSTOP_SET(0);
     /* BUG-05: darwin gives secondary threads a 512 KB stack (the main
      * thread gets 8 MB); a deep line's negamax+qsearch frames (~2-3 KB
      * each, moves[256]/quiets[256] buffers) get thin there. Match the
@@ -3982,12 +4020,12 @@ uint32_t cs_search_root(uint64_t pawns, uint64_t knights, uint64_t bishops,
                               &score, &done, &second);
 
     if (nh) {
-        g_hstop = 1;
+        HSTOP_SET(1);
         for (int i = 0; i < nh; i++) pthread_join(tids[i], NULL);
-        g_hstop = 0;
+        HSTOP_SET(0);
     }
     *out_done = done;
-    *out_aborted = g_abort ? 1 : 0;
+    *out_aborted = ABORT_GET() ? 1 : 0;
     *out_nodes = g_nodes + __atomic_load_n(&g_helper_nodes, __ATOMIC_RELAXED);
     *out_score = score;
     *out_second = second;                    /* FI-09(b) */
