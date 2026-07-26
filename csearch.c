@@ -1296,6 +1296,8 @@ static uint64_t acc_walk(Board* b, int depth)
 #define MGC_NOISY_SUB  2
 #define MGC_QUIET_FLAG 4
 #define MGC_KEY_RT     8
+#define MGC_ORDER     16   /* FB-57: a split emitted out of gen_legal's order */
+#define MGC_NOISY_SET 32   /* FB-57: gen_noisy != {victim || promo} exactly */
 
 static int mgc_cmp_u32(const void* a, const void* b)
 {
@@ -1339,12 +1341,52 @@ static int movegen_check(const Board* b)
             if (ka[i] != kb[i]) { bad |= MGC_PARTITION; break; }
     }
 
-    int n_n = mgc_keys(noi, gen_noisy(b, noi), kn);
+    int n_n_raw = gen_noisy(b, noi);
+    int n_n = mgc_keys(noi, n_n_raw, kn);
     mgc_keys(all, n_all, ka);
     for (int i = 0, j = 0; i < n_n; i++) {      /* subset: both sorted */
         while (j < n_all && ka[j] < kn[i]) j++;
         if (j >= n_all || ka[j] != kn[i]) { bad |= MGC_NOISY_SUB; break; }
         j++;
+    }
+
+    /* FB-57(a): gen_noisy characterised EXACTLY, not merely contained.
+     * P-22 defines it as gen_legal's (victim || promotion) subset -- and it
+     * is deliberately NOT the complement of gen_quiets, because P-23 scores
+     * non-capture promotions as quiets and so emits them in BOTH lists. A
+     * "partition complement" assertion would red-line on every quiet promo. */
+    {
+        int want = 0;
+        for (int i = 0; i < n_all; i++)
+            if (((all[i] >> MV_SHIFT_VICTIM) & 7) || ((all[i] >> 12) & 7))
+                want++;
+        if (want != n_n_raw) bad |= MGC_NOISY_SET;
+    }
+
+    /* FB-57(b): ORDER. Each split must emit its subset in gen_legal's exact
+     * relative order -- P-23 states the requirement (the ordering sort is
+     * stable, so tie order IS generation order). The shipped gate compared
+     * SORTED keys and was blind to a permutation, which is precisely the
+     * regression a future ordering change would introduce. */
+    {
+        int i = 0;
+        for (int k = 0; k < n_c && i < n_all; k++) {   /* captures in order */
+            while (i < n_all && (all[i] & 0x7FFF) != (cap[k] & 0x7FFF)) i++;
+            if (i >= n_all) { bad |= MGC_ORDER; break; }
+            i++;
+        }
+        i = 0;
+        for (int k = 0; k < n_q && i < n_all; k++) {   /* quiets in order */
+            while (i < n_all && (all[i] & 0x7FFF) != (qui[k] & 0x7FFF)) i++;
+            if (i >= n_all) { bad |= MGC_ORDER; break; }
+            i++;
+        }
+        i = 0;
+        for (int k = 0; k < n_n_raw && i < n_all; k++) { /* noisy in order */
+            while (i < n_all && (all[i] & 0x7FFF) != (noi[k] & 0x7FFF)) i++;
+            if (i >= n_all) { bad |= MGC_ORDER; break; }
+            i++;
+        }
     }
 
     if ((has_legal_quiet(b) != 0) != (n_q > 0)) bad |= MGC_QUIET_FLAG;
@@ -2493,14 +2535,50 @@ static __thread int g_seval[CS_MAXPLY + 8];            /* FB-26 headroom */
  * values (formerly #defines, verified node-exact after the conversion);
  * chess-tuning-tools drives them through cuci.py's UCI options. The setters
  * are meant for engine startup / setoption time, not mid-search. */
-static int g_rfp_margin   = 80;         /* per ply, reverse-futility */
-static int g_rfp_depth    = 6;          /* RFP fires at depth <= this */
-static int g_fut_margin   = 150;        /* frontier futility */
-static int g_delta_margin = 200;        /* qsearch delta pruning */
-static int g_lmp[4]       = {0, 6, 10, 14};       /* by depth 1..3 */
-static int g_null_base    = 2;          /* null-move R = base + depth/div */
-static int g_null_div     = 6;
-static double g_lmr_div   = 2.0;        /* LMR = 0.75 + ln(d)*ln(m)/div */
+/* FB-56: ONE source of truth for the P-26 defaults. They were typed out
+ * independently here, in cengine.py's class attributes and in cuci.py, and
+ * P-26's own sweep concluded these sit on a PLATEAU -- so a drift between the
+ * three would be invisible in play and would silently mean the A/B harness and
+ * the UCI host were running different engines. The macros below feed BOTH the
+ * mutable globals and the exported default table, so the two cannot diverge,
+ * and cs_p26_default() lets Python assert against the compiled values rather
+ * than re-typing them. */
+#define P26_RFP_MARGIN   80
+#define P26_RFP_DEPTH     6
+#define P26_FUT_MARGIN  150
+#define P26_DELTA_MARGIN 200
+#define P26_LMP1          6
+#define P26_LMP2         10
+#define P26_LMP3         14
+#define P26_NULL_BASE     2
+#define P26_NULL_DIV      6
+#define P26_LMR_DIV_X100 200            /* g_lmr_div * 100, integer transport */
+
+static int g_rfp_margin   = P26_RFP_MARGIN;   /* per ply, reverse-futility */
+static int g_rfp_depth    = P26_RFP_DEPTH;    /* RFP fires at depth <= this */
+static int g_fut_margin   = P26_FUT_MARGIN;   /* frontier futility */
+static int g_delta_margin = P26_DELTA_MARGIN; /* qsearch delta pruning */
+static int g_lmp[4]       = {0, P26_LMP1, P26_LMP2, P26_LMP3};  /* depth 1..3 */
+static int g_null_base    = P26_NULL_BASE;  /* null-move R = base + depth/div */
+static int g_null_div     = P26_NULL_DIV;
+static double g_lmr_div   = P26_LMR_DIV_X100 / 100.0;  /* 0.75+ln(d)ln(m)/div */
+
+/* Compiled-in defaults, immutable: the setters move the globals above, never
+ * this table, so a caller can read the shipped value at any time. */
+static const int P26_DEFAULT[] = {
+    P26_RFP_MARGIN, P26_RFP_DEPTH, P26_FUT_MARGIN, P26_DELTA_MARGIN,
+    P26_LMP1, P26_LMP2, P26_LMP3, P26_NULL_BASE, P26_NULL_DIV,
+    P26_LMR_DIV_X100,
+};
+int cs_p26_default(int i)
+{
+    return (i >= 0 && i < (int)(sizeof(P26_DEFAULT) / sizeof(P26_DEFAULT[0])))
+           ? P26_DEFAULT[i] : -1;
+}
+int cs_p26_count(void)
+{
+    return (int)(sizeof(P26_DEFAULT) / sizeof(P26_DEFAULT[0]));
+}
 
 /* FI-24(a)+(b) (armed for the thirty-first 50+0.20-equivalent campaign, vs
  * Old Engine/51 -- the null-move refinement batch, two toggles one campaign

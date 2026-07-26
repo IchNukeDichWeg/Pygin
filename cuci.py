@@ -426,7 +426,10 @@ def main():
     # FB-06: PUSH them once so Python is authoritative -- if a C default ever
     # drifts, the first setoption would otherwise pair a stale shadow with it.
     engine.premove_on = False                # PM-01 (opt-in)
-    engine._rfp_margin, engine._rfp_depth = 80, 6
+    # FB-56: read the shipped defaults from the C rather than re-typing them
+    # (P26_RFP_MARGIN / P26_RFP_DEPTH are indices 0 and 1 of the table).
+    engine._rfp_margin = engine._lib.cs_p26_default(0)
+    engine._rfp_depth = engine._lib.cs_p26_default(1)
     engine._null_base = int(engine.NULL_BASE)   # class attr = the
     engine._null_div = int(engine.NULL_DIV)     # armed/swept value
     engine._lib.set_rfp(engine._rfp_margin, engine._rfp_depth)
