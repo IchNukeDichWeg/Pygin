@@ -31,6 +31,7 @@ in RAM (50M in-memory would need ~25 GB of index tensors).
 """
 
 import argparse
+import copy
 import csv
 import os
 import sys
@@ -199,6 +200,11 @@ def main():
                     help="records per held-out block (default %d). Blocks, "
                          "not strided records, so the holdout is GAME-"
                          "granular -- see val_block_mask()." % VAL_BLOCK)
+    ap.add_argument("--checkpoint-dir", default=CHECKPOINTS_DIR,
+                    help="where best.pt / loss_curve.csv go (default %s). "
+                         "Point a concurrent or throwaway run somewhere else "
+                         "-- two runs sharing this directory overwrite each "
+                         "other's only surviving artifact." % CHECKPOINTS_DIR)
     ap.add_argument("--eval-net", metavar="NET",
                     help="score an exported .nnue on the held-out split and "
                          "exit -- no training. Gives the honest val number "
@@ -221,7 +227,7 @@ def main():
         # disk in a form nothing can load. There is no resume, so without this
         # the only option is to train again from scratch.
         model = NNUEModel()
-        ck = os.path.join(CHECKPOINTS_DIR, "best.pt")
+        ck = os.path.join(args.checkpoint_dir, "best.pt")
         if not os.path.exists(ck):
             sys.exit(f"train --export-only: no {ck} to export")
         model.load_state_dict(torch.load(ck, weights_only=True))
@@ -258,7 +264,9 @@ def main():
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     os.makedirs(CHECKPOINTS_DIR, exist_ok=True)
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
-    curve_path = os.path.join(CHECKPOINTS_DIR, "loss_curve.csv")
+    os.makedirs(args.checkpoint_dir, exist_ok=True)
+    ckpt_path = os.path.join(args.checkpoint_dir, "best.pt")
+    curve_path = os.path.join(args.checkpoint_dir, "loss_curve.csv")
     best_val, best_epoch = float("inf"), -1
 
     def train_one_epoch(ep):
@@ -303,6 +311,12 @@ def main():
                       flush=True)
         return tot / n
 
+    # The best weights are held IN MEMORY as well as on disk. best.pt is the
+    # only artifact a multi-hour run produces before the final export, and a
+    # single unlink of it -- a stray cleanup, a full disk, another process
+    # sharing the checkpoint dir -- destroyed a completed 20-epoch run once.
+    # Nothing about the export needs the file to still be there.
+    best_state = None
     stopped = False
     with open(curve_path, "w", newline="") as cf:
         cw = csv.writer(cf)
@@ -317,8 +331,8 @@ def main():
                 marker = ""
                 if va < best_val:
                     best_val, best_epoch = va, ep
-                    torch.save(model.state_dict(),
-                               os.path.join(CHECKPOINTS_DIR, "best.pt"))
+                    best_state = copy.deepcopy(model.state_dict())
+                    torch.save(best_state, ckpt_path)
                     marker = "  *best"
                 print(f"epoch {ep:3d}  train {tr:.6f}  val {va:.6f}  "
                       f"({time.time()-t0:.1f}s){marker}", flush=True)
@@ -334,11 +348,13 @@ def main():
                   f"epoch(s) -- exporting the best one", flush=True)
 
     if best_epoch < 0:
-        sys.exit("train: interrupted before the first epoch finished; no net "
-                 "written (checkpoints/best.pt is from an earlier run and is "
-                 "NOT this dataset's -- exporting it would be a silent lie)")
-    model.load_state_dict(torch.load(
-        os.path.join(CHECKPOINTS_DIR, "best.pt"), weights_only=True))
+        sys.exit(f"train: interrupted before the first epoch finished; no net "
+                 f"written ({ckpt_path} is from an earlier run and is NOT "
+                 f"this dataset's -- exporting it would be a silent lie)")
+    if best_state is not None:                 # in-memory: cannot be deleted
+        model.load_state_dict(best_state)
+    else:                                      # --export-only path
+        model.load_state_dict(torch.load(ckpt_path, weights_only=True))
     q = export_nnue(model, args.out)
     args.out = stamp_net_hash(args.out)     # -> nnue_v1_<12 hex>.nnue
     print(f"exported best (epoch {best_epoch}, val {best_val:.6f}"
