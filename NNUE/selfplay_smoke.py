@@ -25,6 +25,10 @@ import random
 
 import chess
 
+# Default is the plumbing-test net so the smoke runs on any checkout;
+# --net points it at the net actually under acceptance. A smoke that loads a
+# DIFFERENT net than the one being accepted reports "no crash" about code
+# paths the candidate never exercised.
 NET = os.path.join(NNUE_DIR, "nets", "toy.nnue")
 
 
@@ -36,11 +40,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--games", type=int, default=100)
     ap.add_argument("--nodes", type=int, default=3000)
+    ap.add_argument("--net", default=NET, help="net to play with "
+                    "(default: the toy plumbing net)")
     args = ap.parse_args()
 
     import cengine
     cengine.Engine.USE_NNUE = True
-    cengine.Engine.NNUE_FILE = NET
+    cengine.Engine.NNUE_FILE = os.path.abspath(args.net)
     eng = cengine.Engine()
     eng.use_book = False
     eng.use_tb = False
