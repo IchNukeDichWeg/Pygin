@@ -109,7 +109,22 @@ RECORD = np.dtype([
     ("res",  "u1"),          # White-POV game result: 0 loss, 1 draw, 2 win
     ("game", "<u4"),         # FB-43: per-game id -- lets the split cut on a
                              # GAME boundary so train and val share no game
+    ("era",  "u1"),          # FI-97: opponent snapshot the log came from
+                             # (0 = unknown). A fit can look good by predicting
+                             # a version the engine no longer is; this makes
+                             # an era-restricted held-out loss possible.
 ])
+
+
+def _era_of(basename):
+    """Engine era from a match log's name: cengine_vs_engine53_... -> 53.
+
+    0 when the name carries no snapshot number (Stockfish logs, odds runs, an
+    ad-hoc filename). The tuner treats 0 as "unknown" and simply reports
+    nothing era-restricted, which is the honest degradation.
+    """
+    m = re.search(r"engine(\d+)", basename)
+    return min(255, int(m.group(1))) if m else 0
 
 
 # ====================================================================== #
@@ -341,6 +356,7 @@ def _extract_file(args):
         arr[i]["bb"] = r[:8]
         arr[i]["cast"], arr[i]["turn"], arr[i]["ep"], arr[i]["res"] = r[8:]
         arr[i]["game"] = gids[i]
+    arr["era"] = _era_of(os.path.basename(path))      # FI-97
     return path, arr
 
 
@@ -491,6 +507,14 @@ def _chunk(cid):
                               a["turn"].tolist(), a["ep"].tolist(),
                               a["cast"].tolist(),
                               [r / 2.0 for r in a["res"].tolist()]))
+        # FI-97: the clustered bootstrap resamples GAMES, so it needs each
+        # row's game id. Cached beside the columns rather than re-sliced,
+        # because a game can straddle a chunk boundary and the aggregation
+        # has to see both halves.
+        names = arr.dtype.names
+        _W["gids"] = (a["game"].tolist() if "game" in names
+                      else [0] * len(a))
+        _W["eras"] = a["era"].tolist() if "era" in names else None
         _W["cid"] = cid
     return _W["cols"]
 
@@ -520,6 +544,106 @@ def _loss(pool, nchunks, vec, k, val=False):
     tot = sum(s for s, _ in out)
     n = sum(m for _, m in out)
     return tot / n
+
+
+# ---------------------------------------------------------------------- #
+#  FI-97: a game-clustered error bar on the held-out loss
+# ---------------------------------------------------------------------- #
+# Every eval decision in the last three releases compared two BARE POINT
+# ESTIMATES of the validation loss. Positions inside one game share a single
+# label and are strongly correlated, so the effective sample size is the number
+# of GAMES, not the number of rows -- treating ~5M rows as independent makes
+# any interval computed from them far too narrow. Two calibration points show
+# the cost: +0.196% clean -> +31.20 Elo, but +0.085% clean -> -4.92 +/-7.4.
+# Without a clustered interval there is no way to say whether the second was a
+# bad prediction or simply inside the noise.
+#
+# The resample is over games, and the SAME resample is applied to every vector,
+# so the improvement is a PAIRED difference. That matters more than the two
+# marginal intervals: shipped and tuned are evaluated on identical positions,
+# so their errors are highly correlated and the difference is far better
+# resolved than either endpoint. Reading the two marginal CIs for overlap
+# instead is the classic way to throw that away.
+def _val_by_game_task(job):
+    """Per-GAME (sum of squared error, n) over one validation chunk.
+
+    A near-copy of _loss_task on purpose: that one runs thousands of times per
+    tune and is the hot path, and this one runs twice per tune. Keeping the
+    per-game dict out of it costs ten lines here and nothing there.
+    """
+    cid, vec, k = job
+    if vec is not None:
+        eng = _W["eng"]
+        for (_, attr, key), v in zip(PARAMS, vec):
+            _set(eng, attr, key, v)
+        _push(eng, _W["lib"], _W["E"])
+    rows = _chunk(cid)
+    f = _W["lib"].csearch_eval_white
+    c = -k * math.log(10.0) / 400.0
+    exp = math.exp
+    out = {}
+    for (p, n, b, r, q, kg, ow, ob, turn, ep, cast, res), gid in zip(
+            rows, _W["gids"]):
+        d = res - 1.0 / (1.0 + exp(c * f(p, n, b, r, q, kg, ow, ob,
+                                         turn, ep, cast)))
+        s0, n0 = out.get(gid, (0.0, 0))
+        out[gid] = (s0 + d * d, n0 + 1)
+    return out
+
+
+def val_by_game(pool, nchunks, vec, k):
+    """(sumsq per game, rows per game, game ids) over the validation split."""
+    parts = pool.map(_val_by_game_task,
+                     [(c, vec, k) for c in range(nchunks, 2 * nchunks)],
+                     chunksize=1)
+    agg = {}
+    for part in parts:
+        for gid, (s, n) in part.items():
+            s0, n0 = agg.get(gid, (0.0, 0))
+            agg[gid] = (s0 + s, n0 + n)
+    gids = sorted(agg)
+    return (np.array([agg[g][0] for g in gids], dtype=np.float64),
+            np.array([agg[g][1] for g in gids], dtype=np.int64),
+            gids)
+
+
+def _era_per_game(arr, ntrain, gids):
+    """Era byte per game id, in `gids` order (a game's rows share one era)."""
+    g = arr["game"][ntrain:]
+    uniq, first = np.unique(g, return_index=True)
+    m = dict(zip(uniq.tolist(), arr["era"][ntrain:][first].tolist()))
+    return np.array([m.get(gi, 0) for gi in gids])
+
+
+def clustered_ci(per_game, resamples=2000, seed=52, alpha=0.05):
+    """Percentile CIs from a bootstrap over GAMES, paired across vectors.
+
+    `per_game` is a list of (sumsq, n) array pairs -- one per parameter vector,
+    all aligned on the same game order. Returns (point, lo, hi) per vector plus
+    the paired RELATIVE improvement of vector 1 over vector 0 in percent, which
+    is the number the house actually quotes.
+    """
+    rng = np.random.default_rng(seed)
+    m = len(per_game[0][0])
+    point = [s.sum() / n.sum() for s, n in per_game]
+    draws = [[] for _ in per_game]
+    rel = []
+    for _ in range(resamples):
+        idx = rng.integers(0, m, m)
+        vals = [s[idx].sum() / n[idx].sum() for s, n in per_game]
+        for j, v in enumerate(vals):
+            draws[j].append(v)
+        if len(vals) > 1:
+            rel.append((vals[0] - vals[1]) / vals[0] * 100.0)
+    lo_q, hi_q = alpha / 2 * 100, (1 - alpha / 2) * 100
+    out = [(p, float(np.percentile(d, lo_q)), float(np.percentile(d, hi_q)))
+           for p, d in zip(point, draws)]
+    rel_ci = None
+    if rel:
+        rel_ci = ((point[0] - point[1]) / point[0] * 100.0,
+                  float(np.percentile(rel, lo_q)),
+                  float(np.percentile(rel, hi_q)))
+    return out, rel_ci, m
 
 
 # ---------------------------------------------------------------------- #
@@ -746,17 +870,88 @@ def cmd_tune(a):
                         break
                 results.append((restart, start_loss, cur_loss, vloss))
 
+        # FI-97: per-game validation residuals for both vectors. Computed HERE
+        # because the workers die with the `with` block; only the resampling
+        # (pure numpy, no pool) happens below.
+        per_game = None
+        if best_vec is not None:
+            try:
+                g_base = val_by_game(pool, nchunks, base, k)
+                g_best = val_by_game(pool, nchunks, best_vec, k)
+                assert g_base[2] == g_best[2], "game order differs"
+                per_game = (g_base, g_best)
+            except Exception as ex:          # never lose the write-back
+                print(f"  [per-game validation pass failed: {ex}]")
+
     print(f"\nshipped eval: train {kloss:.6f}  validation {base_val:.6f}")
     print(f"best found:   validation {best_val:.6f}  "
           f"({(base_val - best_val) / base_val * 100:+.2f}% vs shipped)")
+
+    # FI-97: the same two numbers with a game-clustered interval on them.
+    if per_game is not None:
+        try:
+            g_base, g_best = per_game
+            cis, rel, ngames = clustered_ci([(g_base[0], g_base[1]),
+                                             (g_best[0], g_best[1])])
+            print(f"\ngame-clustered bootstrap (2,000 resamples over "
+                  f"{ngames:,} held-out GAMES, not "
+                  f"{int(g_base[1].sum()):,} rows):")
+            for label, (p, lo, hi) in zip(("shipped", "tuned  "), cis):
+                print(f"  {label} {p:.6f}  [{lo:.6f}, {hi:.6f}]")
+            print(f"  improvement {rel[0]:+.3f}%  "
+                  f"[{rel[1]:+.3f}%, {rel[2]:+.3f}%]   <- PAIRED, the "
+                  f"decision number")
+            # The house rule and its calibration, restated where it is used.
+            if rel[1] <= 0.0 <= rel[2]:
+                print("  the interval STRADDLES ZERO -- this fit is not "
+                      "distinguishable from the shipped eval on held-out\n"
+                      "  data. Do not spend an A/B slot on it.")
+            elif rel[1] < 0.15:
+                print(f"  lower bound {rel[1]:+.3f}% is under the ~0.15% "
+                      f"clean-loss floor the house treats as unproven\n"
+                      f"  (~159 Elo per 1% clean, so this is ~"
+                      f"{rel[1] * 159:+.1f} Elo at the pessimistic end).")
+            # opus5:C55-35 rider: an era-restricted number beside the all-era
+            # one, so a fit that predicts a version the engine no longer is
+            # cannot look good on the strength of old positions.
+            eras = arr["era"] if "era" in arr.dtype.names else None
+            if eras is not None and len(np.unique(eras[ntrain:])) > 1:
+                newest = int(eras[ntrain:].max())
+                mask = _era_per_game(arr, ntrain, g_base[2]) == newest
+                if mask.any() and not mask.all():
+                    sub = clustered_ci([(g_base[0][mask], g_base[1][mask]),
+                                        (g_best[0][mask], g_best[1][mask])])
+                    print(f"  era {newest} only ({int(mask.sum()):,} games): "
+                          f"improvement {sub[1][0]:+.3f}%  "
+                          f"[{sub[1][1]:+.3f}%, {sub[1][2]:+.3f}%]")
+            elif eras is None:
+                print("  [no era byte in this corpus -- re-extract for the "
+                      "era-restricted number (FI-97)]")
+        except Exception as ex:                  # never lose the write-back
+            print(f"  [clustered bootstrap failed: {ex}]")
+
     if best_val >= base_val:
         print("\nNO IMPROVEMENT on held-out data -- the shipped eval already "
               "fits this corpus\nbetter than anything the search found. Do "
               "NOT spend an A/B slot on this.")
     print("\nchanged parameters (best-on-validation):")
-    for (label, _, _), b0, b1 in zip(PARAMS, base, best_vec):
+    # opus5:C55-27 rider: a parameter that finished ON its bound is a fit that
+    # wanted to go further, i.e. a silent mis-specification of the bound, not
+    # a converged value. Flagged rather than silently accepted.
+    on_bound = []
+    for (label, _, _), b0, b1, (blo, bhi) in zip(PARAMS, base, best_vec, bounds):
         if b0 != b1:
-            print(f"  {label:<28} {b0:>6} -> {b1:>6}  ({b1 - b0:+d})")
+            pin = " ON BOUND" if b1 in (blo, bhi) else ""
+            print(f"  {label:<28} {b0:>6} -> {b1:>6}  ({b1 - b0:+d}){pin}")
+            if pin:
+                on_bound.append(label)
+    if on_bound:
+        print(f"\n  {len(on_bound)} parameter(s) finished ON their bound "
+              f"({', '.join(on_bound[:6])}"
+              f"{', ...' if len(on_bound) > 6 else ''}).\n"
+              f"  The search wanted to go further than the bound allowed, so "
+              f"these values are the BOUND,\n  not an optimum -- widen it and "
+              f"re-fit before reading them as a result.")
 
     for (_, attr, key), v in zip(PARAMS, best_vec):
         _set(E.Engine, attr, key, v)
@@ -956,6 +1151,7 @@ def cmd_pack(a):
         cast=np.searchsorted(cast_u, arr["cast"]).astype("u1"),
         castmap=cast_u,
         game=arr["game"],                                # FB-43
+        era=arr["era"] if "era" in arr.dtype.names else np.zeros(len(arr), "u1"),
         meta=np.stack([arr["turn"], arr["ep"].view("u1"), arr["res"]], 1))
     src_mb = os.path.getsize(a.src) / 1048576
     out_mb = os.path.getsize(a.out) / 1048576
@@ -974,6 +1170,11 @@ def cmd_unpack(a):
     out["bb"][:, 7] = allp & ~bb7[:, 6]                  # occ_b reconstructed
     out["cast"] = z["castmap"][z["cast"]]
     out["turn"], out["ep"], out["res"] = meta[:, 0], meta[:, 1].view("i1"), meta[:, 2]
+    # FI-97: a pre-era pack unpacks with era 0 everywhere, which the tuner
+    # reads as "unknown" and reports nothing era-restricted. Unlike the game
+    # id below, that degrades honestly, so it is a default and not a refusal.
+    if "era" in z.files:
+        out["era"] = z["era"]
     if "game" in z.files:                                # FB-43
         out["game"] = z["game"]
     else:
@@ -1127,9 +1328,47 @@ def cmd_selftest(a):
             dead.append(label)
     assert not dead, ("these parameters never reach the C eval (a dead term "
                       f"would be fit to noise): {dead}")
+    # 3. FI-97: the clustered bootstrap, and the control that says clustering
+    #    is what matters. Synthetic per-game aggregates -- this checks the
+    #    STATISTICS, and needs no corpus.
+    rng = np.random.default_rng(7)
+    ngames, per_game = 400, 50
+    n = np.full(ngames, per_game, dtype=np.int64)
+    err = rng.normal(0.25, 0.05, ngames)          # per-game mean sq error
+    sq_base, sq_best = err * per_game, err * 0.99 * per_game
+
+    cis, rel, m = clustered_ci([(sq_base, n), (sq_best, n)],
+                               resamples=400, seed=3)
+    assert m == ngames, m
+    for p, lo, hi in cis:                          # the entry's own test:
+        assert lo < p < hi, (p, lo, hi)            # the CI brackets the point
+    # A uniform 1% improvement is EXACT under any resample of games, so the
+    # paired interval collapses while the marginal ones stay wide. That is the
+    # whole argument for pairing, asserted rather than described.
+    assert abs(rel[0] - 1.0) < 1e-9, rel
+    assert rel[2] - rel[1] < 1e-9, rel
+    assert (cis[0][2] - cis[0][1]) > 100 * (rel[2] - rel[1]), (cis, rel)
+
+    # THE CONTROL: pretend the rows are independent (one "game" per row, same
+    # data). The interval must come out much narrower -- that narrowness is
+    # exactly the overconfidence FI-97 exists to remove, so if this ever fails
+    # to shrink, the clustering is not actually happening.
+    rows_sq = np.repeat(err, per_game)
+    rows_n = np.ones(ngames * per_game, dtype=np.int64)
+    flat, _, _ = clustered_ci([(rows_sq, rows_n)], resamples=400, seed=3)
+    clustered_w = cis[0][2] - cis[0][1]
+    flat_w = flat[0][2] - flat[0][1]
+    assert flat_w * 3 < clustered_w, (flat_w, clustered_w)
+
+    assert _era_of("cengine_vs_engine53_2026-07-23_11-28-20_8901.txt") == 53
+    assert _era_of("cengine_smp4_vs_cengine_2026-07-13.txt") == 0
+    assert "era" in RECORD.names
+
     print(f"selftest OK -- eval mirror exact on {len(boards)} positions "
           f"(phase {min(phases)}-{max(phases)}), "
-          f"all {len(PARAMS)} parameters live and reversible")
+          f"all {len(PARAMS)} parameters live and reversible; "
+          f"FI-97 bootstrap brackets its point estimate and is "
+          f"{clustered_w / flat_w:.1f}x wider than the unclustered control")
 
 
 # ====================================================================== #
