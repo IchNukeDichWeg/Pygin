@@ -12,6 +12,29 @@ cannot show for our architecture: the 16 threat scalars broken out by term
 with their underlying square counts and saturation state, and the king
 bucket / mirror state of each perspective.
 
+## Moving pieces
+
+Click a piece, then click a square. Captures happen; legality is NOT enforced,
+and that is deliberate -- the question an evaluation tool answers is "what
+would the net say if this knight were there", and a good share of those
+positions are unreachable in a real game. Castling rights and en passant are
+emitted as "-" after an edit, which changes nothing: KA8T reads piece
+bitboards and king squares, T16 reads attacks, and neither looks at either
+field.
+
+## compare_eval.py -- HCE vs NNUE
+
+    python3 NNUE/tools/compare_eval.py --net <net> "<fen>" ["<fen>" ...]
+    python3 NNUE/tools/compare_eval.py --net <net> --random 300
+
+Both numbers come from the engine (`csearch_eval_white` and
+`nnue_eval_oracle`), so the comparison is exact. This is deliberately NOT in
+the browser tool: the .nnue forward pass is ~150 lines of integer arithmetic
+and was portable, but the HCE is thousands of lines of tapered, phase-scaled,
+clamped terms with mop-up and cant-win shaping on top. A subtly wrong port
+would disagree with the engine while looking authoritative -- the same
+failure the reference vectors exist to prevent, with no vectors to catch it.
+
 ## Why the reference vectors exist
 
 A browser re-implementation that silently disagrees with the engine is worse
