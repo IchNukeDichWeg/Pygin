@@ -1,0 +1,591 @@
+<title>Pygin NNUE Inspector</title>
+<style>
+:root{
+  --ground:#EEF1F5; --surface:#FFFFFF; --sunken:#E4E8EF;
+  --ink:#151A23; --ink-2:#4A5566; --ink-3:#78849A;
+  --line:#D3D9E2; --line-2:#C0C8D4;
+  --accent:#3A5CCC; --accent-soft:#E5EAFA;
+  --warm:#C8791E; --cool:#1E8A82; --bad:#B3402E; --good:#1E7A4C;
+  --sq-light:#DFE4EC; --sq-dark:#B9C2D1;
+  --piece-w:#FDFDFE; --piece-b:#161C28; --piece-edge:#5A6577;
+  --ui:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --ground:#12161D; --surface:#1A1F28; --sunken:#0D1116;
+    --ink:#E6EBF2; --ink-2:#9AA6B8; --ink-3:#6B7688;
+    --line:#2A313D; --line-2:#39424F;
+    --accent:#7B95E8; --accent-soft:#1E2740;
+    --warm:#E0973F; --cool:#3FB3A8; --bad:#D66452; --good:#46A876;
+    --sq-light:#2E3641; --sq-dark:#212832;
+    --piece-w:#F4F7FB; --piece-b:#070A0F; --piece-edge:#8C99AC;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#12161D; --surface:#1A1F28; --sunken:#0D1116;
+  --ink:#E6EBF2; --ink-2:#9AA6B8; --ink-3:#6B7688;
+  --line:#2A313D; --line-2:#39424F;
+  --accent:#7B95E8; --accent-soft:#1E2740;
+  --warm:#E0973F; --cool:#3FB3A8; --bad:#D66452; --good:#46A876;
+  --sq-light:#2E3641; --sq-dark:#212832;
+    --piece-w:#F4F7FB; --piece-b:#070A0F; --piece-edge:#8C99AC;
+}
+:root[data-theme="light"]{
+  --ground:#EEF1F5; --surface:#FFFFFF; --sunken:#E4E8EF;
+  --ink:#151A23; --ink-2:#4A5566; --ink-3:#78849A;
+  --line:#D3D9E2; --line-2:#C0C8D4;
+  --accent:#3A5CCC; --accent-soft:#E5EAFA;
+  --warm:#C8791E; --cool:#1E8A82; --bad:#B3402E; --good:#1E7A4C;
+  --sq-light:#DFE4EC; --sq-dark:#B9C2D1;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--ui);
+  font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:28px 20px 64px;
+  display:flex;flex-direction:column;gap:22px}
+h1{font-size:20px;font-weight:650;letter-spacing:-.01em;margin:0}
+h2{font-size:12px;font-weight:650;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-3);margin:0 0 12px}
+.sub{color:var(--ink-2);font-size:13.5px;margin:4px 0 0;max-width:66ch}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px}
+.masthead{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* proof bar */
+.proof{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;
+  border:1px solid var(--line-2);font-family:var(--mono);font-size:12.5px;
+  font-variant-numeric:tabular-nums;color:var(--ink-2);background:var(--sunken)}
+.chip b{color:var(--ink);font-weight:600}
+.chip.ok{border-color:var(--good);color:var(--good)}
+.chip.err{border-color:var(--bad);color:var(--bad)}
+.chip.wait{border-color:var(--line-2);color:var(--ink-3)}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+button,input[type=file]::file-selector-button{font:inherit;font-size:13px;font-weight:550;
+  padding:7px 14px;border-radius:7px;border:1px solid var(--line-2);
+  background:var(--surface);color:var(--ink);cursor:pointer}
+button:hover,input[type=file]::file-selector-button:hover{border-color:var(--accent);color:var(--accent)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary:hover{filter:brightness(1.08);color:#fff}
+input[type=text]{font-family:var(--mono);font-size:12.5px;padding:8px 10px;width:100%;
+  border:1px solid var(--line-2);border-radius:7px;background:var(--sunken);color:var(--ink)}
+
+/* layout */
+.grid{display:grid;grid-template-columns:minmax(320px,1fr) minmax(300px,420px);gap:22px;align-items:start}
+.col{display:flex;flex-direction:column;gap:22px;min-width:0}
+@media (max-width:860px){.grid{grid-template-columns:1fr}}
+
+/* board */
+.board{display:grid;grid-template-columns:repeat(8,1fr);border:1px solid var(--line-2);
+  border-radius:8px;overflow:hidden;aspect-ratio:1;width:100%}
+.sq{position:relative;display:flex;align-items:center;justify-content:center;
+  font-size:clamp(20px,4.4vw,34px);line-height:1;user-select:none}
+.sq.l{background:var(--sq-light)}.sq.d{background:var(--sq-dark)}
+.sq .pc{position:relative;z-index:2;-webkit-text-stroke:1.1px var(--piece-edge);paint-order:stroke fill}
+.sq .pc.w{color:var(--piece-w)}
+.sq .pc.b{color:var(--piece-b)}
+.sq .tint{position:absolute;inset:0;z-index:1}
+.sq .val{position:absolute;left:0;right:0;bottom:2px;z-index:3;text-align:center;
+  font-family:var(--mono);font-size:9.5px;font-variant-numeric:tabular-nums;
+  color:var(--ink-2);letter-spacing:-.02em}
+.coords{display:grid;grid-template-columns:repeat(8,1fr);font-family:var(--mono);
+  font-size:10px;color:var(--ink-3);text-align:center;margin-top:4px}
+
+/* readouts */
+.rows{display:flex;flex-direction:column;gap:0}
+.row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  padding:7px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row .k{color:var(--ink-2);font-size:13px}
+.row .v{font-family:var(--mono);font-size:13.5px;font-variant-numeric:tabular-nums;font-weight:600}
+.big{font-family:var(--mono);font-size:34px;font-weight:600;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;line-height:1.1}
+.legend{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink-3);
+  font-family:var(--mono);margin-top:10px}
+.ramp{height:8px;width:150px;border-radius:4px;
+  background:linear-gradient(90deg,var(--cool),var(--sunken),var(--warm))}
+
+/* threat table */
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}
+th{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.scroll{overflow-x:auto}
+.bar{display:inline-block;height:6px;border-radius:3px;background:var(--accent);vertical-align:middle}
+.clamped{color:var(--warm);font-weight:600}
+.note{font-size:12.5px;color:var(--ink-3);margin-top:10px;max-width:70ch}
+.err{color:var(--bad);font-family:var(--mono);font-size:12.5px}
+details{margin-top:10px}
+summary{cursor:pointer;font-size:12.5px;color:var(--ink-2)}
+@media (prefers-reduced-motion:no-preference){
+  .chip{transition:border-color .15s,color .15s}
+}
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <div>
+    <h1>Pygin NNUE Inspector</h1>
+    <p class="sub">Loads a Pygin <span class="mono">.nnue</span> v1 net and evaluates positions in the
+    browser with the same integer arithmetic the engine uses. Shows what each piece is worth to the
+    net, and how the 16 threat scalars &#8212; which HalfKP-style nets don't have &#8212; contribute.
+    Your net is read locally and never uploaded.</p>
+  </div>
+  <button id="theme" title="Toggle light / dark">&#9680; Theme</button>
+</header>
+
+<section class="card">
+  <h2>Network</h2>
+  <div class="proof">
+    <label for="netfile" class="visually-hidden" style="position:absolute;left:-9999px">Net file</label>
+    <input type="file" id="netfile" accept=".nnue">
+    <span class="chip wait" id="netchip"><span class="dot"></span><span>no net loaded</span></span>
+    <span class="chip wait" id="checkchip"><span class="dot"></span><span>reference check pending</span></span>
+  </div>
+  <p class="note" id="netdetail">Expecting KA8T <span class="mono">6144&rarr;256&times;2</span> +
+  16 threats, tail <span class="mono">[512+16]&rarr;32&rarr;32&rarr;1</span>, QA&nbsp;127 / QB&nbsp;64.
+  A net with different architecture constants is rejected rather than silently mis-read.</p>
+  <div class="err" id="neterr"></div>
+  <details>
+    <summary>What the reference check proves</summary>
+    <p class="note">40 positions were exported from the C engine with their feature indices, their 16
+    threat bytes, and their exact evaluation. Feature and threat agreement is
+    <strong>net-independent</strong>, so it is verified for any net you load &#8212; that is the part most
+    likely to drift, because it re-implements bitboard attack generation. The evaluation column is
+    only checked when the loaded net is the one the vectors were generated from
+    (<span class="mono">8cc4d9d6caeb</span>); with any other net it is reported as skipped rather
+    than quietly passed.</p>
+  </details>
+</section>
+
+<section class="card">
+  <h2>Position</h2>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    <input type="text" id="fen" spellcheck="false"
+      value="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1">
+    <button class="primary" id="apply">Evaluate</button>
+    <button id="startpos">Start position</button>
+    <button id="kiwipete">Kiwipete</button>
+    <button id="endgame">Endgame</button>
+  </div>
+  <div class="err" id="fenerr"></div>
+</section>
+
+<div class="grid">
+  <section class="card">
+    <h2>Value of each piece</h2>
+    <div class="board" id="board"></div>
+    <div class="coords" id="files"></div>
+    <div class="legend">
+      <span>removing it helps</span><span class="ramp"></span><span>removing it hurts</span>
+    </div>
+    <p class="note">Each square shows the change in evaluation, in pawns and from White's side, if
+    that piece were lifted off the board. Kings are skipped &#8212; the position would be illegal, and the
+    king square selects the feature bucket.</p>
+  </section>
+
+  <div class="col">
+  <section class="card">
+    <h2>Evaluation</h2>
+    <div class="big" id="evalbig">&#8212;</div>
+    <div class="rows" id="evalrows"></div>
+    <p class="note" id="evalnote"></p>
+  </section>
+  <section class="card">
+    <h2>Threat vector (T16)</h2>
+    <div class="scroll">
+      <table id="threats">
+        <thead><tr>
+          <th>Term</th><th style="text-align:right">White</th><th style="text-align:right">Black</th>
+          <th style="width:38%">Balance</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="note">These 16 bytes are fed to the tail alongside the two 256-wide accumulator halves,
+    ordered side-to-move first. Each is a population count scaled by a fixed factor and clamped at 127
+    &#8212; a <span class="clamped">clamped</span> value has saturated and cannot rise further, which is
+    worth knowing when a term looks unresponsive.</p>
+  </section>
+  </div>
+</div>
+
+
+<section class="card">
+  <h2>Feature transformer</h2>
+  <div class="scroll"><table id="ftinfo"><tbody></tbody></table></div>
+  <p class="note">KA8T orients the board to each side, mirrors it when the king sits on the e&#8211;h
+  files, and picks one of 8 king buckets. Both perspectives index the same 6144&times;256 table; the
+  tail sees them concatenated, side to move first.</p>
+</section>
+
+</div>
+
+<script>
+"use strict";
+/* ---------- frozen architecture (config.py) ---------- */
+const A={IN:6144,H:256,D2:32,D3:32,T:16,KB:8,QA:127,QB:64,OUT_CP:400,ACT_MAX:8128,FS:1};
+const QK=[[0,1],[2,3],[4,5],[6,6],[7,7],[7,7],[7,7],[7,7]];
+const PT=["p","n","b","r","q","k"];              // _PT_BBS order
+const GLYPH={wp:"\u265f",wn:"\u265e",wb:"\u265d",wr:"\u265c",wq:"\u265b",wk:"\u265a",
+             bp:"\u265f",bn:"\u265e",bb:"\u265d",br:"\u265c",bq:"\u265b",bk:"\u265a"};
+
+/* ---------- bitboards (BigInt; sq 0 = a1, 63 = h8) ---------- */
+const ONE=1n, M64=(1n<<64n)-1n;
+const bit=s=>ONE<<BigInt(s);
+const FILE_A=(()=>{let m=0n;for(let s=0;s<64;s++)if((s&7)===0)m|=bit(s);return m;})();
+const FILE_H=(()=>{let m=0n;for(let s=0;s<64;s++)if((s&7)===7)m|=bit(s);return m;})();
+const CENTER4=0x0000001818000000n;                // d4 e4 d5 e5
+function popcount(b){let n=0;while(b){b&=b-ONE;n++;}return n;}
+function lsb(b){let i=0;while(!(b&ONE)){b>>=ONE;i++;}return i;}
+function sqList(b){const o=[];while(b){const s=lsb(b);o.push(s);b&=b-ONE;}return o;}
+
+const KNIGHT_ATT=[],KING_ATT=[],BRAYS=[],RRAYS=[];
+(function tables(){
+  const N=[[1,2],[2,1],[2,-1],[1,-2],[-1,-2],[-2,-1],[-2,1],[-1,2]];
+  const K=[[0,1],[1,1],[1,0],[1,-1],[0,-1],[-1,-1],[-1,0],[-1,1]];
+  const BD=[[1,1],[1,-1],[-1,-1],[-1,1]], RD=[[0,1],[1,0],[0,-1],[-1,0]];
+  const ok=(f,r)=>f>=0&&f<8&&r>=0&&r<8;
+  for(let s=0;s<64;s++){
+    const f=s&7,r=s>>3;
+    let m=0n; for(const[df,dr]of N){const F=f+df,R=r+dr;if(ok(F,R))m|=bit(R*8+F);} KNIGHT_ATT[s]=m;
+    m=0n;     for(const[df,dr]of K){const F=f+df,R=r+dr;if(ok(F,R))m|=bit(R*8+F);} KING_ATT[s]=m;
+    const ray=D=>D.map(([df,dr])=>{const o=[];let F=f+df,R=r+dr;
+      while(ok(F,R)){o.push(R*8+F);F+=df;R+=dr;}return o;});
+    BRAYS[s]=ray(BD); RRAYS[s]=ray(RD);
+  }
+})();
+function slide(sq,occ,rays){let a=0n;
+  for(const ray of rays[sq]) for(const s of ray){a|=bit(s); if(occ&bit(s))break;}
+  return a;}
+
+/* ---------- FEN -> position ---------- */
+function parseFen(fen){
+  const p=fen.trim().split(/\s+/);
+  if(p.length<2) throw new Error("FEN needs at least a board and a side to move");
+  const bb={p:0n,n:0n,b:0n,r:0n,q:0n,k:0n}, occ=[0n,0n];   // occ[0]=black occ[1]=white
+  const rows=p[0].split("/");
+  if(rows.length!==8) throw new Error("FEN board must have 8 ranks");
+  for(let i=0;i<8;i++){
+    const rank=7-i; let file=0;
+    for(const ch of rows[i]){
+      if(/[1-8]/.test(ch)){file+=+ch;continue;}
+      const low=ch.toLowerCase();
+      if(!"pnbrqk".includes(low)) throw new Error(`unexpected '${ch}' in the board field`);
+      if(file>7) throw new Error(`rank ${rank+1} has too many squares`);
+      const s=rank*8+file; bb[low]|=bit(s); occ[ch===low?0:1]|=bit(s); file++;
+    }
+    if(file!==8) throw new Error(`rank ${rank+1} describes ${file} squares, not 8`);
+  }
+  if(!(bb.k&occ[1])||!(bb.k&occ[0])) throw new Error("both kings must be on the board");
+  return {bb,occ,stm:p[1]==="b"?0:1,fen};
+}
+function removePiece(pos,sq){
+  const bb={...pos.bb}, occ=[pos.occ[0],pos.occ[1]], m=bit(sq);
+  for(const k of PT) if(bb[k]&m) bb[k]&=~m;
+  occ[0]&=~m; occ[1]&=~m;
+  return {bb,occ,stm:pos.stm};
+}
+
+/* ---------- KA8T features (mirrors nnue_ref.extract_features) ---------- */
+function features(pos){
+  const {bb,occ}=pos, out={};
+  for(const persp of [1,0]){
+    const kbb=bb.k&occ[persp];
+    const ksq=kbb?lsb(kbb):0, hasK=!!kbb;
+    let oks=persp===1?ksq:(ksq^56);
+    const mirror=hasK&&((oks&7)>=4);
+    if(mirror) oks^=7;
+    const bucket=hasK?QK[oks>>3][(oks&7)>>1]:0;
+    const xr=(persp===1?0:56)^(mirror?7:0);
+    const f=[];
+    for(const color of [1,0]) for(let pi=0;pi<6;pi++){
+      const planeW=(color===1?0:6)+pi;
+      const plane=persp===1?planeW:(planeW+6)%12;
+      for(const s of sqList(bb[PT[pi]]&occ[color])) f.push(bucket*768+plane*64+(s^xr));
+    }
+    out[persp]={feats:f,bucket,mirror,ksq};
+  }
+  return out;
+}
+
+/* ---------- T16 threats (mirrors nnue.c nn_threat_vec) ---------- */
+function attackUnion(pos,side){
+  const {bb,occ}=pos, all=occ[0]|occ[1], own=occ[side], p=bb.p&own;
+  const pa=side===1?((((p<<9n)&M64)&~FILE_A)|(((p<<7n)&M64)&~FILE_H))
+                   :(((p>>7n)&~FILE_A)|((p>>9n)&~FILE_H));
+  let a=pa;
+  for(const s of sqList(bb.n&own)) a|=KNIGHT_ATT[s];
+  for(const s of sqList((bb.b|bb.q)&own)) a|=slide(s,all,BRAYS);
+  for(const s of sqList((bb.r|bb.q)&own)) a|=slide(s,all,RRAYS);
+  const k=bb.k&own; if(k) a|=KING_ATT[lsb(k)];
+  return [a&M64,pa&M64];
+}
+const t8=v=>v>127?127:v;
+const THREAT_META=[
+  ["squares attacked",2],["attacks in enemy king ring",16],
+  ["our men attacked by enemy pawns",32],["our men attacked, undefended",32],
+  ["enemy men we attack, undefended",32],["our men under attack",16],
+  ["our non-pawns defended by pawns",16],["attacks on d4 e4 d5 e5",32]];
+function threats(pos){
+  const {bb,occ}=pos;
+  const [aw,pw]=attackUnion(pos,1), [ab,pb]=attackUnion(pos,0);
+  const kw=bb.k&occ[1], kb=bb.k&occ[0];
+  const ringW=kw?KING_ATT[lsb(kw)]:0n, ringB=kb?KING_ATT[lsb(kb)]:0n;
+  const mmW=(bb.n|bb.b|bb.r|bb.q)&occ[1], mmB=(bb.n|bb.b|bb.r|bb.q)&occ[0];
+  const vec={};
+  for(const s of [1,0]){
+    const aS=s?aw:ab, aO=s?ab:aw, paS=s?pw:pb, paO=s?pb:pw;
+    const own=s?occ[1]:occ[0], opp=s?occ[0]:occ[1];
+    const mmS=s?mmW:mmB, ringO=s?ringB:ringW;
+    const raw=[2*popcount(aS),16*popcount(aS&ringO),32*popcount(mmS&paO),
+               32*popcount(own&aO&~aS),32*popcount(opp&aS&~aO),16*popcount(own&aO),
+               16*popcount(own&~bb.p&paS),32*popcount(aS&CENTER4)];
+    vec[s]={raw,bytes:raw.map(t8)};
+  }
+  return vec;   // vec[1]=white vec[0]=black
+}
+
+/* ---------- .nnue v1 reader ---------- */
+const CRC_T=(()=>{const t=new Uint32Array(256);
+  for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[n]=c>>>0;}
+  return t;})();
+function crc32(u8){let c=0xFFFFFFFF;
+  for(let i=0;i<u8.length;i++) c=CRC_T[(c^u8[i])&0xFF]^(c>>>8);
+  return (c^0xFFFFFFFF)>>>0;}
+function loadNet(buf){
+  const dv=new DataView(buf);
+  const magic=new TextDecoder().decode(new Uint8Array(buf,0,8));
+  if(magic!=="PYGINNUE") throw new Error(`not a Pygin net (magic "${magic}")`);
+  // header is <8s 12I Q> = magic, then 12 uint32, then a uint64 payload size
+  const u=o=>dv.getUint32(o,true);
+  const [ver,fs,inD,h,td,kb,d2,d3,qa,qb,ocp,crc]=
+    [8,12,16,20,24,28,32,36,40,44,48,52].map(u);
+  if(ver!==1) throw new Error(`.nnue version ${ver}, expected 1`);
+  const want={fs:A.FS,inD:A.IN,h:A.H,td:A.T,kb:A.KB,d2:A.D2,d3:A.D3,qa:A.QA,qb:A.QB,ocp:A.OUT_CP};
+  const got={fs,inD,h,td,kb,d2,d3,qa,qb,ocp};
+  for(const k in want) if(want[k]!==got[k])
+    throw new Error(`architecture mismatch: ${k} is ${got[k]}, this page expects ${want[k]}`);
+  const psz=Number(dv.getBigUint64(56,true));
+  if(buf.byteLength-64!==psz) throw new Error(`payload is ${buf.byteLength-64} bytes, header says ${psz}`);
+  const crcGot=crc32(new Uint8Array(buf,64));
+  if(crcGot!==crc) throw new Error(`payload CRC ${crcGot.toString(16)} does not match header `+
+    `${crc.toString(16)} \u2014 the file is truncated or corrupt`);
+  let o=64; const in2=2*h+td;
+  const take=(Ctor,n)=>{const a=new Ctor(buf.slice(o,o+n*Ctor.BYTES_PER_ELEMENT));o+=a.byteLength;return a;};
+  const net={h,d2,d3,td,in2};
+  net.w1=take(Int16Array,inD*h); net.b1=take(Int16Array,h);
+  net.w2=take(Int8Array,d2*in2); net.b2=take(Int32Array,d2);
+  net.w3=take(Int8Array,d3*d2);  net.b3=take(Int32Array,d3);
+  net.w4=take(Int8Array,d3);     net.b4=dv.getInt32(o,true);
+  return net;
+}
+
+/* ---------- exact integer forward (mirrors QuantNet.forward) ---------- */
+const act=v=>Math.min(Math.max(v,0),A.ACT_MAX)>>6;
+function accumulate(net,feats){
+  const H=net.h, acc=new Int32Array(H);
+  for(let i=0;i<H;i++) acc[i]=net.b1[i];
+  for(const f of feats){const base=f*H; for(let i=0;i<H;i++) acc[i]+=net.w1[base+i];}
+  return acc;
+}
+function forward(net,accW,accB,tBytes,stm){
+  const H=net.h, us=stm?accW:accB, them=stm?accB:accW;
+  const tUs=stm?tBytes.slice(0,8):tBytes.slice(8), tTh=stm?tBytes.slice(8):tBytes.slice(0,8);
+  const x=new Int32Array(net.in2);
+  for(let i=0;i<H;i++){x[i]=Math.min(Math.max(us[i],0),A.QA);
+                       x[H+i]=Math.min(Math.max(them[i],0),A.QA);}
+  for(let i=0;i<8;i++){x[2*H+i]=tUs[i]; x[2*H+8+i]=tTh[i];}
+  const h1=new Int32Array(net.d2);
+  for(let j=0;j<net.d2;j++){let s=net.b2[j],b=j*net.in2;
+    for(let i=0;i<net.in2;i++) s+=net.w2[b+i]*x[i]; h1[j]=act(s);}
+  const h2=new Int32Array(net.d3);
+  for(let j=0;j<net.d3;j++){let s=net.b3[j],b=j*net.d2;
+    for(let i=0;i<net.d2;i++) s+=net.w3[b+i]*h1[i]; h2[j]=act(s);}
+  let out=net.b4; for(let i=0;i<net.d3;i++) out+=net.w4[i]*h2[i];
+  const q=Math.trunc(Math.abs(out)*A.OUT_CP/A.ACT_MAX);   // trunc, matches C
+  return out>=0?q:-q;                                     // stm-POV cp
+}
+function evalPos(net,pos){
+  const f=features(pos), t=threats(pos);
+  const accW=accumulate(net,f[1].feats), accB=accumulate(net,f[0].feats);
+  const bytes=t[1].bytes.concat(t[0].bytes);              // dataset layout: W then B
+  const stmCp=forward(net,accW,accB,bytes,pos.stm);
+  return {stmCp,whiteCp:pos.stm?stmCp:-stmCp,f,t,bytes};
+}
+</script>
+
+<script>
+"use strict";
+const VECTORS = {"net":"8cc4d9d6caeb","cases":[{"fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1","w":[783,782,781,780,779,778,777,776,838,833,901,898,967,960,1028,1091,1207,1206,1205,1204,1203,1202,1201,1200,1278,1273,1341,1338,1407,1400,1468,1531],"b":[1207,1206,1205,1204,1203,1202,1201,1200,1278,1273,1341,1338,1407,1400,1468,1531,783,782,781,780,779,778,777,776,838,833,901,898,967,960,1028,1091],"t":[44,0,0,0,0,0,0,0,44,0,0,0,0,0,0,0],"e":45},{"fen":"rnbqkbnr/pppppppp/8/8/8/N7/PPPPPPPP/R1BQKBNR b KQkq - 1 1","w":[783,782,781,780,779,778,777,776,833,855,901,898,967,960,1028,1091,1207,1206,1205,1204,1203,1202,1201,1200,1278,1273,1341,1338,1407,1400,1468,1531],"b":[1207,1206,1205,1204,1203,1202,1201,1200,1273,1263,1341,1338,1407,1400,1468,1531,783,782,781,780,779,778,777,776,838,833,901,898,967,960,1028,1091],"t":[48,0,0,0,0,0,16,0,44,0,0,0,0,0,0,0],"e":27},{"fen":"rnbqkb1r/pppppppp/7n/8/8/N7/PPPPPPPP/R1BQKBNR w KQkq - 2 2","w":[783,782,781,780,779,778,777,776,833,855,901,898,967,960,1028,1091,1207,1206,1205,1204,1203,1202,1201,1200,1256,1278,1341,1338,1407,1400,1468,1531],"b":[1207,1206,1205,1204,1203,1202,1201,1200,1273,1263,1341,1338,1407,1400,1468,1531,783,782,781,780,779,778,777,776,848,838,901,898,967,960,1028,1091],"t":[48,0,0,0,0,0,16,0,48,0,0,0,0,0,16,0],"e":38},{"fen":"rnbqkb1r/pppppppp/7n/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 3 2","w":[783,782,781,780,779,778,777,776,838,833,901,898,967,960,1028,1091,1207,1206,1205,1204,1203,1202,1201,1200,1256,1278,1341,1338,1407,1400,1468,1531],"b":[1207,1206,1205,1204,1203,1202,1201,1200,1278,1273,1341,1338,1407,1400,1468,1531,783,782,781,780,779,778,777,776,848,838,901,898,967,960,1028,1091],"t":[44,0,0,0,0,0,0,0,48,0,0,0,0,0,16,0],"e":60},{"fen":"rnbqkb1r/p1pppppp/7n/1p6/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 3","w":[783,782,781,780,779,778,777,776,838,833,901,898,967,960,1028,1091,1190,1207,1205,1204,1203,1202,1201,1200,1256,1278,1341,1338,1407,1400,1468,1531],"b":[1207,1206,1205,1204,1203,1202,1201,1200,1278,1273,1341,1338,1407,1400,1468,1531,798,783,781,780,779,778,777,776,848,838,901,898,967,960,1028,1091],"t":[44,0,0,0,0,0,0,0,52,0,0,0,0,0,16,0],"e":33},{"fen":"rnbqkb1r/p1pppppp/7n/1p6/8/5N2/PPPPPPPP/RNBQKB1R b KQkq - 1 3","w":[783,782,781,780,779,778,777,776,838,850,901,898,967,960,1028,1091,1190,1207,1205,1204,1203,1202,1201,1200,1256,1278,1341,1338,1407,1400,1468,1531],"b":[1207,1206,1205,1204,1203,1202,1201,1200,1278,1258,1341,1338,1407,1400,1468,1531,798,783,781,780,779,778,777,776,848,838,901,898,967,960,1028,1091],"t":[52,0,0,0,0,0,16,64,52,0,0,0,0,0,16,0],"e":-2},{"fen":"rn1qkb1r/p1pppppp/b6n/1p6/8/5N2/PPPPPPPP/RNBQKB1R w KQkq - 2 4","w":[783,782,781,780,779,778,777,776,838,850,901,898,967,960,1028,1091,1190,1207,1205,1204,1203,1202,1201,1200,1256,1278,1327,1338,1407,1400,1468,1531],"b":[1207,1206,1205,1204,1203,1202,1201,1200,1278,1258,1341,1338,1407,1400,1468,1531,798,783,781,780,779,778,777,776,848,838,919,898,967,960,1028,1091],"t":[52,0,0,0,0,0,16,64,54,0,0,0,0,0,16,0],"e":85},{"fen":"rn1qkb1r/p1pppppp/b6n/1p6/3N4/8/PPPPPPPP/RNBQKB1R b KQkq - 3 4","w":[783,782,781,780,779,778,777,776,838,860,901,898,967,960,1028,1091,1190,1207,1205,1204,1203,1202,1201,1200,1256,1278,1327,1338,1407,1400,1468,1531],"b":[1207,1206,1205,1204,1203,1202,1201,1200,1278,1252,1341,1338,1407,1400,1468,1531,798,783,781,780,779,778,777,776,848,838,919,898,967,960,1028,1091],"t":[52,0,0,0,0,0,0,0,54,0,0,0,0,16,16,0],"e":27},{"fen":"rn1qkb1r/p1p1pppp/b2p3n/1p6/3N4/8/PPPPPPPP/RNBQKB1R w KQkq - 0 5","w":[783,782,781,780,779,778,777,776,838,860,901,898,967,960,1028,1091,1190,1196,1207,1205,1203,1202,1201,1200,1256,1278,1327,1338,1407,1400,1468,1531],"b":[1207,1206,1205,1204,1203,1202,1201,1200,1278,1252,1341,1338,1407,1400,1468,1531,798,788,783,781,779,778,777,776,848,838,919,898,967,960,1028,1091],"t":[52,0,0,0,0,0,0,0,58,0,0,0,0,16,16,32],"e":53},{"fen":"rn1qkb1r/p1p1pppp/b2p3n/1p6/3N4/2N5/PPPPPPPP/R1BQKB1R b KQkq - 1 5","w":[783,782,781,780,779,778,777,776,853,860,901,898,967,960,1028,1091,1190,1196,1207,1205,1203,1202,1201,1200,1256,1278,1327,1338,1407,1400,1468,1531],"b":[1207,1206,1205,1204,1203,1202,1201,1200,1261,1252,1341,1338,1407,1400,1468,1531,798,788,783,781,779,778,777,776,848,838,919,898,967,960,1028,1091],"t":[58,0,0,0,0,0,16,64,58,0,0,0,0,16,16,32],"e":-13},{"fen":"rn1qkbr1/p1p1pppp/b2p3n/1p6/3N4/2N5/PPPPPPPP/R1BQKB1R w KQq - 2 6","w":[783,782,781,780,779,778,777,776,853,860,901,898,967,960,1028,1091,1190,1196,1207,1205,1203,1202,1201,1200,1256,1278,1327,1338,1407,1401,1468,1531],"b":[1207,1206,1205,1204,1203,1202,1201,1200,1261,1252,1341,1338,1407,1400,1468,1531,798,788,783,781,779,778,777,776,848,838,919,898,967,961,1028,1091],"t":[58,0,0,0,0,0,16,64,58,0,0,0,0,16,16,32],"e":69},{"fen":"rn1qkbr1/p1p1pppp/b2pN2n/1p6/8/2N5/PPPPPPPP/R1BQKB1R b KQq - 3 6","w":[783,782,781,780,779,778,777,776,853,875,901,898,967,960,1028,1091,1190,1196,1207,1205,1203,1202,1201,1200,1256,1278,1327,1338,1407,1401,1468,1531],"b":[1207,1206,1205,1204,1203,1202,1201,1200,1261,1235,1341,1338,1407,1400,1468,1531,798,788,783,781,779,778,777,776,848,838,919,898,967,961,1028,1091],"t":[68,32,32,32,0,16,16,96,58,0,0,0,32,80,16,32],"e":-40},{"fen":"rn1qkb1r/p1p1pppp/b2pN2n/1p6/8/2N5/PPPPPPPP/R1BQKB1R w KQq - 4 7","w":[783,782,781,780,779,778,777,776,853,875,901,898,967,960,1028,1091,1190,1196,1207,1205,1203,1202,1201,1200,1256,1278,1327,1338,1407,1400,1468,1531],"b":[1207,1206,1205,1204,1203,1202,1201,1200,1261,1235,1341,1338,1407,1400,1468,1531,798,788,783,781,779,778,777,776,848,838,919,898,967,960,1028,1091],"t":[68,32,32,32,0,16,16,96,58,0,0,0,32,80,16,32],"e":150},{"fen":"rn1qkb1r/p1p1pppp/b2pN2n/1p6/N7/8/PPPPPPPP/R1BQKB1R b KQq - 5 7","w":[783,782,781,780,779,778,777,776,863,875,901,898,967,960,1028,1091,1190,1196,1207,1205,1203,1202,1201,1200,1256,1278,1327,1338,1407,1400,1468,1531],"b":[1207,1206,1205,1204,1203,1202,1201,1200,1255,1235,1341,1338,1407,1400,1468,1531,798,788,783,781,779,778,777,776,848,838,919,898,967,960,1028,1091],"t":[62,32,64,64,0,32,0,32,58,0,0,0,64,64,16,32],"e":139},{"fen":"rn1qkb1r/p3pppp/b2pN2n/1pp5/N7/8/PPPPPPPP/R1BQKB1R w KQq - 0 8","w":[783,782,781,780,779,778,777,776,863,875,901,898,967,960,1028,1091,1190,1189,1196,1207,1203,1202,1201,1200,1256,1278,1327,1338,1407,1400,1468,1531],"b":[1207,1206,1205,1204,1203,1202,1201,1200,1255,1235,1341,1338,1407,1400,1468,1531,798,797,788,783,779,778,777,776,848,838,919,898,967,960,1028,1091],"t":[62,32,64,64,0,32,0,32,64,0,0,0,64,64,16,64],"e":30},{"fen":"rn1qkb1r/p3pppp/b2pN2n/1pp5/N7/1P6/P1PPPPPP/R1BQKB1R b KQq - 0 8","w":[783,781,780,779,778,777,776,790,863,875,901,898,967,960,1028,1091,1190,1189,1196,1207,1203,1202,1201,1200,1256,1278,1327,1338,1407,1400,1468,1531],"b":[1207,1205,1204,1203,1202,1201,1200,1198,1255,1235,1341,1338,1407,1400,1468,1531,798,797,788,783,779,778,777,776,848,838,919,898,967,960,1028,1091],"t":[66,32,64,32,0,32,16,32,64,0,0,0,32,64,16,64],"e":59},{"fen":"rn1qkb1r/p3pppp/b2pN2n/2p5/p7/1P6/P1PPPPPP/R1BQKB1R w KQq - 0 9","w":[783,781,780,779,778,777,776,790,875,901,898,967,960,1028,1091,1183,1189,1196,1207,1203,1202,1201,1200,1256,1278,1327,1338,1407,1400,1468,1531],"b":[1207,1205,1204,1203,1202,1201,1200,1198,1235,1341,1338,1407,1400,1468,1531,807,797,788,783,779,778,777,776,848,838,919,898,967,960,1028,1091],"t":[64,32,32,32,32,48,0,32,68,16,0,32,32,80,16,64],"e":-21},{"fen":"rn1qkb1r/p3pppp/b2pN2n/2p5/p7/1PP5/P2PPPPP/R1BQKB1R b KQq - 0 9","w":[783,780,779,778,777,776,790,789,875,901,898,967,960,1028,1091,1183,1189,1196,1207,1203,1202,1201,1200,1256,1278,1327,1338,1407,1400,1468,1531],"b":[1207,1204,1203,1202,1201,1200,1198,1197,1235,1341,1338,1407,1400,1468,1531,807,797,788,783,779,778,777,776,848,838,919,898,967,960,1028,1091],"t":[66,32,32,32,32,48,0,32,68,16,0,32,32,80,16,64],"e":164},{"fen":"rn1qkb1r/p3pppp/3pN2n/1bp5/p7/1PP5/P2PPPPP/R1BQKB1R w KQq - 1 10","w":[783,780,779,778,777,776,790,789,875,901,898,967,960,1028,1091,1183,1189,1196,1207,1203,1202,1201,1200,1256,1278,1318,1338,1407,1400,1468,1531],"b":[1207,1204,1203,1202,1201,1200,1198,1197,1235,1341,1338,1407,1400,1468,1531,807,797,788,783,779,778,777,776,848,838,926,898,967,960,1028,1091],"t":[66,32,32,32,0,48,0,32,66,16,0,0,32,80,16,64],"e":-45},{"fen":"rn1qkb1r/p3pppp/3p3n/1bp3N1/p7/1PP5/P2PPPPP/R1BQKB1R b KQq - 2 10","w":[783,780,779,778,777,776,790,789,865,901,898,967,960,1028,1091,1183,1189,1196,1207,1203,1202,1201,1200,1256,1278,1318,1338,1407,1400,1468,1531],"b":[1207,1204,1203,1202,1201,1200,1198,1197,1241,1341,1338,1407,1400,1468,1531,807,797,788,783,779,778,777,776,848,838,926,898,967,960,1028,1091],"t":[60,16,0,0,0,32,0,64,66,16,0,0,0,48,16,64],"e":217},{"fen":"rnq1kb1r/p3pppp/3p3n/1bp3N1/p7/1PP5/P2PPPPP/R1BQKB1R w KQq - 3 11","w":[783,780,779,778,777,776,790,789,865,901,898,967,960,1028,1091,1183,1189,1196,1207,1203,1202,1201,1200,1256,1278,1318,1338,1407,1400,1469,1531],"b":[1207,1204,1203,1202,1201,1200,1198,1197,1241,1341,1338,1407,1400,1468,1531,807,797,788,783,779,778,777,776,848,838,926,898,967,960,1029,1091],"t":[60,16,0,0,0,32,0,64,66,16,0,0,0,48,16,64],"e":-160},{"fen":"rnq1kb1r/p3pppp/3p3n/1bp5/p7/1PP2N2/P2PPPPP/R1BQKB1R b KQq - 4 11","w":[783,780,779,778,777,776,790,789,850,901,898,967,960,1028,1091,1183,1189,1196,1207,1203,1202,1201,1200,1256,1278,1318,1338,1407,1400,1469,1531],"b":[1207,1204,1203,1202,1201,1200,1198,1197,1258,1341,1338,1407,1400,1468,1531,807,797,788,783,779,778,777,776,848,838,926,898,967,960,1029,1091],"t":[58,0,0,0,0,32,16,64,66,16,0,0,0,16,16,64],"e":260},{"fen":"rn2kb1r/p3pppp/3pq2n/1bp5/p7/1PP2N2/P2PPPPP/R1BQKB1R w KQq - 5 12","w":[783,780,779,778,777,776,790,789,850,901,898,967,960,1028,1091,1183,1189,1196,1207,1203,1202,1201,1200,1256,1278,1318,1338,1407,1400,1451,1531],"b":[1207,1204,1203,1202,1201,1200,1198,1197,1258,1341,1338,1407,1400,1468,1531,807,797,788,783,779,778,777,776,848,838,926,898,967,960,1043,1091],"t":[58,0,0,0,0,32,16,64,70,16,0,0,0,16,32,127],"e":-162},{"fen":"rn2kb1r/p3pppp/3pq2n/1bp3N1/p7/1PP5/P2PPPPP/R1BQKB1R b KQq - 6 12","w":[783,780,779,778,777,776,790,789,865,901,898,967,960,1028,1091,1183,1189,1196,1207,1203,1202,1201,1200,1256,1278,1318,1338,1407,1400,1451,1531],"b":[1207,1204,1203,1202,1201,1200,1198,1197,1241,1341,1338,1407,1400,1468,1531,807,797,788,783,779,778,777,776,848,838,926,898,967,960,1043,1091],"t":[60,16,0,0,0,32,0,64,70,16,0,0,0,64,32,127],"e":207},{"fen":"rn2kb1r/4pppp/p2pq2n/1bp3N1/p7/1PP5/P2PPPPP/R1BQKB1R w KQq - 0 13","w":[783,780,779,778,777,776,790,789,865,901,898,967,960,1028,1091,1183,1189,1199,1196,1203,1202,1201,1200,1256,1278,1318,1338,1407,1400,1451,1531],"b":[1207,1204,1203,1202,1201,1200,1198,1197,1241,1341,1338,1407,1400,1468,1531,807,797,791,788,779,778,777,776,848,838,926,898,967,960,1043,1091],"t":[60,16,0,0,0,32,0,64,70,16,0,0,0,64,48,127],"e":-143},{"fen":"rn2kb1r/4pppp/p2pq2n/1bp3N1/p7/1PP3P1/P2PPP1P/R1BQKB1R b KQq - 0 13","w":[783,780,779,778,776,790,789,785,865,901,898,967,960,1028,1091,1183,1189,1199,1196,1203,1202,1201,1200,1256,1278,1318,1338,1407,1400,1451,1531],"b":[1207,1204,1203,1202,1200,1198,1197,1193,1241,1341,1338,1407,1400,1468,1531,807,797,791,788,779,778,777,776,848,838,926,898,967,960,1043,1091],"t":[64,16,0,0,0,32,0,64,70,16,0,0,0,64,48,127],"e":185},{"fen":"rn2kb1r/4pppp/p2p3n/1bpq2N1/p7/1PP3P1/P2PPP1P/R1BQKB1R w KQq - 1 14","w":[783,780,779,778,776,790,789,785,865,901,898,967,960,1028,1091,1183,1189,1199,1196,1203,1202,1201,1200,1256,1278,1318,1338,1407,1400,1444,1531],"b":[1207,1204,1203,1202,1200,1198,1197,1193,1241,1341,1338,1407,1400,1468,1531,807,797,791,788,779,778,777,776,848,838,926,898,967,960,1052,1091],"t":[64,16,0,64,0,80,0,64,76,32,0,0,64,48,32,96],"e":-179},{"fen":"rn2kb1r/4pppp/p2pN2n/1bpq4/p7/1PP3P1/P2PPP1P/R1BQKB1R b KQq - 2 14","w":[783,780,779,778,776,790,789,785,875,901,898,967,960,1028,1091,1183,1189,1199,1196,1203,1202,1201,1200,1256,1278,1318,1338,1407,1400,1444,1531],"b":[1207,1204,1203,1202,1200,1198,1197,1193,1235,1341,1338,1407,1400,1468,1531,807,797,791,788,779,778,777,776,848,838,926,898,967,960,1052,1091],"t":[68,32,32,64,0,80,0,32,78,32,0,0,64,64,32,96],"e":156},{"fen":"rn2kb1r/4pppp/p2pN2n/1b1q4/p1p5/1PP3P1/P2PPP1P/R1BQKB1R w KQq - 0 15","w":[783,780,779,778,776,790,789,785,875,901,898,967,960,1028,1091,1183,1181,1199,1196,1203,1202,1201,1200,1256,1278,1318,1338,1407,1400,1444,1531],"b":[1207,1204,1203,1202,1200,1198,1197,1193,1235,1341,1338,1407,1400,1468,1531,807,805,791,788,779,778,777,776,848,838,926,898,967,960,1052,1091],"t":[68,32,32,64,0,64,0,32,74,16,0,0,64,64,32,96],"e":-36},{"fen":"rn2kb1r/4pppp/p2pN2n/1b1q4/p1p5/1PP3P1/P2PPP1P/1RBQKB1R b Kq - 1 15","w":[783,780,779,778,776,790,789,785,875,901,898,966,960,1028,1091,1183,1181,1199,1196,1203,1202,1201,1200,1256,1278,1318,1338,1407,1400,1444,1531],"b":[1207,1204,1203,1202,1200,1198,1197,1193,1235,1341,1338,1406,1400,1468,1531,807,805,791,788,779,778,777,776,848,838,926,898,967,960,1052,1091],"t":[66,32,32,64,0,64,0,32,74,16,0,0,64,64,32,96],"e":100},{"fen":"1n2kb1r/r3pppp/p2pN2n/1b1q4/p1p5/1PP3P1/P2PPP1P/1RBQKB1R w K - 2 16","w":[783,780,779,778,776,790,789,785,875,901,898,966,960,1028,1091,1183,1181,1199,1196,1203,1202,1201,1200,1256,1278,1318,1338,1399,1400,1444,1531],"b":[1207,1204,1203,1202,1200,1198,1197,1193,1235,1341,1338,1406,1400,1468,1531,807,805,791,788,779,778,777,776,848,838,926,898,975,960,1052,1091],"t":[66,32,32,64,0,64,0,32,72,16,0,0,64,64,32,96],"e":-47},{"fen":"1n2kb1r/r3pppp/p2pN2n/1b1q4/pPp5/2P3P1/P2PPP1P/1RBQKB1R b K - 0 16","w":[783,780,779,778,776,789,785,798,875,901,898,966,960,1028,1091,1183,1181,1199,1196,1203,1202,1201,1200,1256,1278,1318,1338,1399,1400,1444,1531],"b":[1207,1204,1203,1202,1200,1197,1193,1190,1235,1341,1338,1406,1400,1468,1531,807,805,791,788,779,778,777,776,848,838,926,898,975,960,1052,1091],"t":[66,32,32,64,0,48,0,32,72,16,0,0,64,48,32,96],"e":128},{"fen":"1n2kb1r/3rpppp/p2pN2n/1b1q4/pPp5/2P3P1/P2PPP1P/1RBQKB1R w K - 1 17","w":[783,780,779,778,776,789,785,798,875,901,898,966,960,1028,1091,1183,1181,1199,1196,1203,1202,1201,1200,1256,1278,1318,1338,1396,1400,1444,1531],"b":[1207,1204,1203,1202,1200,1197,1193,1190,1235,1341,1338,1406,1400,1468,1531,807,805,791,788,779,778,777,776,848,838,926,898,972,960,1052,1091],"t":[66,32,32,64,0,48,0,32,72,16,0,0,64,48,32,96],"e":-52},{"fen":"1n2kb1r/3rpppp/p2pN2n/1b1q4/pPp5/1RP3P1/P2PPP1P/2BQKB1R b K - 2 17","w":[783,780,779,778,776,789,785,798,875,901,898,960,982,1028,1091,1183,1181,1199,1196,1203,1202,1201,1200,1256,1278,1318,1338,1396,1400,1444,1531],"b":[1207,1204,1203,1202,1200,1197,1193,1190,1235,1341,1338,1400,1390,1468,1531,807,805,791,788,779,778,777,776,848,838,926,898,972,960,1052,1091],"t":[64,32,64,64,0,64,16,32,72,16,0,0,64,32,32,96],"e":221},{"fen":"1n1rkb1r/4pppp/p2pN2n/1b1q4/pPp5/1RP3P1/P2PPP1P/2BQKB1R w K - 3 18","w":[783,780,779,778,776,789,785,798,875,901,898,960,982,1028,1091,1183,1181,1199,1196,1203,1202,1201,1200,1256,1278,1318,1338,1404,1400,1444,1531],"b":[1207,1204,1203,1202,1200,1197,1193,1190,1235,1341,1338,1400,1390,1468,1531,807,805,791,788,779,778,777,776,848,838,926,898,964,960,1052,1091],"t":[64,32,64,64,0,64,16,32,74,16,0,0,64,48,32,96],"e":-140},{"fen":"1n1rkb1r/4pppp/p2pN2n/1b1q4/pPp5/R1P3P1/P2PPP1P/2BQKB1R b K - 4 18","w":[783,780,779,778,776,789,785,798,875,901,898,960,983,1028,1091,1183,1181,1199,1196,1203,1202,1201,1200,1256,1278,1318,1338,1404,1400,1444,1531],"b":[1207,1204,1203,1202,1200,1197,1193,1190,1235,1341,1338,1400,1391,1468,1531,807,805,791,788,779,778,777,776,848,838,926,898,964,960,1052,1091],"t":[66,32,32,64,0,48,0,32,74,16,0,0,64,64,32,96],"e":137},{"fen":"3rkb1r/3npppp/p2pN2n/1b1q4/pPp5/R1P3P1/P2PPP1P/2BQKB1R w K - 5 19","w":[783,780,779,778,776,789,785,798,875,901,898,960,983,1028,1091,1183,1181,1199,1196,1203,1202,1201,1200,1256,1268,1318,1338,1404,1400,1444,1531],"b":[1207,1204,1203,1202,1200,1197,1193,1190,1235,1341,1338,1400,1391,1468,1531,807,805,791,788,779,778,777,776,848,844,926,898,964,960,1052,1091],"t":[66,32,32,64,0,48,0,32,76,16,0,0,64,64,32,96],"e":-128},{"fen":"3rkb1r/3npppp/p2pN2n/1b1q4/pPp5/R1P1P1P1/P2P1P1P/2BQKB1R b K - 0 19","w":[783,780,778,776,789,787,785,798,875,901,898,960,983,1028,1091,1183,1181,1199,1196,1203,1202,1201,1200,1256,1268,1318,1338,1404,1400,1444,1531],"b":[1207,1204,1202,1200,1197,1195,1193,1190,1235,1341,1338,1400,1391,1468,1531,807,805,791,788,779,778,777,776,848,844,926,898,964,960,1052,1091],"t":[72,32,32,64,0,48,0,32,76,16,0,0,64,80,32,96],"e":204},{"fen":"3rkb1r/3npppp/p2pN2n/1b2q3/pPp5/R1P1P1P1/P2P1P1P/2BQKB1R w K - 1 20","w":[783,780,778,776,789,787,785,798,875,901,898,960,983,1028,1091,1183,1181,1199,1196,1203,1202,1201,1200,1256,1268,1318,1338,1404,1400,1443,1531],"b":[1207,1204,1202,1200,1197,1195,1193,1190,1235,1341,1338,1400,1391,1468,1531,807,805,791,788,779,778,777,776,848,844,926,898,964,960,1051,1091],"t":[72,32,32,32,0,64,0,32,76,0,0,0,32,80,48,127],"e":-164},{"fen":"3rkb1r/3npppp/p2pN2n/1b2q3/pPp4P/R1P1P1P1/P2P1P2/2BQKB1R b K - 0 20","w":[783,780,778,789,787,785,798,792,875,901,898,960,983,1028,1091,1183,1181,1199,1196,1203,1202,1201,1200,1256,1268,1318,1338,1404,1400,1443,1531],"b":[1207,1204,1202,1197,1195,1193,1190,1184,1235,1341,1338,1400,1391,1468,1531,807,805,791,788,779,778,777,776,848,844,926,898,964,960,1051,1091],"t":[72,32,32,32,0,64,0,32,76,0,0,0,32,80,48,127],"e":205}]};
+let NET=null, POS=null;
+const $=id=>document.getElementById(id);
+const chip=(el,cls,txt)=>{el.className="chip "+cls;el.lastElementChild.textContent=txt;};
+
+/* ---------- theme ---------- */
+$("theme").addEventListener("click",()=>{
+  const r=document.documentElement;
+  const dark=(r.dataset.theme||(matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light"))==="dark";
+  r.dataset.theme=dark?"light":"dark";
+});
+
+/* ---------- reference self-check ---------- */
+async function selfCheck(buf){
+  let featOk=0, thrOk=0, evalOk=0, evalRun=0;
+  const digest=[...new Uint8Array(await crypto.subtle.digest("SHA-256",buf))]
+    .map(b=>b.toString(16).padStart(2,"0")).join("").slice(0,12);
+  const sameNet=digest===VECTORS.net;
+  for(const c of VECTORS.cases){
+    const pos=parseFen(c.fen);
+    const f=features(pos), t=threats(pos);
+    const gotW=[...f[1].feats].sort((a,b)=>a-b), expW=[...c.w].sort((a,b)=>a-b);
+    const gotB=[...f[0].feats].sort((a,b)=>a-b), expB=[...c.b].sort((a,b)=>a-b);
+    if(gotW.join()===expW.join()&&gotB.join()===expB.join()) featOk++;
+    const bytes=t[1].bytes.concat(t[0].bytes);
+    if(bytes.join()===c.t.join()) thrOk++;
+    if(sameNet&&NET){evalRun++; if(evalPos(NET,pos).stmCp===c.e) evalOk++;}
+  }
+  const n=VECTORS.cases.length;
+  const parts=[`features ${featOk}/${n}`,`threats ${thrOk}/${n}`,
+    sameNet?`eval ${evalOk}/${evalRun}`:"eval skipped (other net)"];
+  const bad=featOk<n||thrOk<n||(sameNet&&evalOk<evalRun);
+  chip($("checkchip"),bad?"err":"ok",
+    (bad?"disagrees with engine \u2014 ":"matches engine \u2014 ")+parts.join(", "));
+  return {digest,sameNet,bad};
+}
+
+/* ---------- net loading ---------- */
+$("netfile").addEventListener("change",async e=>{
+  const file=e.target.files[0]; if(!file) return;
+  $("neterr").textContent="";
+  try{
+    const buf=await file.arrayBuffer();
+    NET=loadNet(buf);
+    const r=await selfCheck(buf);
+    chip($("netchip"),r.bad?"err":"ok",`${file.name} \u00b7 ${(buf.byteLength/1e6).toFixed(1)} MB`);
+    $("netdetail").innerHTML=`Loaded <span class="mono">${r.digest}</span> \u2014 KA8T `+
+      `<span class="mono">6144&rarr;${NET.h}&times;2</span> + ${NET.td} threats, tail `+
+      `<span class="mono">[${2*NET.h}+${NET.td}]&rarr;${NET.d2}&rarr;${NET.d3}&rarr;1</span>.`+
+      (r.sameNet?" This is the net the reference vectors were generated from.":
+                 " Evaluation agreement is not checked for this net; features and threats are.");
+    render();
+  }catch(err){
+    NET=null; chip($("netchip"),"err","could not load");
+    chip($("checkchip"),"wait","reference check pending");
+    $("neterr").textContent=err.message;
+  }
+});
+
+/* ---------- board ---------- */
+const FILES="abcdefgh";
+function render(){
+  const bd=$("board"); bd.innerHTML="";
+  $("files").innerHTML=[...FILES].map(f=>`<span>${f}</span>`).join("");
+  if(!POS) return;
+  let base=null, deltas=null, maxAbs=1;
+  if(NET){
+    base=evalPos(NET,POS);
+    deltas=new Map();
+    const men=sqList((POS.occ[0]|POS.occ[1])&~POS.bb.k);
+    for(const s of men){
+      const d=evalPos(NET,removePiece(POS,s)).whiteCp-base.whiteCp;
+      deltas.set(s,d); maxAbs=Math.max(maxAbs,Math.abs(d));
+    }
+  }
+  for(let rank=7;rank>=0;rank--) for(let file=0;file<8;file++){
+    const s=rank*8+file, d=document.createElement("div");
+    d.className="sq "+(((rank+file)&1)?"l":"d");
+    d.title=FILES[file]+(rank+1);
+    let glyph="";
+    for(let pi=0;pi<6;pi++){
+      if(POS.bb[PT[pi]]&bit(s)){
+        const w=!!(POS.occ[1]&bit(s));
+        glyph=GLYPH[(w?"w":"b")+PT[pi]];
+        d.title+=` \u2014 ${w?"White":"Black"} ${["pawn","knight","bishop","rook","queen","king"][pi]}`;
+      }
+    }
+    if(glyph){
+      const g=document.createElement("span");
+      g.className="pc "+((POS.occ[1]&bit(s))?"w":"b"); g.textContent=glyph; d.appendChild(g);
+    }
+    if(deltas&&deltas.has(s)){
+      const v=deltas.get(s), mag=Math.min(1,Math.abs(v)/maxAbs);
+      const tint=document.createElement("span"); tint.className="tint";
+      tint.style.background=v>0?`color-mix(in srgb, var(--warm) ${(mag*55).toFixed(0)}%, transparent)`
+                               :`color-mix(in srgb, var(--cool) ${(mag*55).toFixed(0)}%, transparent)`;
+      d.appendChild(tint);
+      const lab=document.createElement("span"); lab.className="val";
+      lab.textContent=(v>0?"+":"")+(v/100).toFixed(2);
+      d.appendChild(lab);
+      d.title+=` \u2014 removing it: ${(v>0?"+":"")}${(v/100).toFixed(2)} pawns`;
+    }
+    bd.appendChild(d);
+  }
+  renderReadouts(base);
+}
+
+function renderReadouts(base){
+  const rows=$("evalrows"), tb=$("threats").querySelector("tbody"), ft=$("ftinfo").querySelector("tbody");
+  rows.innerHTML=""; tb.innerHTML=""; ft.innerHTML="";
+  if(!NET||!base){
+    $("evalbig").textContent="\u2014";
+    $("evalnote").textContent="Load a .nnue net to evaluate this position.";
+    return;
+  }
+  const w=base.whiteCp;
+  $("evalbig").textContent=(w>0?"+":"")+(w/100).toFixed(2);
+  $("evalbig").style.color=w>0?"var(--warm)":w<0?"var(--cool)":"var(--ink)";
+  const add=(k,v)=>rows.insertAdjacentHTML("beforeend",
+    `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`);
+  add("White&rsquo;s side, pawns",(w>0?"+":"")+(w/100).toFixed(2));
+  add("Side to move, centipawns",(base.stmCp>0?"+":"")+base.stmCp);
+  add("Side to move",POS.stm?"White":"Black");
+  add("Men on board",popcount(POS.occ[0]|POS.occ[1]));
+  $("evalnote").innerHTML="The engine uses this network in the main search only; "+
+    "quiescence keeps the hand-written evaluation, so this number is not what a leaf node returns.";
+
+  const meta=THREAT_META, tw=base.t[1], tbk=base.t[0];
+  for(let i=0;i<8;i++){
+    const [name,scale]=meta[i];
+    const cw=tw.raw[i]/scale, cb=tbk.raw[i]/scale;
+    const clw=tw.raw[i]>127, clb=tbk.raw[i]>127;
+    const span=Math.max(1,Math.max(tw.bytes[i],tbk.bytes[i]));
+    const bar=(v,c)=>`<span class="bar" style="width:${(v/span*46).toFixed(1)}%;background:${c}"></span>`;
+    tb.insertAdjacentHTML("beforeend",
+      `<tr><td>${name}<br><span class="mono" style="font-size:11px;color:var(--ink-3)">`+
+      `count &times; ${scale}</span></td>`+
+      `<td class="n${clw?" clamped":""}">${tw.bytes[i]}<br>`+
+      `<span style="font-size:11px;color:var(--ink-3)">${cw} sq</span></td>`+
+      `<td class="n${clb?" clamped":""}">${tbk.bytes[i]}<br>`+
+      `<span style="font-size:11px;color:var(--ink-3)">${cb} sq</span></td>`+
+      `<td>${bar(tw.bytes[i],"var(--warm)")} ${bar(tbk.bytes[i],"var(--cool)")}</td></tr>`);
+  }
+
+  const sq=s=>FILES[s&7]+((s>>3)+1);
+  for(const [label,persp] of [["White perspective",1],["Black perspective",0]]){
+    const f=base.f[persp];
+    ft.insertAdjacentHTML("beforeend",
+      `<tr><td>${label}</td>`+
+      `<td class="n">king ${sq(f.ksq)}</td>`+
+      `<td class="n">bucket ${f.bucket} of 8</td>`+
+      `<td class="n">${f.mirror?"mirrored":"not mirrored"}</td>`+
+      `<td class="n">${f.feats.length} active features</td></tr>`);
+  }
+}
+
+/* ---------- position input ---------- */
+function setFen(fen){
+  $("fenerr").textContent="";
+  try{POS=parseFen(fen); $("fen").value=fen; render();}
+  catch(e){$("fenerr").textContent=e.message;}
+}
+$("apply").addEventListener("click",()=>setFen($("fen").value));
+$("fen").addEventListener("keydown",e=>{if(e.key==="Enter")setFen($("fen").value);});
+$("startpos").addEventListener("click",()=>setFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+$("kiwipete").addEventListener("click",()=>setFen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"));
+$("endgame").addEventListener("click",()=>setFen("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1"));
+setFen($("fen").value);
+</script>
