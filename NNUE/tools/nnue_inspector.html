@@ -604,9 +604,16 @@ $("theme").addEventListener("click",()=>{
 /* ---------- reference self-check ---------- */
 async function selfCheck(buf){
   let featOk=0, thrOk=0, evalOk=0, evalRun=0;
-  const digest=[...new Uint8Array(await crypto.subtle.digest("SHA-256",buf))]
-    .map(b=>b.toString(16).padStart(2,"0")).join("").slice(0,12);
-  const sameNet=digest===VECTORS.net;
+  // crypto.subtle needs a secure context. It is available on https and, in
+  // current browsers, on file:// -- but not universally, and a tool that
+  // dies because it could not hash a file would be absurd. Without a digest
+  // we simply cannot claim the net matches the vectors, so we say so.
+  let digest=null;
+  try{
+    digest=[...new Uint8Array(await crypto.subtle.digest("SHA-256",buf))]
+      .map(b=>b.toString(16).padStart(2,"0")).join("").slice(0,12);
+  }catch(e){ digest=null; }
+  const sameNet=digest!==null&&digest===VECTORS.net;
   for(const c of VECTORS.cases){
     const pos=parseFen(c.fen);
     const f=features(pos), t=threats(pos);
@@ -619,7 +626,8 @@ async function selfCheck(buf){
   }
   const n=VECTORS.cases.length;
   const parts=[`features ${featOk}/${n}`,`threats ${thrOk}/${n}`,
-    sameNet?`eval ${evalOk}/${evalRun}`:"eval skipped (other net)"];
+    sameNet?`eval ${evalOk}/${evalRun}`
+          :(digest===null?"eval skipped (cannot hash here)":"eval skipped (other net)")];
   const bad=featOk<n||thrOk<n||(sameNet&&evalOk<evalRun);
   chip($("checkchip"),bad?"err":"ok",
     (bad?"disagrees with engine \u2014 ":"matches engine \u2014 ")+parts.join(", "));

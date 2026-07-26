@@ -1,5 +1,23 @@
 # NNUE/tools
 
+## Opening it locally
+
+    python3 NNUE/tools/make_local.py
+    open NNUE/tools/nnue_inspector_local.html
+
+`nnue_inspector.html` is page CONTENT (no doctype, no head) because the
+artifact host supplies the skeleton. Opened straight off disk it still
+renders, but in QUIRKS MODE with no charset or viewport declared.
+`make_local.py` wraps it into a real document; that copy is GENERATED, so
+edit `nnue_inspector.html` and re-run the script rather than editing both.
+
+Verified from `file://`: standards mode, UTF-8, `isSecureContext` true (so
+`crypto.subtle` is available for the net hash), board renders, no console
+errors. Nothing is ever fetched, so there is no server and no network.
+If a browser ever does refuse the hash, the page says "eval skipped (cannot
+hash here)" and still checks features and threats -- it does not claim an
+agreement it could not establish.
+
 `nnue_inspector.html` -- a self-contained page that loads a Pygin `.nnue` v1
 net and evaluates positions in the browser, re-implementing the engine's
 KA8T feature extraction, T16 threat computation and integer forward pass in
