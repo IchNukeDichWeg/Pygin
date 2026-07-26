@@ -12,15 +12,29 @@ cannot show for our architecture: the 16 threat scalars broken out by term
 with their underlying square counts and saturation state, and the king
 bucket / mirror state of each perspective.
 
-## Moving pieces
+## Play mode and Edit mode
 
-Click a piece, then click a square. Captures happen; legality is NOT enforced,
-and that is deliberate -- the question an evaluation tool answers is "what
-would the net say if this knight were there", and a good share of those
-positions are unreachable in a real game. Castling rights and en passant are
-emitted as "-" after an edit, which changes nothing: KA8T reads piece
-bitboards and king squares, T16 reads attacks, and neither looks at either
-field.
+**Play** shows a piece's legal moves as markers (a dot for a quiet move, a ring
+around a piece for a capture) and enforces them. Castling, en passant and pins
+are handled; promotion is automatic to a queen. `Flip board` swaps the
+orientation; `Switch side to move` flips the mover, which matters because the
+net's output is side-to-move relative.
+
+**Edit** drops legality entirely: drag pieces from the tray onto the board,
+drag them around it, drop one on the tray to remove it. That is deliberate --
+the question an evaluation tool answers is "what would the net say if this
+knight were there", and a good share of those positions are unreachable in a
+real game. Kings cannot be deleted and a second king of the same colour
+replaces the first, because the feature set needs exactly one of each.
+
+Castling rights are cleared by an edit, which changes no evaluation: KA8T
+reads piece bitboards and king squares, T16 reads attacks, and neither looks
+at castling or en passant.
+
+`move_vectors.json` holds 186 positions with every legal move of every movable
+piece, exported from python-chess. The JS generator is checked against it
+(2062/2062 pieces matched at the last run); regenerate if the editor ever
+grows variant rules.
 
 ## compare_eval.py -- HCE vs NNUE
 
