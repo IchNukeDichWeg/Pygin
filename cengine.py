@@ -1030,6 +1030,32 @@ class Engine:
                                              # arrays; this Python constant alone
                                              # does nothing for depth.
 
+    def _eval_fingerprint(self):
+        """FB-55: sha1 of the exact eval payload csearch_set_eval receives.
+
+        Mirrors the push below field for field -- if a field is added there
+        and not here, the guard silently stops covering it, so keep the two
+        in lockstep (the FB-41/FB-42 lesson)."""
+        import hashlib
+        eng = self._py
+        order = [chess.PAWN, chess.KNIGHT, chess.BISHOP,
+                 chess.ROOK, chess.QUEEN, chess.KING]
+        parts = [
+            [v for pt in order for v in eng.mg_tables[pt]],
+            [v for pt in order for v in eng.eg_tables[pt]],
+            [eng.MG_VALUES[pt] for pt in order],
+            [eng.EG_VALUES[pt] for pt in order],
+            [eng.PHASE_WEIGHTS[pt] for pt in order],
+            [eng.TEMPO, eng.DOUBLED_PAWN, eng.ISOLATED_PAWN, eng.BACKWARD_PAWN],
+            list(eng.PASSED_PAWN_MG), list(eng.PASSED_PAWN_EG),
+            [eng.MOPUP_MIN_ADV, eng.MOPUP_STRONG_CMD_WEIGHT,
+             eng.MOPUP_STRONG_KING_WEIGHT],
+            [eng.DOUBLED_PAWN_EG, eng.ISOLATED_PAWN_EG, eng.BACKWARD_PAWN_EG],
+            [eng.CONTEMPT, eng.DRAW_AVOID_MARGIN],
+        ]
+        blob = ";".join(",".join(str(int(v)) for v in p) for p in parts)
+        return hashlib.sha1(blob.encode()).hexdigest()[:16]
+
     def __init__(self):
         self._pymod = _load_pyengine()
         # The param sync below re-runs _sync_c_params, which early-returns
@@ -1108,7 +1134,16 @@ class Engine:
               self.NULL_NODOUBLE, self.NULL_EVALR, self.QS_EVASION_CAP,
               self.SINGULAR, self.SE_MIN_DEPTH, self.SE_MARGIN, self.SE_BUDGET,
               self.KILLER_INHERIT, self.QUIET_MALUS_ALL, self.HIST_KEEP,
-            self.QS_TTFIRST)
+            self.QS_TTFIRST,
+              # FB-55: the guard covered 49 TOGGLES and not one EVAL VALUE --
+              # a hole exactly where the .so-cross-contamination class bites.
+              # csearch.so's eval params are process-wide too, so two engines
+              # whose only difference is a retuned scalar (a texel candidate
+              # vs the shipped eval -- the commonest same-process pairing in
+              # this project) passed the guard and silently shared whichever
+              # was constructed FIRST. The pushed vector is hashed, not
+              # listed: it is ~1,500 numbers and must not bloat the tuple.
+              self._eval_fingerprint())
         if _SYNCED_FINGERPRINT is not None and _SYNCED_FINGERPRINT != fp:
             raise RuntimeError(
                 "cengine: two different Engine configs in one process -- "
