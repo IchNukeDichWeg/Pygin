@@ -21,7 +21,13 @@ REPO_DIR = os.path.dirname(NNUE_DIR)
 sys.path.insert(0, NNUE_DIR)
 sys.path.insert(0, REPO_DIR)
 
-NET = os.path.join(NNUE_DIR, "nets", "toy.nnue")
+# Default: the plumbing-test net, which is what selftest.py wants -- it runs
+# on every checkout and must not depend on a trained net existing. verify.py
+# passes the net actually under acceptance, because a gate that silently
+# checks a DIFFERENT artifact than the one being accepted is worse than no
+# gate: it reports PASS for a net it never loaded.
+NET = (sys.argv[1] if len(sys.argv) > 1
+       else os.path.join(NNUE_DIR, "nets", "toy.nnue"))
 
 if not os.path.exists(NET):
     print(f"skip: no net file at {NET} (dormant build; train one via "
