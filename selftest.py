@@ -879,10 +879,13 @@ if os.path.exists(_t_sprt):
         check("SPRT resume: pooling, fingerprint + offset refusals (FI-82)",
               False, "timeout")
 
-# --- 5j2. FI-100 / FI-101: the two --nodes log readers -------------------- #
-# Both decide whether a campaign's numbers are trustworthy (engagement, and
-# whether the calibration held), so their own parsers need a gate. Each ships
-# a --selftest with a control it must fail on; run them the same way as 5j.
+# --- 5j2. FI-100 / FI-101 / FI-102: the measurement readers --------------- #
+# Each decides whether a campaign's or a bench's numbers are trustworthy --
+# engagement, whether the calibration held, and whether the work actually
+# fell -- so their own parsers need a gate. Each ships a --selftest with a
+# control it must fail on; run them the same way as 5j. FI-102's real
+# acceptance controls need Linux perf and are NOT covered here; its --selftest
+# gates the parser and the one-sided rule only, and says so.
 for _script, _label in ((os.path.join("testing", "pair_identity.py"),
                          "pair identity: mirror pairs + ptnml (FI-100)"),
                         (os.path.join("testing", "nodes_calibration.py"),
