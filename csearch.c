@@ -1747,9 +1747,28 @@ int cs_hashfull(void)
     return used;
 }
 
+static __thread int g_is_helper = 0;    /* set at helper-thread entry;
+                                         * declared here because FI-96's
+                                         * oracle build tests it inside
+                                         * tt_store_raw below */
+
 static inline void tt_store_raw(TTEntry* t, uint64_t key, int value,
                                 uint32_t move, int depth, int flag, int ev)
 {
+#ifdef FI96_HELPER_MUTE
+    /* FI-96 ORCHESTRATION ORACLE -- a differential BUILD, never the shipped
+     * engine (hence #ifdef, not a runtime flag: a branch here would sit in
+     * the hottest path in the search for a test that runs once).
+     *
+     * With helpers muted they still search but publish NOTHING, so the shared
+     * TT sees only main-thread stores and the 4-thread MAIN search must be a
+     * node-for-node replay of the 1-thread one. That is a real, checkable
+     * invariant about ORCHESTRATION -- signals, generations, joins -- which
+     * TSan cannot see (it finds races, not wrong sequencing). Any divergence
+     * means a helper leaked state into the main search by some path other
+     * than the TT. */
+    if (g_is_helper) return;
+#endif
     /* FB-26: the int16 eval pack -- unreachable in legal play, enforced.
      * NEVER touch the TT_EVAL_NONE sentinel (-32768): clamping it to
      * -32767 would turn "no cached eval" into a fake real one. */
@@ -2127,7 +2146,6 @@ static int g_hstop = 0;                 /* main root finished: helpers unwind */
 #define ABORT_SET(v)    __atomic_store_n(&g_abort, (v), __ATOMIC_RELAXED)
 #define HSTOP_GET()     __atomic_load_n(&g_hstop, __ATOMIC_RELAXED)
 #define HSTOP_SET(v)    __atomic_store_n(&g_hstop, (v), __ATOMIC_RELAXED)
-static __thread int g_is_helper = 0;    /* set at helper-thread entry */
 
 /* True while THIS thread must abandon its search: global abort (deadline /
  * cs_stop), or a Lazy-SMP helper whose main iteration finished. While
