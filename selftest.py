@@ -886,7 +886,9 @@ if os.path.exists(_t_sprt):
 for _script, _label in ((os.path.join("testing", "pair_identity.py"),
                          "pair identity: mirror pairs + ptnml (FI-100)"),
                         (os.path.join("testing", "nodes_calibration.py"),
-                         "nodes calibration: bench vs operating (FI-101)")):
+                         "nodes calibration: bench vs operating (FI-101)"),
+                        (os.path.join("bench", "instr_bench.py"),
+                         "instr_bench: perf parse + one-sided rule (FI-102)")):
     if not os.path.exists(_script):
         continue
     try:
