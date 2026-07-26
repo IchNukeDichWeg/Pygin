@@ -187,7 +187,7 @@ BENCH_FENS = [
 def run_bench(engine, depth=11):
     import time as _time
     saved = (engine.use_book, engine.use_tb, engine.smp_workers,
-             engine.on_depth, engine.on_final)
+             engine.on_depth, engine.on_final, engine.contempt)
     engine.use_book = engine.use_tb = False   # FB-20: the signature must not
     engine.smp_workers = 1                    # depend on .bin files -- nor on
     engine.on_depth = engine.on_final = None  # Threads (FB-32): 1-thread only.
@@ -195,6 +195,14 @@ def run_bench(engine, depth=11):
                                               # must not spray info lines into
                                               # the nodes/nps output (same
                                               # leak class as FB-20/FB-32)
+    # FB-52: ...nor on CONTEMPT, which is the same leak one dimension further.
+    # draw_score is live and contempt-driven, so a host that sends
+    # `setoption name Contempt value 0` and then `bench` got a DIFFERENT
+    # signature from a fresh process -- and the signature's whole job is to
+    # prove the config has not drifted. Force the shipped defaults.
+    _py = engine._py
+    engine._lib.csearch_set_draw(_py.CONTEMPT, _py.DRAW_AVOID_MARGIN)
+    engine.contempt = _py.CONTEMPT
     try:
         total, t0 = 0, _time.perf_counter()
         for fen in BENCH_FENS:
@@ -205,7 +213,9 @@ def run_bench(engine, depth=11):
         out(f"{total} nodes {int(total / dt)} nps")
     finally:
         (engine.use_book, engine.use_tb, engine.smp_workers,
-         engine.on_depth, engine.on_final) = saved
+         engine.on_depth, engine.on_final, engine.contempt) = saved
+        engine._lib.csearch_set_draw(engine.contempt,   # FB-52: restore the
+                                     _py.DRAW_AVOID_MARGIN)  # host's value
 
 
 def _emit_multipv(engine, board, best_mv, k, budget, white_to_move, stop_evt):
