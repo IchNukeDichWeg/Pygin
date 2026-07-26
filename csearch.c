@@ -4118,7 +4118,19 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
  * Helper results are discarded -- their value is the TT fill. */
 #include <pthread.h>
 static int g_threads = 1;
-void set_threads(int n) { g_threads = (n < 1) ? 1 : (n > 256 ? 256 : n); }
+static void pool_stop(void);            /* FB-51: defined with the pool */
+static int g_pool_n_peek(void);
+
+void set_threads(int n)
+{
+    g_threads = (n < 1) ? 1 : (n > 256 ? 256 : n);
+    /* FB-51: a host that goes Threads 4 -> 1 used to strand the S-06 pool --
+     * helpers stayed alive and parked for the process lifetime, because
+     * cs_pool_shutdown() existed and nothing called it. Gated on the ACTUAL
+     * transition (g_pool_n > 0), so the common set_threads(1)-every-search
+     * path in nodes mode costs nothing and never rebuilds a pool. */
+    if (g_threads == 1 && g_pool_n_peek() > 0) pool_stop();
+}
 
 typedef struct { Board b; int depth, hmc; uint32_t prev; } HelperArg;
 
@@ -4248,6 +4260,8 @@ static int pool_start(int n)
     g_pool_n = n;
     return n;
 }
+
+static int g_pool_n_peek(void) { return g_pool_n; }
 
 void cs_pool_shutdown(void) { pool_stop(); }
 

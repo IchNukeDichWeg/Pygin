@@ -547,6 +547,12 @@ def normalized_elo(penta):
     `penta` is a dict/sequence of pair counts indexed 0..4 (LL, LD, DD_WL,
     WD, WW). Returns None when there's no variance to normalize by (zero
     pairs, or every pair landed in the same bucket).
+
+    SCALE (FB-54, corrected 2026-07-26): this is now the SAME scale as the
+    GSPRT bounds and as Fishtest sprt_calc's elo0/elo1. Every "norm" figure
+    quoted in improvements.md / final_improvements.md from BEFORE this date
+    was a factor sqrt(2) = 1.414 larger; divide an old one by 1.414 to
+    compare it with a new one (v55's +21.18 becomes +14.98).
     """
     n = sum(penta[i] for i in range(5))
     if n == 0:
@@ -560,7 +566,15 @@ def normalized_elo(penta):
     sigma = math.sqrt(game_var)
     if sigma == 0.0:
         return None
-    nelo = (game_mean - 0.5) / sigma * (800.0 / math.log(10))
+    # FB-54: divide by sqrt(2)*sigma, NOT sigma. This is the inverse of
+    # sprt.py's `_score_from_elo` for the "normalized" model
+    # (score = 0.5 + elo*ln10/800 * sqrt(2*var)), which is the scale the
+    # GSPRT bounds printed on the very next line are expressed in, and the
+    # scale of Fishtest sprt_calc's elo0/elo1 fields. Omitting the sqrt(2)
+    # made the printed figure read a factor 1.414 LARGER than the bounds
+    # beside it -- two numbers in one block on two different scales, the
+    # bigger one mislabelled as the standard.
+    nelo = (game_mean - 0.5) / (math.sqrt(2.0) * sigma) * (800.0 / math.log(10))
     return round(nelo, 2)
 
 
@@ -1691,7 +1705,17 @@ def main():
         try:
             r = _sprt.evaluate(counts, cfg["elo0"], cfg["elo1"],
                                cfg["model"], cfg["alpha"], cfg["beta"])
-        except Exception:
+        except Exception as ex:
+            # FB-54 rider: a silently-caught error in the SEQUENTIAL TEST is
+            # the one place a wrong number looks like a right one -- the run
+            # would just keep playing with a stale LLR on screen. Say it once
+            # (not per pair) and carry on; the match must never die on stats.
+            if not sprt_state.get("err_shown"):
+                sprt_state["err_shown"] = True
+                print(f"\n!! SPRT evaluation failed ({type(ex).__name__}: "
+                      f"{ex}) -- the LLR shown is STALE from here on; the "
+                      f"ptnml in the summary is still authoritative.",
+                      file=sys.stderr, flush=True)
             return
         sprt_state["llr"] = r["llr"]
         sprt_state["lower"] = r["lower"]
