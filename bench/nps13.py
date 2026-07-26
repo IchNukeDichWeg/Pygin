@@ -47,6 +47,29 @@ under ~1% needs the repeat; anything priced under the observed floor is not
 decidable here at all, and no number of rounds fixes that (FI-72, priced
 <=0.3%, was reverted for exactly this reason rather than for reading bad).
 
+TIME-TO-DEPTH MODE, `--threads N` (FI-95)
+-----------------------------------------
+At Threads>1 this instrument switches the QUESTION it asks. Raw NPS counts
+helper nodes that may be pure duplication, so under Lazy SMP **more NPS can
+mean less search** -- the quantity that matters is how long the engine takes
+to finish a given depth. `--threads N` therefore ranks A's seconds over B's
+(so >1.0 still means "B better") and stops warning about varying node counts,
+which are EXPECTED once helpers race the shared TT.
+
+Everything else is unchanged: paired, interleaved, round 1 discarded, fresh
+subprocess each, `--cpu` pinning, `--repeat` for the between-run spread.
+
+    python3 bench/nps13.py A.py B.py --threads 4 --repeat 3
+
+**Its acceptance test is NOT yet run** (2026-07-26): the null -- one unchanged
+binary against itself at Threads=4 -- must read ~1.00 with a spread that bounds
+the claims being made, and a deliberately crippled helper path must read
+slower. Both need an IDLE box. On this Mac under load the Threads=1 null
+already reads -1.96% with spread 0.213 (a clean box gives ~1.00 / ~0.02), so
+nothing measured here would mean anything. Time-to-depth is inherently noisier
+than NPS per unit of wall clock -- treat `--repeat 3` as mandatory in this mode,
+not optional.
+
 ACCEPTANCE GATE (the entry's own test): re-measure a known pair and
 reproduce its recorded verdict. A harness that cannot recover the number
 that produced a shipped decision is not the instrument that produced it.
@@ -84,6 +107,7 @@ os.chdir(root)                      # engines resolve .so / data relative to cwd
 # and the same-socket rounds all read 0.994-0.996. Pinning turns that lottery
 # into a constant.
 cpu = int(sys.argv[5]) if len(sys.argv) > 5 else -1
+threads = int(sys.argv[6]) if len(sys.argv) > 6 else 1
 if cpu >= 0 and hasattr(os, "sched_setaffinity"):
     try:
         os.sched_setaffinity(0, {cpu})
@@ -100,7 +124,11 @@ try:
 except Exception:
     pass
 try:
-    eng.smp_workers = 1             # single-thread: this measures the core
+    # FI-95: threads > 1 switches the QUESTION. At Threads>1 raw NPS counts
+    # helper nodes that may be pure duplication, so MORE NPS can mean LESS
+    # search -- the quantity that matters is time-to-depth. The child still
+    # reports both; the parent decides which one it is ranking.
+    eng.smp_workers = threads
 except Exception:
     pass
 try:                                # cold TT, so the search is reproducible
@@ -116,10 +144,14 @@ print("NPS13 " + json.dumps({"nodes": nodes, "sec": dt}))
 '''
 
 
-def measure(engine_path, fen, depth, cpu=-1):
-    """One fixed-depth search in a FRESH process. Returns nodes/second."""
+def measure(engine_path, fen, depth, cpu=-1, threads=1):
+    """One fixed-depth search in a FRESH process.
+
+    Returns (nps, nodes, seconds). FI-95: `seconds` is the figure of merit at
+    Threads>1 -- time-to-depth -- because NPS there counts helper nodes that
+    may be duplicated work."""
     r = subprocess.run([_sys.executable, "-c", _CHILD, _ROOT_, engine_path,
-                        fen, str(depth), str(cpu)],
+                        fen, str(depth), str(cpu), str(threads)],
                        capture_output=True, text=True, cwd=_ROOT_)
     line = next((l for l in r.stdout.splitlines() if l.startswith("NPS13 ")),
                 None)
@@ -128,7 +160,7 @@ def measure(engine_path, fen, depth, cpu=-1):
     d = json.loads(line[len("NPS13 "):])
     if d["sec"] <= 0 or d["nodes"] <= 0:
         raise RuntimeError(f"{engine_path}: degenerate measurement {d}")
-    return d["nodes"] / d["sec"], d["nodes"]
+    return d["nodes"] / d["sec"], d["nodes"], d["sec"]
 
 
 def sign_test_p(wins, n):
@@ -161,6 +193,13 @@ def main():
                          "disables). Load-bearing on multi-socket hosts -- see "
                          "the note in the child. No effect on macOS, which has "
                          "no sched_setaffinity.")
+    ap.add_argument("--threads", type=int, default=1,
+                    help="FI-95: engine threads per side. >1 switches the "
+                         "figure of merit from NPS to TIME-TO-DEPTH, because "
+                         "under Lazy SMP raw NPS counts helper nodes that may "
+                         "be pure duplication -- MORE NPS can mean LESS "
+                         "search. Ratios stay 'B relative to A' and >1.0 still "
+                         "means B is better (faster to the same depth).")
     ap.add_argument("--repeat", type=int, default=1,
                     help="repeat the WHOLE run N times and report the "
                          "between-run spread. The within-run spread and sign "
@@ -174,11 +213,13 @@ def main():
         if not _os.path.isfile(_os.path.join(_ROOT_, p)) and not _os.path.isfile(p):
             _sys.exit(f"engine not found: {p}")
 
-    print(f"paired d{a.depth} NPS ratios -- B relative to A")
+    _what = "TIME-TO-DEPTH" if a.threads > 1 else "NPS"
+    print(f"paired d{a.depth} {_what} ratios -- B relative to A")
     print(f"  A = {a.engine_a}")
     print(f"  B = {a.engine_b}")
     print(f"  {a.rounds} rounds (round 1 discarded), fresh process per search"
-          + (f", pinned to cpu {a.cpu}" if a.cpu >= 0 else "") + "\n")
+          + (f", pinned to cpu {a.cpu}" if a.cpu >= 0 else "")
+          + (f", Threads={a.threads}" if a.threads > 1 else "") + "\n")
 
     t_start = time.time()
     medians = []
@@ -199,30 +240,40 @@ def main():
 
 def run_once(a):
     """One complete measurement; returns the median ratio."""
+    _what = "TIME-TO-DEPTH" if a.threads > 1 else "NPS"
     ratios, nodes_a, nodes_b = [], set(), set()
     t_start = time.time()
     for rnd in range(1, a.rounds + 1):
         # Interleave A,B then B,A on alternate rounds so a monotonic drift in
         # machine speed cannot favour whichever engine always goes first.
         if rnd % 2:
-            (nps_a, na), (nps_b, nb) = (measure(a.engine_a, a.fen, a.depth, a.cpu),
-                                        measure(a.engine_b, a.fen, a.depth, a.cpu))
+            (nps_a, na, sa), (nps_b, nb, sb) = (
+                measure(a.engine_a, a.fen, a.depth, a.cpu, a.threads),
+                measure(a.engine_b, a.fen, a.depth, a.cpu, a.threads))
         else:
-            (nps_b, nb), (nps_a, na) = (measure(a.engine_b, a.fen, a.depth, a.cpu),
-                                        measure(a.engine_a, a.fen, a.depth, a.cpu))
+            (nps_b, nb, sb), (nps_a, na, sa) = (
+                measure(a.engine_b, a.fen, a.depth, a.cpu, a.threads),
+                measure(a.engine_a, a.fen, a.depth, a.cpu, a.threads))
         nodes_a.add(na)
         nodes_b.add(nb)
-        r = nps_b / nps_a
+        # FI-95: at Threads>1 rank on TIME-TO-DEPTH (A's seconds over B's, so
+        # >1.0 still means "B better"); at Threads=1 the two are equivalent and
+        # NPS is kept for continuity with every banked number.
+        r = (sa / sb) if a.threads > 1 else (nps_b / nps_a)
         tag = "  (discarded)" if rnd == 1 else ""
         if rnd > 1:
             ratios.append(r)
-        print(f"  round {rnd:>3}/{a.rounds}  A {nps_a/1e6:6.3f}M  "
-              f"B {nps_b/1e6:6.3f}M  ratio {r:.4f}{tag}", flush=True)
+        if a.threads > 1:
+            print(f"  round {rnd:>3}/{a.rounds}  A {sa:6.3f}s  "
+                  f"B {sb:6.3f}s  ratio {r:.4f}{tag}", flush=True)
+        else:
+            print(f"  round {rnd:>3}/{a.rounds}  A {nps_a/1e6:6.3f}M  "
+                  f"B {nps_b/1e6:6.3f}M  ratio {r:.4f}{tag}", flush=True)
 
     med = statistics.median(ratios)
     wins = sum(1 for r in ratios if r > 1.0)
     p = sign_test_p(wins, len(ratios))
-    print(f"\n  {len(ratios)} paired d{a.depth} ratios   "
+    print(f"\n  {len(ratios)} paired d{a.depth} {_what} ratios   "
           f"median {med:.4f}  ({(med - 1) * 100:+.2f}%)")
     print(f"  spread {min(ratios):.3f} .. {max(ratios):.3f}   "
           f"B faster in {wins}/{len(ratios)}  (sign test p={p:.3f})")
@@ -238,6 +289,10 @@ def run_once(a):
         else:
             print(f"  !! nodes DIFFER: A {na:,} vs B {nb:,} -- this pair is "
                   f"NOT node-identical, so an NPS ratio does not decide it")
+    elif a.threads > 1:
+        print(f"  node counts vary across rounds -- EXPECTED at Threads="
+              f"{a.threads} (helpers race the shared TT). That is exactly why "
+              f"this mode ranks TIME-TO-DEPTH and not NPS.")
     else:
         print("  !! node counts varied across rounds -- non-deterministic "
               "search (SMP? book? TB?); the ratios are not trustworthy")
