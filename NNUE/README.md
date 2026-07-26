@@ -1,4 +1,4 @@
-# NNUE — FI-15 build-out (Phases 1–5 complete, dormant)
+# NNUE — FI-15 build-out (Phases 1–7 complete; first net trained, unscreened)
 
 The complete NNUE infrastructure for Pygin: data generation, PyTorch
 trainer, quantized export, C inference (accumulator + NEON/scalar forward),
@@ -18,8 +18,11 @@ threat encoding (16 int8 aggregate scalars from one attack-union pass),
 net FT→2×256 → [512+16]→32→32→1, int16/int8 quantization QA=127/QB=64,
 `.nnue` format v1, `.pygdata` training data format v1.
 
-What remains (Phases 6–8): generate the real ~50M-position dataset, train,
-2k screen → 10k A/B per net, bootstrap iterations, ship.
+State (2026-07-26): the 82.4M-position dataset is generated and merged, the
+first net is trained, and it passes every acceptance gate. What remains is
+the 2k screen → 10k A/B, then bootstrap rounds. Round 1 is EXPECTED to lose:
+the net costs ~58% of NPS, which the `--nodes` instrument charges honestly,
+so it must find ~70–90 Elo of pure evaluation quality just to break even.
 
 ## Layout
 
@@ -35,7 +38,9 @@ What remains (Phases 6–8): generate the real ~50M-position dataset, train,
 | `model.py`, `train.py` | PyTorch float model (QAT-style clipping) + trainer + quantized export |
 | `verify_c.py` | Phase-4 gates: `forward`, `increment`, `nps`, `threatcost` |
 | `selftest_nnue.py` | NNUE unit checks (spawned by `selftest.py`; exit 42 = skip when no net) |
-| `selfplay_smoke.py` | 100-game stability smoke with the toy net |
+| `selfplay_smoke.py` | 100-game stability smoke (`--net`, defaults to the toy net) |
+| `verify.py` | runs every acceptance gate and prints one verdict — the command to use after training |
+| `tools/` | browser inspector, its local build script, and the HCE-vs-NNUE comparator |
 | `datasets/`, `nets/`, `checkpoints/`, `venv/` | local-only (gitignored) |
 
 ## Setup (one-time, training machine only)
@@ -49,12 +54,21 @@ python3.12 -m venv NNUE/venv && NNUE/venv/bin/pip install torch numpy python-che
 
 ## Commands (all from the repo root)
 
-Generate data (any size; `--workers <cores-1>` on a generation server,
-e.g. 95 on the current cheap boxes):
+Generate data (any size). `--workers 0` means all cores but one and is the
+only value worth passing — the boxes differ, and a hardcoded count is wrong
+on the next one:
 
 ```
-python3 NNUE/gen_data.py NNUE/datasets/run1.pygdata --positions 100000 --nodes 5000 --workers 8 --seed 42
+python3 NNUE/gen_data.py NNUE/datasets/run1.pygdata --positions 100000 --nodes 5000 --workers 0 --seed 42
 ```
+
+Labeling runs a 1.5 MB TT (`LABEL_TT_BITS`), not the engine's 48 MB default:
+a cold TT is reset before every labeling search, so the table is memset once
+per move, and wiping 48 MB to serve a 5,000-node search is ~500x the memory
+traffic of the search itself. That is shared-bus work, so it degrades as
+worker count rises — it cost a 111-worker box a 26x slowdown before it was
+found. `verify_labels.py` mirrors the constant; the fingerprint prints `tt=`
+so a mismatch shows up as version skew rather than phantom corruption.
 
 Two stop rules: `--positions N` collects exactly N positions (game count
 varies); `--games N` (overrides it) plays exactly N games and keeps every
@@ -91,12 +105,32 @@ Audit the labels (hard gate: hmc==0 records reproduce exactly):
 python3 NNUE/verify_labels.py NNUE/datasets/run1.pygdata --sample 200
 ```
 
-Train + export (writes `checkpoints/best.pt`, `checkpoints/loss_curve.csv`,
-and the quantized net):
+Check a `.pygdata` is intact — header record count vs actual bytes, so a
+truncated transfer is caught before it is trusted (a short file still parses
+and still mmaps):
 
 ```
-NNUE/venv/bin/python NNUE/train.py NNUE/datasets/run1.pygdata --epochs 30 --out NNUE/nets/toy.nnue
+python3 NNUE/data_format.py check NNUE/datasets/*.pygdata
 ```
+
+Train + export (writes `best.pt`, `loss_curve.csv`, and the quantized net):
+
+```
+NNUE/venv/bin/python NNUE/train.py NNUE/datasets/run1.pygdata --epochs 20 --chunk 2000000 --out NNUE/nets/nnue_v1.nnue
+```
+
+The holdout is GAME-granular: every 20th contiguous block of `--val-block`
+(5000) records, not every 20th record. gen_data writes a game's positions
+contiguously and the WDL label is per game, so a strided split put 3–4
+positions of every game in val and the rest in train — measured 100.0% of
+val games also present in train, which flatters val and drags the chosen
+best-epoch later. Blocks cut that to 3.9%.
+
+Other flags that exist because a multi-hour run needs them: `--checkpoint-dir`
+(two runs sharing one directory overwrite each other's only artifact),
+`--export-only` (recover a net from `best.pt` if a run died), and a per-chunk
+heartbeat so an epoch is not silent for 15 minutes. Ctrl-C exports the best
+epoch rather than discarding the run.
 
 Verify the C side (run after ANY nnue.c / trainer / format change):
 
@@ -127,6 +161,55 @@ byte-exact vs the same build with it off; after any NNUE-side change run
 `bench` and `selftest.py` and confirm the signature is UNCHANGED from
 before the change (the absolute value moves with every engine ship).
 
+## Accepting a trained net
+
+One command runs every gate and prints a verdict; exit 0 means safe to arm.
+
+```
+python3 NNUE/verify.py --nnue NNUE/nets/nnue_v1_<hash>.nnue
+```
+
+| gate | what it proves | |
+|---|---|---|
+| `forward` | C forward == numpy reference | HARD |
+| `increment` | accumulator == full refresh | HARD |
+| `selftest` | oracle, mates, draws, fortress | HARD |
+| `smoke` | 100 self-play games, no crash/leak | HARD |
+| `nps` | net ON vs OFF throughput | report only |
+
+`nps` deliberately cannot fail the run: the `--nodes` screen already charges
+the net's speed cost by scaling each side's node budget, so it is a number to
+know, not a bar to clear. `--quick` shrinks the samples 10x for a plumbing
+check — not an acceptance run.
+
+## Screening a net
+
+`engine_nnue.py` (repo root) is a three-line subclass of `cengine.Engine`
+with `USE_NNUE = True`, so arming a net never means editing `cengine.py` and
+arming it for cuci, the selftest, the workbench and every other consumer at
+once.
+
+```
+python3 match.py engine_nnue.py "Old Engine/55/engine55.py" 1000 --workers 0 --nodes 1750000
+```
+
+Watch the calibration lines: the HCE side should be granted proportionally
+MORE nodes, because `--nodes` equalises TIME, not nodes. If both sides get
+the same budget, the NNUE side did not arm.
+
+A wrong `NNUE_FILE` raises from the loader rather than falling back to the
+HCE — otherwise a typo would produce an HCE-vs-HCE run reading as "the net is
+exactly as strong as the old engine", the most convincing wrong result
+available.
+
+## Inspecting a net — NNUE/tools/
+
+| | |
+|---|---|
+| `nnue_inspector.html` | browser tool: per-piece values, T16 decomposition, legal moves, drag-and-drop editing. Verified bit-exact against the C engine on 40 exported positions, and its move generator against python-chess on 186 |
+| `make_local.py` | wraps the inspector into a standalone document for opening off disk |
+| `compare_eval.py` | HCE vs NNUE on the same positions, both numbers from the engine (`csearch_eval_white` / `nnue_eval_oracle`) |
+
 ## Net naming & retirement (mirrors Old Engine/)
 
 Live net: **`NNUE/nets/nnue_vN_<12 hex>.nnue`** — e.g.
@@ -155,7 +238,7 @@ pipeline-proof artifact, not a version, and is **exempt** from the hash —
 exists); all `.nnue` files are gitignored (public repo) — only the Old
 NNUE README is tracked.
 
-## Generating real training data (Phase 6, the next step)
+## Generating real training data (Phase 6 — DONE, see below)
 
 On a generation server (~50M positions, see docs/DESIGN_nnue.md for the
 rationale; TC-free — the labeling budget is fixed NODES, so machine
