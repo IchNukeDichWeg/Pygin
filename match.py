@@ -886,9 +886,107 @@ def write_game_block(fh, pgn_fh, g, e1, mode_cfg, tc_label, tpm):
             pass
 
 
+# --- FI-81's --nodes calibration constants. Module level since FI-101 runs
+# the same calibration a SECOND time at the end of the campaign. ---
+CAL_ROUNDS = 5
+CAL_DEADBAND = 0.01
+CAL_MAX_SPREAD = 0.05      # HOST-03: warn above 5% round-to-round spread
+
+
+def calibrate_nodes(engine1, engine2, when):
+    """Measure engine2/engine1 NPS and return the budget ratio (FI-81).
+
+    One sequential calibration pair on the quiet pre-spawn machine. engine1 is
+    the reference (gets exactly N); engine2's budget is scaled by the measured
+    NPS ratio so equal budgets = equal wall time and an NPS-costly candidate
+    still pays in nodes exactly as it would on the clock (~1 Elo per 1% NPS
+    house pricing).
+
+    Interleaved repeated benches, median per-round ratio: single benches swing
+    several % on a busy/thermal machine, and in nodes mode ANY consistent
+    budget error is AMPLIFIED by near-mirror determinism (the first null test
+    read -40 Elo on identical engines from a 3.7% ratio error). Adjacent-in-
+    time round pairs share thermal state, so per-round ratios are far tighter
+    than one long bench; the median rejects outlier rounds. A 1% deadband snaps
+    measurement noise to exactly 1.0 (identical builds MUST get equal budgets);
+    a real candidate's sub-1% NPS cost is absorbed as <1 Elo of budget error on
+    naturally-divergent games -- documented limitation, fine at screen
+    precision.
+
+    `raw` is the median BEFORE the deadband, and it is the field FI-101's
+    end-of-campaign comparison uses: two calibrations that both snapped to
+    1.000 can still be 1.9% apart, and that drift is exactly what the check
+    exists to see.
+    """
+    ctx = mp.get_context("spawn")
+    c1 = EngineProcess(ctx, engine1, BOOK_ENGINE1)
+    c2 = EngineProcess(ctx, engine2, BOOK_ENGINE2)
+    ratios, nps1_list, nps2_list = [], [], []
+    try:
+        c1.start()
+        c2.start()
+        for _ in range(CAL_ROUNDS):
+            n1 = c1.request_calibrate()
+            n2 = c2.request_calibrate()
+            nps1_list.append(n1)
+            nps2_list.append(n2)
+            ratios.append(n2 / n1)
+    finally:
+        c1.kill()
+        c2.kill()
+    ratios.sort()
+    raw = ratios[len(ratios) // 2]                   # median round ratio
+    ratio = 1.0 if abs(raw - 1.0) < CAL_DEADBAND else raw
+    spread = (ratios[-1] - ratios[0]) / raw if raw else 0.0
+    lines = [f"NPS calibration ({when}, {CAL_ROUNDS} interleaved bench rounds "
+             f"per engine):",
+             "  round ratios: " + " ".join(f"{r:.3f}" for r in ratios)
+             + f" -> median {raw:.3f}"
+             + (" (deadband -> 1.000)" if ratio == 1.0 else "")]
+    # HOST-03: the median is robust to ONE bad round, not to a noisy box. This
+    # number sets the node budget for every game in the campaign, so a wide
+    # sample set has to be seen, not averaged away in silence. Rented
+    # "identical" hardware has been measured 50% apart (FI-64), and a co-tenant
+    # process is invisible from in here.
+    if spread > CAL_MAX_SPREAD:
+        warn = (f"[match] WARNING: NPS calibration spread {spread*100:.1f}% "
+                f"exceeds {CAL_MAX_SPREAD*100:.0f}% (min {ratios[0]:.3f}, max "
+                f"{ratios[-1]:.3f}). The node budget is unreliable -- something "
+                f"else is likely using this machine. Re-run the calibration on "
+                f"a quiet box before trusting this campaign.")
+        print(warn, file=sys.stderr, flush=True)
+        lines.append("  " + warn)
+    return {"ratio": ratio, "raw": raw, "nps1": sorted(nps1_list)[len(nps1_list) // 2],
+            "nps2": sorted(nps2_list)[len(nps2_list) // 2], "ratios": ratios,
+            "spread": spread, "lines": lines}
+
+
+def calibration_drift(cal_start, cal_end):
+    """FI-101: did the host stay the same machine for the whole campaign?
+
+    Compares the two RAW medians. Anything past the deadband means the budget
+    the games were played at stopped matching the hardware they were played on
+    -- thermal drift, a co-tenant that arrived mid-run, a box that was never
+    idle. FI-100 showed what that costs when it happens at the START: the same
+    binary on both sides scored +48.96 Elo. Mid-campaign it is worse, because
+    nothing in the summary looks wrong at all.
+    """
+    drift = cal_end["raw"] / cal_start["raw"] - 1.0
+    lines = [f"NPS calibration drift (FI-101): start {cal_start['raw']:.4f} -> "
+             f"end {cal_end['raw']:.4f}  ({drift*100:+.2f}%)"]
+    if abs(drift) > CAL_DEADBAND:
+        lines.append(f"  ** WARNING: drift exceeds the {CAL_DEADBAND*100:.0f}% "
+                     f"deadband. The node budgets were set for a machine this "
+                     f"one stopped being; treat the Elo above as suspect and "
+                     f"re-run on a quiet box. **")
+    else:
+        lines.append("  within the deadband -- the host held for the whole run")
+    return lines
+
+
 def write_summary(fh, e1, e2, tally, total_games, start_t, stopped,
                   n_workers=None, sprt_info=None, mode_desc=None,
-                  startup_fail=None):
+                  startup_fail=None, cal_lines=None):
     lines = ["", "=== BATTLE SUMMARY ===",
              f"Engine 1: {e1.name}", f"Engine 2: {e2.name}",
              f"Games scored: {tally['completed']:,}  (of {total_games:,} scheduled)",
@@ -964,6 +1062,8 @@ def write_summary(fh, e1, e2, tally, total_games, start_t, stopped,
     # An SPRT stop is a CONCLUSION, not an interruption, so don't mislabel it.
     if stopped and not sprt_decided:
         lines.append("(match was stopped before completion)")
+    if cal_lines:                       # FI-101: start-vs-end calibration
+        lines += cal_lines
     if start_t is not None:
         elapsed = time.time() - start_t
         played = tally["completed"] + tally["errors"]
@@ -1386,70 +1486,19 @@ def main():
     tc_label = f"{TC_SECONDS:.2f}+{TC_INCREMENT:.2f}" if MODE == "clock" else None
     tpm = TIME_PER_MOVE_MS if MODE == "time" else None
 
+    cal_start = None                    # FI-101: compared against at the end
     if MODE == "nodes":
-        # One sequential calibration pair on the quiet pre-spawn machine.
-        # engine1 is the reference (gets exactly N); engine2's budget is
-        # scaled by the measured NPS ratio so equal budgets = equal wall
-        # time and an NPS-costly candidate still pays in nodes exactly as
-        # it would on the clock (~1 Elo per 1% NPS house pricing).
-        # Interleaved repeated benches, median per-round ratio: single
-        # benches swing several % on a busy/thermal machine, and in nodes
-        # mode ANY consistent budget error is AMPLIFIED by near-mirror
-        # determinism (the first null test read -40 on identical engines
-        # from a 3.7% ratio error). Adjacent-in-time round pairs share
-        # thermal state, so per-round ratios are far tighter than one long
-        # bench; the median rejects outlier rounds. A 1% deadband snaps
-        # measurement noise to exactly 1.0 (identical builds MUST get equal
-        # budgets); a real candidate's sub-1% NPS cost is absorbed as <1
-        # Elo of budget error on naturally-divergent games -- documented
-        # limitation, fine at screen precision.
-        _CAL_ROUNDS = 5
-        _CAL_DEADBAND = 0.01
-        _CAL_MAX_SPREAD = 0.05   # HOST-03: warn above 5% round-to-round spread
-        print(f"Calibrating --nodes budgets ({_CAL_ROUNDS} interleaved "
-              "bench rounds per engine)...")
-        _ctx = mp.get_context("spawn")
-        _c1 = EngineProcess(_ctx, engine1, BOOK_ENGINE1)
-        _c2 = EngineProcess(_ctx, engine2, BOOK_ENGINE2)
-        ratios, nps1_list, nps2_list = [], [], []
-        try:
-            _c1.start()
-            _c2.start()
-            for _r in range(_CAL_ROUNDS):
-                _n1 = _c1.request_calibrate()
-                _n2 = _c2.request_calibrate()
-                nps1_list.append(_n1)
-                nps2_list.append(_n2)
-                ratios.append(_n2 / _n1)
-        finally:
-            _c1.kill()
-            _c2.kill()
-        ratios.sort()
-        ratio = ratios[len(ratios) // 2]             # median round ratio
-        if abs(ratio - 1.0) < _CAL_DEADBAND:
-            ratio = 1.0
-        nps1 = sorted(nps1_list)[len(nps1_list) // 2]
-        nps2 = sorted(nps2_list)[len(nps2_list) // 2]
+        print(f"Calibrating --nodes budgets ({CAL_ROUNDS} interleaved bench "
+              "rounds per engine)...")
+        cal_start = calibrate_nodes(engine1, engine2, "start")
+        for _ln in cal_start["lines"]:
+            print(_ln)
         mode_cfg["nodes_e1"] = int(nodes_budget)
-        mode_cfg["nodes_e2"] = max(1, int(round(nodes_budget * ratio)))
-        print(f"  engine1: {nps1/1e6:.2f}M nps -> {mode_cfg['nodes_e1']:,} nodes/move")
-        print(f"  engine2: {nps2/1e6:.2f}M nps -> {mode_cfg['nodes_e2']:,} nodes/move")
-        print(f"  round ratios: {' '.join(f'{r:.3f}' for r in ratios)}"
-              f" -> median {ratio:.3f}"
-              + (" (deadband -> 1.000)" if ratio == 1.0 else ""))
-        # HOST-03: the median is robust to ONE bad round, not to a noisy box.
-        # This number sets the node budget for every game in the campaign, so
-        # a wide sample set has to be seen, not averaged away in silence.
-        # Rented "identical" hardware has been measured 50% apart (FI-64), and
-        # a co-tenant process is invisible from in here.
-        _spread = (ratios[-1] - ratios[0]) / ratio if ratio else 0.0
-        if _spread > _CAL_MAX_SPREAD:
-            print(f"[match] WARNING: NPS calibration spread {_spread*100:.1f}% "
-                  f"exceeds {_CAL_MAX_SPREAD*100:.0f}% "
-                  f"(min {ratios[0]:.3f}, max {ratios[-1]:.3f}). The node "
-                  f"budget below is unreliable -- something else is likely "
-                  f"using this machine. Re-run the calibration on a quiet box "
-                  f"before trusting this campaign.", file=sys.stderr, flush=True)
+        mode_cfg["nodes_e2"] = max(1, int(round(nodes_budget * cal_start["ratio"])))
+        print(f"  engine1: {cal_start['nps1']/1e6:.2f}M nps -> "
+              f"{mode_cfg['nodes_e1']:,} nodes/move")
+        print(f"  engine2: {cal_start['nps2']/1e6:.2f}M nps -> "
+              f"{mode_cfg['nodes_e2']:,} nodes/move")
 
     # Positions -> seeded shuffle, then take the slice [offset : offset+n].
     # With a FIXED SUBSET_SEED every window shuffles identically, so distinct
@@ -1513,8 +1562,16 @@ def main():
               f"Log: {log_path}\n" + "-" * 72)
     print(banner)
     if fh is not None:
+        # FI-101: the calibration used to exist only on stdout, so a --nodes
+        # log could never be re-checked after the fact. It is the number every
+        # game's budget came from; it belongs in the file.
+        cal_hdr = ("\n".join(cal_start["lines"]) + "\n"
+                   f"  engine1 {cal_start['nps1']/1e6:.2f}M nps, "
+                   f"engine2 {cal_start['nps2']/1e6:.2f}M nps\n"
+                   if cal_start is not None else "")
         fh.write(f"{e1.name} vs {e2.name}\n"
                  f"Interpreter: {interp}\nMode: {mode_desc}\n"
+                 f"{cal_hdr}"
                  f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
         fh.flush()
 
@@ -1919,9 +1976,22 @@ def main():
             pass
         _clear_status()        # drop the pinned ETA line before the summary
         _flush_log_remainder()  # emit any games still held by the reorder buffer
+        # FI-101: re-measure the calibration on the machine the campaign
+        # ACTUALLY ran on. Bounded (~10s) and wrapped, because nothing here is
+        # allowed to cost the summary -- that is the point of the whole run.
+        cal_lines = None
+        if cal_start is not None:
+            try:
+                print("Re-measuring the NPS calibration (FI-101)...")
+                cal_lines = calibration_drift(
+                    cal_start, calibrate_nodes(engine1, engine2, "end"))
+            except Exception as ex:
+                cal_lines = [f"NPS calibration drift (FI-101): "
+                             f"end-of-run measurement failed -- {ex}"]
         write_summary(fh, e1, e2, tally, total_games, start_t, stopped,
                       n_workers=n_workers, sprt_info=sprt_state,
-                      mode_desc=mode_desc, startup_fail=startup_fail)
+                      mode_desc=mode_desc, startup_fail=startup_fail,
+                      cal_lines=cal_lines)
         # FI-82: pooled state, written on EVERY exit path (clean finish,
         # Ctrl-C/SIGTERM, SPRT decision) -- the tranche that follows resumes
         # from here, and next_offset is what makes its shard disjoint.
