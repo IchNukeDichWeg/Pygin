@@ -1,4 +1,4 @@
-# NNUE — FI-15 build-out (Phases 1–7 complete; first net trained, unscreened)
+# NNUE — FI-15 build-out (round 1 screened at parity; speed-bound, not eval-bound)
 
 The complete NNUE infrastructure for Pygin: data generation, PyTorch
 trainer, quantized export, C inference (accumulator + NEON/scalar forward),
@@ -18,11 +18,18 @@ threat encoding (16 int8 aggregate scalars from one attack-union pass),
 net FT→2×256 → [512+16]→32→32→1, int16/int8 quantization QA=127/QB=64,
 `.nnue` format v1, `.pygdata` training data format v1.
 
-State (2026-07-26): the 82.4M-position dataset is generated and merged, the
-first net is trained, and it passes every acceptance gate. What remains is
-the 2k screen → 10k A/B, then bootstrap rounds. Round 1 is EXPECTED to lose:
-the net costs ~58% of NPS, which the `--nodes` instrument charges honestly,
-so it must find ~70–90 Elo of pure evaluation quality just to break even.
+State (2026-07-26): first net trained on the 82.4M merged dataset and
+screened against `Old Engine/55` — **+2.95 ± 15.2 Elo over 2,000 games**
+(50.42%, Ptnml 43/253/410/232/62). A null by the +15 screen bar, but round 1
+was expected to lose badly and did not.
+
+It reaches parity while running **−42.5% NPS in real search** (in-search
+ratio 1.738; the standalone `nps` gate says 2.44 because it prices the eval
+alone, and qsearch keeps the HCE). That deficit is worth ~−49 to −56 Elo, so
+the evaluation itself is already worth roughly **+50 Elo over the HCE** —
+the net is speed-bound, not eval-bound. The highest-value next work is
+therefore the AVX2/VNNI forward pass and FI-67, not another bootstrap round:
+at ~1.16 Elo per 1% NPS, closing half the gap is ~+25 Elo with no new data.
 
 ## Layout
 
