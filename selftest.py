@@ -879,6 +879,25 @@ if os.path.exists(_t_sprt):
         check("SPRT resume: pooling, fingerprint + offset refusals (FI-82)",
               False, "timeout")
 
+# --- 5j2. FI-100 / FI-101: the two --nodes log readers -------------------- #
+# Both decide whether a campaign's numbers are trustworthy (engagement, and
+# whether the calibration held), so their own parsers need a gate. Each ships
+# a --selftest with a control it must fail on; run them the same way as 5j.
+for _script, _label in ((os.path.join("testing", "pair_identity.py"),
+                         "pair identity: mirror pairs + ptnml (FI-100)"),
+                        (os.path.join("testing", "nodes_calibration.py"),
+                         "nodes calibration: bench vs operating (FI-101)")):
+    if not os.path.exists(_script):
+        continue
+    try:
+        r = subprocess.run([sys.executable, _script, "--selftest"],
+                           capture_output=True, text=True, timeout=120)
+        check(_label, r.returncode == 0,
+              "" if r.returncode == 0
+              else (r.stdout + r.stderr).strip().splitlines()[-1][:90])
+    except subprocess.TimeoutExpired:
+        check(_label, False, "timeout")
+
 # --- 5k. NNUE unit checks (FI-15, dormant build-out) --------------------- #
 # Runs in a SUBPROCESS: cengine's FB-04 one-process-one-config rule forbids
 # a second, differently-configured Engine in this process. Exit 42 = no net
