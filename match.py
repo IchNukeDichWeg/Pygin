@@ -61,7 +61,11 @@ _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 
 #  CONFIG  -- edit these
 # ====================================================================== #
 ENGINE_1 = "engine.py"                       # path to engine 1
-ENGINE_2 = "Old Engine/51/engine51.py"       # path to engine 2
+ENGINE_2 = "Old Engine/55/engine55.py"       # path to engine 2
+                                             # FB-50 fold-in: was v51 while
+                                             # SUBSET_SEED said 55 -- the
+                                             # default opponent tracks the
+                                             # snapshot the seed belongs to
 FEN_FILE = "UHO_4060_v4.epd"                 # positions (plain FEN or EPD, one per line). UHO_4060_v4.epd (16 MB, balanced Stockfish openings) is the default. fen.txt (447 KB) is also bundled as a small fallback; a bigger book (UHO_Lichess_4852_v1.epd, 174 MB) is at https://github.com/official-stockfish/books
 
 other_elo = 2900
@@ -231,18 +235,41 @@ def _sha16(path):
     return h.hexdigest()[:16]
 
 
+SPRT_FP_VERSION = 2      # FB-49: bump when the tuple below changes, so an
+                         # old state.json fails LOUDLY instead of pooling.
+
+
 def sprt_fingerprint(engine1, engine2, sprt_cfg, mode_cfg,
                      fen_file, seed, start_pos):
     """Identity of the experiment. Two tranches may only be pooled when every
     field matches: same engines, same instrument, same bounds, and the same
     seeded FEN pool -- the disjoint-shard guarantee that makes `offset` safe
     holds only for an identical pool AND seed, so the pool's content hash is
-    part of the identity, not just its name."""
-    fp = {"e1": _sha16(engine1), "e2": _sha16(engine2),
+    part of the identity, not just its name.
+
+    FB-49: v1 covered the engines and the instrument but NOT the config that
+    changes what a game MEANS. A 4-thread tranche and a 1-thread tranche are
+    different engines; adjudication on and off are different rulesets; the WDL
+    model's contents move the adjudication thresholds; a book changes the
+    openings; and FI-88's clock regime changes what Stockfish is given. All of
+    them pooled silently. Every one is now in the tuple, and `fp_version`
+    makes a schema change a loud failure rather than a quiet mismatch."""
+    fp = {"fp_version": SPRT_FP_VERSION,
+          "e1": _sha16(engine1), "e2": _sha16(engine2),
           "mode": mode_cfg["mode"], "time_ms": mode_cfg["time_ms"],
           "depth": mode_cfg["depth"], "nodes": mode_cfg["nodes"],
           "tc": [mode_cfg["tc_seconds"], mode_cfg["tc_increment"]],
-          "cfg": sprt_cfg, "seed": seed, "start_pos": bool(start_pos)}
+          "cfg": sprt_cfg, "seed": seed, "start_pos": bool(start_pos),
+          # --- FB-49: what a game MEANS, not just which engines played it ---
+          "smp": int(ENGINE_SMP),
+          "adjudicate": bool(mode_cfg.get("adjudicate", ADJUDICATE)),
+          "sf_our_clock": bool(mode_cfg.get("sf_our_clock", sf_our_clock)),
+          "book1": os.path.basename(BOOK_ENGINE1) if BOOK_ENGINE1 else None,
+          "book2": os.path.basename(BOOK_ENGINE2) if BOOK_ENGINE2 else None}
+    # The WDL model sets the adjudication thresholds, so its CONTENT is part
+    # of the ruleset whenever adjudication is on.
+    wdl = _data_path("wdl_model.json")
+    fp["wdl_sha"] = _sha16(wdl) if os.path.isfile(wdl) else None
     if start_pos:
         fp["fen_file"], fp["fen_sha"] = None, None
     else:
@@ -263,6 +290,12 @@ def sprt_resume_load(path, fingerprint, offset):
     if st.get("fingerprint") != fingerprint:
         diff = [k for k in sorted(set(fingerprint) | set(st.get("fingerprint") or {}))
                 if (st.get("fingerprint") or {}).get(k) != fingerprint.get(k)]
+        if "fp_version" in diff:
+            raise ValueError(
+                f"--sprt-resume: {path!r} was written by fingerprint schema "
+                f"v{(st.get('fingerprint') or {}).get('fp_version', 1)}, this "
+                f"build uses v{SPRT_FP_VERSION} -- start a new run (FB-49 "
+                f"widened the tuple; the old state cannot be compared)")
         raise ValueError(
             f"--sprt-resume fingerprint mismatch on {', '.join(diff)} -- "
             f"refusing to pool {path!r} (different experiment)")
@@ -1263,7 +1296,27 @@ def main():
     if workers_str is None:
         n_workers = max(1, int(N_WORKERS))
     elif workers_str.lower() == "auto" or int(workers_str) == 0:
-        n_workers = max(1, mp.cpu_count() - 1)  # 0 / auto => all cores but one
+        # FB-50: `--workers 0` derived from cores ALONE while ENGINE_SMP
+        # multiplies the threads inside each of the TWO engines per worker, so
+        # `--smp 4 --workers 0` launched ~4x more threads than `--smp 1` did.
+        # Every timed SMP number measured that way is the scheduler, not the
+        # engine.
+        #
+        # DELIBERATELY NOT the invariant at line 120 (SMP*N*2 <= cores): at
+        # smp=1 that would mean cores/2 workers, but every campaign in the
+        # ledger ran at cores-1 (the v55 A/B: 108 workers on 112 threads,
+        # ~1.9x oversubscribed). Enforcing the invariant would change the
+        # DEFAULT density and break comparability with every banked result.
+        # Dividing by ENGINE_SMP holds that density CONSTANT across thread
+        # counts, which is what makes an SMP A/B comparable to a 1-thread one.
+        cores = mp.cpu_count()
+        smp = max(1, int(ENGINE_SMP))
+        n_workers = max(1, (cores - 1) // smp)
+        if smp > 1:                      # announce it; never change silently
+            print(f"[match] --workers 0 with --smp {smp}: {n_workers} workers "
+                  f"x {smp} threads x 2 engines = {n_workers * smp * 2} "
+                  f"threads on {cores} cores (FB-50: the derivation divides by "
+                  f"ENGINE_SMP; it used to ignore it entirely)")
     else:
         n_workers = max(1, int(workers_str))
 
