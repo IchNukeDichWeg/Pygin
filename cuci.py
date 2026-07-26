@@ -594,6 +594,10 @@ def main():
                         except ValueError:
                             pass
                     if want:
+                        engine.search_moves = want   # FB-53: the book and TB
+                                                     # probes run before the
+                                                     # C search and must obey
+                                                     # the same whitelist
                         engine._lib.root_exclude_clear()
                         for m in search_board.legal_moves:
                             if m not in want:
@@ -629,6 +633,7 @@ def main():
                     engine.use_book = mpv_book   # MultiPV bypass overrode
                 if sm_active:                # FI-45: NEVER leak exclusions
                     engine._lib.root_exclude_clear()
+                    engine.search_moves = None   # FB-53: nor the whitelist
                 engine.node_limit = None     # FB-09: per-go, don't leak
                 holding.set()                # FB-14/FI-27: set BEFORE the
                                              # hold-wait AND as early as the
