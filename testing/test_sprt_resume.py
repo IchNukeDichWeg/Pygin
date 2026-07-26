@@ -100,8 +100,16 @@ try:
 except ValueError as ex:
     check("refuses a different engine build", "e1" in str(ex), str(ex)[:70])
 
+# FB-49: the fields that change what a GAME MEANS, not just which engines
+# played it. A 4-thread tranche and a 1-thread tranche are different engines;
+# adjudication on/off are different rulesets; the WDL model moves the
+# adjudication thresholds; the book changes the openings; FI-88's clock regime
+# changes what Stockfish is given. v1 pooled all of them silently.
 for field, value in (("seed", 999), ("fen_sha", "0000000000000000"),
-                     ("tc", [10.0, 0.1]), ("cfg", dict(CFG, elo1=8.0))):
+                     ("tc", [10.0, 0.1]), ("cfg", dict(CFG, elo1=8.0)),
+                     ("smp", 4), ("adjudicate", False),
+                     ("sf_our_clock", True), ("wdl_sha", "beefbeefbeefbeef"),
+                     ("book1", "some_book.bin")):
     try:
         match.sprt_resume_load(state, dict(fp, **{field: value}), 20000)
         check(f"refuses a changed {field}", False, "pooled anyway!")
@@ -119,6 +127,21 @@ except ValueError as ex:
 base, _nxt, _note = match.sprt_resume_load(state, fp, 20000)
 check("accepts the exact next_offset", sum(base) == sum(FI30))
 
+# FB-49: a state file from an older fingerprint SCHEMA must fail with a
+# schema message, not with a confusing per-field mismatch.
+old_fp = {k: v for k, v in fp.items() if k not in
+          ("fp_version", "smp", "adjudicate", "sf_our_clock", "wdl_sha",
+           "book1", "book2")}
+with open(state, "w", encoding="utf-8") as fh:
+    json.dump({"fingerprint": old_fp, "penta": FI30, "next_offset": 20000}, fh)
+try:
+    match.sprt_resume_load(state, fp, 20000)
+    check("refuses an OLD fingerprint schema", False, "pooled anyway!")
+except ValueError as ex:
+    check("refuses an OLD fingerprint schema", "schema" in str(ex),
+          str(ex)[:78])
+match.sprt_resume_save(state, fp, FI30, 20000, {"decided": None, "llr": 1.0})
+
 # --- 4. fingerprint sensitivity ------------------------------------------ #
 # Identity must NOT include the .so (every box builds its own -mcpu=native
 # copy, and cross-box pooling is the point) but MUST include the FEN pool's
@@ -131,6 +154,9 @@ check("fingerprint is stable across calls", fp == fp2)
 check("fingerprint pins engine CONTENT, not path",
       fp["e1"] != fp["e2"] and len(fp["e1"]) == 16,
       f"e1={fp['e1']} e2={fp['e2']}")
+check("fingerprint carries a schema version (FB-49)",
+      fp.get("fp_version") == match.SPRT_FP_VERSION and fp["fp_version"] >= 2,
+      f"fp_version {fp.get('fp_version')}")
 check("fingerprint pins the FEN pool's content",
       fp["fen_sha"] is not None and fp["fen_file"] == os.path.basename(
           match._data_path(match.FEN_FILE)),
