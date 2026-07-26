@@ -32,6 +32,7 @@ in RAM (50M in-memory would need ~25 GB of index tensors).
 
 import argparse
 import copy
+import math
 import csv
 import os
 import sys
@@ -98,6 +99,24 @@ def evaluate(model, tensors, bs):
                 pred, y, reduction="sum").item()
             n += len(y)
     return tot / max(1, n)
+
+
+def lr_at(args, ep):
+    """Learning rate for epoch `ep`.
+
+    One warmup epoch, then cosine down to the floor. The warmup exists
+    because round 1's very first epoch spiked hardest: Adam's second-moment
+    estimate is still cold, so the effective step is largest exactly when
+    the weights are worst."""
+    if args.lr_schedule == "none":
+        return args.lr
+    lo = args.lr_final if args.lr_final > 0 else args.lr / 100.0
+    if args.epochs <= 1:
+        return args.lr
+    if ep == 0:
+        return args.lr * 0.3                      # warmup
+    t = (ep - 1) / max(1, args.epochs - 2)        # 0..1 over the rest
+    return lo + 0.5 * (args.lr - lo) * (1.0 + math.cos(math.pi * t))
 
 
 def val_block_mask(idx, stride, block):
@@ -195,6 +214,22 @@ def main():
     ap.add_argument("--epochs", type=int, default=40)
     ap.add_argument("--batch", type=int, default=8192)
     ap.add_argument("--lr", type=float, default=1e-3)
+    ap.add_argument("--lr-schedule", choices=["none", "cosine"], default="none",
+                    help="none (default) reproduces earlier runs. cosine "
+                         "decays lr to --lr-final over --epochs, with one "
+                         "warmup epoch -- round 1 showed ~75%% val spikes at "
+                         "a constant 1e-3 that fully recovered, i.e. the step "
+                         "was too large late, not divergence.")
+    ap.add_argument("--lr-final", type=float, default=0.0,
+                    help="cosine floor; 0 (default) means --lr / 100")
+    ap.add_argument("--patience", type=int, default=0,
+                    help="stop after N epochs with no val improvement; 0 "
+                         "(default) disables. Size it against the SPIKES, not "
+                         "the trend: on round 1's curve patience 1 would have "
+                         "stopped at epoch 1 and shipped a net 50%% worse on "
+                         "val, and patience 2 survived only because the epoch-5 "
+                         "spike happened to recover immediately. 4 is the "
+                         "smallest value with real margin.")
     ap.add_argument("--val-frac", type=float, default=0.05)
     ap.add_argument("--val-block", type=int, default=VAL_BLOCK,
                     help="records per held-out block (default %d). Blocks, "
@@ -322,8 +357,12 @@ def main():
         cw = csv.writer(cf)
         cw.writerow(["epoch", "train_mse", "val_mse"])
         try:
+            bad = 0
             for ep in range(args.epochs):
                 t0 = time.time()
+                cur_lr = lr_at(args, ep)
+                for g in opt.param_groups:
+                    g["lr"] = cur_lr
                 tr = train_one_epoch(ep)
                 va = evaluate(model, val_t, args.batch)
                 cw.writerow([ep, f"{tr:.6f}", f"{va:.6f}"])
@@ -335,7 +374,15 @@ def main():
                     torch.save(best_state, ckpt_path)
                     marker = "  *best"
                 print(f"epoch {ep:3d}  train {tr:.6f}  val {va:.6f}  "
-                      f"({time.time()-t0:.1f}s){marker}", flush=True)
+                      f"lr {cur_lr:.2e}  ({time.time()-t0:.1f}s){marker}",
+                      flush=True)
+                bad = 0 if marker else bad + 1
+                if args.patience and bad >= args.patience:
+                    print(f"early stop: {bad} epochs without a val "
+                          f"improvement (--patience {args.patience})",
+                          flush=True)
+                    stopped = True
+                    break
         except KeyboardInterrupt:
             # A full run is hours, so stopping early has to be a normal exit,
             # not a traceback: the export below is the ONLY thing that turns
