@@ -585,3 +585,122 @@ int nnue_features_oracle(uint64_t pawns, uint64_t knights, uint64_t bishops,
                            + nn_osq(persp, mirror, __builtin_ctzll(t));
     return cnt;
 }
+
+/* ------------------------- profiling entry point --------------------------
+ * Splits one NNUE evaluation into its three costs. Timed INSIDE C on purpose:
+ * a ctypes round trip is ~1 us, which is larger than the whole eval, so any
+ * measurement taken from Python measures Python.
+ *
+ * out[0] full nn_forward           (accumulator read + threats + tail)
+ * out[1] nn_threat_vec alone       (recomputed per eval, NOT incremental)
+ * out[2] tail alone                (forward with threats supplied, not built)
+ * out[3] nn_refresh alone          (full accumulator rebuild, the king-move cost)
+ * out[4] incremental accumulator   (one nn_push, the quiet-move cost)
+ * All values are nanoseconds per call. Returns 0, or -1 if no net is loaded.
+ *
+ * The stages are timed separately rather than derived by subtraction so that
+ * a surprising split shows up as a surprising number and not as a negative
+ * remainder that has to be explained away.
+ */
+int nnue_profile(uint64_t pawns, uint64_t knights, uint64_t bishops,
+                 uint64_t rooks, uint64_t queens, uint64_t kings,
+                 uint64_t occ_w, uint64_t occ_b, int turn, int ep,
+                 uint64_t castling, int iters, double* out)
+{
+    if (!g_net.loaded || iters <= 0) return -1;
+    Board b = make_board(pawns, knights, bishops, rooks, queens, kings,
+                         occ_w, occ_b, turn, ep, castling);
+    nn_refresh(&b, 0);
+    volatile int sink = 0;
+    struct timespec t0, t1;
+    #define NN_TIME(stmt, slot)                                              \
+        do {                                                                 \
+            for (int w = 0; w < iters / 8 + 1; w++) { stmt; }   /* warm */    \
+            clock_gettime(CLOCK_MONOTONIC, &t0);                             \
+            for (int i = 0; i < iters; i++) { stmt; }                        \
+            clock_gettime(CLOCK_MONOTONIC, &t1);                             \
+            out[slot] = ((double)(t1.tv_sec - t0.tv_sec) * 1e9 +             \
+                         (double)(t1.tv_nsec - t0.tv_nsec)) / (double)iters; \
+        } while (0)
+
+    NN_TIME(sink += nn_forward(&b, &g_nn_acc[0]), 0);
+
+    uint8_t tw[8], tb[8];
+    NN_TIME(nn_threat_vec(&b, tw, tb); sink += tw[0] + tb[0], 1);
+
+    /* tail only: same work as nn_forward minus the threat rebuild. The
+     * threat bytes are computed once and reused, so what remains is the
+     * clamp, the concat and the three matmuls. */
+    nn_threat_vec(&b, tw, tb);
+    const int h = g_net.h, tdim = g_net.tdim;
+    NN_TIME({
+        int8_t x[2 * NN_H_MAX + NN_T_MAX + 16] __attribute__((aligned(16)));
+        const int16_t* au = g_nn_acc[0].v[b.turn];
+        const int16_t* at = g_nn_acc[0].v[b.turn ^ 1];
+        for (int k = 0; k < h; k++) {
+            int v = au[k]; x[k] = (int8_t)(v < 0 ? 0 : (v > NN_QA ? NN_QA : v));
+            v = at[k];  x[h + k] = (int8_t)(v < 0 ? 0 : (v > NN_QA ? NN_QA : v));
+        }
+        if (tdim) {
+            const uint8_t* tus = (b.turn == WHITE) ? tw : tb;
+            const uint8_t* tth = (b.turn == WHITE) ? tb : tw;
+            for (int k = 0; k < 8; k++) {
+                x[2 * h + k] = (int8_t)tus[k];
+                x[2 * h + 8 + k] = (int8_t)tth[k];
+            }
+        }
+        for (int k = 2 * h + tdim; k < g_net.in2p; k++) x[k] = 0;
+        int8_t h1[NN_D2_MAX + 16] __attribute__((aligned(16)));
+        for (int j = 0; j < g_net.d2; j++)
+            h1[j] = nn_act(g_net.b2[j]
+                           + nn_dot_row(g_net.w2 + (size_t)j * g_net.in2p, x,
+                                        g_net.in2p));
+        for (int j = g_net.d2; j < g_net.d2p; j++) h1[j] = 0;
+        int8_t h2[NN_D3_MAX + 16] __attribute__((aligned(16)));
+        for (int j = 0; j < g_net.d3; j++)
+            h2[j] = nn_act(g_net.b3[j]
+                           + nn_dot_row(g_net.w3 + (size_t)j * g_net.d2p, h1,
+                                        g_net.d2p));
+        for (int j = g_net.d3; j < g_net.d3p; j++) h2[j] = 0;
+        sink += g_net.b4 + nn_dot_row(g_net.w4, h2, g_net.d3p);
+    }, 2);
+
+    NN_TIME(nn_refresh(&b, 0), 3);
+
+    /* One QUIET PAWN PUSH, so nn_push takes the incremental path rather than
+     * the own-king full-refresh path (already timed above as `refresh`).
+     * A synthesised move must be a real one: nn_push decodes the mover out
+     * of the move word and indexes the feature tables with it, so a zero
+     * move means piece type 0 and walks off the front of the table. And it
+     * reads g_nn_acc[ply] to write g_nn_acc[ply+1], so it has to start from
+     * the slot nn_refresh just filled. */
+    out[4] = 0.0;
+    {
+        const int us = b.turn;
+        const uint64_t occ = b.occ[WHITE] | b.occ[BLACK];
+        uint64_t mine = b.pawns & b.occ[us];
+        int from = -1, to = -1;
+        for (uint64_t t = mine; t; t &= t - 1) {
+            int f = __builtin_ctzll(t);
+            int d = (us == WHITE) ? f + 8 : f - 8;
+            if (d < 0 || d > 63) continue;
+            if ((occ >> d) & 1ULL) continue;
+            if (d / 8 == 0 || d / 8 == 7) continue;      /* skip promotions */
+            from = f; to = d; break;
+        }
+        if (from >= 0) {
+            Board c = b;
+            c.pawns = (c.pawns & ~(1ULL << from)) | (1ULL << to);
+            c.occ[us] = (c.occ[us] & ~(1ULL << from)) | (1ULL << to);
+            c.turn = us ^ 1;
+            uint32_t m = (uint32_t)from | ((uint32_t)to << 6)
+                       | ((uint32_t)PT_PAWN << MV_SHIFT_MOVER);
+            NN_TIME(nn_push(0, &b, &c, m), 4);
+        }
+    }
+
+    #undef NN_TIME
+    (void)sink;
+    return 0;
+}
+
