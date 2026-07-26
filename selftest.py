@@ -500,6 +500,17 @@ if os.path.exists("csearch.c"):
               mv_smp is not None and mv_smp in chess.Board().legal_moves,
               f"depth {ce.last_depth}, move {mv_smp}")
 
+        # --- 5g0. FB-55: the construction guard covers EVAL, not just toggles #
+        # csearch.so's eval params are process-wide, so two engines differing
+        # only in a retuned scalar (a texel candidate vs the shipped eval --
+        # this project's commonest same-process pairing) used to pass the
+        # guard and silently share whichever was built first.
+        _fp_eval = ce._eval_fingerprint()
+        check("FB-55: construction guard hashes the eval payload",
+              isinstance(_fp_eval, str) and len(_fp_eval) == 16
+              and _fp_eval == ce._eval_fingerprint(),
+              f"eval fingerprint {_fp_eval}")
+
         # --- 5g1. FI-42: eval accumulator vs the from-scratch oracle ----- #
         # apply_move maintains (mg, eg, phase) incrementally on the same
         # squares FI-01's Zobrist update touches. cs_acc_walk applies REAL
