@@ -1306,6 +1306,12 @@ class Engine:
         # FB-13c: clamp to the C-side ceiling (set_threads clamps at 256
         # silently -- the Python attr must not misrepresent the real count).
         self.smp_workers = min(256, max(1, int(self.SMP_WORKERS)))
+        # FB-53: `go searchmoves ...` restricts the ROOT to a whitelist. The
+        # host applies it as a C-level exclusion list, which the book and TB
+        # probes below never see -- they run BEFORE the search and used to
+        # return an unlisted move, breaking the promise the GUI was given.
+        # None = unrestricted; a set of chess.Move = the permitted set.
+        self.search_moves = None
         # FB-09: optional node budget (UCI `go nodes N`); None = unlimited.
         self.node_limit = None
         self.nodes_searched = 0
@@ -1500,6 +1506,10 @@ class Engine:
         if self.use_book:
             self._py.use_book = True
             book = self._py._book_move(board)
+            if (book is not None and self.search_moves is not None
+                    and book not in self.search_moves):
+                book = None          # FB-53: not in the permitted set -- fall
+                                     # through to the restricted search
             if book is not None:
                 # UCI hosts surface the move via the info pv (a bare depth-0
                 # line was indistinguishable from a no-move result); depth
@@ -1527,6 +1537,9 @@ class Engine:
             if time_limit is not None:
                 tb_to = min(tb_to, max(0.0, time_limit * 0.5))
             tb = self._py._tb_probe(board, tb_to)
+            if (tb is not None and self.search_moves is not None
+                    and tb[1] not in self.search_moves):
+                tb = None            # FB-53: same rule as the book above
             if tb is not None:
                 wdl, tb_move = tb            # move already verified legal
                 score_white = ((wdl if board.turn == chess.WHITE else -wdl)
