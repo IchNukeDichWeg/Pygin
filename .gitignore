@@ -168,6 +168,7 @@ data/UHO_Lichess_4852_v1.epd
 !/testing/test_sprt_resume.py
 !/testing/tsan_smp.c
 !/testing/fi96_orchestration.c
+!/testing/pair_identity.py
 # FI-15: NNUE code/docs are tracked; datasets, checkpoints, weight files and
 # the training venv are local-only (large binaries, PUBLIC repo).
 NNUE/datasets/
