@@ -81,15 +81,16 @@ input[type=text]{font-family:var(--mono);font-size:12.5px;padding:8px 10px;width
 .board{display:grid;grid-template-columns:repeat(8,1fr);border:1px solid var(--line-2);
   border-radius:8px;overflow:hidden;aspect-ratio:1;width:100%}
 .sq{position:relative;display:flex;align-items:center;justify-content:center;
-  font-size:clamp(28px,6.6vw,56px);line-height:1;user-select:none}
+  font-size:clamp(36px,8.6vw,72px);line-height:1;user-select:none}
 .sq.l{background:var(--sq-light)}.sq.d{background:var(--sq-dark)}
 .sq .pc{position:relative;z-index:2;transform:translateY(-5%);-webkit-text-stroke:1.1px var(--piece-edge);paint-order:stroke fill}
 .sq .pc.w{color:var(--piece-w)}
 .sq .pc.b{color:var(--piece-b)}
 .sq .tint{position:absolute;inset:0;z-index:1}
-.sq .val{position:absolute;left:0;right:0;bottom:2px;z-index:3;text-align:center;
+.sq .val{position:absolute;left:3px;bottom:2px;z-index:3;
   font-family:var(--mono);font-size:10.5px;font-variant-numeric:tabular-nums;
-  color:var(--ink-2);letter-spacing:-.02em}
+  color:var(--ink-2);letter-spacing:-.02em;padding:0 3px;border-radius:3px;
+  background:color-mix(in srgb, var(--surface) 72%, transparent)}
 .coords{display:grid;grid-template-columns:repeat(8,1fr);font-family:var(--mono);
   font-size:10px;color:var(--ink-3);text-align:center;margin-top:4px}
 
@@ -108,9 +109,15 @@ input[type=text]{font-family:var(--mono);font-size:12.5px;padding:8px 10px;width
   background:linear-gradient(90deg,var(--cool),var(--sunken),var(--warm))}
 
 /* threat table */
-table{border-collapse:collapse;width:100%;font-size:13px}
-th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}
+/* color is stated explicitly: a table does not reliably inherit the
+   themed ink here, and the failure is silent -- dark-theme ink on a
+   white card, which still 'renders'. */
+table{border-collapse:collapse;width:100%;font-size:13px;color:var(--ink)}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);color:var(--ink)}
 th{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+/* the page declares which schemes it supports, so the browser does not
+   apply its own auto-darkening on top of the token system. */
+:root{color-scheme:light dark}
 td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
 .scroll{overflow-x:auto}
 .bar{display:inline-block;height:6px;border-radius:3px;background:var(--accent);vertical-align:middle}
