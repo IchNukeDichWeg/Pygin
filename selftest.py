@@ -500,6 +500,35 @@ if os.path.exists("csearch.c"):
               mv_smp is not None and mv_smp in chess.Board().legal_moves,
               f"depth {ce.last_depth}, move {mv_smp}")
 
+        # --- 5f2. FB-56: the P-26 defaults agree across the three files -- #
+        # csearch.c, cengine.py's class attributes and cuci.py each carried
+        # their own copy. P-26's sweep put these on a PLATEAU, so a drift
+        # would be invisible in play while meaning the A/B harness and the
+        # UCI host ran different engines. The C table is the source of truth;
+        # it is immutable (the setters move the globals, not the table), so
+        # this reads the SHIPPED value even after construction pushed others.
+        import ctypes as _ct                                # noqa: E402
+        ce._lib.cs_p26_default.restype = _ct.c_int
+        ce._lib.cs_p26_default.argtypes = [_ct.c_int]
+        ce._lib.cs_p26_count.restype = _ct.c_int
+        P26 = ["rfp_margin", "rfp_depth", "fut_margin", "delta_margin",
+               "lmp1", "lmp2", "lmp3", "null_base", "null_div", "lmr_div_x100"]
+        cdef = {P26[i]: ce._lib.cs_p26_default(i)
+                for i in range(ce._lib.cs_p26_count())}
+        import cuci as _cuci                                # noqa: E402
+        p26_bad = []
+        for name, pyval in (("null_base", cengine.Engine.NULL_BASE),
+                            ("null_div", cengine.Engine.NULL_DIV),
+                            ("lmr_div_x100", cengine.Engine.LMR_DIV)):
+            if cdef.get(name) != pyval:
+                p26_bad.append(f"{name}: C {cdef.get(name)} vs cengine {pyval}")
+        check("FB-56: P-26 defaults agree (C is the source of truth)",
+              not p26_bad and len(cdef) == 10,
+              "; ".join(p26_bad) if p26_bad else
+              f"{len(cdef)} defaults, null={cdef['null_base']}/{cdef['null_div']}"
+              f" lmr_div={cdef['lmr_div_x100'] / 100:.2f}"
+              f" rfp={cdef['rfp_margin']}/{cdef['rfp_depth']}")
+
         # --- 5g0. FB-55: the construction guard covers EVAL, not just toggles #
         # csearch.so's eval params are process-wide, so two engines differing
         # only in a retuned scalar (a texel candidate vs the shipped eval --
@@ -548,7 +577,9 @@ if os.path.exists("csearch.c"):
         #   (a) the four split invariants at every node of a real tree walk
         #   (b) csearch's gen_legal vs movegen.so's, move for move
         MGC_WHY = {1: "captures+quiets != gen_legal", 2: "noisy not a subset",
-                   4: "has_legal_quiet disagrees", 8: "move_from_key broke"}
+                   4: "has_legal_quiet disagrees", 8: "move_from_key broke",
+                   16: "a split is OUT OF gen_legal's order (FB-57)",
+                   32: "gen_noisy != {victim||promo} exactly (FB-57)"}
         ce._lib.cs_movegen_walk.restype = _ct.c_uint64
         ce._lib.cs_movegen_walk.argtypes = [_ct.c_uint64] * 8 + [
             _ct.c_int, _ct.c_int, _ct.c_uint64, _ct.c_int]
@@ -569,7 +600,7 @@ if os.path.exists("csearch.c"):
                 bd.clean_castling_rights(), 3)
             mgc_bad += r_mg & 0xFFFFFFFF
             mgc_flags |= r_mg >> 32
-        check("FI-16: csearch's five generators agree (split invariants)",
+        check("FI-16+FB-57: five generators agree, in order (split invariants)",
               mgc_bad == 0,
               f"{mgc_bad} bad nodes: "
               + ", ".join(v for k, v in MGC_WHY.items() if mgc_flags & k))
