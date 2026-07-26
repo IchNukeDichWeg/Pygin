@@ -101,6 +101,44 @@ check("reference search node-exact", e.nodes_searched == REF_NODES,
       f"{e.nodes_searched:,} nodes (expected {REF_NODES:,}; see REF_NODES note)")
 
 # --- 5. timed path (time_manager + soft-stop machinery) ------------------ #
+# FB-58: this header claimed coverage the suite did not have -- until
+# 2026-07-26, calculate_move_time had NO assertion anywhere in the tree, while
+# every timed campaign, every SPRT confirm and the whole PM-01 premove chain
+# stand on it. The table below is the deliverable, not a formality.
+from time_manager import calculate_move_time as _cmt              # noqa: E402
+_tm_board = chess.Board()
+_tm_bad = []
+# (label, my_ms, opp_ms, inc_ms, movestogo)
+_TM_CASES = [
+    ("classical 40/90+30", 90 * 60_000, 90 * 60_000, 30_000, 40),
+    ("campaign 50+0.20",   50_000,      50_000,      200,     None),
+    ("bullet 60+0",        60_000,      60_000,      0,       None),
+    ("increment-only 1+2", 1_000,       60_000,      2_000,   None),
+    ("low-time panic",     300,         30_000,      0,       None),
+    ("movestogo 5",        30_000,      30_000,      0,       5),
+]
+_tm_budgets = {}
+for _lbl, _my, _opp, _inc, _mtg in _TM_CASES:
+    _b = _cmt(_tm_board, _my, _opp, _inc, movestogo=_mtg)
+    _tm_budgets[_lbl] = _b
+    if _b <= 0:
+        _tm_bad.append(f"{_lbl}: non-positive budget {_b}")
+    # NEVER spend more than the clock we actually have.
+    if _b > _my:
+        _tm_bad.append(f"{_lbl}: budget {_b:.0f} > clock {_my}")
+# Monotonic in remaining time: more clock must never mean less thinking.
+_mono = [_cmt(_tm_board, ms, 60_000, 0) for ms in
+         (1_000, 5_000, 20_000, 60_000, 300_000)]
+if any(b < a - 1e-9 for a, b in zip(_mono, _mono[1:])):
+    _tm_bad.append(f"not monotonic in remaining time: "
+                   + " ".join(f"{v:.0f}" for v in _mono))
+check("FB-58: calculate_move_time budgets are sane and monotonic",
+      not _tm_bad,
+      "; ".join(_tm_bad) if _tm_bad else
+      f"50+0.20 -> {_tm_budgets['campaign 50+0.20']:.0f} ms, "
+      f"panic(300ms) -> {_tm_budgets['low-time panic']:.0f} ms, "
+      f"monotonic over 1s..300s")
+
 random.seed(42)
 e2 = engine.Engine()
 e2.use_book = False
