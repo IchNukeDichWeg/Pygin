@@ -887,7 +887,8 @@ def write_game_block(fh, pgn_fh, g, e1, mode_cfg, tc_label, tpm):
 
 
 def write_summary(fh, e1, e2, tally, total_games, start_t, stopped,
-                  n_workers=None, sprt_info=None, mode_desc=None):
+                  n_workers=None, sprt_info=None, mode_desc=None,
+                  startup_fail=None):
     lines = ["", "=== BATTLE SUMMARY ===",
              f"Engine 1: {e1.name}", f"Engine 2: {e2.name}",
              f"Games scored: {tally['completed']:,}  (of {total_games:,} scheduled)",
@@ -926,6 +927,17 @@ def write_summary(fh, e1, e2, tally, total_games, start_t, stopped,
         lines.append(f"Game pair ratio (WW+WD)/(LL+LD): {ratio_s}")
         nelo = normalized_elo(penta)
         lines.append(f"Normalized Elo: {f'{nelo:+.2f}' if nelo is not None else 'n/a'}")
+    # FB-59: workers that died during engine LOAD never played a game, so
+    # they are invisible in the counts above -- and if the deaths correlate
+    # with one engine (a stale .so, a missing net) the campaign is BIASED,
+    # not merely short. Say so where the numbers are read.
+    if startup_fail and startup_fail.get("n"):
+        lines.append(f"!! Worker startup failures: {startup_fail['n']} "
+                     f"-- these workers never contributed a game; treat the "
+                     f"sample as short AND possibly one-sided")
+        for _w in startup_fail.get("why", [])[:3]:
+            lines.append(f"   {_w}")
+
     si = sprt_info
     sprt_decided = bool(si and si.get("decided"))
     if si and si.get("cfg") and si.get("llr") is not None:
@@ -1048,8 +1060,25 @@ def _worker_loop(in_q, out_q, engine1_path, engine2_path, mode_cfg,
     e1 = EngineProcess(ctx, engine1_path, book1)
     e2 = EngineProcess(ctx, engine2_path, book2)
     try:
-        e1.start()
-        e2.start()
+        # FB-59: a worker that dies HERE -- stale .so, missing net, import
+        # error -- never enters the game loop, so it is not counted as a
+        # failed game. It simply never contributes: the run continues at
+        # reduced throughput with no signal, and if the failure correlates
+        # with ONE engine (it usually does) the campaign is biased, not just
+        # slow. Report it on out_q as a distinguishable record instead.
+        try:
+            e1.start()
+            e2.start()
+        except Exception as ex:
+            import traceback
+            # EngineError already begins with the failing engine's name, so
+            # do NOT prepend a guess -- an attribution that can be wrong is
+            # worse than none when the whole point is telling WHICH side died.
+            out_q.put({"round": -1, "fen": "", "result": "*",
+                       "reason": "WORKER_STARTUP_FAILED",
+                       "error": str(ex).strip().splitlines()[0],
+                       "traceback": traceback.format_exc()})
+            return
         if mode_cfg["mode"] == "nodes":
             # Budgets were calibrated ONCE in the parent (sequentially, on a
             # quiet machine) -- benching per worker during parallel startup
@@ -1489,6 +1518,7 @@ def main():
                  f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
         fh.flush()
 
+    startup_fail = {"n": 0, "why": []}      # FB-59
     tally = {"e1": 0, "e2": 0, "draws": 0, "errors": 0, "completed": 0,
               "penta": {0: 0, 1: 0, 2: 0, 3: 0, 4: 0}, "penta_incomplete": 0}
     start_t = time.time()
@@ -1821,6 +1851,20 @@ def main():
                             raise EngineError(
                                 "all match workers died -- aborting result "
                                 "collection (summary so far still written)")
+                # FB-59: a worker that died during engine LOAD reports here
+                # instead of silently never contributing.
+                if isinstance(r, dict) and r.get("reason") == "WORKER_STARTUP_FAILED":
+                    startup_fail["n"] += 1
+                    startup_fail["why"].append(r.get("error", "?"))
+                    _clear_status()
+                    print(f"\n!! WORKER STARTUP FAILED ({startup_fail['n']}): "
+                          f"{r.get('error', '?')}", file=sys.stderr, flush=True)
+                    if startup_fail["n"] >= max(1, n_workers // 4):
+                        raise EngineError(
+                            f"{startup_fail['n']} of {n_workers} workers could "
+                            f"not load their engines -- aborting rather than "
+                            f"running a short, possibly one-sided campaign")
+                    continue
                 g = _unpack_result(r, e1, e2)
                 handle_result(g, g["round"])
                 if sprt_state["decided"]:
@@ -1877,7 +1921,7 @@ def main():
         _flush_log_remainder()  # emit any games still held by the reorder buffer
         write_summary(fh, e1, e2, tally, total_games, start_t, stopped,
                       n_workers=n_workers, sprt_info=sprt_state,
-                      mode_desc=mode_desc)
+                      mode_desc=mode_desc, startup_fail=startup_fail)
         # FI-82: pooled state, written on EVERY exit path (clean finish,
         # Ctrl-C/SIGTERM, SPRT decision) -- the tranche that follows resumes
         # from here, and next_offset is what makes its shard disjoint.
