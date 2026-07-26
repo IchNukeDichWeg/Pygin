@@ -34,9 +34,10 @@ ELO MODELS (the same two offered by Fishtest's sprt_calc calculator)
   pentanomial pair distribution, so the bound self-corrects for draw rate.
   This is the scale of the sprt_calc "Normalized" model AND of its elo-0/elo-1
   fields -- so `--elo1 2` here means exactly what it means on that page.
-  (NOTE: match.py's printed "Normalized Elo" omits the sqrt(2) and so reads a
-  factor sqrt(2) larger than this scale; that is a display-only figure, the
-  SPRT here is on the sprt_calc scale by construction.)
+  (match.py's printed "Normalized Elo" is on THIS scale as of FB-54,
+  2026-07-26. It used to omit the sqrt(2) and read a factor 1.414 larger;
+  every "norm" figure quoted from before that date needs dividing by 1.414
+  to compare with a new one.)
 * "logistic": classic BayesElo-style, elo -> score = 1/(1 + 10^(-elo/400)).
 
 The statistics (GSPRT via empirical likelihood) are the published method
@@ -134,7 +135,11 @@ def _score_from_elo(elo, model, pdf):
     _, var = _mean_var(pdf)
     if var <= 0.0:
         return 0.5                 # no variance yet -> no separation, LLR->0
-    return 0.5 + (elo * math.log(10.0) / 800.0) * math.sqrt(2.0 * var)
+    s = 0.5 + (elo * math.log(10.0) / 800.0) * math.sqrt(2.0 * var)
+    # FB-54 rider: a target score outside [0,1] is not a hypothesis the tilt
+    # can represent -- an absurd --elo1 would otherwise push the MLE search
+    # into a region where it silently returns nonsense instead of failing.
+    return min(1.0, max(0.0, s))
 
 
 def bounds(alpha=0.05, beta=0.05):
