@@ -130,7 +130,7 @@ on BOTH machines; FI-11 is +5% on arm64 and a wash on x86, which is the
 release's other lesson -- deleting work travels across architectures,
 reorganising branches does not. CONFIRMED 2026-07-25 vs Old Engine/54 (TIMED 50+0.20 on
 an Intel Gold 6330, 108 workers): **+9.66 +/-8.2 over 6,874 games** (51.39%,
-ptnml 133/783/1460/866/188, pair ratio 1.15, normalized +21.18, GSPRT[0,4]
+ptnml 133/783/1460/866/188, pair ratio 1.15, normalized +14.98 (FB-54 scale; quoted as +21.18 pre-fix), GSPRT[0,4]
 LLR +2.946 > +2.944 ACCEPT, stopped early) -- the C era's sixth SPRT accept.
 TIMED on purpose: the --nodes instrument reads exactly zero for a
 node-identical change (both sides search the same tree, and its NPS
