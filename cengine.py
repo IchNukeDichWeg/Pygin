@@ -1000,8 +1000,12 @@ class Engine:
     # fix would create a new inconsistency (the FB-40 warning). The ROOT site
     # is deliberately excluded: there n == 0 means the game is over and the
     # value is only reported to the GUI. False = v55 node-exact.
-    # PENDING: built 2026-07-27, unmeasured.
-    SM_CONTEMPT = False
+    # SHIPPED 2026-07-27 on a keep-on-null screen: -1.39 +/-15.2 over 2,000
+    # games @nodes 1.75M vs Old Engine/55, ptnml [2, 61, 881, 55, 1] -- 88% of
+    # pairs in the middle bucket, i.e. almost nothing moved, exactly as a
+    # 0.363%-of-nodes endgame-only population predicts. Bench 1,461,732 and
+    # the full CE_LADDER are UNCHANGED with it on, so it re-pins nothing.
+    SM_CONTEMPT = True
 
     # FI-89: repetition against the ROOT or the pre-root GAME HISTORY draws on
     # the FIRST match, while match.py's arbiter (python-chess

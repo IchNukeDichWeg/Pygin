@@ -1701,8 +1701,9 @@ class Engine:
         # g_qs_see_margin -- both must move together or the hand-maintained
         # mirror silently splits.
         self.QS_SEE_MARGIN = 0
-        # FB-48: route in-tree stalemate through _draw_score. 0 = v55 exact.
-        self.SM_CONTEMPT = 0
+        # FB-48: route in-tree stalemate through _draw_score. SHIPPED
+        # 2026-07-27 (keep-on-null, -1.39 +/-15.2). 0 restores v55 exactly.
+        self.SM_CONTEMPT = 1
 
         # Late-move-reduction mode. When True, reductions are drawn from the
         # log(depth)*log(move_index) table below (more aggressive at deeper
