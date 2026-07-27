@@ -944,8 +944,29 @@ def write_game_block(fh, pgn_fh, g, e1, mode_cfg, tc_label, tpm):
 
 # --- FI-81's --nodes calibration constants. Module level since FI-101 runs
 # the same calibration a SECOND time at the end of the campaign. ---
-CAL_ROUNDS = 5
-CAL_DEADBAND = 0.01
+# FI-101 follow-up, measured 2026-07-27 on an idle 96-core box: a NULL
+# (cengine.py against itself) calibrated to a median of 0.989 -- a 1.1% budget
+# gap between IDENTICAL binaries -- and 0.989 misses a 1% deadband by one
+# thousandth, so it was applied. engine2 played the whole match on 1,730,710
+# nodes against engine1's 1,750,000; identity read 0% and the end
+# recalibration read 1.0014, i.e. the true ratio was 1.000 all along.
+#
+# Three changes, in increasing order of cost:
+#   * DISCARD ROUND 1. Same reason nps13 discards it: the first bench pays for
+#     page-in and a cold cache, and it pays unequally between the two engines.
+#     Free, and it removes the roughest sample.
+#   * MORE ROUNDS. The median of 5 is noisy; 9 leaves 8 usable and cuts the
+#     standard error ~40%. Costs a few seconds once per campaign.
+#   * A WIDER DEADBAND, 1% -> 2%. This is the one with a real cost: a candidate
+#     genuinely 1-2% slower now gets an EQUAL budget instead of a scaled one,
+#     so a real NPS regression of that size is absorbed rather than charged
+#     (~1-2 Elo at the house's 1.16 Elo/1% conversion). That is the correct
+#     trade. A mis-snapped null is not worth 1-2 Elo of precision: the same
+#     failure produced a +48.96 Elo reading on identical engines on 2026-07-26,
+#     and near-mirror determinism AMPLIFIES a consistent budget error because
+#     it repeats in every pair instead of averaging out.
+CAL_ROUNDS = 9
+CAL_DEADBAND = 0.02
 CAL_MAX_SPREAD = 0.05      # HOST-03: warn above 5% round-to-round spread
 
 
@@ -981,9 +1002,11 @@ def calibrate_nodes(engine1, engine2, when):
     try:
         c1.start()
         c2.start()
-        for _ in range(CAL_ROUNDS):
+        for rnd in range(CAL_ROUNDS):
             n1 = c1.request_calibrate()
             n2 = c2.request_calibrate()
+            if rnd == 0:
+                continue          # discard: cold cache, paid unequally
             nps1_list.append(n1)
             nps2_list.append(n2)
             ratios.append(n2 / n1)
@@ -995,7 +1018,7 @@ def calibrate_nodes(engine1, engine2, when):
     ratio = 1.0 if abs(raw - 1.0) < CAL_DEADBAND else raw
     spread = (ratios[-1] - ratios[0]) / raw if raw else 0.0
     lines = [f"NPS calibration ({when}, {CAL_ROUNDS} interleaved bench rounds "
-             f"per engine):",
+             f"per engine, round 1 discarded):",
              "  round ratios: " + " ".join(f"{r:.3f}" for r in ratios)
              + f" -> median {raw:.3f}"
              + (" (deadband -> 1.000)" if ratio == 1.0 else "")]
