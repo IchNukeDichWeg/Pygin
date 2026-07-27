@@ -84,9 +84,33 @@ Rule of thumb: **+3 plies per doubling of threads.** d13 at 1 thread, ~d16 at
 4. `--repeat 3` is mandatory in this mode, and the between-run spread, not the
 sign test, is the floor.
 
-**Acceptance status: NOT yet passed.** The null must read ~1.00 with a spread
-that bounds the claims being made, and a deliberately crippled helper path must
-read slower.
+**HOW MANY ROUNDS Threads>1 ACTUALLY NEEDS -- measured 2026-07-27, and it is
+not 16.** Six null runs on an idle, correctly-pinned 4-core set at d16:
+
+    16 rounds   +1.71%  +3.04%  +3.08%     3-run spread 1.38pp
+    32 rounds   +0.63%  -6.41%  -3.30%     3-run spread 7.04pp
+    pooled      mean -0.21%,  SD 3.84pp
+
+Two things follow, and the second is the one that costs money.
+
+1. **There is NO bias.** The null is centred on 1.00 (mean -0.21%). An earlier
+   read of "+2.6% systematic" came from three same-sign 16-round runs and was
+   simply wrong.
+2. **A 3-run spread does NOT estimate the floor.** The same instrument on the
+   same work produced 1.38pp and then 7.04pp. Reading `--repeat 3`'s range as
+   the resolution floor is safe at Threads=1, where the underlying variance is
+   small; at Threads>1 it is a 3-sample range of a wide distribution and will
+   happily report a floor 5x too good. Use the SD across repeats, and do not
+   trust a floor derived from three numbers.
+
+Since SD scales as 1/sqrt(rounds), reaching a ~1.5pp floor needs roughly
+**150 rounds** per run at Threads=4, not 16 -- about 7 minutes a run at d16.
+Budget that before believing any SMP verdict. The variance is intrinsic:
+individual ratios span 0.41..2.09 on a NULL because which helper first finds
+the line that ends an iteration is genuinely random.
+
+**Acceptance status: the null is CENTRED (mean -0.21% over 6 runs), so the
+mode is sound. The crippled-helper control is still not run.**
 
 ACCEPTANCE GATE (the entry's own test): re-measure a known pair and
 reproduce its recorded verdict. A harness that cannot recover the number
