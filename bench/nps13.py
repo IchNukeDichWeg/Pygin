@@ -360,9 +360,24 @@ def run_once(a):
     # silently overturns the first.
     rng = max(ratios) - min(ratios)
     if rng > 0.10:
-        print(f"\n  !! spread {rng:.3f} is WIDE (>0.10) -- this machine was "
-              f"busy during the run.\n     Re-measure on an idle box before "
-              f"trusting either the median or the sign test.")
+        if a.threads > 1:
+            # A wide WITHIN-run spread is EXPECTED at Threads>1 and says
+            # nothing about the host: which helper first finds the line that
+            # ends an iteration is genuinely random, so time-to-depth varies
+            # ~3x round to round on a fully idle, pinned box. Blaming the
+            # machine here sent three consecutive acceptance runs looking for
+            # a phantom co-tenant. What bounds a claim in this mode is the
+            # BETWEEN-run spread that --repeat reports, not this number.
+            print(f"\n  spread {rng:.3f} within the run -- EXPECTED at "
+                  f"Threads={a.threads}, not a sign the box is busy.\n"
+                  f"     Helper-race variance moves time-to-depth ~3x round to "
+                  f"round even when idle.\n"
+                  f"     Use the BETWEEN-run spread from --repeat as the floor; "
+                  f"this line is not it.")
+        else:
+            print(f"\n  !! spread {rng:.3f} is WIDE (>0.10) -- this machine was "
+                  f"busy during the run.\n     Re-measure on an idle box before "
+                  f"trusting either the median or the sign test.")
 
     if p > 0.05:
         print("\n  VERDICT: not resolved -- the sign test does not exclude "
