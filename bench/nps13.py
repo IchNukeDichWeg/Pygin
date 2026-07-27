@@ -61,14 +61,20 @@ subprocess each, `--cpu` pinning, `--repeat` for the between-run spread.
 
     python3 bench/nps13.py A.py B.py --threads 4 --repeat 3
 
-**Its acceptance test is NOT yet run** (2026-07-26): the null -- one unchanged
-binary against itself at Threads=4 -- must read ~1.00 with a spread that bounds
-the claims being made, and a deliberately crippled helper path must read
-slower. Both need an IDLE box. On this Mac under load the Threads=1 null
-already reads -1.96% with spread 0.213 (a clean box gives ~1.00 / ~0.02), so
-nothing measured here would mean anything. Time-to-depth is inherently noisier
-than NPS per unit of wall clock -- treat `--repeat 3` as mandatory in this mode,
-not optional.
+**`--cpu` IS THREAD-AWARE, AND HAS TO BE** (fixed 2026-07-27, found by the
+acceptance run itself). The affinity set is `cpu .. cpu+threads-1`, not `{cpu}`.
+The first acceptance attempt used `--threads 4 --cpu 2`, which pinned all four
+engine threads to ONE core to timeshare it: within a run A swung 0.528s..1.942s
+(3.7x), and three repeats of a NULL -- the same binary against itself -- read
+-9.99%, +1.51%, -11.79%, a **13.30 percentage-point** between-run floor. None of
+that was SMP noise or a busy box; it was four threads on one core. The header
+now prints the cpu RANGE so the mistake cannot look correct again.
+
+**Acceptance status: the null is being re-run with the fix.** It must read
+~1.00 with a spread that bounds the claims being made, and a deliberately
+crippled helper path must read slower. Time-to-depth is inherently noisier than
+NPS per unit of wall clock, so `--repeat 3` is mandatory in this mode, not
+optional -- and the between-run spread, not the sign test, is the floor.
 
 ACCEPTANCE GATE (the entry's own test): re-measure a known pair and
 reproduce its recorded verdict. A harness that cannot recover the number
@@ -108,9 +114,19 @@ os.chdir(root)                      # engines resolve .so / data relative to cwd
 # into a constant.
 cpu = int(sys.argv[5]) if len(sys.argv) > 5 else -1
 threads = int(sys.argv[6]) if len(sys.argv) > 6 else 1
+pinned = []
 if cpu >= 0 and hasattr(os, "sched_setaffinity"):
     try:
-        os.sched_setaffinity(0, {cpu})
+        # FI-95 FIX: the affinity set must be as wide as the THREAD COUNT.
+        # A one-cpu set at Threads=4 puts all four engine threads on a single
+        # core to timeshare it, and time-to-depth becomes a scheduler lottery:
+        # the first acceptance run read a 3.7x swing WITHIN a run and a 13.30
+        # percentage-point floor BETWEEN runs on a null (same binary both
+        # sides). That is not SMP noise, it is four threads on one core.
+        avail = sorted(os.sched_getaffinity(0))
+        want = [c for c in range(cpu, cpu + max(1, threads)) if c in avail]
+        os.sched_setaffinity(0, set(want) or {cpu})
+        pinned = want or [cpu]
     except OSError:
         pass                        # not permitted here; fall back to unpinned
 import chess
@@ -140,7 +156,7 @@ t0 = time.perf_counter()
 eng.get_best_move(board, depth)
 dt = time.perf_counter() - t0
 nodes = getattr(eng, "nodes_searched", 0)
-print("NPS13 " + json.dumps({"nodes": nodes, "sec": dt}))
+print("NPS13 " + json.dumps({"nodes": nodes, "sec": dt, "cpus": pinned}))
 '''
 
 
@@ -217,8 +233,14 @@ def main():
     print(f"paired d{a.depth} {_what} ratios -- B relative to A")
     print(f"  A = {a.engine_a}")
     print(f"  B = {a.engine_b}")
+    # FI-95: the pin must be as wide as the thread count, and it must SAY so.
+    # "pinned to cpu 2" at Threads=4 read like a sane setup while actually
+    # putting four threads on one core -- the acceptance run's 13.30-point
+    # floor. The range is printed so that can never look right again.
+    _pin = (f", pinned to cpu {a.cpu}" if a.threads <= 1
+            else f", pinned to cpus {a.cpu}-{a.cpu + a.threads - 1}")
     print(f"  {a.rounds} rounds (round 1 discarded), fresh process per search"
-          + (f", pinned to cpu {a.cpu}" if a.cpu >= 0 else "")
+          + (_pin if a.cpu >= 0 else "")
           + (f", Threads={a.threads}" if a.threads > 1 else "") + "\n")
 
     t_start = time.time()
