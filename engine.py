@@ -1701,6 +1701,8 @@ class Engine:
         # g_qs_see_margin -- both must move together or the hand-maintained
         # mirror silently splits.
         self.QS_SEE_MARGIN = 0
+        # FB-48: route in-tree stalemate through _draw_score. 0 = v55 exact.
+        self.SM_CONTEMPT = 0
 
         # Late-move-reduction mode. When True, reductions are drawn from the
         # log(depth)*log(move_index) table below (more aggressive at deeper
@@ -4474,7 +4476,14 @@ class Engine:
         scored = self.order_moves(board, tt_move, ply, counter, prev_move,
                                   pm1, pm2, in_check)   # P-19 rows / V-09 in_check
         if not scored:
-            return -self.MATE_SCORE + ply if in_check else 0
+            # FB-48: stalemate is the only rule draw that did not honour
+            # contempt -- every other one routes through _draw_score. Mirrors
+            # csearch.c's g_sm_contempt and MUST move with it. Python's
+            # qsearch has no separate stalemate return (it stand-pats), so
+            # this is the whole mirror; evaluate_position's 0 is a PUBLIC
+            # terminal evaluator, not an in-tree score, and stays 0.
+            return (-self.MATE_SCORE + ply if in_check
+                    else (self._draw_score(board) if self.SM_CONTEMPT else 0))
 
         # One-reply extension: in a forced line where only a single legal move
         # exists, search it one ply deeper (bounded by ext_budget). This keeps
