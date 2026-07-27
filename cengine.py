@@ -978,6 +978,18 @@ class Engine:
     # v53 byte-exact.
     QS_TTFIRST = False
 
+    # FI-90: qsearch skips a capture whose SEE is negative, at a threshold of
+    # exactly 0 -- Stockfish runs a NEGATIVE margin there, because a
+    # marginally-losing capture at a horizon node can still be best (the SEE
+    # chain prices one square and cannot see the follow-up). The entire
+    # affected population is ONE motif: defended BxN at SEE -10 is the only
+    # capture class in the open interval (-100, 0); every other losing class
+    # sits at -170 or worse and deserves the skip. Not a value-table artifact
+    # -- the engine's own Texel fit prices B over N by a LARGER margin (MG
+    # 306/322, EG 342/356) than SEE's 320/330. 0 = v55 node-exact; armed
+    # value 100. PENDING: built 2026-07-27, unmeasured.
+    QS_SEE_MARGIN = 0
+
     # FI-89: repetition against the ROOT or the pre-root GAME HISTORY draws on
     # the FIRST match, while match.py's arbiter (python-chess
     # can_claim_threefold_repetition) needs the THIRD. True adopts SF's
@@ -1100,8 +1112,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (abi 31 = FI-89 set_rep_strict) -- bump with csearch_abi.
-        if lib.csearch_abi() < 31:
+        # (abi 32 = FI-90 set_qs_see_margin) -- bump with csearch_abi.
+        if lib.csearch_abi() < 32:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -1147,7 +1159,7 @@ class Engine:
               self.NULL_NODOUBLE, self.NULL_EVALR, self.QS_EVASION_CAP,
               self.SINGULAR, self.SE_MIN_DEPTH, self.SE_MARGIN, self.SE_BUDGET,
               self.KILLER_INHERIT, self.QUIET_MALUS_ALL, self.HIST_KEEP,
-            self.QS_TTFIRST, self.REP_STRICT,
+            self.QS_TTFIRST, self.REP_STRICT, self.QS_SEE_MARGIN,
               # FB-55: the guard covered 49 TOGGLES and not one EVAL VALUE --
               # a hole exactly where the .so-cross-contamination class bites.
               # csearch.so's eval params are process-wide too, so two engines
@@ -1257,6 +1269,7 @@ class Engine:
         lib.set_hist_keep(1 if self.HIST_KEEP else 0)               # FI-12
         lib.set_qs_ttfirst(1 if self.QS_TTFIRST else 0)             # FI-67
         lib.set_rep_strict(1 if self.REP_STRICT else 0)             # FI-89
+        lib.set_qs_see_margin(int(self.QS_SEE_MARGIN))              # FI-90
         # FB-04: entries scored under a PREVIOUS construction's eval params
         # would poison this one (the table is process-global and persistent).
         # First construction: the table is empty, reset is a no-op.

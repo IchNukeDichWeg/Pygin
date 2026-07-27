@@ -1849,6 +1849,55 @@ static inline uint64_t board_key(const Board* b)
  * strict-> max pick, shift-to-front keeps gen-order ties stable). Most
  * nodes cut on move 1-3 and never pay for sorting the tail. sc_out == NULL
  * keeps the classic sort (root, VERIFY reference). */
+/* FI-90: qsearch's losing-capture skip runs at a SEE threshold of exactly 0,
+ * where Stockfish runs a NEGATIVE margin. A marginally-losing capture at a
+ * horizon node can still be the best move: the SEE chain prices one square and
+ * cannot see the follow-up.
+ *
+ * The population is exactly ONE motif. Enumerating every `mover > victim`
+ * single-recapture SEE against SEE_VALUES {0,100,320,330,500,900,20000}:
+ *
+ *   NxP -220   BxP -230   **BxN -10**   RxP -400  RxN -180  RxB -170
+ *   QxP -800   QxN -580   QxB -570      QxR -400
+ *
+ * (KxX cannot reach the list defended -- legal() filters it.) Defended BxN at
+ * -10 is the ONLY capture class in the whole open interval (-100, 0); every
+ * other losing capture is at least 170cp under water and deserves the skip.
+ *
+ * And -10 is not a value-table artifact, which is what the mining pass first
+ * claimed: the engine's own Texel fit prices bishop above knight by a LARGER
+ * margin than SEE does -- MG_VALUES N 306 / B 322 (gap 16), EG_VALUES N 342 /
+ * B 356 (gap 14) -- against SEE's 320/330 (gap 10). A defended BxN really is
+ * marginally losing by the engine's own reckoning. The defect is the
+ * threshold, not the table.
+ *
+ * 0 = v55 node-exact. Armed value: 100 (admits BxN-defended, still skips every
+ * other losing class, all of which sit at -170 or worse).
+ *
+ * FI-18 interaction, commented rather than discovered later: dormant
+ * g_see_prune reads the same bits-22-23 tag, so an armed margin narrows what
+ * that prune would fire on. FI-18 is dormant with a negative lean (-1.25), so
+ * this is inert today. */
+static int g_qs_see_margin = 0;
+void set_qs_see_margin(int v) { g_qs_see_margin = v; }
+
+/* FI-90's engagement dead-gate, and it is deliberately PER-NODE.
+ *
+ * FI-89 died partly on a bad engagement number: its rate was counted by
+ * replaying GAME POSITIONS (0.733% changed answer) and quoted as evidence the
+ * change was narrow, but the screen came back at 99.90% engagement because the
+ * rule ran at every NODE and fired hardest at shallow plies whose subtrees are
+ * the whole search. A per-position rate does not bound a per-node one.
+ *
+ * So this counts inside a real search: how many capture admissions the SEE
+ * gate judges at all, and how many the margin FLIPS from skip to admit
+ * (SEE in [-margin, 0)). Build with -DQS_MARGIN_COUNT; not in the shipped .so. */
+#ifdef QS_MARGIN_COUNT
+static long g_qsm_seen = 0, g_qsm_flip = 0;
+void cs_qsm_stats(long* seen, long* flip) { *seen = g_qsm_seen; *flip = g_qsm_flip; }
+void cs_qsm_reset(void) { g_qsm_seen = g_qsm_flip = 0; }
+#endif
+
 static void order_moves(const Board* b, uint32_t* mv, int n, int ply,
                         uint32_t counter_key, uint32_t tt_move, int use_cont,
                         int* sc_out)
@@ -1871,13 +1920,22 @@ static void order_moves(const Board* b, uint32_t* mv, int n, int ply,
                 int sv = see(b->pawns, b->knights, b->bishops, b->rooks,
                              b->queens, b->kings, b->occ[WHITE], b->occ[BLACK],
                              color, from, to, (m & MV_BIT_EP) ? 1 : 0);
-                if (sv < 0) s = ORD_BADCAP + sv;
+                if (sv < 0) s = ORD_BADCAP + sv;   /* FI-90: band keeps the
+                                                    * honest sign -- ordering
+                                                    * must not move, so the
+                                                    * screen measures exactly
+                                                    * one mechanism */
                 /* FI-02.3: tag the verdict into the move word's reserved
                  * bits (22-23: 0 unknown, 1 SEE>=0, 2 SEE<0) -- the sort
                  * carries it, and qsearch's losing-capture skip reads the
                  * tag instead of recomputing the same SEE. Every consumer
                  * of these words masks to 15 bits before comparing/storing. */
-                mv[i] = (m & ~(3u << 22)) | ((sv < 0 ? 2u : 1u) << 22);
+#ifdef QS_MARGIN_COUNT
+                g_qsm_seen++;
+                if (sv < 0 && sv >= -g_qs_see_margin) g_qsm_flip++;
+#endif
+                mv[i] = (m & ~(3u << 22))
+                        | ((sv < -g_qs_see_margin ? 2u : 1u) << 22);   /* FI-90 */
             }
         } else if (!full) {
             s = 0;                                     /* baseline: gen order */
@@ -2028,7 +2086,7 @@ static uint32_t stager_next(Stager* st)
                                      b->rooks, b->queens, b->kings,
                                      b->occ[WHITE], b->occ[BLACK],
                                      color, from, to, (m & MV_BIT_EP) ? 1 : 0);
-                        if (sv < 0) {
+                        if (sv < -g_qs_see_margin) {          /* FI-90 */
                             st->bad[st->nbad] = m;
                             st->bsc[st->nbad++] = ORD_BADCAP + sv;
                             continue;
@@ -2753,6 +2811,7 @@ void set_qs_lazy(int v) { g_qs_lazy = v; }
 static int g_qs_ttfirst = 0;
 void set_qs_ttfirst(int v) { g_qs_ttfirst = v; }
 
+
 /* P-44: quiescence TT probe/store. The node majority lives in qsearch, and
  * until now it never touched the transposition table: every qsearch node
  * recomputed the full static eval and re-resolved exchanges the warm P-14
@@ -3353,7 +3412,8 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
                     int from = m & 63, to = (m >> 6) & 63;
                     if (see(b->pawns, b->knights, b->bishops, b->rooks,
                             b->queens, b->kings, b->occ[WHITE], b->occ[BLACK],
-                            color, from, to, (m & MV_BIT_EP) ? 1 : 0) < 0)
+                            color, from, to, (m & MV_BIT_EP) ? 1 : 0)
+                            < -g_qs_see_margin)                /* FI-90 */
                         go = 0;
                 }
                 if (go && !is_ttm
@@ -3459,7 +3519,8 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
                         neg = see(b->pawns, b->knights, b->bishops, b->rooks,
                                   b->queens, b->kings, b->occ[WHITE],
                                   b->occ[BLACK],
-                                  color, from, to, (m & MV_BIT_EP) ? 1 : 0) < 0;
+                                  color, from, to, (m & MV_BIT_EP) ? 1 : 0)
+                              < -g_qs_see_margin;              /* FI-90 */
                     }
                     if (neg) continue;               /* skip losing captures */
                 }
@@ -4572,7 +4633,9 @@ int cs_rep_probe(const uint64_t* path, int ply, const uint64_t* hist,
     return r;
 }
 
-int csearch_abi(void) { return 31; }  /* 31 = FI-89 set_rep_strict (repetition
+int csearch_abi(void) { return 32; }  /* 32 = FI-90 set_qs_see_margin (qsearch
+                                       *      losing-capture admission margin);
+                                       * 31 = FI-89 set_rep_strict (repetition
                                        *      needs the THIRD occurrence at or
                                        *      before the root, both sites);
                                        * 30 = FI-85/FI-76 removed (set_xray_mob
