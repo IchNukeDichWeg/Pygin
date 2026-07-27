@@ -103,14 +103,39 @@ Two things follow, and the second is the one that costs money.
    happily report a floor 5x too good. Use the SD across repeats, and do not
    trust a floor derived from three numbers.
 
-Since SD scales as 1/sqrt(rounds), reaching a ~1.5pp floor needs roughly
-**150 rounds** per run at Threads=4, not 16 -- about 7 minutes a run at d16.
-Budget that before believing any SMP verdict. The variance is intrinsic:
-individual ratios span 0.41..2.09 on a NULL because which helper first finds
-the line that ends an iteration is genuinely random.
+**MORE ROUNDS DO NOT HELP -- MEASURED, and it refutes the obvious model.**
+On an idle box with verified 1-core-per-CPU topology (lscpu CPU n -> CORE n,
+so the pin really was four distinct physical cores):
 
-**Acceptance status: the null is CENTRED (mean -0.21% over 6 runs), so the
-mode is sound. The crippled-helper control is still not run.**
+    16 rounds   between-run spread   1.38pp
+    32 rounds                        7.04pp
+    150 rounds                      11.29pp   (+7.77%, -3.52%, +0.06%)
+
+The floor gets WORSE with more rounds, which is impossible if the per-round
+ratios were i.i.d. -- so they are not. Two things are going on: the ratio
+distribution is heavy-tailed (0.332..2.020 on a NULL, a 6x spread, because
+which helper first finds the line that ends an iteration is genuinely random),
+and the between-run component is dominated by something SLOW relative to a run.
+A 150-round run spans 8.4 minutes and is therefore MORE exposed to that drift,
+not less. Predicting ~1.5pp from SD ∝ 1/sqrt(n) was wrong.
+
+**SO THE FLOOR IS ~10pp AND ROUND COUNT WILL NOT MOVE IT.** What that costs:
+
+  * The instrument CAN see a large regression. The crippled-helper control
+    (helpers muted) reads **-35.5%**, far outside the floor. Detection works.
+  * It CANNOT see the range that matters for candidates. FI-47 S-06 is priced
+    +0-15 Elo, i.e. 0-13% of time-to-depth -- inside the floor. **nps13
+    --threads cannot decide S-06**, and no round count fixes that.
+
+If the SMP lane needs finer resolution, the design change is to sum time over
+a SUITE of positions per round rather than repeating one (the bench's shape),
+which would cut relative variance by ~sqrt(#positions). That is a rewrite, not
+a parameter, and it is unbuilt.
+
+**Acceptance status: BOTH controls now run. The null is CENTRED (mean -0.21%
+over 6 runs at 16-32 rounds) and the crippled control reads -35.5%, so the mode
+is sound and its detection works. Its RESOLUTION, ~10pp, is the finding -- and
+it is too coarse for the item the lane was built for.**
 
 ACCEPTANCE GATE (the entry's own test): re-measure a known pair and
 reproduce its recorded verdict. A harness that cannot recover the number
