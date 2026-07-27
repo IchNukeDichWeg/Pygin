@@ -231,6 +231,11 @@ def load_engine(path, tag):
     if not hasattr(module, "Engine"):
         raise AttributeError(f"{path!r} does not define an `Engine` class")
     eng = module.Engine()
+    try:                       # what net, if any, this engine will play with
+        from battle_worker import describe_nnue
+        eng._nnue_info = describe_nnue(eng)
+    except Exception:
+        eng._nnue_info = None
     try:
         eng.use_book = ENGINE_USE_BOOK
     except Exception:
@@ -643,9 +648,17 @@ def write_game_block(fh, pgn_fh, g, p1, p2, pgn_str):
 
 def write_summary(fh, p1_name, desc1, p2_name, desc2, tally,
                   total_games, start_t, stopped):
+    try:    # from the engine SOURCES: the players live in worker processes
+        from battle_worker import describe_nnue_source, nnue_label
+        _nets = [(n, nnue_label(describe_nnue_source(p)))
+                 for n, p in (("Engine 1", ENGINE_1_PATH),
+                              ("Engine 2", ENGINE_2_PATH))]
+    except Exception:
+        _nets = []
     lines = ["", "=== ODDS MATCH SUMMARY ===",
              f"Engine 1: {p1_name}  [{desc1}]",
              f"Engine 2: {p2_name}  [{desc2}]",
+             *[f"Net ({n}): {lb}" for n, lb in _nets if lb],
              f"Games scored: {tally['completed']:,}  (of {total_games:,} scheduled)",
              f"Workers: {N_WORKERS}",
              f"Engine 1 Wins: {tally['e1']:,}",

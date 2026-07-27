@@ -180,7 +180,8 @@ TIME_GRACE = 4.0
 LOAD_TIMEOUT = 30.0          # seconds to wait for an engine process to load
 
 import datetime
-import hashlib                # FI-82: --sprt-resume experiment fingerprint
+import hashlib
+import re                # FI-82: --sprt-resume experiment fingerprint
 import json
 import math
 import multiprocessing as mp
@@ -194,7 +195,8 @@ from queue import Empty
 import chess
 import chess.pgn
 
-from battle_worker import engine_worker
+from battle_worker import (engine_worker, nnue_label,
+                           describe_nnue_source)
 from time_manager import calculate_move_time
 
 # Optional SPRT early-stop (--sprt). Imported defensively so a broken/missing
@@ -239,6 +241,46 @@ SPRT_FP_VERSION = 2      # FB-49: bump when the tuple below changes, so an
                          # old state.json fails LOUDLY instead of pooling.
 
 
+def _net_sha_for_engine(engine_py):
+    """sha16 of the .nnue an engine source names, or None.
+
+    Deliberately a text scan, not an import. It only has to be right when it
+    matters -- a net that is named and present -- and being wrong here is
+    safe in the conservative direction: a missed net means the fingerprint
+    falls back to the engine .py hash, which already changes whenever the
+    named path changes."""
+    try:
+        src = open(engine_py, encoding="utf-8", errors="replace").read()
+    except OSError:
+        return None
+    m = re.findall(r'NNUE_FILE\s*=\s*["\']([^"\']+\.nnue)["\']', src)
+    if not m:
+        return None
+    p = m[-1]
+    if not os.path.isabs(p):
+        p = os.path.join(os.path.dirname(os.path.abspath(__file__)), p)
+    return _sha16(p) if os.path.isfile(p) else None
+
+
+def _net_lines(procs):
+    """"Net (name): ..." lines for whichever engines use one.
+
+    Prefers what the loaded engine REPORTED, and falls back to scanning its
+    source. Both are needed: the banner is printed before the engine
+    processes start, so nothing has reported yet, while the summary runs
+    after and should show what actually loaded rather than what the file
+    says it would."""
+    out = []
+    for proc in procs:
+        info = getattr(proc, "nnue", None)
+        if info is None:                      # not started yet -> read source
+            info = describe_nnue_source(proc.path)
+        lb = nnue_label(info)
+        if lb:
+            out.append(f"Net ({proc.name}): {lb}")
+    return out
+
+
 def sprt_fingerprint(engine1, engine2, sprt_cfg, mode_cfg,
                      fen_file, seed, start_pos):
     """Identity of the experiment. Two tranches may only be pooled when every
@@ -270,6 +312,17 @@ def sprt_fingerprint(engine1, engine2, sprt_cfg, mode_cfg,
     # of the ruleset whenever adjudication is on.
     wdl = _data_path("wdl_model.json")
     fp["wdl_sha"] = _sha16(wdl) if os.path.isfile(wdl) else None
+    # The NET is part of the experiment too. An engine .py that names a net
+    # already covers this through _sha16 above -- the path is a literal in
+    # the source, so choosing a different net edits the file. What that does
+    # NOT catch is the same path holding different BYTES, so hash whatever
+    # each engine's NNUE_FILE currently points at. Parsed out of the source
+    # rather than imported: sprt_fingerprint runs before any engine process
+    # exists, and importing an engine here would load a second differently
+    # configured one into this process, which is the .so rule this repo has
+    # been bitten by before.
+    for tag, path in (("e1", engine1), ("e2", engine2)):
+        fp[tag + "_net"] = _net_sha_for_engine(path)
     if start_pos:
         fp["fen_file"], fp["fen_sha"] = None, None
     else:
@@ -374,6 +427,9 @@ class EngineProcess:
             raise EngineError(f"{self.name}: timed out while loading")
         msg = self.conn.recv()
         if msg[0] == "ready":
+            # payload added later than the protocol; tolerate its absence so
+            # an older battle_worker still loads
+            self.nnue = msg[1] if len(msg) > 1 else None
             return
         self.kill()
         if msg[0] == "fatal":
@@ -989,6 +1045,7 @@ def write_summary(fh, e1, e2, tally, total_games, start_t, stopped,
                   startup_fail=None, cal_lines=None):
     lines = ["", "=== BATTLE SUMMARY ===",
              f"Engine 1: {e1.name}", f"Engine 2: {e2.name}",
+             *_net_lines([e1, e2]),
              f"Games scored: {tally['completed']:,}  (of {total_games:,} scheduled)",
              f"Workers: {n_workers}",
              *( [f"Mode: {mode_desc}"] if mode_desc else [] ),
@@ -1554,7 +1611,9 @@ def main():
                   "nodes": f"nodes {nodes_budget}/move (NPS-calibrated)",
                   "clock": f"clock {tc_label}"}[MODE])
     workers_desc = (f"{n_workers} parallel" if parallel else "1 sequential")
+    _nn_lines = "".join(x + "\n" for x in _net_lines([e1, e2]))
     banner = (f"Match: {e1.name}  vs  {e2.name}\n"
+              + _nn_lines +
               f"Interpreter: {interp}\n"
               f"Mode: {mode_desc}   |   "
               f"{len(fens)} positions x 2 colours = {total_games} games\n"

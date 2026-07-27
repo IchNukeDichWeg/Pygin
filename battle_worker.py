@@ -48,6 +48,9 @@ or None for a mate score), mate (signed full-moves, or None), info (a
 synthesized UCI-style "info ..." string for the battle log).
 """
 
+import hashlib
+import os
+import re
 import importlib.util
 import time
 import traceback
@@ -79,6 +82,89 @@ def _format_info(depth, score_cp, mate, nodes, nps, time_ms):
     score = f"mate {mate}" if mate is not None else f"cp {score_cp}"
     return (f"info depth {depth} score {score} nodes {nodes} "
             f"nps {nps} time {time_ms}")
+
+
+def describe_nnue(engine):
+    """What net, if any, this engine will actually play with.
+
+    Returns {"on", "net", "hash", "missing"} for ANY engine, including ones
+    with no NNUE support at all (a Stockfish wrapper, an old snapshot), so
+    callers can ask unconditionally.
+
+    The hash is the point. A net's filename already carries its content hash
+    by convention, but a filename can be edited and a file can be replaced;
+    hashing what was actually loaded is the only version of this that cannot
+    lie. Two A/B tranches run against different nets are different
+    experiments, and without this there was nothing in the log to say so.
+    """
+    out = {"on": False, "net": None, "hash": None, "missing": False}
+    try:
+        if not bool(getattr(engine, "USE_NNUE", False)):
+            return out
+    except Exception:
+        return out
+    out["on"] = True
+    path = getattr(engine, "NNUE_FILE", None)
+    if not path:
+        out["missing"] = True
+        return out
+    if not os.path.isabs(path):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), path)
+    out["net"] = os.path.basename(path)
+    if not os.path.isfile(path):
+        out["missing"] = True
+        return out
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    out["hash"] = h.hexdigest()[:12]
+    return out
+
+
+def describe_nnue_source(engine_py):
+    """describe_nnue() without loading the engine -- a text scan of its source.
+
+    Needed where the engine object is not available: a parent process that
+    only knows paths, or any caller that must not import a second
+    differently-configured engine into itself (this repo's one-process-one-
+    config .so rule). Conservative by construction: if the scan finds
+    nothing it reports NNUE off, which is the same thing a caller would
+    print for an engine that genuinely has none."""
+    out = {"on": False, "net": None, "hash": None, "missing": False}
+    try:
+        src = open(engine_py, encoding="utf-8", errors="replace").read()
+    except OSError:
+        return out
+    if not re.search(r"USE_NNUE\s*=\s*True", src):
+        return out
+    m = re.findall(r'NNUE_FILE\s*=\s*["\']([^"\']+\.nnue)["\']', src)
+    out["on"] = True
+    if not m:
+        out["missing"] = True
+        return out
+    path = m[-1]
+    if not os.path.isabs(path):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), path)
+    out["net"] = os.path.basename(path)
+    if not os.path.isfile(path):
+        out["missing"] = True
+        return out
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    out["hash"] = h.hexdigest()[:12]
+    return out
+
+
+def nnue_label(info):
+    """One-line human form of describe_nnue(), or None when NNUE is off."""
+    if not info or not info.get("on"):
+        return None
+    if info.get("missing"):
+        return f"NNUE ON but net missing ({info.get('net') or 'no path set'})"
+    return f"{info['net']}  (sha {info['hash']})"
 
 
 def engine_worker(conn, engine_path, use_book, pv_uci=False, book_path=None,
@@ -127,7 +213,7 @@ def engine_worker(conn, engine_path, use_book, pv_uci=False, book_path=None,
             engine.pv_uci = pv_uci      # PV log format (SAN vs UCI)
         except Exception:
             pass            # older engines may not expose it; fine
-        conn.send(("ready",))
+        conn.send(("ready", describe_nnue(engine)))
     except Exception:
         conn.send(("fatal", traceback.format_exc()))
         return
