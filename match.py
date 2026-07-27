@@ -1015,13 +1015,26 @@ def calibrate_nodes(engine1, engine2, when):
         c2.kill()
     ratios.sort()
     raw = ratios[len(ratios) // 2]                   # median round ratio
-    ratio = 1.0 if abs(raw - 1.0) < CAL_DEADBAND else raw
+    # The deadband is now STATISTICAL as well as fixed (2026-07-27). A fixed
+    # threshold cannot tell a REAL 2% NPS difference from a noisy measurement
+    # of zero -- and this box produced a 1.0213 median on two builds that
+    # differ by one qsearch threshold, applied it, and handed the baseline a
+    # 2.1% node advantage for a whole tranche. What separates the two cases is
+    # whether the rounds AGREE: a genuine difference is reproducible round to
+    # round (tight spread), a spurious one is not. So if the offset from 1.0 is
+    # smaller than the measurement's own half-spread, the calibration cannot
+    # distinguish this ratio from 1.000 and must not pretend to.
+    half_spread = (ratios[-1] - ratios[0]) / 2.0
+    ratio = 1.0 if abs(raw - 1.0) < max(CAL_DEADBAND, half_spread) else raw
     spread = (ratios[-1] - ratios[0]) / raw if raw else 0.0
     lines = [f"NPS calibration ({when}, {CAL_ROUNDS} interleaved bench rounds "
              f"per engine, round 1 discarded):",
              "  round ratios: " + " ".join(f"{r:.3f}" for r in ratios)
              + f" -> median {raw:.3f}"
-             + (" (deadband -> 1.000)" if ratio == 1.0 else "")]
+             + (f" (half-spread {half_spread:.3f} >= offset "
+                f"{abs(raw - 1.0):.3f} -> 1.000)"
+                if ratio == 1.0 and abs(raw - 1.0) >= CAL_DEADBAND
+                else " (deadband -> 1.000)" if ratio == 1.0 else "")]
     # HOST-03: the median is robust to ONE bad round, not to a noisy box. This
     # number sets the node budget for every game in the campaign, so a wide
     # sample set has to be seen, not averaged away in silence. Rented
