@@ -119,34 +119,59 @@ and the between-run component is dominated by something SLOW relative to a run.
 A 150-round run spans 8.4 minutes and is therefore MORE exposed to that drift,
 not less. Predicting ~1.5pp from SD ∝ 1/sqrt(n) was wrong.
 
-**SO THE FLOOR IS ~10pp AND ROUND COUNT WILL NOT MOVE IT.** What that costs:
+**THE FIX IS PARALLEL REPLICATES, NOT MORE ROUNDS -- and I got this wrong
+twice before measuring it.** Round count does not move the per-replicate
+scatter (sigma ~4.7pp at 16, 32 AND 150 rounds). What DOES move is running K
+independent replicates and averaging: SE = sigma/sqrt(K), the ordinary result,
+which I missed by staring at the SD ACROSS replicates instead of the standard
+error OF THEIR MEAN.
+
+Confirmed on 19 independent null measurements: mean **-0.04%**, exactly what
+SE = 4.67/sqrt(19) = 1.07pp predicts. The null is centred and the aggregate
+converges.
+
+**THE PROTOCOL for a Threads>1 verdict**, and it needs a many-core box:
+
+    K replicates, each pinned to `threads` DISTINCT PHYSICAL cores,
+    each bound to ONE NUMA node with local memory, all run CONCURRENTLY:
+
+      for c in 0 4 8 12 16 20; do numactl --cpunodebind=0 --membind=0 \
+        python3 bench/nps13.py A.py B.py --threads 4 --depth 16 \
+        --rounds 32 --repeat 1 --cpu $c > r_$c.log 2>&1 & done; wait
+
+    then report mean +/- sigma/sqrt(K). At K=12, SE ~1.35pp.
+
+Check the topology first (`lscpu -e=CPU,CORE,SOCKET`, `numactl --hardware`):
+on a dual-socket EPYC 7402 the physical cores are 0-23 (node 0) and 24-47
+(node 1), with 48-95 their SMT siblings. A replicate landing on siblings or
+straddling nodes measures the host, not the engine.
+
+**SO THE SINGLE-REPLICATE FLOOR IS ~4.7pp AND ROUND COUNT WILL NOT MOVE IT --
+but K replicates will.** What that costs:
 
   * The instrument can PROBABLY see a large regression -- but this is a SMOKE,
     not the control. The crippled-helper build (helpers muted) reads **-35.5%**
     over 5 rounds at d13 on a BUSY Mac. That is far outside the floor and the
     direction is right, but it is not the 150-round d16 idle-box run the
     control calls for, and it must not be quoted as one.
-  * It CANNOT see the range that matters for candidates. FI-47 S-06 is priced
-    +0-15 Elo, i.e. 0-13% of time-to-depth -- inside the floor. **nps13
-    --threads cannot decide S-06**, and no round count fixes that.
+  * A SINGLE replicate cannot see the range that matters -- FI-47 S-06 is
+    priced 0-13% of time-to-depth, inside the 4.7pp floor. **With K=12 it
+    resolved S-06 at 4.6 sigma.** The instrument was never too coarse; it was
+    being read one replicate at a time.
 
-If the SMP lane needs finer resolution, the design change is to sum time over
-a SUITE of positions per round rather than repeating one (the bench's shape),
-which would cut relative variance by ~sqrt(#positions). That is a rewrite, not
-a parameter, and it is unbuilt.
+**IT WORKED.** S-06 (persistent helper pool) vs v55, K=12 on both nodes:
+Threads=4 **+10.14% +/-2.16**, Threads=1 control **+0.305% +/-0.017** -- so the
+SMP-specific component is **+9.83% +/-2.16, 4.6 sigma**. The Threads=1 read
+also re-validates the single-thread floor: 12 replicates spanned 0.20pp.
 
-**Acceptance status: HALF DONE, and the half that is done is the informative
-one.** The NULL ran properly on an idle box at 16/32/150 rounds: centred (mean
--0.21%) with a floor of ~10pp that round count does not move. The CRIPPLED
-control has only been smoked on a busy Mac (-35.5%, 5 rounds, d13) and still
-owes its 150-round d16 idle-box run -- `testing/stage_crippled_helper.sh`
-stages it.
+**ACCEPTANCE: COMPLETE.** Both controls ran properly on an idle, correctly
+pinned, NUMA-bound box:
 
-That outstanding run is worth doing but it cannot change the verdict, because
-the verdict comes from the null: the floor is ~10pp, FI-47 S-06 is priced
-0-13% of time-to-depth, so **nps13 --threads cannot decide S-06** whatever the
-cripple reads. A confirmed detection would only tell us the instrument is
-usable for LARGE regressions, which is the case it is least needed for.
+    NULL      19 measurements, mean **-0.04%**, sigma 4.67pp -- centred
+    CRIPPLE   5 replicates,    mean **-47.99%**, sigma 5.09  -- **10.3 sigma**
+
+The mode does not invent differences and does not miss them. Its resolution is
+sigma/sqrt(K), so the round count is not the knob -- K is.
 
 ACCEPTANCE GATE (the entry's own test): re-measure a known pair and
 reproduce its recorded verdict. A harness that cannot recover the number
