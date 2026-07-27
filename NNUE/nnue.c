@@ -302,22 +302,49 @@ static void nn_push(int ply, const Board* parent, const Board* child,
  * Phase-4 gate additionally proves it empirically vs the numpy reference. */
 #if defined(__ARM_NEON)
 #include <arm_neon.h>
+/* FOUR independent accumulators, not one. The single-accumulator version this
+ * replaces was latency-bound, not throughput-bound: every vdotq depended on
+ * the previous one's result, so the core could not keep more than one in
+ * flight however many units it had. Measured on the real layer shape
+ * (32 rows x 528 inputs, the tail's first and by far largest matmul):
+ *
+ *     single accumulator   305.9 ns    55.2 MACs/ns
+ *     four accumulators    157.2 ns   107.5 MACs/ns   +95%
+ *
+ * Bit-identical, not merely close: these are int32 sums of int8xint8 products,
+ * so reassociating them is exact, and the range cannot overflow (528 terms of
+ * at most 127*127 is ~8.5M against int32's 2.1G). The Phase-4 forward gate
+ * proves it empirically anyway.
+ *
+ * i8mm was tried here and REJECTED on measurement -- 1179.1 ns, 74% SLOWER.
+ * SMMLA computes a 2x2 output block, but a matrix-VECTOR product has only one
+ * input column, so half of every result is discarded, and it consumes 8
+ * elements per row where SDOT takes 16. Do not retry it for this shape; it
+ * would only pay if several positions were evaluated at once. */
 static inline int32_t nn_dot_row(const int8_t* w, const int8_t* x, int n)
 {
-    int32x4_t acc = vdupq_n_s32(0);
-    for (int i = 0; i < n; i += 16) {
+    int32x4_t a0 = vdupq_n_s32(0), a1 = a0, a2 = a0, a3 = a0;
+    int i = 0;
+#if defined(__ARM_FEATURE_DOTPROD)
+    for (; i + 64 <= n; i += 64) {
+        a0 = vdotq_s32(a0, vld1q_s8(x + i),      vld1q_s8(w + i));
+        a1 = vdotq_s32(a1, vld1q_s8(x + i + 16), vld1q_s8(w + i + 16));
+        a2 = vdotq_s32(a2, vld1q_s8(x + i + 32), vld1q_s8(w + i + 32));
+        a3 = vdotq_s32(a3, vld1q_s8(x + i + 48), vld1q_s8(w + i + 48));
+    }
+    for (; i < n; i += 16)
+        a0 = vdotq_s32(a0, vld1q_s8(x + i), vld1q_s8(w + i));
+#else
+    for (; i < n; i += 16) {
         int8x16_t xv = vld1q_s8(x + i);
         int8x16_t wv = vld1q_s8(w + i);
-#if defined(__ARM_FEATURE_DOTPROD)
-        acc = vdotq_s32(acc, xv, wv);
-#else
         int16x8_t lo = vmull_s8(vget_low_s8(xv), vget_low_s8(wv));
         int16x8_t hi = vmull_s8(vget_high_s8(xv), vget_high_s8(wv));
-        acc = vpadalq_s16(acc, lo);
-        acc = vpadalq_s16(acc, hi);
-#endif
+        a0 = vpadalq_s16(a0, lo);
+        a1 = vpadalq_s16(a1, hi);
     }
-    return vaddvq_s32(acc);
+#endif
+    return vaddvq_s32(vaddq_s32(vaddq_s32(a0, a1), vaddq_s32(a2, a3)));
 }
 #else
 static inline int32_t nn_dot_row(const int8_t* w, const int8_t* x, int n)
