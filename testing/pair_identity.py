@@ -40,10 +40,18 @@ So a candidate is compared against the NULL at the same budget, never against
 100%. The residual is cross-game state, not the change: TT_KEEP_WARM (P-14) is
 on, so the table is NEVER wiped between games in a worker, and the two halves
 of a mirror pair are played by different workers with different game histories.
-It reproduces run to run because the round -> worker assignment does, and it
-shrinks as the budget grows (a deeper search re-derives more of its own tree):
-80% at 300k, 88% here, and FI-81 measured 292/300 = 97.3% at 1.75M over 300
-pairs. Read a small sample as a floor, not a constant.
+
+**CONFIRMED 2026-07-27, and the floor is a function of GAMES PER WORKER.** The
+same null on a 95-worker box with 50 games -- so at most ONE game per worker,
+no carry-over possible -- read **100.00%, 25/25 pairs**, with ptnml
+[0, 0, 25, 0, 0] and Elo -0.00. The Mac's 80-88% came from 9 workers sharing 50
+games, ~6 games each, every one of them inheriting the previous game's table.
+That is the mechanism, measured from both ends rather than argued.
+
+Practical consequence: compute the null's floor at the SAME games-per-worker
+ratio as the run being read. A 2,000-game screen on 95 workers is ~21 games per
+worker and will sit well below 100% on that count alone; comparing it against a
+50-game null's 100% would read as engagement that is not there.
 
 THE ACCIDENT WORTH KEEPING. Row 4 is a real failure caught live: the same
 binary on both sides scored **+48.96 Elo** because the NPS calibration landed
