@@ -2290,6 +2290,43 @@ void csearch_set_simplify(int threshold, int weight)
 /* Contempt-adjusted draw value, side-to-move view (port of _draw_score):
  * negative when stm is clearly ahead on material (avoid the draw), positive
  * when clearly behind (seek it). */
+/* FB-48: stalemate is the only rule draw that does NOT route through
+ * draw_score. Contempt is ON by default (g_contempt = 50, wired every
+ * construction), and every other draw honours it -- insufficient material,
+ * 50-move, repetition and FI-29's cycle gate in negamax, and all three
+ * qsearch draws. So with a piece's difference on the board a repetition
+ * scores -50 and is correctly avoided, while a stalemate -- the same half
+ * point -- scores 0 and is not. FI-54 makes it persistent: tt_store_terminal
+ * writes that 0 as a depth-200 TT_EXACT entry that outlives the search.
+ *
+ * `g_sm_contempt` routes the five IN-TREE stalemate returns through
+ * draw_score. 0 = v55 node-exact. It ships as ONE edit across both searches
+ * on purpose: a negamax-only or qsearch-only fix would create a NEW
+ * inconsistency between them, which is exactly what the FB-40 note warns
+ * about, and engine.py must move in lockstep or the hand-maintained mirror
+ * splits silently.
+ *
+ * A SIXTH SITE IS DELIBERATELY EXCLUDED: root_search's
+ * `*out_score = in_check(&b) ? -CS_INF : 0`. At the root n == 0 means the
+ * GAME IS OVER -- there is no move to rank and the value is only reported to
+ * the GUI. Reporting +/-50 for a finished, drawn game would be a regression.
+ * Leave the root at 0. */
+static int g_sm_contempt = 0;
+void set_sm_contempt(int v) { g_sm_contempt = v; }
+
+/* FB-48's engagement dead-gate, per-NODE (the FI-89 lesson). `fires` counts
+ * in-tree stalemate returns; `nonzero` counts those where draw_score actually
+ * differs from 0 -- a stalemate scored at material parity changes nothing, so
+ * only the second number is real engagement. Build with -DSM_COUNT. */
+#ifdef SM_COUNT
+static long g_sm_fires = 0, g_sm_nonzero = 0;
+void cs_sm_stats(long* fires, long* nonzero) { *fires = g_sm_fires; *nonzero = g_sm_nonzero; }
+void cs_sm_reset(void) { g_sm_fires = g_sm_nonzero = 0; }
+#define SM_TALLY(b) do { g_sm_fires++; if (draw_score(b)) g_sm_nonzero++; } while (0)
+#else
+#define SM_TALLY(b) ((void)0)
+#endif
+
 static int draw_score(const Board* b)
 {
     int us = b->turn, them = us ^ 1;
@@ -3390,7 +3427,8 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
                     qs_tt_store(qslot, key, stand, ply, 0, TT_LOWER, raw_stand, 0);
                 return stand;
             }
-            return 0;                                /* stalemate: draw, not eval */
+            SM_TALLY(b);
+            return g_sm_contempt ? draw_score(b) : 0;  /* FB-48: stalemate */
         }
         if (stand > alpha) alpha = stand;        /* FI-67: baseline BEFORE the
                                                   * TT-first stage -- the loop
@@ -3453,14 +3491,16 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         if (n == 0 && !qs_ttf && !has_legal_quiet(b))  /* FI-67: a validated
                                                   * TT move proves a legal
                                                   * move exists */
-            return 0;                                /* stalemate: draw, not eval */
+            SM_TALLY(b);
+            return g_sm_contempt ? draw_score(b) : 0;  /* FB-48: stalemate */
     } else {
         /* P-22: noisy-only generation; stalemate still detected BEFORE the
          * stand-pat return (empty noisy list + no legal quiet = stalemate),
          * exactly like the full-gen n==0 test it replaces. */
         n = g_qgen ? gen_noisy(b, moves) : gen_legal(b, moves);
         if (n == 0 && (!g_qgen || !has_legal_quiet(b)))
-            return 0;                                /* stalemate: draw, not eval */
+            SM_TALLY(b);
+            return g_sm_contempt ? draw_score(b) : 0;  /* FB-48: stalemate */
         stand = (tt_eval != TT_EVAL_NONE) ? tt_eval    /* FI-03: exact cache */
                                           : eval_full_stm(b);
         raw_stand = stand;               /* FI-30: the FI-03 store stays RAW */
@@ -3841,7 +3881,9 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     } else {
         n = gen_legal(b, moves);
         if (n == 0) {                                /* ply-relative mate */
-            int tv = in_chk ? -CS_INF + ply : 0;
+            if (!in_chk) SM_TALLY(b);
+            int tv = in_chk ? -CS_INF + ply
+                            : (g_sm_contempt ? draw_score(b) : 0);   /* FB-48 */
             tt_store_terminal(tte, key, tv, ply);    /* FI-54 */
             return tv;
         }
@@ -4060,7 +4102,9 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
      * LMP/futility both require best > -MATE_THRESH.) Return BEFORE the TT
      * store, exactly like the v35 n==0 path. */
     if (staged && best_move == 0) {
-        int tv = in_chk ? -CS_INF + ply : 0;
+        if (!in_chk) SM_TALLY(b);
+        int tv = in_chk ? -CS_INF + ply
+                        : (g_sm_contempt ? draw_score(b) : 0);       /* FB-48 */
         tt_store_terminal(tte, key, tv, ply);        /* FI-54 */
         return tv;
     }
@@ -4633,7 +4677,9 @@ int cs_rep_probe(const uint64_t* path, int ply, const uint64_t* hist,
     return r;
 }
 
-int csearch_abi(void) { return 32; }  /* 32 = FI-90 set_qs_see_margin (qsearch
+int csearch_abi(void) { return 33; }  /* 33 = FB-48 set_sm_contempt (stalemate
+                                       *      routes through draw_score);
+                                       * 32 = FI-90 set_qs_see_margin (qsearch
                                        *      losing-capture admission margin);
                                        * 31 = FI-89 set_rep_strict (repetition
                                        *      needs the THIRD occurrence at or

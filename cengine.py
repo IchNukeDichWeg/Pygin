@@ -990,6 +990,19 @@ class Engine:
     # value 100. PENDING: built 2026-07-27, unmeasured.
     QS_SEE_MARGIN = 0
 
+    # FB-48: contempt is ON by default and every rule draw routes through
+    # draw_score -- insufficient material, 50-move, repetition, FI-29's cycle
+    # gate, all three qsearch draws. Stalemate does NOT: all five in-tree
+    # sites return a literal 0. So with a piece's difference a repetition
+    # scores -50 and is correctly avoided while a stalemate -- the same half
+    # point -- scores 0. FI-54 makes it persistent (depth-200 TT_EXACT).
+    # Ships as ONE edit across both searches; a negamax-only or qsearch-only
+    # fix would create a new inconsistency (the FB-40 warning). The ROOT site
+    # is deliberately excluded: there n == 0 means the game is over and the
+    # value is only reported to the GUI. False = v55 node-exact.
+    # PENDING: built 2026-07-27, unmeasured.
+    SM_CONTEMPT = False
+
     # FI-89: repetition against the ROOT or the pre-root GAME HISTORY draws on
     # the FIRST match, while match.py's arbiter (python-chess
     # can_claim_threefold_repetition) needs the THIRD. True adopts SF's
@@ -1112,8 +1125,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (abi 32 = FI-90 set_qs_see_margin) -- bump with csearch_abi.
-        if lib.csearch_abi() < 32:
+        # (abi 33 = FB-48 set_sm_contempt) -- bump with csearch_abi.
+        if lib.csearch_abi() < 33:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -1160,6 +1173,7 @@ class Engine:
               self.SINGULAR, self.SE_MIN_DEPTH, self.SE_MARGIN, self.SE_BUDGET,
               self.KILLER_INHERIT, self.QUIET_MALUS_ALL, self.HIST_KEEP,
             self.QS_TTFIRST, self.REP_STRICT, self.QS_SEE_MARGIN,
+            self.SM_CONTEMPT,
               # FB-55: the guard covered 49 TOGGLES and not one EVAL VALUE --
               # a hole exactly where the .so-cross-contamination class bites.
               # csearch.so's eval params are process-wide too, so two engines
@@ -1270,6 +1284,7 @@ class Engine:
         lib.set_qs_ttfirst(1 if self.QS_TTFIRST else 0)             # FI-67
         lib.set_rep_strict(1 if self.REP_STRICT else 0)             # FI-89
         lib.set_qs_see_margin(int(self.QS_SEE_MARGIN))              # FI-90
+        lib.set_sm_contempt(1 if self.SM_CONTEMPT else 0)           # FB-48
         # FB-04: entries scored under a PREVIOUS construction's eval params
         # would poison this one (the table is process-global and persistent).
         # First construction: the table is empty, reset is a no-op.
