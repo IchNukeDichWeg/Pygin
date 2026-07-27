@@ -70,11 +70,23 @@ engine threads to ONE core to timeshare it: within a run A swung 0.528s..1.942s
 that was SMP noise or a busy box; it was four threads on one core. The header
 now prints the cpu RANGE so the mistake cannot look correct again.
 
-**Acceptance status: the null is being re-run with the fix.** It must read
-~1.00 with a spread that bounds the claims being made, and a deliberately
-crippled helper path must read slower. Time-to-depth is inherently noisier than
-NPS per unit of wall clock, so `--repeat 3` is mandatory in this mode, not
-optional -- and the between-run spread, not the sign test, is the floor.
+**THE SEARCH MUST DOMINATE THE MEASUREMENT.** d13 is sized for ONE thread. At
+Threads=4 the same tree finishes several times sooner -- 0.35s on an idle
+4-core pin -- and at that length the ratio measures thread spin-up, the TT reset
+and WHICH HELPER WON THE RACE, not the engine. Measured on a null with the
+affinity fix in place: individual ratios spanned 0.40..2.42 (6x) and three
+repeats read +5.29%, +28.72%, +22.93% -- a 23-point floor, WORSE than the
+contended run it replaced. Raising the depth is the fix; more rounds only
+median the same stochastic quantity. The instrument now refuses to be read
+quietly below ~1s per search and prints the deeper command to run.
+
+Rule of thumb: **+3 plies per doubling of threads.** d13 at 1 thread, ~d16 at
+4. `--repeat 3` is mandatory in this mode, and the between-run spread, not the
+sign test, is the floor.
+
+**Acceptance status: NOT yet passed.** The null must read ~1.00 with a spread
+that bounds the claims being made, and a deliberately crippled helper path must
+read slower.
 
 ACCEPTANCE GATE (the entry's own test): re-measure a known pair and
 reproduce its recorded verdict. A harness that cannot recover the number
@@ -263,7 +275,7 @@ def main():
 def run_once(a):
     """One complete measurement; returns the median ratio."""
     _what = "TIME-TO-DEPTH" if a.threads > 1 else "NPS"
-    ratios, nodes_a, nodes_b = [], set(), set()
+    ratios, nodes_a, nodes_b, secs = [], set(), set(), []
     t_start = time.time()
     for rnd in range(1, a.rounds + 1):
         # Interleave A,B then B,A on alternate rounds so a monotonic drift in
@@ -278,6 +290,8 @@ def run_once(a):
                 measure(a.engine_a, a.fen, a.depth, a.cpu, a.threads))
         nodes_a.add(na)
         nodes_b.add(nb)
+        if rnd > 1:
+            secs += [sa, sb]
         # FI-95: at Threads>1 rank on TIME-TO-DEPTH (A's seconds over B's, so
         # >1.0 still means "B better"); at Threads=1 the two are equivalent and
         # NPS is kept for continuity with every banked number.
@@ -293,6 +307,7 @@ def run_once(a):
                   f"B {nps_b/1e6:6.3f}M  ratio {r:.4f}{tag}", flush=True)
 
     med = statistics.median(ratios)
+    med_time = statistics.median(secs) if secs else None
     wins = sum(1 for r in ratios if r > 1.0)
     p = sign_test_p(wins, len(ratios))
     print(f"\n  {len(ratios)} paired d{a.depth} {_what} ratios   "
@@ -300,6 +315,25 @@ def run_once(a):
     print(f"  spread {min(ratios):.3f} .. {max(ratios):.3f}   "
           f"B faster in {wins}/{len(ratios)}  (sign test p={p:.3f})")
     print(f"  elapsed {time.time() - t_start:.0f}s")
+
+    # FI-95: a TIME-TO-DEPTH measurement has to be long enough that the SEARCH
+    # dominates it. At Threads=4 the tree is finished several times faster than
+    # at Threads=1, so the depth that gave a ~1s single-thread search gives a
+    # ~0.3s one here -- and at 0.3s the reading is thread spin-up, the TT reset
+    # and WHICH HELPER WON THE RACE, not the engine's speed. Measured on an
+    # idle 4-core pin: d13 ran 0.35s and individual ratios spanned 0.40..2.42
+    # (6x) on a NULL, for a 23-point between-run floor. Raising the depth is
+    # the fix; more rounds only medians the same stochastic quantity.
+    if a.threads > 1 and med_time is not None and med_time < 1.0:
+        want = a.depth + 3
+        print(f"\n  !! SEARCHES TOO SHORT: median {med_time:.2f}s per search at "
+              f"Threads={a.threads}.\n"
+              f"     Below ~1s the ratio measures helper-race outcome and "
+              f"startup, not speed.\n"
+              f"     Re-run deeper -- the search must dominate the fixed cost:\n"
+              f"       python3 bench/nps13.py {a.engine_a} {a.engine_b} "
+              f"--threads {a.threads} --depth {want} --repeat {a.repeat}"
+              + (f" --cpu {a.cpu}" if a.cpu >= 0 else ""))
 
     # Node counts are the identity check that comes free: a bench-class item
     # is supposed to be node-IDENTICAL, so differing node counts mean the
