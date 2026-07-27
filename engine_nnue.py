@@ -26,4 +26,7 @@ from cengine import Engine as _HceEngine
 
 class Engine(_HceEngine):
     USE_NNUE = True
-    NNUE_FILE = "NNUE/nets/nnue_v1_8cc4d9d6caeb.nnue"
+    # v2a: full 82.4M set + cosine LR. Best of the three on the SHARED
+    # holdout (0.065475 vs v1 0.069394 and v2b 0.068256) -- and note that
+    # is the QUANTISED score, which is what actually plays.
+    NNUE_FILE = "NNUE/nets/nnue_v2a_02ec9c9065a3.nnue"
