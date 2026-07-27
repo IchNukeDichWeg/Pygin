@@ -903,6 +903,25 @@ for _script, _label in ((os.path.join("testing", "pair_identity.py"),
     except subprocess.TimeoutExpired:
         check(_label, False, "timeout")
 
+# --- 5j3. FI-89: repetition semantics vs the ARBITER ---------------------- #
+# Cross-checked against python-chess's can_claim_threefold_repetition(), not
+# against a reading of the rule. Runs with REP_STRICT both ways: the OFF column
+# must keep disagreeing with the arbiter (or the test measures nothing) and the
+# in-tree case must draw on the first match in BOTH modes. Subprocess -- it
+# loads csearch.so through its own ctypes handle.
+_t_rep = os.path.join("testing", "test_rep_strict.py")
+if os.path.exists(_t_rep):
+    try:
+        r = subprocess.run([sys.executable, _t_rep],
+                           capture_output=True, text=True, timeout=180)
+        check("FI-89: repetition rule agrees with the arbiter (REP_STRICT)",
+              r.returncode == 0,
+              "" if r.returncode == 0
+              else (r.stdout + r.stderr).strip().splitlines()[-1][:90])
+    except subprocess.TimeoutExpired:
+        check("FI-89: repetition rule agrees with the arbiter (REP_STRICT)",
+              False, "timeout")
+
 # --- 5k. NNUE unit checks (FI-15, dormant build-out) --------------------- #
 # Runs in a SUBPROCESS: cengine's FB-04 one-process-one-config rule forbids
 # a second, differently-configured Engine in this process. Exit 42 = no net
