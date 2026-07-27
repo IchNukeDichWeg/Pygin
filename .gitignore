@@ -173,6 +173,7 @@ data/UHO_Lichess_4852_v1.epd
 !/testing/test_rep_strict.py
 !/testing/fi89_cycle_verify.c
 !/testing/fi90_engagement.c
+!/testing/fb48_engagement.c
 # FI-15: NNUE code/docs are tracked; datasets, checkpoints, weight files and
 # the training venv are local-only (large binaries, PUBLIC repo).
 NNUE/datasets/
