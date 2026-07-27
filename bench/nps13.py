@@ -121,8 +121,11 @@ not less. Predicting ~1.5pp from SD ∝ 1/sqrt(n) was wrong.
 
 **SO THE FLOOR IS ~10pp AND ROUND COUNT WILL NOT MOVE IT.** What that costs:
 
-  * The instrument CAN see a large regression. The crippled-helper control
-    (helpers muted) reads **-35.5%**, far outside the floor. Detection works.
+  * The instrument can PROBABLY see a large regression -- but this is a SMOKE,
+    not the control. The crippled-helper build (helpers muted) reads **-35.5%**
+    over 5 rounds at d13 on a BUSY Mac. That is far outside the floor and the
+    direction is right, but it is not the 150-round d16 idle-box run the
+    control calls for, and it must not be quoted as one.
   * It CANNOT see the range that matters for candidates. FI-47 S-06 is priced
     +0-15 Elo, i.e. 0-13% of time-to-depth -- inside the floor. **nps13
     --threads cannot decide S-06**, and no round count fixes that.
@@ -132,10 +135,18 @@ a SUITE of positions per round rather than repeating one (the bench's shape),
 which would cut relative variance by ~sqrt(#positions). That is a rewrite, not
 a parameter, and it is unbuilt.
 
-**Acceptance status: BOTH controls now run. The null is CENTRED (mean -0.21%
-over 6 runs at 16-32 rounds) and the crippled control reads -35.5%, so the mode
-is sound and its detection works. Its RESOLUTION, ~10pp, is the finding -- and
-it is too coarse for the item the lane was built for.**
+**Acceptance status: HALF DONE, and the half that is done is the informative
+one.** The NULL ran properly on an idle box at 16/32/150 rounds: centred (mean
+-0.21%) with a floor of ~10pp that round count does not move. The CRIPPLED
+control has only been smoked on a busy Mac (-35.5%, 5 rounds, d13) and still
+owes its 150-round d16 idle-box run -- `testing/stage_crippled_helper.sh`
+stages it.
+
+That outstanding run is worth doing but it cannot change the verdict, because
+the verdict comes from the null: the floor is ~10pp, FI-47 S-06 is priced
+0-13% of time-to-depth, so **nps13 --threads cannot decide S-06** whatever the
+cripple reads. A confirmed detection would only tell us the instrument is
+usable for LARGE regressions, which is the case it is least needed for.
 
 ACCEPTANCE GATE (the entry's own test): re-measure a known pair and
 reproduce its recorded verdict. A harness that cannot recover the number
