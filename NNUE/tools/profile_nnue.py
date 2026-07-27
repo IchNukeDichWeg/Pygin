@@ -107,9 +107,10 @@ def main():
               "lever;\n     a narrower tail would be attacking the smaller "
               "half.")
     elif tail / fwd > 0.60:
-        print("  => THE TAIL DOMINATES. i8mm and a narrower first layer "
-              "(528->16) are the\n     levers; incremental threats would buy "
-              "little.")
+        print("  => THE TAIL DOMINATES. Narrowing the first layer (528->16) "
+              "is the lever;\n     incremental threats would buy little, and "
+              "i8mm was MEASURED 74% slower\n     here -- SMMLA wastes half a "
+              "2x2 block on a matrix-VECTOR product.")
     else:
         print("  => No single stage dominates; the win has to come from doing "
               "FEWER evals\n     (lazy NNUE eval) rather than cheaper ones.")
