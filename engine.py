@@ -1695,6 +1695,12 @@ class Engine:
         # benchmark, which flips it off to measure the with/without-SEE delta on
         # the same code path.
         self.use_see = True
+        # FI-90: qsearch's losing-capture admission margin, in centipawns.
+        # 0 = v55 node-exact; 100 admits defended BxN (SEE -10), the ONLY
+        # losing-capture class in (-100, 0). Mirrors csearch.c's
+        # g_qs_see_margin -- both must move together or the hand-maintained
+        # mirror silently splits.
+        self.QS_SEE_MARGIN = 0
 
         # Late-move-reduction mode. When True, reductions are drawn from the
         # log(depth)*log(move_index) table below (more aggressive at deeper
@@ -4912,8 +4918,11 @@ class Engine:
                 # in-check evasion search above returns before this loop.
                 mover_pt = (raw >> MV_SHIFT_MOVER) & MV_MASK_PT
                 mover_value = self.PIECE_VALUES[mover_pt] if mover_pt else 0
+                # FI-90: the admission threshold, mirroring csearch.c. The
+                # _order_moves demotion is deliberately NOT mirrored -- the
+                # ordering band keeps the honest sign on both sides.
                 if (self.use_see and mover_value > victim_value
-                        and self._see_raw(board, raw) < 0):
+                        and self._see_raw(board, raw) < -self.QS_SEE_MARGIN):
                     continue
             self._make(board, move, raw)
             score = -self._quiescence(board, -beta, -alpha, ply + 1)
