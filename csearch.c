@@ -2272,17 +2272,66 @@ static int insufficient_material(const Board* b)
     return 1;
 }
 
+/* FI-89: the search's repetition rule vs the arbiter's.
+ *
+ * match.py adjudicates with python-chess's can_claim_threefold_repetition(),
+ * which needs THREE occurrences. The scan below draws on the FIRST match at
+ * any distance, so a node that repeats a PRE-ROOT game position once returns
+ * draw_score(b) before movegen and cuts the whole subtree. Two costs, both in
+ * the direction that loses half-points: the losing side banks a draw that is
+ * not there (the opponent simply declines the second repetition), and the
+ * winning side is blind past the repetition -- repeat-once-then-deviate is the
+ * standard technique for winning clock time and for triangulation, and it is
+ * structurally unavailable.
+ *
+ * Stockfish's Position::is_draw splits on WHERE the match sits. A match at
+ * k < ply is strictly INSIDE the search tree, and drawing on it is correct:
+ * both sides demonstrably chose those moves, so either can repeat again. A
+ * match at k >= ply is the root itself (g_path[0]) or a pre-root game
+ * position, which the opponent is under no obligation to walk into twice --
+ * that needs a second match further back, i.e. this node is the THIRD
+ * occurrence.
+ *
+ * g_rep_strict == 0 keeps v55 byte-exact: the first return fires on every
+ * match and `seen` is dead. Nearest precedent is EP-01 (v40, +4.31 kept on a
+ * null) -- the same class of disagreement between this detector and the FIDE
+ * arbiter. EP-01 fixed the KEY; this fixes the COUNT. */
+static int g_rep_strict = 0;
+void set_rep_strict(int v) { g_rep_strict = v; }
+
 /* Repetition scan for the node at `ply` with key `key` and halfmove clock
  * `hmc`: same-side positions 4, 6, ... plies back, first through the search
  * path, then on into the game history. */
 static inline int is_repetition(uint64_t key, int ply, int hmc)
 {
+    int seen = 0;
     for (int k = 4; k <= hmc; k += 2) {
         uint64_t past;
         if (k <= ply)                        past = g_path[ply - k];
         else if (k - ply - 1 < g_nhist)      past = g_hist[k - ply - 1];
         else                                 break;
-        if (past == key) return 1;
+        if (past == key) {
+            if (!g_rep_strict || k < ply) return 1;   /* in-tree two-fold */
+            if (++seen >= 2) return 1;                /* third occurrence */
+        }
+    }
+    return 0;
+}
+
+/* FI-89(b): does the position matched at distance `k` itself repeat further
+ * back? SF's has_game_cycle requires stp->repetition for a match at or before
+ * the root; Pygin carries no per-state repetition flag, so the equivalent is
+ * a second occurrence of that same key at the SAME parity (step 2 keeps the
+ * side to move). Called only after a verified cuckoo delta match, so it is
+ * off the hot path by construction. */
+static inline int repeats_further_back(uint64_t past, int k, int ply, int hmc)
+{
+    for (int j = k + 2; j <= hmc; j += 2) {
+        uint64_t older;
+        if (j <= ply)                        older = g_path[ply - j];
+        else if (j - ply - 1 < g_nhist)      older = g_hist[j - ply - 1];
+        else                                 break;
+        if (older == past) return 1;
     }
     return 0;
 }
@@ -2406,6 +2455,18 @@ static inline int upcoming_repetition(const Board* b, uint64_t key,
             if (c2.key == past) g_cyc_hits++; else g_cyc_bad++;
         }
 #endif
+        /* FI-89(b), MANDATORY RIDER -- not optional. This gate runs at the
+         * PARENT and raises alpha to draw_score(b) whenever the STM can force
+         * a repetition of a pre-root position in ONE reversible move, on the
+         * FIRST occurrence. Fixing is_repetition alone would leave that false
+         * contempt floor standing, so the child would stop returning the false
+         * draw and the parent would keep banking it -- the FI-67 lesson, where
+         * an earlier exit shadows the mechanism into paying nothing.
+         * SF's has_game_cycle returns immediately only for an in-tree match
+         * (ply > i); at or before the root it additionally requires the
+         * matched state to carry a repetition of its own. */
+        if (g_rep_strict && k >= ply && !repeats_further_back(past, k, ply, hmc))
+            continue;
         return 1;
     }
     return 0;
@@ -4492,7 +4553,29 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                           out_nodes, out_score, &done, &aborted, &second);
 }
 
-int csearch_abi(void) { return 30; }  /* 30 = FI-85/FI-76 removed (set_xray_mob
+/* FI-89 test door. is_repetition is static inline and reads thread-local
+ * state that only a live search sets up, so the semantics gate cannot reach
+ * it otherwise. Installs a path/history, answers, and restores -- the strict
+ * flag included, so a probe can never leak a setting into a later search.
+ * `path` is indexed as g_path is: path[0] = root, path[ply] = this node. */
+int cs_rep_probe(const uint64_t* path, int ply, const uint64_t* hist,
+                 int nhist, uint64_t key, int hmc, int strict)
+{
+    int save_strict = g_rep_strict, save_nhist = g_nhist;
+    g_rep_strict = strict;
+    for (int i = 0; i <= ply && i < CS_MAXPLY; i++) g_path[i] = path[i];
+    g_nhist = nhist < CS_HIST_MAX ? nhist : CS_HIST_MAX;
+    for (int i = 0; i < g_nhist; i++) g_hist[i] = hist[i];
+    int r = is_repetition(key, ply, hmc);
+    g_rep_strict = save_strict;
+    g_nhist = save_nhist;
+    return r;
+}
+
+int csearch_abi(void) { return 31; }  /* 31 = FI-89 set_rep_strict (repetition
+                                       *      needs the THIRD occurrence at or
+                                       *      before the root, both sites);
+                                       * 30 = FI-85/FI-76 removed (set_xray_mob
                                        *      and set_wrongbishop are now no-ops);
                                        * 29 = FI-86 csearch_set_pawn_eg;
                                        * 28 = FI-76 set_wrongbishop;
