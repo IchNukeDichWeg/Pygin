@@ -3488,19 +3488,25 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
             }
         }
         n = gen_noisy(b, moves);
-        if (n == 0 && !qs_ttf && !has_legal_quiet(b))  /* FI-67: a validated
+        if (n == 0 && !qs_ttf && !has_legal_quiet(b)) {  /* FI-67: a validated
                                                   * TT move proves a legal
                                                   * move exists */
-            SM_TALLY(b);
+            SM_TALLY(b);                         /* FB-48: braces are LOAD-
+                                                  * BEARING -- this `if` had
+                                                  * none, and a second
+                                                  * statement made the return
+                                                  * unconditional */
             return g_sm_contempt ? draw_score(b) : 0;  /* FB-48: stalemate */
+        }
     } else {
         /* P-22: noisy-only generation; stalemate still detected BEFORE the
          * stand-pat return (empty noisy list + no legal quiet = stalemate),
          * exactly like the full-gen n==0 test it replaces. */
         n = g_qgen ? gen_noisy(b, moves) : gen_legal(b, moves);
-        if (n == 0 && (!g_qgen || !has_legal_quiet(b)))
-            SM_TALLY(b);
+        if (n == 0 && (!g_qgen || !has_legal_quiet(b))) {
+            SM_TALLY(b);                         /* FB-48: braces LOAD-BEARING */
             return g_sm_contempt ? draw_score(b) : 0;  /* FB-48: stalemate */
+        }
         stand = (tt_eval != TT_EVAL_NONE) ? tt_eval    /* FI-03: exact cache */
                                           : eval_full_stm(b);
         raw_stand = stand;               /* FI-30: the FI-03 store stays RAW */
