@@ -1857,10 +1857,8 @@ static inline uint64_t board_key(const Board* b)
  * 0 = v55 node-exact. Armed value: 100 (admits BxN-defended, still skips every
  * other losing class, all of which sit at -170 or worse).
  *
- * FI-18 interaction, commented rather than discovered later: dormant
- * g_see_prune reads the same bits-22-23 tag, so an armed margin narrows what
- * that prune would fire on. FI-18 is dormant with a negative lean (-1.25), so
- * this is inert today. */
+ * (The FI-18 interaction this used to warn about is gone: g_see_prune read
+ * the same bits-22-23 tag and was deleted in FI-91 wave 2.) */
 static int g_qs_see_margin = 0;
 void set_qs_see_margin(int v) { g_qs_see_margin = v; }
 
@@ -2910,18 +2908,12 @@ void set_qs_tt_sharpen(int v) { g_qs_tt_sharpen = v; }
 static int g_qs_keep_move = 0;
 void set_qs_keep_move(int v) { g_qs_keep_move = v; }
 
-/* FI-18 (armed for the fifteenth 50+0.20 A/B, vs Old Engine/45): SEE
- * pruning of losing captures at shallow depth. Bad captures are ordered
- * LAST (ORD_BADCAP band / staged stage 6) but still fully searched at
- * every depth; the standard prune skips them at non-PV, not-in-check,
- * non-check-giving, depth <= 3, late in the list. The SEE verdict is
- * already known -- the staged stream's stage-6 emissions ARE the
- * SEE-negative captures, and the array path's FI-02.3 tag (bits 22-23,
- * 2 = SEE < 0) was computed by order_moves -- so ZERO new SEE calls.
- * Failure mode is tactical misses: matetrack must stay clean.
- * 0 = off = v45 node-exact. */
-static int g_see_prune = 0;
-void set_see_prune(int v) { g_see_prune = v; }
+/* FI-18 SEE-pruning of losing captures: DELETED 2026-07-27 (FI-91 wave 2).
+ * REJECTED -1.25 and recorded do-not-retry -- FI-64's diagnosis explains why:
+ * badcap subtrees already fail low fast on their own, so pruning them buys
+ * nothing the search was not already getting. set_see_prune kept as an
+ * accepted no-op; the mechanism is in git history. */
+void set_see_prune(int v) { (void)v; }
 
 /* FI-06 (armed for the sixteenth 50+0.20 A/B, vs Old Engine/45): root-move
  * ordering by prior-iteration subtree node counts + warm-TT seed for
@@ -2963,19 +2955,13 @@ void root_exclude_add(int key15)
     if (g_rx_n < 256) g_rx[g_rx_n++] = (uint16_t)(key15 & 0x7FFF);
 }
 
-/* FI-23 (armed for the twenty-first 50+0.20 A/B, vs Old Engine/47):
- * history-driven quiet pruning. LMP prunes by COUNT only; this adds the
- * signal sibling -- skip quiets the EXISTING butterfly history has
- * consistently punished (below -threshold), at the same shallow/non-PV/
- * not-in-check/non-check-giving nodes LMP and SEE-prune already gate.
- * Reuses g_history read-only, no new bookkeeping. 0 = off = v47 node-exact;
- * threshold is a magnitude on the +-HIST_MAX=16384 scale. Armed at 256, NOT
- * the spec's suggested HIST_MAX/2=8192 -- that measured as a dead gate (see
- * cengine.py's HIST_PRUNE comment for the engagement sweep); g_history is
- * zeroed every move by cs_search_begin, so within one move's search it
- * rarely swings past a few hundred. */
-static int g_hist_prune = 0;
-void set_hist_prune(int v) { g_hist_prune = v < 0 ? 0 : v; }  /* FB-31 */
+/* FI-23 history-driven quiet pruning: DELETED 2026-07-27 (FI-91 wave 2).
+ * REJECTED -5.23. The history-refinement vein is 0-for-4 and closed, and the
+ * armed threshold was itself a compromise: the spec's HIST_MAX/2 = 8192
+ * measured as a DEAD GATE because cs_search_begin zeroes g_history every move,
+ * so within one search it rarely swings past a few hundred. set_hist_prune
+ * kept as an accepted no-op; mechanism in git history. */
+void set_hist_prune(int v) { (void)v; }
 
 /* FI-50/51/52 (qsearch-TT batch, armed for the twenty-fourth 50+0.20 A/B vs
  * Old Engine/49 -- the FI-30 lineage, three non-overlapping toggles ganged as
@@ -3178,7 +3164,7 @@ void set_iir_weak(int v) { g_iir_weak = v ? 1 : 0; }
  * one iteration later at worst. Killer/history/counter updates stay
  * quiet-gated; the FI-04 history nudge is quiet-gated in the same edit
  * (butterfly history is quiet-only -- wrong on capture fromto squares if
- * FI-04 is ever armed). depth==3 overlaps dormant FI-18 if ever re-armed.
+ * FI-04 is ever armed). FI-18, which used to overlap at depth==3, is gone.
  * 0 = off = v51 node-exact. NOT correctness-class: revert on null. */
 static int g_lmr_badcap = 0;
 void set_lmr_badcap(int v) { g_lmr_badcap = v ? 1 : 0; }
@@ -3898,15 +3884,6 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         apply_move(&c, m);
         TT_PREFETCH(c.key);                          /* FI-17 */
         int gives_check = in_check(&c);
-
-        if (g_see_prune && badcap && !is_pv && !in_chk && !gives_check
-                && depth <= 3 && i >= 3 && best > -MATE_THRESH)
-            continue;         /* FI-18: skip late losing captures near leaf */
-
-        if (g_hist_prune && quiet && !is_pv && !in_chk && !gives_check
-                && depth <= 3 && best > -MATE_THRESH
-                && g_history[color][fromto] < -g_hist_prune)
-            continue;         /* FI-23: skip history-punished quiets */
 
         if (g_prune && quiet && !is_pv && !in_chk && !gives_check && depth == 1
                 && best > -MATE_THRESH
