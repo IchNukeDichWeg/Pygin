@@ -51,6 +51,19 @@ static inline void dot_v2_pair(const int8_t* w0, const int8_t* w1,
 }
 #endif
 
+/* v3 -- the NO-DEDICATED-DOT fallback: widen to int16, pairwise accumulate.
+ * This is the branch nnue.c compiles on any target without a dot-product
+ * instruction, and it approximates what an x86 box without VNNI has to do. */
+static inline int32_t dot_v3(const int8_t* w, const int8_t* x, int n){
+    int32x4_t a0=vdupq_n_s32(0),a1=a0;
+    for (int i=0;i<n;i+=16){
+        int8x16_t xv=vld1q_s8(x+i), wv=vld1q_s8(w+i);
+        a0=vpadalq_s16(a0, vmull_s8(vget_low_s8(xv),  vget_low_s8(wv)));
+        a1=vpadalq_s16(a1, vmull_s8(vget_high_s8(xv), vget_high_s8(wv)));
+    }
+    return vaddvq_s32(vaddq_s32(a0,a1));
+}
+
 static double now(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t);
     return t.tv_sec*1e9 + t.tv_nsec; }
 
@@ -84,5 +97,11 @@ int main(void){
 #else
     printf("  v2 i8mm                       (not compiled in)\n");
 #endif
+    t=now();
+    for (int k=0;k<ITER;k++) for(int r=0;r<D2;r++) sink+=dot_v3(W[r],X,IN2);
+    double d3=(now()-t)/ITER;
+    printf("  v3 no-dot fallback (x86-ish)  %7.1f ns   %5.1f MACs/ns   %+.0f%%\n",
+           d3, macs/d3, 100*(d1/d3-1));
+    printf("\n  a box without a dedicated int8 dot instruction pays %.1fx\n", d3/d1);
     (void)sink; return 0;
 }
