@@ -18,16 +18,24 @@ from nnue_ref import PAD_IDX
 
 
 class NNUEModel(nn.Module):
-    def __init__(self):
+    def __init__(self, d2=D2, d3=D3):
+        """d2/d3 default to the frozen config. They are parameters because the
+        first tail layer is 94% of the tail's MACs (528x32 = 16,896 of 17,952)
+        and the tail is ~96% of an evaluation, so narrowing it is the largest
+        remaining speed lever -- Stockfish's HalfKAv2 is 512x2-16-32-1 for
+        what looks like the same reason. The C loader already accepts any d2
+        in 1..NN_D2_MAX and reads it from the .nnue header, so a narrower net
+        needs no engine change at all."""
         super().__init__()
+        self.d2, self.d3 = int(d2), int(d3)
         self.ft = nn.Embedding(IN_DIM + 1, HIDDEN, padding_idx=PAD_IDX)
         nn.init.normal_(self.ft.weight, std=0.05)
         with torch.no_grad():
             self.ft.weight[PAD_IDX].zero_()
         self.ft_bias = nn.Parameter(torch.zeros(HIDDEN))
-        self.l2 = nn.Linear(2 * HIDDEN + THREAT_DIM, D2)
-        self.l3 = nn.Linear(D2, D3)
-        self.out = nn.Linear(D3, 1)
+        self.l2 = nn.Linear(2 * HIDDEN + THREAT_DIM, self.d2)
+        self.l3 = nn.Linear(self.d2, self.d3)
+        self.out = nn.Linear(self.d3, 1)
 
     def forward(self, idx_us, idx_them, threat_us_them):
         """idx_*: [B, 32] int64 (PAD_IDX-padded); threat_us_them: [B, T]
