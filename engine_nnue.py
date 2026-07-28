@@ -26,7 +26,9 @@ from cengine import Engine as _HceEngine
 
 class Engine(_HceEngine):
     USE_NNUE = True
-    # v2a: full 82.4M set + cosine LR. Best of the three on the SHARED
-    # holdout (0.065475 vs v1 0.069394 and v2b 0.068256) -- and note that
-    # is the QUANTISED score, which is what actually plays.
-    NNUE_FILE = "NNUE/nets/nnue_v2a_02ec9c9065a3.nnue"
+    # v3: d2=16 narrow tail, full 82.4M set, cosine LR, 20 epochs. Gives up
+    # capacity (val 0.074417 vs v2a's 0.072613 on the same holdout) to buy
+    # speed -- the in-search NPS ratio falls from 1.738 to ~1.29, i.e. the
+    # deficit goes ~42.5% -> ~23%. Whether that trade pays is exactly what
+    # the screen exists to answer; held-out MSE does not predict it.
+    NNUE_FILE = "NNUE/nets/nnue_v3_d16_2880b51afe28.nnue"
