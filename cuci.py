@@ -789,6 +789,12 @@ def main():
                     value = ""
                 if name == "threads":
                     engine.smp_workers = max(1, min(256, int(value)))
+                    # Confirm it, Stockfish-style. Silence here cost a real
+                    # measurement: `setoption name Threads 4` (no `value`
+                    # keyword) parses as the option NAME "threads4", matches
+                    # nothing, and was dropped without a word -- so a 112-
+                    # thread benchmark ran single-threaded and read 1.8M nps.
+                    out(f"info string Using {engine.smp_workers} threads")
                 elif name == "multipv":
                     engine.multipv = max(1, min(20, int(value)))
                 elif name == "ponder":
@@ -856,6 +862,15 @@ def main():
                         pending_hash_mb = None
                     else:                               # FB-25: defer, don't
                         pending_hash_mb = int(value)    # silently drop
+                else:
+                    # UCI says ignore unknown options, and this chain did --
+                    # in TOTAL silence, which is how a malformed setoption
+                    # looks exactly like a working one. The overwhelmingly
+                    # common cause is a missing `value` keyword, so say that.
+                    out(f"info string ignored unknown option {name!r}"
+                        + (" -- UCI syntax is `setoption name <X> value <Y>`;"
+                           " the `value` keyword is required"
+                           if not value else ""))
             elif cmd == "bench":                        # FI-13c: OpenBench
                 if not searching():                     # FB-32: depth arg
                     d = (int(tokens[1]) if len(tokens) > 1
