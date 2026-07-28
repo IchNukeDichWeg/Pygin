@@ -48,7 +48,8 @@ at ~1.16 Elo per 1% NPS, closing half the gap is ~+25 Elo with no new data.
 | `selfplay_smoke.py` | 100-game stability smoke (`--net`, defaults to the toy net) |
 | `verify.py` | runs every acceptance gate and prints one verdict — the command to use after training |
 | `tools/` | browser inspector, its local build script, and the HCE-vs-NNUE comparator |
-| `datasets/`, `nets/`, `checkpoints/`, `venv/` | local-only (gitignored) |
+| `nets/` | **tracked** — the live nets ship with the repo so a rented A/B box gets them on `git pull` |
+| `datasets/`, `checkpoints/`, `venv/`, `Old NNUE/*.nnue` | local-only (gitignored) |
 
 ## Setup (one-time, training machine only)
 
