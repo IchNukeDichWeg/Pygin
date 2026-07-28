@@ -1047,6 +1047,16 @@ class Engine:
     # if the file does not exist -- no silent HCE fallback).
     USE_NNUE = False
     NNUE_FILE = os.path.join("NNUE", "nets", "nnue_v1_PLACEHOLDER.nnue")
+    # FI-104. The net's value is a RACE between its better judgement and the
+    # nodes that judgement costs: v3 measured +5.70 +/- 4.6 while conceding
+    # 30.6% of its nodes to a SIMD build. On a CPU with neither NEON nor AVX2
+    # the tail falls back to the scalar loop -- ~3x slower again -- and the
+    # deficit swallows the eval whole, so the net makes the engine WORSE. That
+    # is a bad default to ship to a machine nobody here has measured. With
+    # this True, a scalar build refuses to arm the net and plays the HCE.
+    # Set it False to measure the scalar path deliberately (the only reason
+    # to want it): a visible in-file line, not a hidden env switch.
+    NNUE_REQUIRE_SIMD = True
 
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
@@ -1243,6 +1253,25 @@ class Engine:
         # fall back to HCE (the A/B would be mislabeled). set_use_nnue(0)
         # is pushed unconditionally per the FB-06 authority rule.
         lib.nnue_load.argtypes = [ctypes.c_char_p]
+        # FI-104: SIMD gate, BEFORE the load so a scalar box never even opens
+        # the file. self.USE_NNUE (not the class attr) is what everything
+        # downstream reads -- battle_worker.describe_nnue asks the ENGINE, so
+        # a disarmed run reports its net as off rather than claiming one it
+        # is not playing with. Announced on stderr because a silent downgrade
+        # is how an A/B ends up mislabeled.
+        if self.USE_NNUE and self.NNUE_REQUIRE_SIMD and hasattr(
+                lib, "nnue_kernel_name"):
+            lib.nnue_kernel_name.restype = ctypes.c_char_p
+            _kern = lib.nnue_kernel_name().decode()
+            # The "SCALAR" prefix is the contract (NNUE/nnue.c); verify.py and
+            # tools/profile_nnue.py print the same string.
+            if _kern.startswith("SCALAR"):
+                print(f"!! NNUE disabled: this build has no SIMD dot kernel "
+                      f"({_kern}). The node cost would outweigh the eval. "
+                      f"Rebuild with ./setup.sh on a NEON/AVX2 host, or set "
+                      f"NNUE_REQUIRE_SIMD = False to measure it anyway.",
+                      file=sys.stderr)
+                self.USE_NNUE = False
         if self.USE_NNUE:
             _np = (self.NNUE_FILE if os.path.isabs(self.NNUE_FILE)
                    else os.path.join(_DIR, self.NNUE_FILE))
