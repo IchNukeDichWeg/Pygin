@@ -33,6 +33,7 @@ import time
 
 NNUE_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(NNUE_DIR)
+sys.path.insert(0, REPO_DIR)          # cengine lives at the repo root
 
 fails = []
 
