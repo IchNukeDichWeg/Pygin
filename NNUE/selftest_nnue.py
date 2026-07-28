@@ -110,7 +110,15 @@ check("mate minisuite with g_use_nnue=1", mates_ok)
 # leaves haven't all collapsed into the cycle bound yet)
 lib.cs_tt_reset()
 eng.get_best_move(chess.Board("k7/8/8/p1p1p1p1/P1P1P1P1/8/8/K7 w - - 0 1"), 16)
-check("blocked-wall fortress scores 0 with net on", eng.last_score == 0,
+# TOLERANCE, not exact 0. The exact-0 pin holds on the reference Mac but not
+# on a rented x86 box: `-march=native` rounds the eval's float math a hair
+# differently and the fortress lands a few cp off (measured -3 on an Ice Lake
+# server, -4 on an earlier one). That is the same benign drift the CE_LADDER
+# node pins show, and it is NOT what this check is for -- the failure worth
+# catching is a net that thinks a dead-drawn blocked wall is worth a piece.
+# An exact-0 assertion made verify.py fail on every server, which trains
+# people to ignore a red gate.
+check("blocked-wall fortress scores ~0 with net on", abs(eng.last_score) <= 8,
       f"score {eng.last_score}")
 lib.cs_tt_reset()
 eng.get_best_move(chess.Board("8/8/8/4k3/8/2N5/8/4K3 w - - 0 1"), 8)
