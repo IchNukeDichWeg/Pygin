@@ -159,7 +159,8 @@ class QuantNet:
             np.int32(self.b4).astype("<i4").tobytes(),
         ])
         hdr = _HDR.pack(NNUE_MAGIC, NNUE_VERSION, FEATURE_SET, IN_DIM,
-                        HIDDEN, THREAT_DIM, KING_BUCKETS, D2, D3,
+                        HIDDEN, THREAT_DIM, KING_BUCKETS,
+                        self.w2.shape[0], self.w3.shape[0],   # actual, not config
                         QA, QB, OUT_CP, zlib.crc32(payload), len(payload))
         with open(path, "wb") as f:
             f.write(hdr)
@@ -173,10 +174,17 @@ class QuantNet:
             payload = f.read()
         if magic != NNUE_MAGIC or ver != NNUE_VERSION:
             raise ValueError("bad magic/version")
-        if (fs, ind, h, td, kb, d2, d3, qa, qb, ocp) != \
+        # d2/d3 are read from the FILE, not required to equal config's --
+        # nnue.c validates them as 1..NN_D2_MAX and sizes itself from the
+        # header, so insisting on equality here would be stricter than the
+        # engine and would block the narrow-tail experiment for no reason.
+        # Everything that genuinely must match still does.
+        if (fs, ind, h, td, kb, qa, qb, ocp) != \
            (FEATURE_SET, IN_DIM, HIDDEN, THREAT_DIM, KING_BUCKETS,
-                D2, D3, QA, QB, OUT_CP):
+                QA, QB, OUT_CP):
             raise ValueError("arch mismatch vs config.py")
+        if not (1 <= d2 <= 32 and 1 <= d3 <= 32):
+            raise ValueError(f"tail dims out of range: d2={d2} d3={d3}")
         if len(payload) != psz or zlib.crc32(payload) != crc:
             raise ValueError("payload size/CRC mismatch")
         in2 = 2 * h + td
