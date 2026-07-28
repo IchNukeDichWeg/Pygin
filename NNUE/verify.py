@@ -90,14 +90,20 @@ def main():
 
     print(f"verifying {os.path.relpath(net, REPO_DIR)} "
           f"({os.path.getsize(net) / 1e6:.1f} MB)")
+    # ALWAYS prints something. A hasattr guard that silently prints nothing
+    # when the symbol is missing is the same bug this line exists to catch:
+    # absence of output is indistinguishable from absence of a problem.
     try:
         import ctypes as _ct, cengine as _ce
         _lib = _ce.Engine()._lib
         if hasattr(_lib, "nnue_kernel_name"):
             _lib.nnue_kernel_name.restype = _ct.c_char_p
             print(f"dot kernel: {_lib.nnue_kernel_name().decode()}")
-    except Exception:
-        pass
+        else:
+            print("dot kernel: UNKNOWN -- this csearch.so predates "
+                  "nnue_kernel_name(); run ./setup.sh to rebuild")
+    except Exception as e:
+        print(f"dot kernel: could not query ({type(e).__name__}: {e})")
 
     run("forward gate (C == numpy reference)",
         ["NNUE/verify_c.py", "forward", "--positions", str(args.positions),
