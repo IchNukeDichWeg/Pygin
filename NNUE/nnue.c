@@ -346,6 +346,76 @@ static inline int32_t nn_dot_row(const int8_t* w, const int8_t* x, int n)
 #endif
     return vaddvq_s32(vaddq_s32(vaddq_s32(a0, a1), vaddq_s32(a2, a3)));
 }
+#elif defined(__AVX2__)
+#include <immintrin.h>
+/* x86 path (FI-92). Without this, every non-Apple box -- which is every
+ * rented A/B box -- fell through to the scalar loop below, and the tail is
+ * ~96% of an evaluation. Measured proxy on arm64: dropping the dedicated
+ * int8 dot costs 3.1x, which would have made a screen on the server measure
+ * the missing kernel rather than the net.
+ *
+ * The activation vector x is UNSIGNED by construction -- accumulator lanes
+ * are clamp(v, 0, QA=127), threat bytes are nn_t8()-clamped to <=127, and
+ * pads are 0 -- while the weights are signed. That is exactly the operand
+ * split VPDPBUSD wants, and on AVX2 alone _mm256_maddubs_epi16 wants the
+ * same. maddubs saturates at int16, which CANNOT trigger here: two products
+ * of |x|<=127 and |w|<=127 reach at most 32,258 against int16's 32,767.
+ *
+ * Four accumulators, for the same reason the NEON path has them: one
+ * accumulator makes the loop latency-bound rather than throughput-bound
+ * (measured +95% on arm64 from that change alone).
+ *
+ * Bit-identical to the scalar loop: these are exact integer sums, so
+ * reassociating them changes nothing, and the Phase-4 forward gate proves
+ * it empirically on the target machine before any campaign runs. */
+static inline int32_t nn_dot_row(const int8_t* w, const int8_t* x, int n)
+{
+    __m256i a0 = _mm256_setzero_si256(), a1 = a0, a2 = a0, a3 = a0;
+    int i = 0;
+#if defined(__AVX512VNNI__) || defined(__AVXVNNI__)
+    for (; i + 128 <= n; i += 128) {
+        a0 = _mm256_dpbusd_epi32(a0, _mm256_loadu_si256((const __m256i*)(x + i)),
+                                     _mm256_loadu_si256((const __m256i*)(w + i)));
+        a1 = _mm256_dpbusd_epi32(a1, _mm256_loadu_si256((const __m256i*)(x + i + 32)),
+                                     _mm256_loadu_si256((const __m256i*)(w + i + 32)));
+        a2 = _mm256_dpbusd_epi32(a2, _mm256_loadu_si256((const __m256i*)(x + i + 64)),
+                                     _mm256_loadu_si256((const __m256i*)(w + i + 64)));
+        a3 = _mm256_dpbusd_epi32(a3, _mm256_loadu_si256((const __m256i*)(x + i + 96)),
+                                     _mm256_loadu_si256((const __m256i*)(w + i + 96)));
+    }
+    for (; i + 32 <= n; i += 32)
+        a0 = _mm256_dpbusd_epi32(a0, _mm256_loadu_si256((const __m256i*)(x + i)),
+                                     _mm256_loadu_si256((const __m256i*)(w + i)));
+#else
+    const __m256i ones = _mm256_set1_epi16(1);
+    for (; i + 128 <= n; i += 128) {
+        a0 = _mm256_add_epi32(a0, _mm256_madd_epi16(ones, _mm256_maddubs_epi16(
+                _mm256_loadu_si256((const __m256i*)(x + i)),
+                _mm256_loadu_si256((const __m256i*)(w + i)))));
+        a1 = _mm256_add_epi32(a1, _mm256_madd_epi16(ones, _mm256_maddubs_epi16(
+                _mm256_loadu_si256((const __m256i*)(x + i + 32)),
+                _mm256_loadu_si256((const __m256i*)(w + i + 32)))));
+        a2 = _mm256_add_epi32(a2, _mm256_madd_epi16(ones, _mm256_maddubs_epi16(
+                _mm256_loadu_si256((const __m256i*)(x + i + 64)),
+                _mm256_loadu_si256((const __m256i*)(w + i + 64)))));
+        a3 = _mm256_add_epi32(a3, _mm256_madd_epi16(ones, _mm256_maddubs_epi16(
+                _mm256_loadu_si256((const __m256i*)(x + i + 96)),
+                _mm256_loadu_si256((const __m256i*)(w + i + 96)))));
+    }
+    for (; i + 32 <= n; i += 32)
+        a0 = _mm256_add_epi32(a0, _mm256_madd_epi16(ones, _mm256_maddubs_epi16(
+                _mm256_loadu_si256((const __m256i*)(x + i)),
+                _mm256_loadu_si256((const __m256i*)(w + i)))));
+#endif
+    a0 = _mm256_add_epi32(_mm256_add_epi32(a0, a1), _mm256_add_epi32(a2, a3));
+    __m128i q = _mm_add_epi32(_mm256_castsi256_si128(a0),
+                              _mm256_extracti128_si256(a0, 1));
+    q = _mm_add_epi32(q, _mm_shuffle_epi32(q, 0x4E));
+    q = _mm_add_epi32(q, _mm_shuffle_epi32(q, 0xB1));
+    int32_t s = _mm_cvtsi128_si32(q);
+    for (; i < n; i++) s += (int32_t)w[i] * (int32_t)x[i];   /* padded tail */
+    return s;
+}
 #else
 static inline int32_t nn_dot_row(const int8_t* w, const int8_t* x, int n)
 {
