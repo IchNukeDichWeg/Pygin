@@ -27,8 +27,10 @@ is precisely the mistake that silently invalidates an A/B (you believe you
 screened v2; you screened v1). With the content hash in the name, a
 mismatched net is a wrong FILENAME, which is impossible to miss.
 
-The `.nnue` files themselves are gitignored everywhere (public repo, no
-binaries) — this folder tracks only this README; the weight files live
-on the machines that use them. Per-net provenance (dataset, epochs, val
+Live nets in `NNUE/nets/` are TRACKED as of 2026-07-27, so a fresh clone on
+a rented A/B box has the net without a manual copy. Nets RETIRED into this
+folder are still ignored: keeping every superseded net in the working tree
+would grow the repo without bound, and git history already holds them from
+when they were live. Per-net provenance (dataset, epochs, val
 loss, screen result) belongs in the training log / improvements.md entry
 for that round.
