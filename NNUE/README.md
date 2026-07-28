@@ -18,18 +18,25 @@ threat encoding (16 int8 aggregate scalars from one attack-union pass),
 net FT→2×256 → [512+16]→32→32→1, int16/int8 quantization QA=127/QB=64,
 `.nnue` format v1, `.pygdata` training data format v1.
 
-State (2026-07-26): first net trained on the 82.4M merged dataset and
-screened against `Old Engine/55` — **+2.95 ± 15.2 Elo over 2,000 games**
-(50.42%, Ptnml 43/253/410/232/62). A null by the +15 screen bar, but round 1
-was expected to lose badly and did not.
+State (2026-07-27): three 2,000-game screens, three nulls.
 
-It reaches parity while running **−42.5% NPS in real search** (in-search
-ratio 1.738; the standalone `nps` gate says 2.44 because it prices the eval
-alone, and qsearch keeps the HCE). That deficit is worth ~−49 to −56 Elo, so
-the evaluation itself is already worth roughly **+50 Elo over the HCE** —
-the net is speed-bound, not eval-bound. The highest-value next work is
-therefore the AVX2/VNNI forward pass and FI-67, not another bootstrap round:
-at ~1.16 Elo per 1% NPS, closing half the gap is ~+25 Elo with no new data.
+  net                        box     Elo          ratio  deficit  run
+  v1  (d2=32, old kernel)    Mac    +2.95 +/-15.2  1.738   42.5%  clean
+  v2a (d2=32, cosine LR)     Mac    -4.52 +/-15.2  1.738   42.5%  DRIFT-INVALID
+  v3  (d2=16, both kernels)  x86    -2.26 +/-15.2  1.441   30.6%  clean
+
+The net sits at parity with the HCE and will not move off it at this
+resolution. Every CI spans zero, and the difference between two independent
+screens carries +/-21.5 -- larger than any change made this week. The
+evaluation is worth roughly +50 Elo (it holds parity while conceding 30-42%
+of its nodes); the speed work took the deficit from 42.5% to 21% on arm64 and
+30.6% on x86, and none of it showed up in a 2k screen.
+
+**The instrument, not the net, is now the constraint.** A 2,000-game screen
+resolves +/-15; the effects being made are +/-10-25. That was tolerable when
+a screen cost 5 h on the Mac and 10k was unaffordable. On a rented box 2,000
+games take 69 minutes, so 10,000 take under 6 hours and resolve +/-6.8 --
+the economics that justified the 2k screen no longer hold.
 
 ## Layout
 
