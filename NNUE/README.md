@@ -18,25 +18,32 @@ threat encoding (16 int8 aggregate scalars from one attack-union pass),
 net FT→2×256 → [512+16]→32→32→1, int16/int8 quantization QA=127/QB=64,
 `.nnue` format v1, `.pygdata` training data format v1.
 
-State (2026-07-27): three 2,000-game screens, three nulls.
+State (2026-07-27): first POSITIVE result, at 10k-class precision.
 
-  net                        box     Elo          ratio  deficit  run
-  v1  (d2=32, old kernel)    Mac    +2.95 +/-15.2  1.738   42.5%  clean
-  v2a (d2=32, cosine LR)     Mac    -4.52 +/-15.2  1.738   42.5%  DRIFT-INVALID
-  v3  (d2=16, both kernels)  x86    -2.26 +/-15.2  1.441   30.6%  clean
+  net   box   games    Elo             nElo    Ptnml pair ratio   run
+  v1    Mac    2,000   +2.95 +/-15.2   +4.39   0.993             clean
+  v2a   Mac    2,000   -4.52 +/-15.2   -6.93   0.90              DRIFT-INVALID
+  v3    x86    2,000   -2.26 +/-15.2   -3.39   0.96              clean
+  v3    x86    8,827   +4.72 +/- 7.3   +7.06   1.060             clean
 
-The net sits at parity with the HCE and will not move off it at this
-resolution. Every CI spans zero, and the difference between two independent
-screens carries +/-21.5 -- larger than any change made this week. The
-evaluation is worth roughly +50 Elo (it holds parity while conceding 30-42%
-of its nodes); the speed work took the deficit from 42.5% to 21% on arm64 and
-30.6% on x86, and none of it showed up in a 2k screen.
+The 8,827-game run is the only measurement with the resolution to say
+anything, and it leans positive: P(true Elo > 0) ~ 90%, one-sided p = 0.10.
+The CI still spans zero, so parity is not formally excluded -- but both
+decisive Ptnml categories favour the net (WW-LL +45, WD-LD +30) where the
+2k screen on the same net and box had WW-LL -1. That is what a small real
+edge looks like emerging from noise, and it is the first time the three
+independent signals have agreed in sign.
 
-**The instrument, not the net, is now the constraint.** A 2,000-game screen
-resolves +/-15; the effects being made are +/-10-25. That was tolerable when
-a screen cost 5 h on the Mac and 10k was unaffordable. On a rented box 2,000
-games take 69 minutes, so 10,000 take under 6 hours and resolve +/-6.8 --
-the economics that justified the 2k screen no longer hold.
+It does this while CONCEDING 30.6% of its nodes on that box. The Mac's
+deficit is 21.4%, worth ~+11 Elo at the measured 1.16 Elo/%NPS, so the same
+net projects to roughly +15 on arm64 -- untested, and worth testing before
+any ship decision.
+
+The constraint remains speed, and the cheap wins are spent: the
+4-accumulator kernel and the d2=16 tail took the arm64 deficit 42.5% -> 21%.
+What is left is doing FEWER evaluations rather than cheaper ones (lazy NNUE
+eval, gated on a cheap material+PST bound the way qsearch already gates the
+HCE), which is the one remaining lever of that size.
 
 ## Layout
 
