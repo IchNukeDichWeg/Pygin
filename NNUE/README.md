@@ -241,9 +241,12 @@ Retired nets move FLAT into `NNUE/Old NNUE/`
 (`mv NNUE/nets/nnue_v1_<hash>.nnue "NNUE/Old NNUE/"`). `toy.nnue` is the
 pipeline-proof artifact, not a version, and is **exempt** from the hash —
 `selftest_nnue.py` and `selfplay_smoke.py` open it by fixed path. cengine's
-`NNUE_FILE` default names the current live net (a placeholder until v1
-exists); all `.nnue` files are gitignored (public repo) — only the Old
-NNUE README is tracked.
+`NNUE_FILE` default names the current live net. **Nets in `NNUE/nets/` are
+TRACKED** (changed 2026-07-27): a rented A/B box has to get the net somehow,
+and copying it across by hand every time is a step that eventually gets
+forgotten or done wrong, so `git pull` now brings it. 3 MB each. Retired nets
+in `NNUE/Old NNUE/` stay ignored so history does not grow without bound —
+git keeps them regardless.
 
 ## Generating real training data (Phase 6 — DONE, see below)
 
