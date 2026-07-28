@@ -90,6 +90,14 @@ def main():
 
     print(f"verifying {os.path.relpath(net, REPO_DIR)} "
           f"({os.path.getsize(net) / 1e6:.1f} MB)")
+    try:
+        import ctypes as _ct, cengine as _ce
+        _lib = _ce.Engine()._lib
+        if hasattr(_lib, "nnue_kernel_name"):
+            _lib.nnue_kernel_name.restype = _ct.c_char_p
+            print(f"dot kernel: {_lib.nnue_kernel_name().decode()}")
+    except Exception:
+        pass
 
     run("forward gate (C == numpy reference)",
         ["NNUE/verify_c.py", "forward", "--positions", str(args.positions),

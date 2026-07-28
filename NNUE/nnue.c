@@ -683,6 +683,28 @@ int nnue_features_oracle(uint64_t pawns, uint64_t knights, uint64_t bishops,
     return cnt;
 }
 
+/* Which dot kernel this binary actually compiled. There is no way to tell
+ * from the outside otherwise, and the failure mode is silent: a box whose
+ * lscpu advertises avx512_vnni still runs the scalar fallback if the build
+ * never defined __AVX2__, and the only symptom is a tail that is mysteriously
+ * slow. Reporting it turns "why is this 4x slower" into one line. */
+const char* nnue_kernel_name(void)
+{
+#if defined(__ARM_NEON)
+#  if defined(__ARM_FEATURE_DOTPROD)
+    return "neon+dotprod";
+#  else
+    return "neon (no dotprod)";
+#  endif
+#elif defined(__AVX512VNNI__) || defined(__AVXVNNI__)
+    return "avx2+vnni";
+#elif defined(__AVX2__)
+    return "avx2";
+#else
+    return "SCALAR (no SIMD -- expect ~3x slower tail)";
+#endif
+}
+
 /* ------------------------- profiling entry point --------------------------
  * Splits one NNUE evaluation into its three costs. Timed INSIDE C on purpose:
  * a ctypes round trip is ~1 us, which is larger than the whole eval, so any
