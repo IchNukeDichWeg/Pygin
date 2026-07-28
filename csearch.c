@@ -1005,6 +1005,7 @@ static void apply_move(Board* b, uint32_t mv)
  * keep them in lockstep or the bit-exact eval oracle splits. */
 static const int PIECE_VAL[7] = {0, 100, 320, 330, 500, 900, 0};  /* by PT */
 
+
 static int eval_material_stm(const Board* b)
 {
     int us = b->turn, them = us ^ 1;
@@ -1547,6 +1548,65 @@ int csearch_eval_white(uint64_t pawns, uint64_t knights, uint64_t bishops,
 }
 
 #include <string.h>
+
+#ifdef CS_LAZY_PROBE
+/* ==================== FI-105: lazy-eval feasibility probe ==================
+ * A MEASUREMENT INSTRUMENT, not a feature. Compile-time gated so the shipped
+ * csearch.so carries not one extra branch: dormant toggles on the hot path
+ * measured -0.5% NPS once already, and a probe is dormant by definition.
+ * NNUE/tools/lazy_probe.py builds its own .so with -DCS_LAZY_PROBE.
+ *
+ * The question: how often could a cheap bound have answered the search's
+ * question, so the net never had to run? Every NN static eval records
+ * (nn, cheap, alpha, beta) and Python does the arithmetic offline -- which
+ * keeps the gate DESIGN out of the C, so one run can be re-read against any
+ * margin rule instead of hardcoding a guess.
+ *
+ * The cheap score is FI-42's incremental tapered material+PST accumulator,
+ * already maintained by apply_move on every node. It costs a multiply and a
+ * divide to read, which is the entire point: a bound that is not free buys
+ * nothing when the thing it is racing is 96% one matmul. */
+static int      g_lazy_probe = 0;
+#define LZ_MAX 4000000
+static int32_t* g_lz   = NULL;      /* 4 int32 per sample */
+static long     g_lz_n = 0;
+
+/* eval_white's first five lines: the FI-42 accumulator tapered against the
+ * SYNCED PHASE_MAX, plus tempo, flipped to side-to-move POV like
+ * eval_full_stm. Deliberately NOT a call to eval_white -- the whole premise
+ * is that this is the part you can afford. */
+static int cheap_eval_stm(const Board* b)
+{
+    extern int PHASE_MAX;
+    int mg = b->a_mg, eg = b->a_eg, phase = b->a_ph;
+    if (phase > PHASE_MAX) phase = PHASE_MAX;
+    int s = PHASE_MAX > 0
+          ? (mg * phase + eg * (PHASE_MAX - phase)) / PHASE_MAX : mg;
+    s += (b->turn == WHITE) ? g_tempo : -g_tempo;
+    return (b->turn == WHITE) ? s : -s;
+}
+
+void set_lazy_probe(int on)
+{
+    if (on && !g_lz) g_lz = (int32_t*)malloc(sizeof(int32_t) * 4 * LZ_MAX);
+    g_lazy_probe = (on && g_lz) ? 1 : 0;
+    g_lz_n = 0;
+}
+
+long lazy_probe_dump(int32_t* out, long max)
+{
+    long n = (g_lz_n < max) ? g_lz_n : max;
+    if (out && g_lz) memcpy(out, g_lz, sizeof(int32_t) * 4 * n);
+    return n;
+}
+
+static inline void lazy_probe_record(int nn, int cheap, int alpha, int beta)
+{
+    if (g_lz_n >= LZ_MAX) return;
+    int32_t* p = g_lz + 4 * g_lz_n++;
+    p[0] = nn; p[1] = cheap; p[2] = alpha; p[3] = beta;
+}
+#endif  /* CS_LAZY_PROBE */
 
 static __thread uint64_t g_nodes;   /* per-thread; helpers aggregate on exit */
 #define CS_INF    30000
@@ -3692,6 +3752,13 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                                        * qsearch stand-pat stays HCE */
                                                  : eval_full_stm(b)))
         : 0;
+#ifdef CS_LAZY_PROBE
+    /* FI-105: only where the net ACTUALLY ran -- a TT-cached eval already
+     * cost nothing, so counting it would inflate the skip rate with work
+     * that was never done. */
+    if (g_lazy_probe && want_eval && g_use_nnue && tt_eval == TT_EVAL_NONE)
+        lazy_probe_record(static_eval, cheap_eval_stm(b), alpha, beta);
+#endif
 
     /* P-04: record this ply's eval and compare to our own two plies ago.
      * Every ancestor on the current path wrote its slot on the way down, so
