@@ -1058,6 +1058,13 @@ class Engine:
     # to want it): a visible in-file line, not a hidden env switch.
     NNUE_REQUIRE_SIMD = True
 
+    # FI-105. Which shared object to load. Only an instrumented build has any
+    # business changing this (NNUE/tools/lazy_probe.py compiles one with
+    # -DCS_LAZY_PROBE), and it MUST keep a distinct filename: dyld resolves by
+    # name, so a second .so sharing this one's name returns the first image
+    # already mapped and the process silently searches with the wrong engine.
+    CSEARCH_SO = "csearch.so"
+
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
     ASPIRATION_DELTA = 30                    # centipawns; C scores are cp too
@@ -1137,7 +1144,7 @@ class Engine:
         assert not self._py.use_pin_eval, \
             "use_pin_eval has no C port; the eval oracle would desync"
 
-        lib = ctypes.CDLL(os.path.join(_DIR, "csearch.so"))
+        lib = ctypes.CDLL(os.path.join(_DIR, self.CSEARCH_SO))
         # BUG-04: must match the NEWEST abi whose exports this file calls
         # (abi 33 = FB-48 set_sm_contempt) -- bump with csearch_abi.
         if lib.csearch_abi() < 33:
