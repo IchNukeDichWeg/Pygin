@@ -410,10 +410,28 @@ static inline int32_t nn_dot_row(const int8_t* w, const int8_t* x, int n)
     a0 = _mm256_add_epi32(_mm256_add_epi32(a0, a1), _mm256_add_epi32(a2, a3));
     __m128i q = _mm_add_epi32(_mm256_castsi256_si128(a0),
                               _mm256_extracti128_si256(a0, 1));
+    /* The 16-byte remainder gets a VECTOR op, not a scalar loop. in2p is a
+     * multiple of 16 but not of 32, so at the real width (528 = 4x128 + 16)
+     * exactly 16 elements were falling through -- 512 dependent scalar MACs
+     * per tail evaluation, once per row. That single omission is why an
+     * avx2+vnni build profiled a 767 ns tail against arm64's 172 ns on a
+     * machine only 2.1x slower. The ARM path never had the bug: its
+     * remainder loop is a 16-wide vdotq. Over-reading into the next row to
+     * avoid this is NOT an option -- w2's rows are exactly in2p apart. */
+    for (; i + 16 <= n; i += 16) {
+        __m128i xv = _mm_loadu_si128((const __m128i*)(x + i));
+        __m128i wv = _mm_loadu_si128((const __m128i*)(w + i));
+#if defined(__AVX512VNNI__) || defined(__AVXVNNI__)
+        q = _mm_dpbusd_epi32(q, xv, wv);
+#else
+        q = _mm_add_epi32(q, _mm_madd_epi16(_mm_set1_epi16(1),
+                                            _mm_maddubs_epi16(xv, wv)));
+#endif
+    }
     q = _mm_add_epi32(q, _mm_shuffle_epi32(q, 0x4E));
     q = _mm_add_epi32(q, _mm_shuffle_epi32(q, 0xB1));
     int32_t s = _mm_cvtsi128_si32(q);
-    for (; i < n; i++) s += (int32_t)w[i] * (int32_t)x[i];   /* padded tail */
+    for (; i < n; i++) s += (int32_t)w[i] * (int32_t)x[i];   /* <16 leftover */
     return s;
 }
 #else
