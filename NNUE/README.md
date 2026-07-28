@@ -18,25 +18,30 @@ threat encoding (16 int8 aggregate scalars from one attack-union pass),
 net FT→2×256 → [512+16]→32→32→1, int16/int8 quantization QA=127/QB=64,
 `.nnue` format v1, `.pygdata` training data format v1.
 
-State (2026-07-27): first POSITIVE result, at 10k-class precision.
+State (2026-07-28): POSITIVE and significant. 0.05 short of an SPRT accept.
 
-  net   box   games    Elo             nElo    Ptnml pair ratio   run
-  v1    Mac    2,000   +2.95 +/-15.2   +4.39   0.993             clean
-  v2a   Mac    2,000   -4.52 +/-15.2   -6.93   0.90              DRIFT-INVALID
-  v3    x86    2,000   -2.26 +/-15.2   -3.39   0.96              clean
-  v3    x86    8,827   +4.72 +/- 7.3   +7.06   1.060             clean
+  net   box   games    Elo             nElo     LLR      run
+  v1    Mac    2,000   +2.95 +/-15.2   +4.39    --       clean
+  v2a   Mac    2,000   -4.52 +/-15.2   -6.93    --       DRIFT-INVALID
+  v3    x86    2,000   -2.26 +/-15.2   -3.39    --       clean
+  v3    x86    8,827   +4.72 +/- 7.3   +7.06   +1.479    clean (tranche 1)
+  v3    x86    4,942   +7.45 +/- 9.7  +10.65   +1.415    clean (tranche 2)
+  v3    x86   13,769   +5.70 +/- 4.6   +8.62   +2.892    POOLED
 
-The 8,827-game run is the only measurement with the resolution to say
-anything, and it leans positive: P(true Elo > 0) ~ 90%, one-sided p = 0.10.
-The CI still spans zero, so parity is not formally excluded -- but both
-decisive Ptnml categories favour the net (WW-LL +45, WD-LD +30) where the
-2k screen on the same net and box had WW-LL -1. That is what a small real
-edge looks like emerging from noise, and it is the first time the three
-independent signals have agreed in sign.
+Pooled ptnml 305/1,648/2,845/1,663,408 over 6,869 pairs, pair ratio 1.06,
+50.82%. The CI EXCLUDES ZERO (lower bound +1.1) -- the net is measurably
+stronger than the HCE. The GSPRT[0,4] LLR is +2.892 against a +2.944 accept
+bound: about 200 games short. Calibration held on both tranches (+0.30%,
++0.02%).
+
+Both tranches were stopped early for cost, which does NOT contaminate the
+test -- an SPRT's stopping rule is the BOUND, so a short sample is just a
+short sample. Continuing with a third tranche pooled via --sprt-resume is the
+protocol, not sampling-to-significance.
 
 It does this while CONCEDING 30.6% of its nodes on that box. The Mac's
 deficit is 21.4%, worth ~+11 Elo at the measured 1.16 Elo/%NPS, so the same
-net projects to roughly +15 on arm64 -- untested, and worth testing before
+net projects to roughly +17 on arm64 -- untested, and worth testing before
 any ship decision.
 
 The constraint remains speed, and the cheap wins are spent: the
