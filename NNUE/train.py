@@ -45,7 +45,7 @@ sys.path.insert(0, NNUE_DIR)
 
 import torch
 
-from config import (OUT_CP, THREAT_DIM, QA, CHECKPOINTS_DIR, TOY_NET,
+from config import (OUT_CP, THREAT_DIM, QA, CHECKPOINTS_DIR, TOY_NET, D2,
                     LABEL_MAX_ABS_CP, stamp_net_hash)
 from data_format import read_pygdata
 from model import NNUEModel
@@ -213,6 +213,13 @@ def main():
                          "thing that survives).")
     ap.add_argument("--epochs", type=int, default=40)
     ap.add_argument("--batch", type=int, default=8192)
+    ap.add_argument("--d2", type=int, default=None,
+                    help="width of the FIRST tail layer (default 32). This is "
+                         "94%% of the tail's MACs and the tail is ~96%% of an "
+                         "evaluation, so 16 roughly halves eval cost -- at "
+                         "some cost in capacity, which only a screen can "
+                         "price. The engine needs no change: nnue.c reads d2 "
+                         "from the .nnue header.")
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--lr-schedule", choices=["none", "cosine"], default="none",
                     help="none (default) reproduces earlier runs. cosine "
@@ -261,11 +268,17 @@ def main():
         # (crash, OOM, machine sleep, closed terminal) leaves hours of work on
         # disk in a form nothing can load. There is no resume, so without this
         # the only option is to train again from scratch.
-        model = NNUEModel()
         ck = os.path.join(args.checkpoint_dir, "best.pt")
         if not os.path.exists(ck):
             sys.exit(f"train --export-only: no {ck} to export")
-        model.load_state_dict(torch.load(ck, weights_only=True))
+        sd = torch.load(ck, weights_only=True)
+        # Infer the tail width FROM THE CHECKPOINT, never from --d2. The run
+        # being recovered may have used a non-default width, and re-supplying
+        # the right flag is exactly what someone recovering a dead run will
+        # get wrong -- and getting it wrong is a shape mismatch at best.
+        model = NNUEModel(d2=sd["l2.weight"].shape[0],
+                          d3=sd["l3.weight"].shape[0])
+        model.load_state_dict(sd)
         export_nnue(model, args.out)
         out = stamp_net_hash(args.out)
         print(f"exported checkpoints/best.pt (RECOVERED, epoch unknown -- "
@@ -295,7 +308,7 @@ def main():
         train_t = prepare(train)
     val_t = prepare(val)
 
-    model = NNUEModel()
+    model = NNUEModel(d2=args.d2 or D2)
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     os.makedirs(CHECKPOINTS_DIR, exist_ok=True)
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
