@@ -76,10 +76,15 @@ def main():
     if lib.nnue_load(os.path.abspath(args.net).encode()) != 0:
         sys.exit(f"profile_nnue: could not load {args.net}")
 
+    kern = "unknown"
+    if hasattr(lib, "nnue_kernel_name"):
+        lib.nnue_kernel_name.restype = ctypes.c_char_p
+        kern = lib.nnue_kernel_name().decode()
     buf = (ctypes.c_double * 5)()
     rows = []
     print(f"{os.path.basename(args.net)}   {args.iters:,} iterations per "
-          f"stage per position\n")
+          f"stage per position")
+    print(f"dot kernel compiled into this build: {kern}\n")
     print(f"{'position':<12}{'forward':>10}{'threats':>10}{'tail':>10}"
           f"{'refresh':>10}{'increm':>10}   threats% of forward")
     for name, fen in POSITIONS:
