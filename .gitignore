@@ -180,9 +180,14 @@ data/UHO_Lichess_4852_v1.epd
 # the training venv are local-only (large binaries, PUBLIC repo).
 NNUE/datasets/
 NNUE/checkpoints/
-NNUE/nets/
 NNUE/venv/
 *.nnue
+# ...EXCEPT the live nets. Changed 2026-07-27 on the user's call: a rented A/B
+# box has to get the net somehow, and scp-ing it every time is a manual step
+# that will eventually be forgotten or done wrong. 3 MB each is nothing for
+# git, and `git pull` then just works. Retired nets in "Old NNUE/" stay
+# ignored so history does not grow without bound -- git keeps them anyway.
+!NNUE/nets/*.nnue
 *.pygdata
 
 # worst-move troll wrappers (local only)
