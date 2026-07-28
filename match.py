@@ -19,7 +19,10 @@ Usage::
                                                                file: the LLR continues instead of restarting.
                                                                Refuses to pool a different experiment or an
                                                                overlapping --offset; written on every exit
-                                                               path, including Ctrl-C)
+                                                               path, including Ctrl-C. OPTIONAL: --sprt alone
+                                                               auto-names one after the run and prints the
+                                                               path at startup and in the summary, so a
+                                                               no-decision tranche is never unpoolable)
 
 Arguments (all optional, fall back to CONFIG section below):
   engine1.py      path to engine 1 (default: ENGINE_1)
@@ -42,6 +45,10 @@ Examples::
     # run-to-decision campaign: tranche 2 continues tranche 1's LLR
     python3 match.py A.py B.py 5000 0    --workers 0 --sprt --sprt-resume ab.json
     python3 match.py A.py B.py 5000 5000 --workers 0 --sprt --sprt-resume ab.json
+
+    # same thing without naming the file: tranche 1 auto-writes
+    # sprt_A_vs_B_<stamp>.json and prints it; feed that path to tranche 2
+    python3 match.py A.py B.py 5000 0 --workers 0 --sprt
 
 Progress is streamed to the terminal; a full per-move/PGN log is written to a
 file named like ``<e1>_vs_<e2>_<timestamp>_<pid>.txt``.
@@ -1152,6 +1159,14 @@ def write_summary(fh, e1, e2, tally, total_games, start_t, stopped,
         else:
             lines.append("SPRT verdict: no decision within the game budget "
                          "(inconclusive -- read the Elo / ptnml above).")
+    # FI-103: outside the llr-is-not-None branch on purpose -- a tranche that
+    # ended before SPRT_MIN_PAIRS still wrote a state file, and that is exactly
+    # the run whose ptnml would otherwise be stranded.
+    if si and si.get("resume_path"):
+        lines.append(
+            f"SPRT state file: {si['resume_path']}"
+            + ("  (auto-named; pass it as --sprt-resume on the next tranche "
+               "to pool)" if si.get("resume_auto") else ""))
     # An SPRT stop is a CONCLUSION, not an interruption, so don't mislabel it.
     if stopped and not sprt_decided:
         lines.append("(match was stopped before completion)")
@@ -1693,6 +1708,14 @@ def main():
               f"{sprt_model}, alpha={sprt_alpha:g} beta={sprt_beta:g} "
               f"(bounds {lo:+.3f} .. {hi:+.3f}); stops as soon as a bound is "
               f"crossed, else runs the full {total_games:,}-game budget.")
+    # FI-103: --sprt ALWAYS writes a state file, named after the run when the
+    # user did not pick one. A no-decision tranche is only worth the compute if
+    # a later tranche can pool with it, and that pooling needs the pentanomial
+    # + fingerprint this file holds. Forgetting the flag used to mean the state
+    # existed nowhere but in the printed ptnml, i.e. re-typed by hand or lost.
+    sprt_resume_auto = sprt_cfg is not None and not sprt_resume_path
+    if sprt_resume_auto:
+        sprt_resume_path = f"sprt_{e1.name}_vs_{e2.name}_{stamp}.json"
     # FI-82: prior tranches of the SAME experiment, pooled into every LLR
     # evaluation below. Read before the first game so a mismatch costs zero
     # compute; `fingerprint` is recomputed here (not trusted from the file).
@@ -1712,6 +1735,10 @@ def main():
                 print(f"ERROR: {ex}")
                 return
             print(note)
+        elif sprt_resume_auto:
+            print(f"SPRT resume: no --sprt-resume given, so this tranche's "
+                  f"state goes to {sprt_resume_path!r} (auto-named). Pass that "
+                  f"path as --sprt-resume on the next tranche to pool.")
         else:
             print(f"SPRT resume: {sprt_resume_path!r} does not exist yet -- "
                   f"this is tranche 1; it will be written at the end.")
@@ -1720,7 +1747,8 @@ def main():
     # base_pairs lets the summary say how much of the LLR is pooled history.
     sprt_state = {"cfg": sprt_cfg, "llr": None, "lower": None, "upper": None,
                   "decision": None, "decided": None, "last_n": 0,
-                  "base_pairs": sum(base_penta)}
+                  "base_pairs": sum(base_penta),
+                  "resume_path": sprt_resume_path, "resume_auto": sprt_resume_auto}
 
     # Build schedule of (round_no, fen, white_is_e1) tuples once -- same in both
     # paths so each position is played once with E1 White and once with E2 White.
