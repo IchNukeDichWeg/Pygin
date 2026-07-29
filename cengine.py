@@ -1058,7 +1058,15 @@ class Engine:
     # to want it): a visible in-file line, not a hidden env switch.
     NNUE_REQUIRE_SIMD = True
 
-    # FI-106 (PENDING -- awaiting its first screen). Lazy NNUE eval: when the
+    # FI-106 (SCREENED +26.63 +/- 15.3 @2,000 games, 2026-07-29 -- clears the
+    # +15 bar; nElo +40.40, Ptnml 32/204/411/285/68, pair ratio 1.50, LLR
+    # +2.488 of a +2.944 bound. Owes a TIMED cross-check before it ships: the
+    # mechanism is "go faster" and --nodes is the instrument that prices how
+    # much faster, so the two are not independent. The calibration read the
+    # lazy side at +14.2% NPS where a 40-position time-to-depth read +10.6%,
+    # which is ~4 Elo of overpayment in the same direction as the gap between
+    # the observed +26.63 and the +16.4 that pure speed predicts.)
+    # Lazy NNUE eval: when the
     # free material+PST bound is already past a window edge by the margin, the
     # search's question is settled and the net is never called. Only does
     # anything with USE_NNUE on; OFF here, so the default build is node-exact.
