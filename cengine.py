@@ -476,6 +476,24 @@ class Engine:
     # TC (Q-01 -0.87, P-42 -16.4, FI-04 +2.15) -- even the v39+ wave's
     # 5/5-consensus form doesn't pay; do not re-try without a longer TC.
     # divisor > 0 enables (adj = hist/div clamped +/-1); 0 = v43 exact.
+    #
+    # FI-105 (2026-07-29) ABANDONED PRE-SCREEN on the EBF gate, and found a
+    # defect in the verdict above while doing it. **At the documented armed
+    # divisor 8192 this is a DEAD GATE**: bench reads 1,461,732 -- byte
+    # identical to baseline -- so the mechanism never fires there. Same trap
+    # FI-23 recorded ("armed at 256, NOT the spec's 8192 -- that measured as a
+    # dead gate"): cs_search_begin zeroes g_history every move, so within one
+    # search it rarely passes a few hundred and hist/8192 clamps to 0. The
+    # +2.15 +/-6.8 campaign therefore measured a mechanism at the very edge of
+    # engagement, and the divisor was never tuned because the result fell
+    # below the tune threshold -- circular.
+    #
+    # Re-armed at LIVE divisors on top of FI-103+FI-104, EBF vs baseline:
+    #     pair alone        -7.49%
+    #     + LMR_HIST 2048   -7.02%   (worse)
+    #     + LMR_HIST  512   -3.32%   (much worse)
+    # It claims better reductions and does not deliver them, so the one-sided
+    # gate abandons it. This was R10's designated falsification point.
     LMR_HIST = 0
 
     # FI-25 TT-value pruning-eval sharpener: ARMED (fourteenth 50+0.20-era
