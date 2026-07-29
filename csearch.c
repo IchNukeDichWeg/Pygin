@@ -1747,7 +1747,15 @@ typedef struct {
 #define TT_VALUE(e)  ((int)(int32_t)(uint32_t)((e).d1))
 #define TT_MOVE(e)   ((uint32_t)((e).d1 >> 32))
 #define TT_DEPTH(e)  ((int)(int16_t)(uint16_t)((e).d2))
-#define TT_FLAG(e)   ((int)(uint16_t)((e).d2 >> 16))
+/* FI-104: the flag word is 16 bits carrying a 2-bit BOUND (0/1/2) plus, from
+ * bit 2, the ttPv marker. TT_FLAG MASKS TO THE BOUND -- deliberately, so that
+ * every existing `TT_FLAG(e) == TT_LOWER` comparison in the file keeps working
+ * with no edit. Packing a bit into a field that ~15 sites compare against
+ * constants is otherwise exactly the kind of change where one missed site
+ * silently corrupts bound semantics; masking at the single definition makes
+ * that class of mistake impossible rather than merely unlikely. */
+#define TT_FLAG(e)   ((int)(uint16_t)((e).d2 >> 16) & 3)
+#define TT_ISPV(e)   ((int)(((e).d2 >> 18) & 1))
 #define TT_GEN(e)    ((int)(uint16_t)((e).d2 >> 32))
 /* FI-03: the static eval cached in d2's spare high 16 bits. The eval is
  * deterministic per position (params fixed per process -- FB-04 guards
@@ -1832,7 +1840,8 @@ static __thread int g_is_helper = 0;    /* set at helper-thread entry;
                                          * tt_store_raw below */
 
 static inline void tt_store_raw(TTEntry* t, uint64_t key, int value,
-                                uint32_t move, int depth, int flag, int ev)
+                                uint32_t move, int depth, int flag, int ev,
+                                int pv)
 {
 #ifdef FI96_HELPER_MUTE
     /* FI-96 ORCHESTRATION ORACLE -- a differential BUILD, never the shipped
@@ -1857,7 +1866,7 @@ static inline void tt_store_raw(TTEntry* t, uint64_t key, int value,
     }
     uint64_t d1 = (uint64_t)(uint32_t)value | ((uint64_t)move << 32);
     uint64_t d2 = (uint64_t)(uint16_t)depth
-                | ((uint64_t)(uint16_t)flag << 16)
+                | ((uint64_t)(uint16_t)(flag | ((pv & 1) << 2)) << 16)
                 | ((uint64_t)(uint16_t)g_gen << 32)
                 | ((uint64_t)(uint16_t)(int16_t)ev << 48);   /* FI-03 */
     /* FB-12: relaxed ATOMIC stores. The table is shared by every Lazy-SMP
@@ -2658,6 +2667,29 @@ void set_prune(int v) { g_prune = v; }
 static int g_cutnode_lmr = 0;
 void set_cutnode_lmr(int v) { g_cutnode_lmr = v ? 1 : 0; }
 
+/* FI-104 (R10 wave 1): ttPv -- remember which nodes were ever on a PV, and
+ * reduce them LESS, permanently.
+ *
+ * It is the counterweight to FI-103, not an independent idea. Cut-node
+ * reduction prunes hard everywhere; ttPv is what stops it pruning hard in
+ * lines that once mattered. Stockfish runs both, and running the first
+ * without the second is how over-reduction sinks a selectivity change --
+ * which is the failure mode FI-55, FI-59 and FI-64 all share.
+ *
+ * A node is ttPv if it IS a PV node, or if the TT entry it hit was itself
+ * marked ttPv. The marker is written back with the node's result, so it
+ * propagates along lines that were once principal even after they stop being
+ * searched with a full window.
+ *
+ * Storage was free: the TT flag word is 16 bits carrying a 2-bit bound, so
+ * bit 2 was spare. TT_FLAG masks to the bound at the macro, which is what
+ * keeps ~15 existing comparison sites correct without touching any of them.
+ *
+ * 0 = off = node-exact: the bit is still WRITTEN (harmless, it occupies dead
+ * space) but never read, so the search is byte-identical. */
+static int g_ttpv_lmr = 0;
+void set_ttpv_lmr(int v) { g_ttpv_lmr = v ? 1 : 0; }
+
 /* P-03: Internal Iterative Reduction. A node with meaningful depth but NO
  * TT move has poor ordering ahead of it -- search it one ply shallower;
  * the TT-fed revisit (same key, now with a move) gets the full depth.
@@ -3298,7 +3330,7 @@ static void tt_store_terminal(TTEntry* t, uint64_t key, int val, int ply)
     int sv = val;
     if (sv >= MATE_THRESH) sv += ply;                /* node -> ply-relative */
     else if (sv <= -MATE_THRESH) sv -= ply;
-    tt_store_raw(t, key, sv, 0, 200, TT_EXACT, TT_EVAL_NONE);
+    tt_store_raw(t, key, sv, 0, 200, TT_EXACT, TT_EVAL_NONE, 0);
 }
 
 /* FB-12(c), the qsearch-store clobber, RESOLVED-AS-ACCEPTED 2026-07-25.
@@ -3345,7 +3377,7 @@ static inline void qs_tt_store(TTEntry* t, uint64_t key, int val, int ply,
                                                       * a same-key entry's
                                                       * ordering asset */
         mv = TT_MOVE(cur) & 0x7FFF;
-    tt_store_raw(t, key, sv, mv, depth, flag, ev);
+    tt_store_raw(t, key, sv, mv, depth, flag, ev, 0);
 }
 
 /* FB-40: the FI-30(a) stand-pat sharpen rule, shared by both qsearch
@@ -3666,6 +3698,10 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                    uint32_t prev12, int in_chk, int hmc, int chk, int srb,
                    int cutnode)
 {
+    /* FI-104: sticky ttPv. Set here rather than beside is_pv further down,
+     * because the TT probe that ORs in a stored marker runs BEFORE that
+     * declaration -- (beta - alpha) > 1 is the same test, just hoisted. */
+    int ttpv = (beta - alpha) > 1;
     g_nodes++;
     g_pv_len[ply] = 0;     /* PV-01: see qsearch -- every exit path must
                             * leave a valid (empty) line. ply <= CS_MAXPLY
@@ -3745,6 +3781,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             tt_sh_flag = TT_FLAG(e);             /* FI-25: any-depth bound */
             tt_sh_val = TT_VALUE(e);
             tt_depth = TT_DEPTH(e);              /* FI-55 */
+            if (TT_ISPV(e)) ttpv = 1;            /* FI-104: sticky marker */
             /* PV-02: at PV nodes skip the whole cutoff/narrowing block (the
              * EXACT return AND the bound-narrowing both truncate the
              * collected PV); the TT move above still orders. */
@@ -3919,7 +3956,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                         && !CS_UNWINDING()) {
                         if (!g_cb2) {
                             tt_store_raw(tte, key, ns, 0, depth, TT_LOWER,
-                                         store_eval);         /* FI-106 */
+                                         store_eval, 0);      /* FI-106 */
                         } else {
                             /* CB-02(a)/FB-22: obey the replacement policy;
                              * never clobber a DEEPER entry, and keep a
@@ -3933,12 +3970,12 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                                     tt_store_raw(tte, key, ns,
                                                  TT_MOVE(cur) & 0x7FFF,
                                                  depth, TT_LOWER,
-                                                 store_eval);
+                                                 store_eval, 0);
                             } else if (TT_GEN(cur) != (int)(uint16_t)g_gen
                                        || depth >= TT_DEPTH(cur)
                                                    + tt_exact_bonus(cur)) {
                                 tt_store_raw(tte, key, ns, 0, depth,
-                                             TT_LOWER, store_eval);
+                                             TT_LOWER, store_eval, 0);
                             }
                         }
                     }
@@ -4066,6 +4103,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             R = g_lmr[depth < 64 ? depth : 63][i < 64 ? i : 63];
             if (is_pv && R) R--;
             if (g_cutnode_lmr && cutnode && !is_pv) R++;   /* FI-103 */
+            if (g_ttpv_lmr && ttpv && R) R--;             /* FI-104 */
             if (g_improving && !improving) R++;      /* P-04: sharpen declining lines */
             if (g_lmr_hist && quiet) {               /* FI-04: history nudge --
                                                       * quiet-only butterfly
@@ -4169,7 +4207,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
              * (pawn/bishop/queen) -- TT-move ordering was silently dead
              * for those movers. */
             tt_store_raw(tte, key, sv, best_move & 0x7FFF, depth, flag,
-                         store_eval);                             /* FI-106 */
+                         store_eval, ttpv);                       /* FI-104 */
         }
     }
     return best;
@@ -4386,7 +4424,7 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
         int flag = (best <= alpha_orig) ? TT_UPPER
                  : (best >= beta)       ? TT_LOWER : TT_EXACT;
         tt_store_raw(&g_tt[key & TT_MASK], key, best,
-                     best_move & 0x7FFF, depth, flag, TT_EVAL_NONE);
+                     best_move & 0x7FFF, depth, flag, TT_EVAL_NONE, 1);
     }
     *out_score = best;
     *out_second = best2;                             /* FI-09(b) */

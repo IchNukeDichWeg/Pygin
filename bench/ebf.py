@@ -102,13 +102,14 @@ mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
 # toggle, and arming one on the B side is how the gate is run without staging
 # a whole directory. Set on the CLASS, not the instance: cengine pushes its
 # toggles to the .so during __init__, so an instance-level set lands too late.
-if arm:
-    _n, _, _v = arm.partition("=")
+for _pair in filter(None, arm.split(",")):
+    _n, _, _v = _pair.partition("=")
+    _n = _n.strip()
     _val = {"1": True, "true": True, "0": False, "false": False}.get(_v.lower())
     if _val is None:
         _val = int(_v) if _v.lstrip("-").isdigit() else _v
     if not hasattr(mod.Engine, _n):
-        sys.exit(f"--arm: {mod.Engine.__module__}.Engine has no attribute {_n!r}")
+        sys.exit(f"--arm: Engine has no attribute {_n!r}")
     setattr(mod.Engine, _n, _val)
 eng = mod.Engine()
 eng.use_book = False
@@ -227,8 +228,9 @@ def main():
                     help="engine vs ITSELF with pruning disabled -- EBF must "
                          "rise sharply, or this instrument sees nothing")
     ap.add_argument("--arm-b", default="",
-                    help="NAME=VALUE class attr armed on the B side only, e.g. "
-                         "CUTNODE_LMR=1 -- the usual way to gate an R10 toggle")
+                    help="NAME=VALUE[,NAME=VALUE...] class attrs armed on the "
+                         "B side only, e.g. CUTNODE_LMR=1,TTPV_LMR=1 -- the "
+                         "usual way to gate an R10 toggle or an R10 PAIR")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:

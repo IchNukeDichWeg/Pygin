@@ -999,6 +999,15 @@ class Engine:
     # PENDING: built 2026-07-27, unmeasured.
     CUTNODE_LMR = False
 
+    # FI-104 (R10 wave 1): ttPv -- a node that was ever on a PV reduces LESS,
+    # permanently. The counterweight to FI-103, not an independent idea:
+    # cut-node reduction prunes hard everywhere, and this is what stops it
+    # pruning hard in lines that once mattered. Storage was free (bit 2 of the
+    # TT's 16-bit flag word, which carries a 2-bit bound); TT_FLAG masks to the
+    # bound at the macro so ~15 existing comparison sites needed no edit.
+    # False = node-exact. PENDING: built 2026-07-29, unmeasured.
+    TTPV_LMR = False
+
     # FB-48: contempt is ON by default and every rule draw routes through
     # draw_score -- insufficient material, 50-move, repetition, FI-29's cycle
     # gate, all three qsearch draws. Stalemate does NOT: all five in-tree
@@ -1221,7 +1230,7 @@ class Engine:
               self.SINGULAR, self.SE_MIN_DEPTH, self.SE_MARGIN, self.SE_BUDGET,
               self.KILLER_INHERIT, self.QUIET_MALUS_ALL, self.HIST_KEEP,
             self.QS_TTFIRST, self.REP_STRICT, self.QS_SEE_MARGIN,
-            self.CUTNODE_LMR,
+            self.CUTNODE_LMR, self.TTPV_LMR,
             self.SM_CONTEMPT,
               # FB-55: the guard covered 49 TOGGLES and not one EVAL VALUE --
               # a hole exactly where the .so-cross-contamination class bites.
@@ -1355,6 +1364,7 @@ class Engine:
         lib.set_rep_strict(1 if self.REP_STRICT else 0)             # FI-89
         lib.set_qs_see_margin(int(self.QS_SEE_MARGIN))              # FI-90
         lib.set_cutnode_lmr(1 if self.CUTNODE_LMR else 0)           # FI-103
+        lib.set_ttpv_lmr(1 if self.TTPV_LMR else 0)                 # FI-104
         lib.set_sm_contempt(1 if self.SM_CONTEMPT else 0)           # FB-48
         # FB-04: entries scored under a PREVIOUS construction's eval params
         # would poison this one (the table is process-global and persistent).
