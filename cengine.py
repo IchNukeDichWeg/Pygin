@@ -1058,6 +1058,16 @@ class Engine:
     # to want it): a visible in-file line, not a hidden env switch.
     NNUE_REQUIRE_SIMD = True
 
+    # FI-106 (PENDING -- awaiting its first screen). Lazy NNUE eval: when the
+    # free material+PST bound is already past a window edge by the margin, the
+    # search's question is settled and the net is never called. Only does
+    # anything with USE_NNUE on; OFF here, so the default build is node-exact.
+    # Margin 200cp comes from FI-105's measurement, not from taste: it skips
+    # 50.9% of NN evals for 1.72% landing on the wrong side of the window, the
+    # best ratio in that table. Retune it against a screen, not by feel.
+    LAZY_NNUE = False
+    LAZY_NNUE_MARGIN = 200
+
     # FI-105. Which shared object to load. Only an instrumented build has any
     # business changing this (NNUE/tools/lazy_probe.py compiles one with
     # -DCS_LAZY_PROBE), and it MUST keep a distinct filename: dyld resolves by
@@ -1146,8 +1156,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, self.CSEARCH_SO))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (abi 33 = FB-48 set_sm_contempt) -- bump with csearch_abi.
-        if lib.csearch_abi() < 33:
+        # (abi 34 = FI-106 set_lazy_nnue) -- bump with csearch_abi.
+        if lib.csearch_abi() < 34:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -1255,6 +1265,8 @@ class Engine:
         lib.set_root_lmr(1 if self.ROOT_LMR else 0)              # FI-56
         lib.set_iir_weak(1 if self.IIR_WEAK else 0)              # FI-55
         lib.set_lmr_badcap(1 if self.LMR_BADCAP else 0)          # FI-64
+        lib.set_lazy_nnue(1 if self.LAZY_NNUE else 0)            # FI-106
+        lib.set_lazy_margin(int(self.LAZY_NNUE_MARGIN))          # FI-106
         # FI-15 NNUE (abi 19): load-then-arm. A load failure with USE_NNUE
         # on raises loudly -- a missing/corrupt net must never silently
         # fall back to HCE (the A/B would be mislabeled). set_use_nnue(0)
