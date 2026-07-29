@@ -2740,6 +2740,11 @@ void set_razor(int margin, int depth)
  * The reduced search runs at depth - PROBCUT_RED and is marked !cutnode: the
  * probe is trying to PROVE a fail-high, which is the all-node stance.
  *
+ * SCREENED NULL 2026-07-29: +2.90 +/- 8.8 over 6,000 games at nodes 1.75M,
+ * against an EBF gate that had already said ABANDON. -21.6% nodes at fixed
+ * depth, none of it converted. See cengine.py PROBCUT_MARGIN for the full
+ * verdict and why the knobs are not the reason.
+ *
  * 0 = off = node-exact. Armed: beta + 200 at depth >= 5, reduction 4. */
 static int g_probcut_margin = 0;            /* 0 = off; armed base 200 */
 static int g_probcut_depth  = 5;
