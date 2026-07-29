@@ -70,107 +70,79 @@ check("no single tranche decides on its own",
 # --- 2. state round-trip: what a resumed run actually pools --------------- #
 tmp = tempfile.mkdtemp(prefix="fi82_")
 state = os.path.join(tmp, "ab.json")
-fp = match.sprt_fingerprint(os.path.join(ROOT, "cengine.py"),
-                            os.path.join(ROOT, "engine.py"),
-                            CFG, MODE_CFG, match.FEN_FILE,
-                            match.SUBSET_SEED, False)
 
 acc = [0] * 5
 for i, t in enumerate(tranches):
     acc = [acc[k] + t[k] for k in range(5)]
-    match.sprt_resume_save(state, fp, acc, (i + 1) * 5000,
-                           {"decided": None, "llr": 1.0})
+    match.sprt_resume_save(state, acc, (i + 1) * 5000,
+                           {"decided": None, "llr": 1.0},
+                           [{"engine1": "cengine", "engine2": "engine",
+                             "mode": "nodes 1750000/move", "smp": 1,
+                             "seed": 55, "fen_file": "UHO_4060_v4.epd",
+                             "offset": i * 5000}])
     if i + 1 < len(tranches):
-        base, nxt, _note = match.sprt_resume_load(state, fp, (i + 1) * 5000)
+        base, nxt, runs, _note = match.sprt_resume_load(state, (i + 1) * 5000)
         check(f"tranche {i + 2} resumes with {sum(base):,} pooled pairs",
               base == acc and nxt == (i + 1) * 5000,
               f"penta {base}, next_offset {nxt}")
+        check(f"tranche {i + 2} carries its provenance", len(runs) == 1,
+              f"{len(runs)} run record(s)")
 
-base, _nxt, _note = match.sprt_resume_load(state, fp, 20000)
+base, _nxt, _runs, _note = match.sprt_resume_load(state, 20000)
 check("final pooled state equals the published ptnml", base == FI30,
       f"{base}")
 
-# --- 3. the two refusals ------------------------------------------------- #
-# A fingerprint mismatch must REFUSE, not warn: this is the FI-30 tranche-4
-# failure (games played against a reverted checkout, caught only by a reflog).
-bad = dict(fp, e1="deadbeefdeadbeef")
-try:
-    match.sprt_resume_load(state, bad, 20000)
-    check("refuses a different engine build", False, "pooled anyway!")
-except ValueError as ex:
-    check("refuses a different engine build", "e1" in str(ex), str(ex)[:70])
-
-# FB-49: the fields that change what a GAME MEANS, not just which engines
-# played it. A 4-thread tranche and a 1-thread tranche are different engines;
-# adjudication on/off are different rulesets; the WDL model moves the
-# adjudication thresholds; the book changes the openings; FI-88's clock regime
-# changes what Stockfish is given. v1 pooled all of them silently.
-for field, value in (("seed", 999), ("fen_sha", "0000000000000000"),
-                     ("tc", [10.0, 0.1]), ("cfg", dict(CFG, elo1=8.0)),
-                     ("smp", 4), ("adjudicate", False),
-                     ("sf_our_clock", True), ("wdl_sha", "beefbeefbeefbeef"),
-                     ("book1", "some_book.bin")):
-    try:
-        match.sprt_resume_load(state, dict(fp, **{field: value}), 20000)
-        check(f"refuses a changed {field}", False, "pooled anyway!")
-    except ValueError as ex:
-        check(f"refuses a changed {field}", field in str(ex), str(ex)[:70])
+# --- 3. WARN, never refuse ----------------------------------------------- #
+# The fingerprint gate is GONE (2026-07-29, user's call). It refused to pool
+# unless every config field AND the sha256 of both engine .py files matched --
+# right for a certification suite, wrong for a research tool: a COMMENT added
+# to cengine.py changed its hash and orphaned a campaign's prior games over a
+# difference that cannot affect a single move. The contract is now: pool, and
+# say what moved. Provenance is RECORDED so a pooled figure stays auditable.
+base, nxt, runs, note = match.sprt_resume_load(state, 20000)
+check("pools without any fingerprint argument", sum(base) == sum(FI30),
+      f"{sum(base):,} pairs")
+check("sprt_fingerprint is gone", not hasattr(match, "sprt_fingerprint"),
+      "it still exists -- the gate was only half removed")
 
 # An overlapping offset double-counts openings: same evidence, twice the
-# apparent sample. The disjoint-shard guarantee is the reason offsets exist.
-try:
-    match.sprt_resume_load(state, fp, 19999)
-    check("refuses an overlapping offset", False, "pooled anyway!")
-except ValueError as ex:
-    check("refuses an overlapping offset", "overlaps" in str(ex), str(ex)[:70])
+# apparent sample. It is the ONE thing worth shouting about, and it is still
+# only a WARNING in the note -- the operator decides.
+_b, _n, _r, note = match.sprt_resume_load(state, 19999)
+check("WARNS on an overlapping offset", "OVERLAP WARNING" in note,
+      note[:90])
+check("names the offset to use instead", "20000" in note, note[:90])
+_b, _n, _r, note_ok = match.sprt_resume_load(state, 20000)
+check("silent at the exact next_offset", "OVERLAP" not in note_ok,
+      note_ok[:90])
 
-base, _nxt, _note = match.sprt_resume_load(state, fp, 20000)
-check("accepts the exact next_offset", sum(base) == sum(FI30))
+# A recorded decision is surfaced, not hidden: adding to a decided file is
+# legitimate (more evidence) but must never look like a fresh test.
+match.sprt_resume_save(state, FI30, 20000,
+                       {"decided": "H1", "llr": 3.475}, [])
+_b, _n, _r, note = match.sprt_resume_load(state, 20000)
+check("surfaces an existing decision", "H1" in note, note[:90])
 
-# FB-49: a state file from an older fingerprint SCHEMA must fail with a
-# schema message, not with a confusing per-field mismatch.
-old_fp = {k: v for k, v in fp.items() if k not in
-          ("fp_version", "smp", "adjudicate", "sf_our_clock", "wdl_sha",
-           "book1", "book2")}
+# --- 4. corrupt data is STILL fatal -------------------------------------- #
+# Removing the config gate does not mean trusting the numbers. A bad penta
+# silently poisons the statistic, which is not a choice an operator makes.
+for penta, why in (([1, 2, -3, 4, 5], "negative"), ([1, 2, 3], "short")):
+    with open(state, "w", encoding="utf-8") as fh:
+        json.dump({"penta": penta, "next_offset": 0}, fh)
+    try:
+        match.sprt_resume_load(state, 0)
+        check(f"refuses a corrupt penta ({why})", False, "pooled anyway!")
+    except ValueError as ex:
+        check(f"refuses a corrupt penta ({why})", "corrupt" in str(ex),
+              str(ex)[:70])
+
+# A file with no `runs` key at all (hand-written, or pre-dating provenance)
+# must load, not crash -- the seed file for FI-107 was written by hand.
 with open(state, "w", encoding="utf-8") as fh:
-    json.dump({"fingerprint": old_fp, "penta": FI30, "next_offset": 20000}, fh)
-try:
-    match.sprt_resume_load(state, fp, 20000)
-    check("refuses an OLD fingerprint schema", False, "pooled anyway!")
-except ValueError as ex:
-    check("refuses an OLD fingerprint schema", "schema" in str(ex),
-          str(ex)[:78])
-match.sprt_resume_save(state, fp, FI30, 20000, {"decided": None, "llr": 1.0})
-
-# --- 4. fingerprint sensitivity ------------------------------------------ #
-# Identity must NOT include the .so (every box builds its own -mcpu=native
-# copy, and cross-box pooling is the point) but MUST include the FEN pool's
-# content -- a same-named pool with different lines breaks disjointness.
-fp2 = match.sprt_fingerprint(os.path.join(ROOT, "cengine.py"),
-                             os.path.join(ROOT, "engine.py"),
-                             CFG, MODE_CFG, match.FEN_FILE,
-                             match.SUBSET_SEED, False)
-check("fingerprint is stable across calls", fp == fp2)
-check("fingerprint pins engine CONTENT, not path",
-      fp["e1"] != fp["e2"] and len(fp["e1"]) == 16,
-      f"e1={fp['e1']} e2={fp['e2']}")
-check("fingerprint carries a schema version (FB-49)",
-      fp.get("fp_version") == match.SPRT_FP_VERSION and fp["fp_version"] >= 2,
-      f"fp_version {fp.get('fp_version')}")
-check("fingerprint pins the FEN pool's content",
-      fp["fen_sha"] is not None and fp["fen_file"] == os.path.basename(
-          match._data_path(match.FEN_FILE)),
-      f"{fp['fen_file']} @ {fp['fen_sha']}")
-
-# A corrupt file must not be pooled as zeros.
-with open(state, "w", encoding="utf-8") as fh:
-    json.dump({"fingerprint": fp, "penta": [1, 2, -3, 4, 5],
-               "next_offset": 0}, fh)
-try:
-    match.sprt_resume_load(state, fp, 0)
-    check("refuses a corrupt penta", False, "pooled anyway!")
-except ValueError as ex:
-    check("refuses a corrupt penta", "corrupt" in str(ex), str(ex)[:70])
+    json.dump({"penta": FI30, "next_offset": 20000}, fh)
+base, nxt, runs, _note = match.sprt_resume_load(state, 20000)
+check("loads a hand-written file with no provenance",
+      base == FI30 and runs == [], f"penta {base}, runs {runs}")
 
 for f in os.listdir(tmp):
     os.remove(os.path.join(tmp, f))
