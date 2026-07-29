@@ -8,7 +8,15 @@ crucially, under PyPy:
 
 Usage::
 
-    python3 match.py [engine1.py] [engine2.py] [num_positions] [offset] [--workers N] [--engine-smp N]
+    python3 match.py [engine1.py] [engine2.py] [num_positions] [--workers N] [--engine-smp N]
+                     [--offset N]                             (opening-pool offset; the 4th POSITIONAL still
+                                                               works, but this wins and is unambiguous. The
+                                                               range is printed at the start, in the log
+                                                               header and in the closing summary.)
+                     [--seed S]                               (SUBSET_SEED for the pool shuffle; "none" =
+                                                               unshuffled. The pool is shuffled BEFORE it is
+                                                               sliced, so the same offset under a different
+                                                               seed is a DIFFERENT set of openings.)
                      [--book1 book.bin] [--book2 book.bin]   (per-engine opening books; book testing)
                      [--start-pos True]                       (all games from startpos, ignore the FEN file)
                      [--sprt]                                 (SPRT early-stop: quit as soon as the result is
@@ -216,9 +224,12 @@ except Exception:
     _sprt = None
 
 # Don't evaluate the SPRT on a tiny sample (the LLR is noisy early and could
-# early-stop on a fluke); wait for this many PAIRS first. 500 pairs = 1000
-# games -- a decision can't fire before then.
-SPRT_MIN_PAIRS = 500
+# early-stop on a fluke); wait for this many PAIRS first. 250 pairs = 500
+# games -- a decision can't fire before then. (Was 500; halved 2026-07-29 on
+# the user's call. The Wald bounds already control the error rates -- this
+# floor only guards the pathological first-few-pairs regime, and 500 pairs
+# was costing an hour before a landslide could ever be called.)
+SPRT_MIN_PAIRS = 250
 
 
 # ---------------------------------------------------------------------- #
@@ -228,12 +239,15 @@ SPRT_MIN_PAIRS = 500
 # lesson), and the next tranche usually runs on another box or another day.
 # Pooling that by hand is where campaigns go wrong -- FI-30's tranche 4 was
 # played on the WRONG CHECKOUT and only the server reflog caught it. So the
-# state file carries a fingerprint of the whole EXPERIMENT and the run refuses
-# to pool into anything that does not match it.
+# state file therefore RECORDS every tranche's config in a `runs` list, so a
+# pooled figure can always be audited after the fact.
 #
-# Engines are fingerprinted by the CONTENT of their .py, deliberately NOT by
-# path and NOT including csearch.so: every box builds its own `-mcpu=native`
-# .so, and cross-box tranche pooling (FI-24, FI-56) is the whole point.
+# It used to REFUSE to pool anything whose fingerprint (incl. the sha256 of
+# both engine .py files) did not match. Removed 2026-07-29 on the user's call:
+# adding a COMMENT to cengine.py changed its hash and orphaned a campaign's
+# prior games over a difference that cannot affect a single move. Record and
+# warn; the operator judges. Corrupt data is still fatal -- that is not a
+# config choice.
 # ---------------------------------------------------------------------- #
 def _sha16(path):
     """First 16 hex of a file's sha256, streamed (FEN pools reach 174 MB)."""
@@ -288,105 +302,87 @@ def _net_lines(procs):
     return out
 
 
-def sprt_fingerprint(engine1, engine2, sprt_cfg, mode_cfg,
-                     fen_file, seed, start_pos):
-    """Identity of the experiment. Two tranches may only be pooled when every
-    field matches: same engines, same instrument, same bounds, and the same
-    seeded FEN pool -- the disjoint-shard guarantee that makes `offset` safe
-    holds only for an identical pool AND seed, so the pool's content hash is
-    part of the identity, not just its name.
-
-    FB-49: v1 covered the engines and the instrument but NOT the config that
-    changes what a game MEANS. A 4-thread tranche and a 1-thread tranche are
-    different engines; adjudication on and off are different rulesets; the WDL
-    model's contents move the adjudication thresholds; a book changes the
-    openings; and FI-88's clock regime changes what Stockfish is given. All of
-    them pooled silently. Every one is now in the tuple, and `fp_version`
-    makes a schema change a loud failure rather than a quiet mismatch."""
-    fp = {"fp_version": SPRT_FP_VERSION,
-          "e1": _sha16(engine1), "e2": _sha16(engine2),
-          "mode": mode_cfg["mode"], "time_ms": mode_cfg["time_ms"],
-          "depth": mode_cfg["depth"], "nodes": mode_cfg["nodes"],
-          "tc": [mode_cfg["tc_seconds"], mode_cfg["tc_increment"]],
-          "cfg": sprt_cfg, "seed": seed, "start_pos": bool(start_pos),
-          # --- FB-49: what a game MEANS, not just which engines played it ---
-          "smp": int(ENGINE_SMP),
-          "adjudicate": bool(mode_cfg.get("adjudicate", ADJUDICATE)),
-          "sf_our_clock": bool(mode_cfg.get("sf_our_clock", sf_our_clock)),
-          "book1": os.path.basename(BOOK_ENGINE1) if BOOK_ENGINE1 else None,
-          "book2": os.path.basename(BOOK_ENGINE2) if BOOK_ENGINE2 else None}
-    # The WDL model sets the adjudication thresholds, so its CONTENT is part
-    # of the ruleset whenever adjudication is on.
-    wdl = _data_path("wdl_model.json")
-    fp["wdl_sha"] = _sha16(wdl) if os.path.isfile(wdl) else None
-    # The NET is part of the experiment too. An engine .py that names a net
-    # already covers this through _sha16 above -- the path is a literal in
-    # the source, so choosing a different net edits the file. What that does
-    # NOT catch is the same path holding different BYTES, so hash whatever
-    # each engine's NNUE_FILE currently points at. Parsed out of the source
-    # rather than imported: sprt_fingerprint runs before any engine process
-    # exists, and importing an engine here would load a second differently
-    # configured one into this process, which is the .so rule this repo has
-    # been bitten by before.
-    for tag, path in (("e1", engine1), ("e2", engine2)):
-        fp[tag + "_net"] = _net_sha_for_engine(path)
-    if start_pos:
-        fp["fen_file"], fp["fen_sha"] = None, None
-    else:
-        path = _data_path(fen_file)
-        fp["fen_file"], fp["fen_sha"] = os.path.basename(path), _sha16(path)
-    return fp
+_SHORT_REASON = {
+    "CHECKMATE": "mate", "STALEMATE": "stalemate",
+    "THREEFOLD_REPETITION": "3-fold", "FIVEFOLD_REPETITION": "5-fold",
+    "FIFTY_MOVES": "50-move", "SEVENTYFIVE_MOVES": "75-move",
+    "INSUFFICIENT_MATERIAL": "material",
+    "MAX_PLIES (adjudicated draw)": "max-plies",
+    "ADJUDICATION_WIN": "adj", "ADJUDICATION_DRAW": "adj-draw",
+    "TIME_FORFEIT": "time", "VARIANT_WIN": "variant", "VARIANT_DRAW": "variant",
+    "VARIANT_LOSS": "variant",
+    "WORKER_STARTUP_FAILED": "worker-start", "WORKER_EXCEPTION": "worker-exc",
+}
 
 
-def sprt_resume_load(path, fingerprint, offset):
-    """Read a tranche state file and return (base_penta, next_offset, note).
+def short_reason(reason):
+    """Compact form for the scrolling per-game line ONLY.
 
-    Raises ValueError on anything that would corrupt the pooled statistic:
-    a different experiment, or an offset that overlaps games already counted
-    (the shards must be DISJOINT -- pooling a position twice is not more
-    evidence, it is the same evidence counted twice)."""
+    The canonical string still goes to the .txt log and every stored record,
+    so nothing downstream has to learn these abbreviations -- this is purely
+    to stop MAX_PLIES (adjudicated draw) eating half the terminal width."""
+    return _SHORT_REASON.get(reason, (reason or "").lower())
+
+
+def sprt_resume_load(path, offset):
+    """Read a tranche state file -> (base_penta, next_offset, prior_runs, note).
+
+    WARNS, never refuses. This used to hard-fail on a fingerprint mismatch so
+    that two tranches could not be pooled unless every config field and the
+    sha16 of BOTH engine files matched. That is the right rule for a
+    certification suite and the wrong one for a research tool: a comment added
+    to cengine.py changed its hash and orphaned an entire campaign's prior
+    games, for a difference that could not affect a single move. The user's
+    call, 2026-07-29 -- record the provenance, print what changed, and let the
+    operator judge. Every tranche's config is kept in `runs` so a pooled number
+    can always be audited after the fact.
+
+    A corrupt file is still fatal: a bad penta silently poisons the statistic,
+    which is different from a config the operator may legitimately have
+    changed."""
     with open(path, "r", encoding="utf-8") as fh:
         st = json.load(fh)
-    if st.get("fingerprint") != fingerprint:
-        diff = [k for k in sorted(set(fingerprint) | set(st.get("fingerprint") or {}))
-                if (st.get("fingerprint") or {}).get(k) != fingerprint.get(k)]
-        if "fp_version" in diff:
-            raise ValueError(
-                f"--sprt-resume: {path!r} was written by fingerprint schema "
-                f"v{(st.get('fingerprint') or {}).get('fp_version', 1)}, this "
-                f"build uses v{SPRT_FP_VERSION} -- start a new run (FB-49 "
-                f"widened the tuple; the old state cannot be compared)")
-        raise ValueError(
-            f"--sprt-resume fingerprint mismatch on {', '.join(diff)} -- "
-            f"refusing to pool {path!r} (different experiment)")
-    nxt = int(st.get("next_offset", 0))
-    if offset < nxt:
-        raise ValueError(
-            f"--sprt-resume: offset {offset} overlaps games already pooled "
-            f"in {path!r}; use --offset >= {nxt}")
     penta = [int(v) for v in st.get("penta", [0] * 5)]
     if len(penta) != 5 or any(v < 0 for v in penta):
-        raise ValueError(f"--sprt-resume: corrupt penta in {path!r}")
-    note = (f"SPRT resume: pooling {sum(penta):,} prior pairs "
-            f"({'/'.join(str(v) for v in penta)}) from {path!r}; "
-            f"the LLR continues from there.")
+        raise ValueError(f"state file: corrupt penta in {path!r}")
+    nxt = int(st.get("next_offset", 0))
+    prior_runs = list(st.get("runs", []))
+    note = (f"Resuming {path!r}: {sum(penta):,} prior pairs "
+            f"({'/'.join(str(v) for v in penta)}) over {len(prior_runs)} run(s)"
+            f"; the LLR continues from there.")
+    if offset < nxt:
+        note += (f"\n  ** OVERLAP WARNING: offset {offset} is below the "
+                 f"{nxt} this file has already consumed. Pooling a position "
+                 f"twice is the SAME evidence counted twice, not more of it. "
+                 f"Use --offset {nxt} unless you meant this.")
     if st.get("decision") in ("H0", "H1"):
-        note += (f"\n  NOTE: that file already records a {st['decision']} "
-                 f"decision -- this tranche only adds to it.")
-    return penta, nxt, note
+        note += (f"\n  NOTE: this file already records a {st['decision']} "
+                 f"decision -- this run only adds to it.")
+    return penta, nxt, prior_runs, note
 
 
-def sprt_resume_save(path, fingerprint, penta, next_offset, sprt_state):
-    """Dump the pooled state. Written from the finally block, so it survives
-    Ctrl-C, SIGTERM and an SPRT decision alike."""
+def sprt_resume_save(path, penta, next_offset, sprt_state, runs):
+    """Dump the pooled state atomically.
+
+    Written at the START of a run, every SAVE_EVERY games, and from the finally
+    block -- so it survives Ctrl-C, SIGTERM, a kill and a crash alike, and a
+    run that dies at game 9,000 does not lose 9,000 games. `runs` is the
+    provenance list: one record per tranche, so a pooled figure can be audited
+    even though pooling is no longer gated on a fingerprint."""
+    st = sprt_state or {}
     tmp = f"{path}.tmp"                  # never truncate a good state file on
     with open(tmp, "w", encoding="utf-8") as fh:      # a crash mid-write
-        json.dump({"fingerprint": fingerprint, "penta": list(penta),
+        json.dump({"penta": list(penta),
                    "next_offset": int(next_offset),
                    "pairs": int(sum(penta)),
-                   "decision": sprt_state.get("decided"),
-                   "llr": sprt_state.get("llr")}, fh, indent=1, sort_keys=True)
+                   "decision": st.get("decided"),
+                   "llr": st.get("llr"),
+                   "runs": list(runs)}, fh, indent=1, sort_keys=True)
     os.replace(tmp, path)
+
+
+# How often the state file is refreshed mid-run, in completed GAMES.
+SAVE_EVERY = 50
 
 
 # ====================================================================== #
@@ -1071,6 +1067,11 @@ def calibration_drift(cal_start, cal_end):
     nothing in the summary looks wrong at all.
     """
     drift = cal_end["raw"] / cal_start["raw"] - 1.0
+    if abs(drift) <= CAL_DEADBAND:
+        # The check still RUNS -- a host that degrades mid-run would skew the
+        # tranche and this is what catches it. But two lines of "nothing
+        # happened" on every clean run is noise, so a held host says nothing.
+        return []
     lines = [f"NPS calibration drift (FI-101): start {cal_start['raw']:.4f} -> "
              f"end {cal_end['raw']:.4f}  ({drift*100:+.2f}%)"]
     if abs(drift) > CAL_DEADBAND:
@@ -1085,13 +1086,17 @@ def calibration_drift(cal_start, cal_end):
 
 def write_summary(fh, e1, e2, tally, total_games, start_t, stopped,
                   n_workers=None, sprt_info=None, mode_desc=None,
-                  startup_fail=None, cal_lines=None):
+                  startup_fail=None, cal_lines=None, openings=None):
     lines = ["", "=== BATTLE SUMMARY ===",
              f"Engine 1: {e1.name}", f"Engine 2: {e2.name}",
              *_net_lines([e1, e2]),
              f"Games scored: {tally['completed']:,}  (of {total_games:,} scheduled)",
              f"Workers: {n_workers}",
              *( [f"Mode: {mode_desc}"] if mode_desc else [] ),
+             # The opening range belongs at BOTH ends: the closing summary is
+             # what gets pasted into a report, and a pooled figure whose shards
+             # cannot be checked for overlap is not auditable.
+             *( [f"Openings: {openings}"] if openings else [] ),
              f"Engine 1 Wins: {tally['e1']:,}", f"Engine 2 Wins: {tally['e2']:,}",
              f"Draws: {tally['draws']:,}"]
     if int(tally['errors']) > 0:
@@ -1165,8 +1170,9 @@ def write_summary(fh, e1, e2, tally, total_games, start_t, stopped,
     if si and si.get("resume_path"):
         lines.append(
             f"SPRT state file: {si['resume_path']}"
-            + ("  (auto-named; pass it as --sprt-resume on the next tranche "
-               "to pool)" if si.get("resume_auto") else ""))
+            + ("  (auto-named and STABLE -- the next run with these two "
+               "engines pools with it automatically)"
+               if si.get("resume_auto") else ""))
     # An SPRT stop is a CONCLUSION, not an interruption, so don't mislabel it.
     if stopped and not sprt_decided:
         lines.append("(match was stopped before completion)")
@@ -1443,7 +1449,8 @@ def main():
     # Flag overrides for the CONFIG constants above (used by the AllIn1 web
     # dashboard, harmless from a terminal). Anything not passed keeps CONFIG.
     global MODE, TIME_PER_MOVE_MS, FIXED_DEPTH, TC_SECONDS, TC_INCREMENT, \
-        ADJUDICATE, FEN_FILE, BOOK_ENGINE1, BOOK_ENGINE2, START_POS
+        ADJUDICATE, FEN_FILE, BOOK_ENGINE1, BOOK_ENGINE2, START_POS, \
+        SUBSET_SEED
     argv = sys.argv[1:]
     workers_str = None
     nodes_budget = None
@@ -1459,6 +1466,8 @@ def main():
     sprt_alpha, sprt_beta = 0.05, 0.05
     sprt_model = "normalized"
     sprt_resume_path = None    # FI-82: pooled-tranche state file
+    offset_opt = None          # --offset (overrides the 4th positional)
+    seed_opt = None            # --seed
     i = 0
     while i < len(argv):
         if argv[i] == "--workers" and i + 1 < len(argv):
@@ -1534,6 +1543,20 @@ def main():
         elif argv[i] == "--sprt-resume" and i + 1 < len(argv):
             sprt_resume_path = argv[i + 1]      # FI-82: pool with prior
             i += 2                              # tranches in this file
+        elif argv[i] == "--offset" and i + 1 < len(argv):
+            offset_opt = int(argv[i + 1])       # named form; wins over the
+            i += 2                              # 4th positional
+        elif argv[i] == "--seed" and i + 1 < len(argv):
+            seed_opt = argv[i + 1].strip()      # "none"/"off" = unshuffled
+            i += 2
+        elif argv[i].startswith("--"):
+            # An unknown --flag used to fall through to `positional`, where it
+            # became engine1/engine2/num_positions/offset. `--depth 4` (the
+            # flag is --fixed-depth) silently tried to parse "--depth" as an
+            # OFFSET. A typo must never quietly change what the run measures.
+            print(f"ERROR: unknown option {argv[i]!r}. See the Usage block at "
+                  f"the top of match.py.")
+            return
         else:
             positional.append(argv[i])
             i += 1
@@ -1542,7 +1565,15 @@ def main():
     # Positional arg is the number of POSITIONS; each is played twice (both
     # colours), so total games = num_positions * 2.
     num_positions = max(1, int(positional[2]) if len(positional) > 2 else NUM_GAMES)
+    # The 4th positional still works so old commands do not silently change
+    # meaning, but --offset wins -- an opening range is the one field that
+    # must never be ambiguous, and it is now printed at both ends of the run.
     offset = int(positional[3]) if len(positional) > 3 else 0
+    if offset_opt is not None:
+        offset = offset_opt
+    if seed_opt is not None:
+        SUBSET_SEED = (None if seed_opt.lower() in ("none", "off", "unseeded")
+                       else int(seed_opt))
 
     if workers_str is None:
         n_workers = max(1, int(N_WORKERS))
@@ -1628,6 +1659,13 @@ def main():
         print(f"ERROR: offset {offset} leaves no positions (pool size {len(pool)})")
         return
     total_games = len(fens) * 2
+    # One description, printed at the top, written into the log header, and
+    # repeated in the closing summary. The seed is part of it: the pool is
+    # SHUFFLED before slicing, so the same offset under a different seed is a
+    # different set of openings, and an offset alone is not provenance.
+    openings_desc = (f"positions [{offset}, {offset + len(fens)}) of "
+                     f"{FEN_FILE} (shuffle seed "
+                     f"{SUBSET_SEED if SUBSET_SEED is not None else 'unseeded'})")
 
     ctx = mp.get_context("spawn")
     # Sequential mode keeps a single (e1, e2) pair on the main process. Parallel
@@ -1669,6 +1707,7 @@ def main():
               f"Mode: {mode_desc}   |   "
               f"{len(fens)} positions x 2 colours = {total_games} games\n"
               f"Workers: {workers_desc}\n"
+              f"Openings: {openings_desc}\n"
               f"Log: {log_path}\n" + "-" * 72)
     print(banner)
     if fh is not None:
@@ -1686,9 +1725,7 @@ def main():
         # this very field. Positions, not games: each is played twice.
         fh.write(f"{e1.name} vs {e2.name}\n"
                  f"Interpreter: {interp}\nMode: {mode_desc}\n"
-                 f"Openings: positions [{offset}, {offset + len(fens)}) "
-                 f"of {FEN_FILE} (shuffle seed "
-                 f"{SUBSET_SEED if SUBSET_SEED is not None else 'unseeded'})\n"
+                 f"Openings: {openings_desc}\n"
                  f"{cal_hdr}"
                  f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
         fh.flush()
@@ -1721,35 +1758,47 @@ def main():
     # a later tranche can pool with it, and that pooling needs the pentanomial
     # + fingerprint this file holds. Forgetting the flag used to mean the state
     # existed nowhere but in the printed ptnml, i.e. re-typed by hand or lost.
-    sprt_resume_auto = sprt_cfg is not None and not sprt_resume_path
+    # EVERY run keeps state now, not just --sprt ones, and the name is STABLE
+    # (it used to carry a timestamp, which made it unresumable by construction
+    # -- the next run auto-named a different file and started from zero).
+    # Same two engines -> same file -> the next run continues the pool.
+    sprt_resume_auto = not sprt_resume_path
     if sprt_resume_auto:
-        sprt_resume_path = f"sprt_{e1.name}_vs_{e2.name}_{stamp}.json"
-    # FI-82: prior tranches of the SAME experiment, pooled into every LLR
-    # evaluation below. Read before the first game so a mismatch costs zero
-    # compute; `fingerprint` is recomputed here (not trusted from the file).
+        sprt_resume_path = f"sprt_{e1.name}_vs_{e2.name}.json"
+    # Prior runs against these same two engines, pooled into every LLR
+    # evaluation below. Read before the first game so any warning costs zero
+    # compute. No longer gated on a fingerprint -- see sprt_resume_load.
     base_penta = [0] * 5
-    fingerprint = None
-    if sprt_resume_path:
-        if sprt_cfg is None:
-            print("ERROR: --sprt-resume needs --sprt (and a working sprt.py)")
+    prior_runs = []
+    prior_next_off = 0     # high-water mark; never allowed to move backwards
+    if os.path.exists(sprt_resume_path):
+        try:
+            base_penta, prior_next_off, prior_runs, note = sprt_resume_load(
+                sprt_resume_path, offset)
+        except (ValueError, OSError, json.JSONDecodeError) as ex:
+            print(f"ERROR: {ex}")
             return
-        fingerprint = sprt_fingerprint(engine1, engine2, sprt_cfg, mode_cfg,
-                                       FEN_FILE, SUBSET_SEED, START_POS)
-        if os.path.exists(sprt_resume_path):
-            try:
-                base_penta, _prev_off, note = sprt_resume_load(
-                    sprt_resume_path, fingerprint, offset)
-            except (ValueError, OSError, json.JSONDecodeError) as ex:
-                print(f"ERROR: {ex}")
-                return
-            print(note)
-        elif sprt_resume_auto:
-            print(f"SPRT resume: no --sprt-resume given, so this tranche's "
-                  f"state goes to {sprt_resume_path!r} (auto-named). Pass that "
-                  f"path as --sprt-resume on the next tranche to pool.")
-        else:
-            print(f"SPRT resume: {sprt_resume_path!r} does not exist yet -- "
-                  f"this is tranche 1; it will be written at the end.")
+        print(note)
+    else:
+        print(f"State file {sprt_resume_path!r} does not exist yet -- "
+              f"this is run 1; it is created now and refreshed every "
+              f"{SAVE_EVERY} games.")
+    # This run's provenance record. Pooling is no longer blocked on config
+    # equality, so the config has to be RECORDED instead -- otherwise a pooled
+    # number could not be audited at all.
+    this_run = {"engine1": e1.name, "engine2": e2.name,
+                "offset": offset, "positions": len(fens),
+                "seed": SUBSET_SEED, "fen_file": FEN_FILE,
+                "mode": mode_desc, "smp": int(ENGINE_SMP),
+                "started": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+    runs_log = list(prior_runs) + [this_run]
+    # Create it NOW, before a single game is played. A file that only appears
+    # at the end is not a crash-safety net -- it is a summary.
+    try:
+        sprt_resume_save(sprt_resume_path, base_penta,
+                         max(prior_next_off, offset), None, runs_log)
+    except OSError as ex:
+        print(f"!! could not create state file {sprt_resume_path!r}: {ex}")
 
     # llr/lower/upper/decision refreshed per completed pair; last_n throttles.
     # base_pairs lets the summary say how much of the LLR is pooled history.
@@ -1905,6 +1954,26 @@ def main():
             return
         tally["penta"][pentanomial_bucket(s0, s1)] += 1
 
+    def _save_state_now():
+        """Refresh the state file mid-run. Best-effort: a campaign must never
+        die because a disk hiccuped, and the ptnml on stdout is the recovery
+        path either way. Writes via a .tmp + os.replace, so a kill during the
+        write cannot leave a truncated file behind."""
+        try:
+            pooled = [base_penta[k] + tally["penta"][k] for k in range(5)]
+            # HIGH-WATER MARK. A run that (re)played an EARLIER shard must
+            # not drag next_offset backwards -- that would hand the next run
+            # a range this file has already consumed, turning one overlap
+            # into a permanent one.
+            nxt = max(prior_next_off,
+                      offset + min(len(fens), shard_used["max_pair"] + 1))
+            this_run["positions_played"] = min(len(fens),
+                                               shard_used["max_pair"] + 1)
+            sprt_resume_save(sprt_resume_path, pooled, nxt, sprt_state,
+                             runs_log)
+        except (OSError, ValueError):
+            pass
+
     def _update_sprt():
         """Refresh the SPRT LLR from the live pentanomial counts and latch a
         decision when a bound is crossed. Cheap (a 5-bucket GSPRT), re-run
@@ -1954,13 +2023,13 @@ def main():
             tally["completed"] += 1
             if g["winner"] is None:
                 tally["draws"] += 1
-                tag = f"draw  {g['reason']}"
+                tag = f"draw  {short_reason(g['reason'])}"
             elif g["winner"] is e1:
                 tally["e1"] += 1
-                tag = f"{e1.name} wins  {g['reason']}"
+                tag = f"{e1.name} wins  {short_reason(g['reason'])}"
             else:
                 tally["e2"] += 1
-                tag = f"{e2.name} wins  {g['reason']}"
+                tag = f"{e2.name} wins  {short_reason(g['reason'])}"
         wn = g["white"].name
         bn = g["black"].name
         if tally["completed"]:
@@ -1975,8 +2044,10 @@ def main():
         # never jumps even when games finish out of schedule order in parallel.
         _update_sprt()             # refresh LLR before the status line redraws
         played = tally["completed"] + tally["errors"]
+        if played % SAVE_EVERY == 0:
+            _save_state_now()      # a run killed at game 9,000 keeps 9,000
         line = (f"[{played:>4}/{total_games}] "
-                f"{wn}(W) vs {bn}(B)  ->  {g['result']:>7}  {tag:<34} | {run}")
+                f"{wn} vs {bn}  ->  {g['result']:>7}  {tag:<24} | {run}")
         _clear_status()            # wipe pinned ETA, print game line above it,
         print(line)                #   then redraw the ETA as the new last line
         _draw_status()
@@ -2122,18 +2193,21 @@ def main():
         write_summary(fh, e1, e2, tally, total_games, start_t, stopped,
                       n_workers=n_workers, sprt_info=sprt_state,
                       mode_desc=mode_desc, startup_fail=startup_fail,
-                      cal_lines=cal_lines)
+                      cal_lines=cal_lines, openings=openings_desc)
         # FI-82: pooled state, written on EVERY exit path (clean finish,
         # Ctrl-C/SIGTERM, SPRT decision) -- the tranche that follows resumes
         # from here, and next_offset is what makes its shard disjoint.
-        if sprt_resume_path and fingerprint is not None:
+        if sprt_resume_path:
             pooled = [base_penta[k] + tally["penta"][k] for k in range(5)]
             # Positions this tranche consumed: the whole shard on a clean
             # finish, only what it reached when it was cut short.
-            next_off = offset + min(len(fens), shard_used["max_pair"] + 1)
+            next_off = max(prior_next_off,
+                           offset + min(len(fens), shard_used["max_pair"] + 1))
+            this_run["positions_played"] = min(len(fens),
+                                               shard_used["max_pair"] + 1)
             try:
-                sprt_resume_save(sprt_resume_path, fingerprint, pooled,
-                                 next_off, sprt_state)
+                sprt_resume_save(sprt_resume_path, pooled,
+                                 next_off, sprt_state, runs_log)
                 print(f"\nSPRT state written to: {sprt_resume_path} "
                       f"({sum(pooled):,} pooled pairs; next tranche must use "
                       f"--offset >= {next_off})")
