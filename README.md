@@ -266,8 +266,8 @@ GUI options:
 
 | Option | Type | Default | Range | Purpose |
 |:-------|:-----|--------:|:------|:--------|
-| `Threads` | spin | 1 | 1–256 | Lazy-SMP search threads |
-| `Hash` | spin | 192 | 2–6144 | Transposition-table size (MB); resize wipes the table |
+| `Threads` | spin | 1 | 1–512 | Lazy-SMP search threads. The ceiling is a limit, not advice: set it above your PHYSICAL core count and threads timeshare cores, which costs strength rather than adding it |
+| `Hash` | spin | 192 | 2–20480 | Transposition-table size (MB); resize wipes the table. The table is a power of two of 24-byte entries, so a request lands on the largest such size ≤ it (20480 → 12288) and an info string says so |
 | `MultiPV` | spin | 1 | 1–5 | PV lines reported |
 | `OwnBook` | check | true | — | Use opening book |
 | `BookFile` | string |  | — | Path to Polyglot `.bin` book (empty ⇒ bundled `Perfect2023.bin`) |

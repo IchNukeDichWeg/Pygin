@@ -192,7 +192,7 @@ def engine_worker(conn, engine_path, use_book, pv_uci=False, book_path=None,
             {"SF_ELO": None if sf_elo is None else int(sf_elo),
              "SMP_WORKERS": int(smp)})
         try:
-            engine.smp_workers = min(256, max(1, int(smp)))
+            engine.smp_workers = min(512, max(1, int(smp)))   # csearch CS_MAX_THREADS
         except Exception:
             pass            # engine without SMP support: fine
         try:
