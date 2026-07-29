@@ -1137,6 +1137,77 @@ def _probe(dirpath):
     return [int(x) for x in r.stdout.strip().split(",")]
 
 
+def cmd_crosseval(a):
+    """FI-98 gate: does a fit trained on corpus A hold up on corpus B?
+
+    THE QUESTION THIS EXISTS FOR. The .pygdata corpus is 16x larger than the
+    tuner's own, and its labels come from self-play at **5,000 nodes per move**
+    (NNUE/config.py LABEL_NODES) while campaigns are decided at **1,750,000** --
+    350x deeper. A fit that lowers held-out loss on 5k-node game outcomes may
+    simply be learning to predict SHALLOW play, which is not what the engine
+    does. Loss on its own training distribution cannot tell those apart.
+
+    So: take the candidate's parameters, and score them on a corpus they were
+    NOT fitted to, using the same game-clustered paired bootstrap FI-97 built.
+    Generalisation across label depth is the thing that has to be true, and it
+    is cheap to check -- one validation pass, no games.
+
+    Reading it:
+      improvement > 0 on the OTHER corpus  -> the fit generalises; screen it
+      improvement <= 0                      -> it fits its own labels and not
+                                               the engine's regime. ABANDON,
+                                               and no screen is owed.
+    """
+    import importlib.util
+    if a.workers <= 0:
+        a.workers = max(1, os.cpu_count() - 1)
+    spec = importlib.util.spec_from_file_location("cand_engine", a.candidate)
+    cand = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cand)
+    import engine as E
+    base_vec = baseline_vector(E.Engine())
+    cand_vec = baseline_vector(cand.Engine())
+    moved = sum(1 for x, y in zip(base_vec, cand_vec) if x != y)
+    if not moved:
+        sys.exit(f"{a.candidate} is IDENTICAL to the shipped eval on all "
+                 f"{len(base_vec)} tuned parameters -- nothing to cross-check.")
+    print(f"{a.candidate}: {moved}/{len(base_vec)} parameters differ from shipped")
+
+    arr = np.load(a.positions, mmap_mode="r")
+    nchunks = a.workers
+    ntrain = int(len(arr) * (1.0 - a.val_frac))
+    if "game" in arr.dtype.names:
+        g = arr["game"]
+        while 0 < ntrain < len(g) and g[ntrain] == g[ntrain - 1]:
+            ntrain -= 1
+    print(f"scoring on {a.positions}: {len(arr) - ntrain:,} held-out rows")
+    with mp.Pool(a.workers, initializer=_worker_init,
+                 initargs=(a.positions, nchunks, ntrain, ())) as pool:
+        k, kloss, best_k = None, None, None
+        for kk in [x / 10 for x in range(6, 20)]:
+            l = _loss(pool, nchunks, base_vec, kk)
+            if kloss is None or l < kloss:
+                kloss, k = l, kk
+        print(f"  K fitted to {k} on the SHIPPED eval (loss {kloss:.6f})")
+        gb = val_by_game(pool, nchunks, base_vec, k)
+        gc = val_by_game(pool, nchunks, cand_vec, k)
+    assert gb[2] == gc[2], "game order differs"
+    cis, rel, ngames = clustered_ci([(gb[0], gb[1]), (gc[0], gc[1])])
+    print(f"\n  game-clustered bootstrap over {ngames:,} held-out GAMES:")
+    print(f"    shipped   {cis[0][0]:.6f}  [{cis[0][1]:.6f}, {cis[0][2]:.6f}]")
+    print(f"    candidate {cis[1][0]:.6f}  [{cis[1][1]:.6f}, {cis[1][2]:.6f}]")
+    print(f"    improvement {rel[0]:+.3f}%  [{rel[1]:+.3f}%, {rel[2]:+.3f}%]"
+          f"   <- PAIRED")
+    if rel[2] <= 0:
+        print("\n  ABANDON: the candidate is WORSE on a corpus it was not"
+              "\n           fitted to. It learned its own labels, not the eval.")
+    elif rel[1] <= 0:
+        print("\n  STRADDLES ZERO on the other corpus -- no evidence it"
+              "\n           generalises across label depth. Not screen-worthy.")
+    else:
+        print("\n  It generalises across label depth. Screen it.")
+
+
 def cmd_pygdata(a):
     """FI-98: `.pygdata` -> the tuner's RECORD, at zero generation cost.
 
@@ -1144,6 +1215,16 @@ def cmd_pygdata(a):
     descent over the same ~5M positions keeps returning ~0.08%, under the
     ~0.15% clean floor. Meanwhile the NNUE program has 82.39M records the
     tuner cannot read. This makes them readable.
+
+    **RESULT 2026-07-29: THE CORPUS DOES NOT TRANSFER. DO NOT TUNE ON IT
+    NAIVELY.** A fit trained on a 1.5M-record slice read +0.447%
+    [+0.281%, +0.617%] on its OWN held-out data and **-0.580%
+    [-0.642%, -0.518%]** on the tuner's original corpus -- CI entirely below
+    zero. `.pygdata` games are played at **5,000 nodes per move**
+    (NNUE/config.py LABEL_NODES) while campaigns are decided at **1,750,000**,
+    350x deeper. The fit learned to predict SHALLOW play. Size did not beat
+    label depth, and the old corpus's ~0.08% nulls were telling the truth.
+    Run `texel.py crosseval` before believing any fit from this bridge.
 
     THE LABELS LINE UP, which is the first thing to check and not assume.
     `.pygdata` carries BOTH a search label (`score`, White-POV cp) and the
@@ -1530,6 +1611,15 @@ def main():
                    help="coordinate-descent step sizes in cp, annealed evenly "
                         "across --rounds (default: 8 3 1)")
     t.set_defaults(fn=cmd_tune)
+
+    x = sub.add_parser("crosseval",
+                       help="FI-98 gate: score a fit on a corpus it was NOT "
+                            "fitted to (label-depth generalisation)")
+    x.add_argument("--positions", default=POSITIONS_NPY)
+    x.add_argument("--candidate", default=DEFAULT_OUT)
+    x.add_argument("--workers", type=int, default=0)
+    x.add_argument("--val-frac", type=float, default=0.2)
+    x.set_defaults(fn=cmd_crosseval)
 
     g2 = sub.add_parser("pygdata", help="FI-98: .pygdata -> tuner positions")
     g2.add_argument("--src", default="NNUE/datasets/all.pygdata")
