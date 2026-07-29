@@ -1058,6 +1058,21 @@ class Engine:
     # search would too. Never static: a qsearch filters, a real reduced
     # search at depth - PROBCUT_RED confirms, and a deeper TT bound vetoes.
     # 0 = off = node-exact; armed 200 at depth >= 5, reduction 4.
+    #
+    # SCREENED NULL 2026-07-29: +2.90 +/- 8.8 over 6,000 games (three 2k
+    # screens, nodes 1.75M, pooled 2975.0/6000 for the baseline). The UPPER
+    # CI edge is +11.7, below the +15 screen gate, so no 10k confirm is owed.
+    #
+    # It cut 21.6% of nodes at fixed depth and none of it converted. The EBF
+    # gate had said ABANDON (+0.91%) and was OVERRIDDEN on the argument that
+    # a flat slope with a large node cut is a CONSTANT FACTOR the gate cannot
+    # see. That argument was wrong. This is the gate's calibration point: it
+    # has now called FI-105, FI-106 and FI-107, and FI-107 is the one that was
+    # tested head-on after being overridden. Trust the gate; a future item
+    # that fails it does not need a screen to confirm the failure.
+    #
+    # Mechanism kept at 0. Do not re-arm without a different pruning rule --
+    # the margin/depth/reduction knobs are not the reason this read null.
     PROBCUT_MARGIN = 0
     PROBCUT_DEPTH = 5
     PROBCUT_RED = 4
