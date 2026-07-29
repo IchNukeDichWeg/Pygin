@@ -361,14 +361,17 @@ def _extract_file(args):
 
 
 def _use_full_corpus():
-    """fit_wdl_model gates its corpus to ONE eval era, because it maps this
-    engine's cp to an outcome probability and v53 moved the cp scale. Texel
-    labels are GAME RESULTS, which are scale-free -- a v31 win is a win on
-    any eval. So reuse that module's log parsing but not its era policy, or
-    the whole 10 GB corpus filters down to nothing."""
+    """fit_wdl_model gates its corpus to ONE eval era AND one eval family,
+    because it maps this engine's cp to an outcome probability -- v53 moved
+    the cp scale and a net moves it again. Texel labels are GAME RESULTS,
+    which are scale-free -- a v31 win is a win on any eval, and so is an
+    NNUE-armed one. So reuse that module's log parsing but neither policy,
+    or the whole 10 GB corpus filters down to nothing."""
     import fit_wdl_model as F
     F._MIN_C_ERA_SNAPSHOT = 31
     F.CENGINE_MIN_DATE = None
+    F.EVAL_FAMILY = None       # any eval family: results, not centipawns
+    F.NNUE_MIN_DATE = None     # ... including nets older than the current one
 
 
 def cmd_extract(a):
