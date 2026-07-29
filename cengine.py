@@ -1175,6 +1175,17 @@ class Engine:
     ASPIRATION_MIN_DEPTH = 4
     ASPIRATION_DELTA = 30                    # centipawns; C scores are cp too
     SOFT_STOP_STABLE_FRAC = 0.40
+    # How long a PV may get. The EXACT prefix -- the line the search actually
+    # proved, from the C triangular table -- is always emitted in full, past
+    # this and past any cap (a mate PV must reach the mate). This bounds only
+    # the SPECULATIVE TT tail that continues the line after the proven part
+    # runs out. It used to be the current DEPTH, which is why every info line
+    # came out ~depth plies and looked truncated; raised to the cs_get_pv
+    # buffer size on the user's call 2026-07-30 so analysis shows the whole
+    # line. The tail still stops on an illegal move, a repetition, or a dry TT,
+    # so this is a ceiling and not a target.
+    PV_MAX_LEN = 128
+
     SOFT_STOP_UNSTABLE_FRAC = 0.80
     SOFT_STOP_STABLE_ITERS = 2
     MAX_DEPTH_CAP = 245                       # ID-loop ceiling only. The REAL
@@ -1842,7 +1853,8 @@ class Engine:
             # live search info (GUI contract), v30's record shape
             if self.on_depth is not None or self.on_final is not None:
                 dmv = self._key_to_move(key)
-                self.last_pv = self._extract_pv(board, dmv, depth)
+                self.last_pv = self._extract_pv(board, dmv,
+                                                self.PV_MAX_LEN)
                 self._emit({
                     "depth": depth,
                     "move": dmv.uci() if dmv else "----",
@@ -1880,7 +1892,7 @@ class Engine:
         self.last_depth = reached_depth
         self.last_score = self._white_v30(
             prev_score if prev_score is not None else 0, board.turn)
-        self.last_pv = self._extract_pv(board, move, max(reached_depth, 1))
+        self.last_pv = self._extract_pv(board, move, self.PV_MAX_LEN)
         self._emit({
             "depth": reached_depth,
             "move": move.uci() if move is not None else "----",
