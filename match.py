@@ -1153,7 +1153,18 @@ def write_summary(fh, e1, e2, tally, total_games, start_t, stopped,
         lines.append(
             f"SPRT[{cfg['elo0']:g}, {cfg['elo1']:g}] {cfg['model']} "
             f"(alpha={cfg['alpha']:g} beta={cfg['beta']:g}): "
-            f"LLR {si['llr']:+.3f} in [{si['lower']:+.3f}, {si['upper']:+.3f}]")
+            f"LLR {si['llr']:+.3f} in [{si['lower']:+.3f}, {si['upper']:+.3f}]"
+            # WHOSE LLR. The pentanomial is scored from ENGINE 1, so the test
+            # asks "is ENGINE 1 >= elo1 better than engine 2" -- the CANDIDATE
+            # belongs in slot 1. With the candidate in slot 2 the sign flips
+            # and the printed LLR answers the mirror question, which is not
+            # the same magnitude (the bounds are not symmetric about the
+            # result): one real run read -1.989 for the baseline while the
+            # candidate stood at +0.665, and pooled it "decided" ACCEPT H0 on
+            # a claim nobody had made. Nothing in the output said which side
+            # it meant. Now it does.
+            f"  <- for {e1.name} (Engine 1) as the CANDIDATE; put the "
+            f"change in slot 1")
         if si.get("base_pairs"):         # FI-82: say what the LLR is made of
             lines.append(
                 f"SPRT pooling: LLR covers {si['base_pairs']:,} pairs from "
