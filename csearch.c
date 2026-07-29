@@ -2690,6 +2690,35 @@ void set_cutnode_lmr(int v) { g_cutnode_lmr = v ? 1 : 0; }
 static int g_ttpv_lmr = 0;
 void set_ttpv_lmr(int v) { g_ttpv_lmr = v ? 1 : 0; }
 
+/* FI-106 (R10): RAZORING -- the fail-LOW side, which Pygin simply does not
+ * have. RFP handles the fail-high case (eval so far above beta that the node
+ * is assumed to cut) and frontier futility handles individual moves, but
+ * nothing handles a node whose eval is so far BELOW alpha that no quiet move
+ * plausibly rescues it. Measured 2026-07-29: `razor` appeared 0 times in
+ * csearch.c.
+ *
+ * Rule: at a shallow non-PV node, not in check, if the pruning eval plus a
+ * generous margin is still under alpha, verify with a qsearch at the same
+ * window. If qsearch AGREES the node is below alpha, return its value.
+ *
+ * THE VERIFYING QSEARCH IS THE POINT, not an optimisation. Returning
+ * prune_eval directly would be pure static pruning and would drop tactics
+ * outright -- the failure mode that killed FI-18 and FI-23. Deferring to
+ * qsearch means captures and checks still get their say, so what is skipped
+ * is only the QUIET move list at a node that is already lost by a margin.
+ *
+ * The margin scales with depth: a deeper node has more chances to recover, so
+ * it needs a wider gap before razoring is safe.
+ *
+ * 0 = off = node-exact. Armed: 400 + 250*depth centipawns at depth <= 3. */
+static int g_razor_margin = 0;              /* 0 = off; armed base 400 */
+static int g_razor_depth  = 3;
+void set_razor(int margin, int depth)
+{
+    g_razor_margin = margin < 0 ? 0 : margin;
+    g_razor_depth  = depth  < 1 ? 1 : depth;
+}
+
 /* P-03: Internal Iterative Reduction. A node with meaningful depth but NO
  * TT move has poor ordering ahead of it -- search it one ply shallower;
  * the TT-fed revisit (same key, now with a move) gets the full depth.
@@ -3915,6 +3944,14 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
          * prunes one ply deeper for the same eval; off/not-improving = v34) */
         if (depth <= g_rfp_depth && prune_eval - g_rfp_margin * (depth - improving) >= beta)
             return prune_eval;
+        /* FI-106 razoring: hopeless by a wide margin -- let qsearch confirm
+         * before believing it. Never returns a static score. */
+        if (g_razor_margin && depth <= g_razor_depth
+                && prune_eval + g_razor_margin + 250 * depth <= alpha) {
+            int rv = qsearch(b, alpha - 1, alpha, ply, in_chk, hmc);
+            if (CS_UNWINDING()) return 0;
+            if (rv < alpha) return rv;
+        }
         /* null-move pruning (hmc 0 below the null: repetition/50-move
          * cannot be tracked across a non-move, so disable them there) */
         if (depth >= 3 && prune_eval >= beta && has_non_pawn(b, b->turn)
