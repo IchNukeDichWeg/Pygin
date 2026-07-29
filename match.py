@@ -1679,8 +1679,16 @@ def main():
                    f"  engine1 {cal_start['nps1']/1e6:.2f}M nps, "
                    f"engine2 {cal_start['nps2']/1e6:.2f}M nps\n"
                    if cal_start is not None else "")
+        # The OPENING RANGE is a run's provenance: two runs that share it are
+        # replays of the same games, not independent samples, and pooling them
+        # overstates the precision. It lived only in argv, so a finished run
+        # could not be checked -- and a wrong guess about it was made about
+        # this very field. Positions, not games: each is played twice.
         fh.write(f"{e1.name} vs {e2.name}\n"
                  f"Interpreter: {interp}\nMode: {mode_desc}\n"
+                 f"Openings: positions [{offset}, {offset + len(fens)}) "
+                 f"of {FEN_FILE} (shuffle seed "
+                 f"{SUBSET_SEED if SUBSET_SEED is not None else 'unseeded'})\n"
                  f"{cal_hdr}"
                  f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
         fh.flush()
