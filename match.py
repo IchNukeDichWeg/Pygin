@@ -694,18 +694,64 @@ def build_pgn(round_no, fen, white, black, board, result, now, tc_label, tpm):
 # One game
 # ====================================================================== #
 # --- WDL adjudication runtime (config block up top) ------------------------ #
-_WDL_THR = ["unloaded"]     # per-process cache; None = model missing -> off
+_WDL_THR = {}               # eval family -> thr(phase) | None (model missing)
+_WDL_FAMILY = {}            # engine path -> "nnue" | "hce"
 
 
-def _wdl_win_threshold(phase):
+def _eval_family(engine):
+    """Which eval SCALE this engine reports centipawns on.
+
+    The WDL model converts cp to P(win), and an NNUE arm and a hand-crafted
+    arm do not share a scale -- so in an NNUE-vs-HCE match a single model is
+    wrong for one of the two sides. Adjudication needs BOTH sides to agree a
+    game is decided, and it reads each side's OWN score, so the threshold has
+    to be chosen per side too.
+
+    Read from the engine SOURCE (the same scan that fills the net line in the
+    banner), so it costs nothing per move and is cached per path. Caveat worth
+    knowing: FI-104 can disarm the net at RUNTIME on a build with no SIMD dot
+    kernel, and a source scan cannot see that -- such a box would be judged on
+    the nnue model while playing HCE. It also refuses to arm at all there, so
+    the case is a non-SIMD host, which is not one anybody runs A/Bs on."""
+    path = getattr(engine, "path", None)
+    if path not in _WDL_FAMILY:
+        try:
+            _WDL_FAMILY[path] = ("nnue" if describe_nnue_source(path)["on"]
+                                 else "hce")
+        except Exception:
+            _WDL_FAMILY[path] = "hce"
+    return _WDL_FAMILY[path]
+
+
+def _wdl_win_threshold(phase, family="hce"):
     """cp at which the fitted WDL model puts P(win) at ADJ_WIN_P for this
-    phase, or None while wdl_model.json doesn't exist (adjudication then
-    silently stays off). Loaded once per process -- each game worker reads
-    the file on its first adjudication check."""
-    if _WDL_THR[0] == "unloaded":
+    phase, or None while the model doesn't exist (adjudication then silently
+    stays off). Loaded once per process PER FAMILY -- each game worker reads
+    the file on its first adjudication check.
+
+    'hce' reads data/wdl_model.json; 'nnue' prefers data/wdl_model_nnue.json
+    (tuning/fit_wdl_model.py --nnue) and FALLS BACK to the hce model when that
+    file does not exist. The fallback is what the code did unconditionally
+    before this existed, so a tree with no NNUE model behaves exactly as it
+    always has -- but it says so once, because an NNUE arm judged on
+    hand-crafted thresholds is a thing an operator should know about rather
+    than discover in a draw rate."""
+    if family not in _WDL_THR:
+        path = "wdl_model.json"      # bound before the try: the except prints it
         try:
             import json
             path = _data_path("wdl_model.json")
+            if family == "nnue":
+                nnue_path = _data_path("wdl_model_nnue.json")
+                if os.path.exists(nnue_path):
+                    path = nnue_path
+                else:
+                    print("[match] NOTE: no data/wdl_model_nnue.json -- the "
+                          "NNUE side is being adjudicated on the "
+                          "hand-crafted-eval model. Same behaviour as before "
+                          "per-family models existed; refit with "
+                          "tuning/fit_wdl_model.py --nnue to fix the scale.",
+                          file=sys.stderr, flush=True)
             with open(path, encoding="utf-8") as f:
                 mod = json.load(f)
             AS, BS = mod["as"], mod["bs"]
@@ -718,20 +764,22 @@ def _wdl_win_threshold(phase):
                 a = ((AS[0] * x + AS[1]) * x + AS[2]) * x + AS[3]
                 b = ((BS[0] * x + BS[1]) * x + BS[2]) * x + BS[3]
                 return a - b * gap
-            _WDL_THR[0] = thr
+            _WDL_THR[family] = thr
         except (OSError, ValueError, KeyError) as _e:
             # HOST-07: adjudication used to disable itself in SILENCE here.
             # That is an A/B-integrity hazard, not a cosmetic one: a campaign
             # split across two machines where one loads the model and the
             # other does not produces halves with different game lengths and
             # different draw rates, which must never be pooled.
-            _WDL_THR[0] = None
-            print(f"[match] WARNING: WDL adjudication is OFF -- could not load "
-                  f"wdl_model.json ({type(_e).__name__}: {_e}). Games will "
-                  f"run to natural end / MAX_PLIES. If the OTHER half of a "
-                  f"split campaign loaded it, DO NOT pool the two halves.",
+            _WDL_THR[family] = None
+            print(f"[match] WARNING: WDL adjudication is OFF for the "
+                  f"'{family}' side -- could not load {os.path.basename(path)} "
+                  f"({type(_e).__name__}: {_e}). Games will run to natural "
+                  f"end / MAX_PLIES. If the OTHER half of a split campaign "
+                  f"loaded it, DO NOT pool the two halves.",
                   file=sys.stderr, flush=True)
-    return None if _WDL_THR[0] is None else _WDL_THR[0](phase)
+    t = _WDL_THR[family]
+    return None if t is None else t(phase)
 
 
 def _phase24(board):
@@ -858,7 +906,8 @@ def play_game(round_no, fen, white, black, e1, mode_cfg):
 
         # --- WDL adjudication: end games both engines agree are decided --- #
         if mode_cfg.get("adjudicate", ADJUDICATE):
-            thr = _wdl_win_threshold(_phase24(board))
+            thr = _wdl_win_threshold(_phase24(board),
+                                     _eval_family(mover))
             if thr is not None:
                 mate = res.get("mate")
                 cp = res.get("score_cp")
