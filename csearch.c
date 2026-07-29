@@ -2719,6 +2719,38 @@ void set_razor(int margin, int depth)
     g_razor_depth  = depth  < 1 ? 1 : depth;
 }
 
+/* FI-107 (R10): ProbCut -- absent entirely, and one of Stockfish's biggest
+ * node savers. The fail-HIGH mirror of FI-106: if a SHALLOW search at a
+ * window well ABOVE beta still fails high, the full-depth search almost
+ * certainly would too, so cut now and skip the deep node.
+ *
+ * Three things keep it honest, and all three are the parts that are usually
+ * got wrong:
+ *
+ *   1. It never trusts a static score. A qsearch FILTERS, then a real
+ *      reduced-depth negamax CONFIRMS. Static forward pruning is what sank
+ *      FI-18 (-1.25) and FI-23 (-5.23); a two-stage verify is a different
+ *      mechanism, not a wider-margin version of the same one.
+ *   2. Captures only. The margin is deliberately large, so the only moves
+ *      that can plausibly cross it are the ones that win material.
+ *   3. The TT gets a veto. If a DEEPER stored search already said this node
+ *      cannot reach the probe window, believing the shallow probe over it
+ *      would be a strict downgrade of information.
+ *
+ * The reduced search runs at depth - PROBCUT_RED and is marked !cutnode: the
+ * probe is trying to PROVE a fail-high, which is the all-node stance.
+ *
+ * 0 = off = node-exact. Armed: beta + 200 at depth >= 5, reduction 4. */
+static int g_probcut_margin = 0;            /* 0 = off; armed base 200 */
+static int g_probcut_depth  = 5;
+static int g_probcut_red    = 4;
+void set_probcut(int margin, int depth, int red)
+{
+    g_probcut_margin = margin < 0 ? 0 : margin;
+    g_probcut_depth  = depth  < 2 ? 2 : depth;
+    g_probcut_red    = red    < 1 ? 1 : red;
+}
+
 /* P-03: Internal Iterative Reduction. A node with meaningful depth but NO
  * TT move has poor ordering ahead of it -- search it one ply shallower;
  * the TT-fed revisit (same key, now with a move) gets the full depth.
@@ -4022,6 +4054,42 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         }
     }
 
+    /* FI-107 ProbCut. See set_probcut for why the qsearch filter and the TT
+     * veto are the design and not optimisations. */
+    if (g_probcut_margin && depth >= g_probcut_depth && !is_pv && !in_chk
+            && beta > -MATE_THRESH && beta < MATE_THRESH) {
+        int pbeta = beta + g_probcut_margin;
+        /* TT veto: a DEEPER search already knows this node misses pbeta. */
+        if (pbeta < MATE_THRESH
+                && !(tt_sh_flag >= 0 && tt_depth >= depth - g_probcut_red
+                     && tt_sh_val < pbeta)) {
+            uint32_t pcm[256];
+            int npc = gen_noisy(b, pcm);
+            /* counter_key is not yet computed this far up the node, and 0 is
+             * already its "none" sentinel -- captures order on MVV-LVA/SEE
+             * anyway, so the counter slot buys nothing here. */
+            order_moves(b, pcm, npc, ply, 0, tt_move, NULL);
+            for (int i = 0; i < npc; i++) {
+                uint32_t m = pcm[i] & 0x3FFFFF;
+                Board c = *b;
+                apply_move(&c, m);
+                int gc = in_check(&c);
+                if (g_use_nnue) nn_push(ply, b, &c, m);
+                /* stage 1: cheap filter */
+                int v = -qsearch(&c, -pbeta, -pbeta + 1, ply + 1, gc, 0);
+                if (CS_UNWINDING()) return 0;
+                if (v < pbeta) continue;
+                /* stage 2: a REAL search confirms before anything is cut */
+                v = -negamax(&c, depth - g_probcut_red, -pbeta, -pbeta + 1,
+                             ply + 1, 0xFFFFFFFF, gc, 0, chk, srb, 0);
+                if (CS_UNWINDING()) return 0;
+                if (v >= pbeta)
+                    return v - (pbeta - beta);   /* still >= beta; do not
+                                                  * report the inflated score */
+            }
+        }
+    }
+
     /* FI-59: warm-start an untouched killer slot from two plies up, BEFORE
      * either ordering path snapshots g_killers[ply] -- so staged and array
      * see the same table (P-23 stream identity). */
@@ -4768,7 +4836,15 @@ int cs_rep_probe(const uint64_t* path, int ply, const uint64_t* hist,
     return r;
 }
 
-int csearch_abi(void) { return 34; }  /* 34 = FI-106 set_lazy_nnue /
+int csearch_abi(void) { return 35; }  /* 35 = FI-103/104/106/107
+                                       *      set_cutnode_lmr / set_ttpv_lmr /
+                                       *      set_razor / set_probcut. ONE bump
+                                       *      for four exports: none of them
+                                       *      bumped it when it landed, so a
+                                       *      stale .so would have reached an
+                                       *      AttributeError instead of the
+                                       *      clean abi message;
+                                       * 34 = FI-106 set_lazy_nnue /
                                        *      set_lazy_margin (lazy NNUE eval,
                                        *      default OFF = node-exact);
                                        * 33 = FB-48 set_sm_contempt (stalemate

@@ -1052,6 +1052,16 @@ class Engine:
     RAZOR_MARGIN = 0
     RAZOR_DEPTH = 3
 
+    # FI-107 (R10): ProbCut -- the fail-HIGH mirror of FI-106, and the one
+    # big Stockfish node-saver Pygin has no equivalent of. A shallow search
+    # at beta + PROBCUT_MARGIN that fails high is taken as evidence the full
+    # search would too. Never static: a qsearch filters, a real reduced
+    # search at depth - PROBCUT_RED confirms, and a deeper TT bound vetoes.
+    # 0 = off = node-exact; armed 200 at depth >= 5, reduction 4.
+    PROBCUT_MARGIN = 0
+    PROBCUT_DEPTH = 5
+    PROBCUT_RED = 4
+
     # FB-48: contempt is ON by default and every rule draw routes through
     # draw_score -- insufficient material, 50-move, repetition, FI-29's cycle
     # gate, all three qsearch draws. Stalemate does NOT: all five in-tree
@@ -1227,8 +1237,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, self.CSEARCH_SO))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (abi 34 = FI-106 set_lazy_nnue) -- bump with csearch_abi.
-        if lib.csearch_abi() < 34:
+        # (abi 35 = FI-103/104/106/107 set_cutnode_lmr/ttpv_lmr/razor/probcut) -- bump with csearch_abi.
+        if lib.csearch_abi() < 35:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -1277,6 +1287,7 @@ class Engine:
             self.QS_TTFIRST, self.REP_STRICT, self.QS_SEE_MARGIN,
             self.CUTNODE_LMR, self.TTPV_LMR,
             self.RAZOR_MARGIN, self.RAZOR_DEPTH,
+            self.PROBCUT_MARGIN, self.PROBCUT_DEPTH, self.PROBCUT_RED,
             self.SM_CONTEMPT,
               # FB-55: the guard covered 49 TOGGLES and not one EVAL VALUE --
               # a hole exactly where the .so-cross-contamination class bites.
@@ -1412,6 +1423,8 @@ class Engine:
         lib.set_cutnode_lmr(1 if self.CUTNODE_LMR else 0)           # FI-103
         lib.set_ttpv_lmr(1 if self.TTPV_LMR else 0)                 # FI-104
         lib.set_razor(int(self.RAZOR_MARGIN), int(self.RAZOR_DEPTH))  # FI-106
+        lib.set_probcut(int(self.PROBCUT_MARGIN), int(self.PROBCUT_DEPTH),
+                        int(self.PROBCUT_RED))               # FI-107
         lib.set_sm_contempt(1 if self.SM_CONTEMPT else 0)           # FB-48
         # FB-04: entries scored under a PREVIOUS construction's eval params
         # would poison this one (the table is process-global and persistent).
