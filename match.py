@@ -315,6 +315,11 @@ _SHORT_REASON = {
 }
 
 
+def _games(n):
+    """Apostrophe thousands separator, per the user's preferred format."""
+    return f"{int(round(n)):,}".replace(",", "'")
+
+
 def short_reason(reason):
     """Compact form for the scrolling per-game line ONLY.
 
@@ -1916,11 +1921,19 @@ def main():
                     proj_pairs = n_pairs * bound / L      # same sign as L
                     side = "accept" if L > 0 else "reject"
                     rem_games = max(0.0, (proj_pairs - n_pairs) * 2)
-                    if n_pairs < proj_pairs and rem_games <= total_games - played:
+                    # A near-zero LLR projects to absurd or infinite distances;
+                    # quoting "would need 4'000'000'000 more games" reads as a
+                    # measurement rather than the "no trend yet" it really is.
+                    usable = math.isfinite(rem_games) and rem_games < 5e6
+                    if not usable:
+                        seg += " -> runs to budget (no usable trend yet)"
+                    elif n_pairs < proj_pairs and rem_games <= total_games - played:
                         proj = (_fmt_dur(rem_games / rate) if rate else "…")
-                        seg += f" -> ~{proj} to {side}"
+                        seg += (f" -> ~{proj} to {side} "
+                                f"(approx. {_games(rem_games)} more games)")
                     else:
-                        seg += " -> runs to budget"
+                        seg += (f" -> runs to budget (would need approx. "
+                                f"{_games(rem_games)} more games to {side})")
             base += seg
         return base
 
