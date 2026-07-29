@@ -11,7 +11,7 @@ time_manager.calculate_move_time, so `go wtime/btime/winc/binc` gets the
 same budgets the internal harnesses use.
 
 Options:
-    Threads       (spin 1..256, default 1) -- Lazy-SMP helper threads in C
+    Threads       (spin 1..512, default 1) -- Lazy-SMP helper threads in C
     MultiPV       (spin 1..20, default 1)  -- k best lines per go (analysis;
                                               >1 bypasses the opening book,
                                               else book hits show no lines;
@@ -70,15 +70,11 @@ import math
 # works on pygin too. Local-only (pygin is not in the public fork). Refit via tuning/fit_wdl_model.py; do
 # not hand-edit the coefficients.
 #
-# REFIT 2026-07-24 on the v54 ERA ONLY (`--min-era 54`, 208,822 samples).
-# The previous coefficients were fitted across the whole C era, which mixes
-# eval scales -- v53's retune moved the piece values ~10%, so a v52-era cp and
-# a v54-era cp of the same number do not describe the same position, and the
-# fit averaged two scales the engine never uses. Era-pure and smaller beats
-# larger and blended here. Caveat: this corpus is 2 logs / ~2,000 games at one
-# TC, so widen it (more v54+ logs, then refit) before leaning on the tails.
-_WDL_AS = [283.6223990802684, -298.43358870346293, -89.46627098787799, 223.37690242018567]
-_WDL_BS = [350.6355193809549, -461.1351016625684, 139.091857258405, 71.16052125818123]
+# REFIT 2026-07-30 from 7,118,512 samples. Keep these in step with
+# data/wdl_model.json -- they drifted apart once already, and the file said it
+# took its numbers from there the whole time. match.py reads the json directly.
+_WDL_AS = [-172.52858423161206, 499.9160557633426, -506.9998022117123, 282.46931733086575]
+_WDL_BS = [44.724982846455184, 73.9586102195604, -137.44071099624844, 114.0747461249881]
 _WDL_PHASE_MAX = 24
 _WDL_PHASE_CLAMP_MIN = 6
 
@@ -116,6 +112,14 @@ def out(line):
 TT_ENTRY_BYTES = 24          # csearch.c TTEntry -- keep in sync with the C side
 
 
+# Hash ceiling in MB. 20 GB (user request 2026-07-30). The table is a power of
+# two of 24-byte entries, so the reachable sizes near the top are 2^29 = 12,288
+# MB and 2^30 = 24,576 MB -- a 20 GB request therefore LANDS ON 12 GB, and
+# apply_hash says so on the info string rather than shrinking in silence.
+# csearch.c's set_tt_bits caps at 30 bits, which is the real backstop.
+HASH_MAX_MB = 20480
+
+
 def apply_hash(engine, mb):
     """FI-10: Hash MB -> power-of-two TT bits, applied to the C table.
 
@@ -124,7 +128,7 @@ def apply_hash(engine, mb):
     silently shrinking. Caller must guarantee the engine is idle -- a resize
     is a realloc.
     """
-    mb = max(2, min(6144, int(mb)))
+    mb = max(2, min(HASH_MAX_MB, int(mb)))
     bits = (mb * 1024 * 1024 // TT_ENTRY_BYTES).bit_length() - 1
     engine._lib.set_tt_bits(bits)
     engine.TT_BITS = bits                    # FB-30: fingerprint honesty
@@ -708,7 +712,7 @@ def main():
             if cmd == "uci":
                 out(f"id name {NAME}")
                 out(f"id author {AUTHOR}")
-                out("option name Threads type spin default 1 min 1 max 256")
+                out("option name Threads type spin default 1 min 1 max 512")
                 out("option name MultiPV type spin default 1 min 1 max 20")
                 out("option name OwnBook type check default true")
                 out("option name BookFile type string default <empty>")
@@ -725,7 +729,8 @@ def main():
                 out("option name Clear Hash type button")
                 out("option name Contempt type spin default 50 min -100 max 100")
                 out("option name Move Overhead type spin default 40 min 0 max 5000")
-                out("option name Hash type spin default 192 min 2 max 6144")
+                out(f"option name Hash type spin default 192 min 2 "
+                    f"max {HASH_MAX_MB}")
                 # FI-13d: self-identifying config line (A/B forensics: PGN
                 # headers grep this to know exactly what was playing).
                 out(f"info string abi={engine._lib.csearch_abi()}"
@@ -788,7 +793,9 @@ def main():
                     name = "".join(tokens[2:]).lower()
                     value = ""
                 if name == "threads":
-                    engine.smp_workers = max(1, min(256, int(value)))
+                    # 512 = csearch.c's CS_MAX_THREADS; keep the three
+                    # clamps (here, cengine, battle_worker) in step with it.
+                    engine.smp_workers = max(1, min(512, int(value)))
                     # Confirm it, Stockfish-style. Silence here cost a real
                     # measurement: `setoption name Threads 4` (no `value`
                     # keyword) parses as the option NAME "threads4", matches

@@ -1503,7 +1503,7 @@ class Engine:
         # honored like engine.py.
         # FB-13c: clamp to the C-side ceiling (set_threads clamps at 256
         # silently -- the Python attr must not misrepresent the real count).
-        self.smp_workers = min(256, max(1, int(self.SMP_WORKERS)))
+        self.smp_workers = min(512, max(1, int(self.SMP_WORKERS)))   # csearch CS_MAX_THREADS
         # FB-53: `go searchmoves ...` restricts the ROOT to a whitelist. The
         # host applies it as a C-level exclusion list, which the book and TB
         # probes below never see -- they run BEFORE the search and used to

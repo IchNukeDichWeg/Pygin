@@ -1,0 +1,97 @@
+{
+ "decision": null,
+ "llr": null,
+ "next_offset": 60000,
+ "pairs": 8000,
+ "penta": [
+  382,
+  1922,
+  3323,
+  1933,
+  440
+ ],
+ "runs": [
+  {
+   "engine1": "cengine_pc",
+   "engine2": "cengine",
+   "fen_file": "UHO_4060_v4.epd",
+   "mode": "nodes 1750000/move (NPS-calibrated)",
+   "offset": -1,
+   "offset_note": "NOT RECORDED -- this run pre-dated the log-header fix (2bf8d01); offset stored as -1, not 0",
+   "positions": 1000,
+   "positions_played": 1000,
+   "ptnml_probcut_orientation": [
+    51,
+    243,
+    426,
+    226,
+    54
+   ],
+   "seed": 55,
+   "smp": 1,
+   "started": "2026-07-29 (screen run 1)"
+  },
+  {
+   "engine1": "cengine_pc",
+   "engine2": "cengine",
+   "fen_file": "UHO_4060_v4.epd",
+   "mode": "nodes 1750000/move (NPS-calibrated)",
+   "offset": -1,
+   "offset_note": "NOT RECORDED -- this run pre-dated the log-header fix (2bf8d01); offset stored as -1, not 0",
+   "positions": 1000,
+   "positions_played": 1000,
+   "ptnml_probcut_orientation": [
+    38,
+    231,
+    427,
+    252,
+    52
+   ],
+   "seed": 55,
+   "smp": 1,
+   "started": "2026-07-29 (screen run 2)"
+  },
+  {
+   "engine1": "cengine_pc",
+   "engine2": "cengine",
+   "fen_file": "UHO_4060_v4.epd",
+   "mode": "nodes 1750000/move (NPS-calibrated)",
+   "offset": -1,
+   "offset_note": "NOT RECORDED -- this run pre-dated the log-header fix (2bf8d01); offset stored as -1, not 0",
+   "positions": 1000,
+   "positions_played": 1000,
+   "ptnml_probcut_orientation": [
+    47,
+    260,
+    395,
+    230,
+    68
+   ],
+   "seed": 55,
+   "smp": 1,
+   "started": "2026-07-29 (screen run 3)"
+  },
+  {
+   "engine1": "cengine_pc",
+   "engine2": "cengine",
+   "fen_file": "UHO_4060_v4.epd",
+   "mode": "nodes 1750000/move (NPS-calibrated)",
+   "offset": 50000,
+   "positions": 5000,
+   "positions_played": 5000,
+   "ptnml_probcut_orientation": [
+    246,
+    1188,
+    2075,
+    1225,
+    266
+   ],
+   "seed": 55,
+   "smp": 1,
+   "started": "2026-07-29 (SPRT tranche 1)"
+  },
+  {
+   "seed_note": "SEEDED BY HAND, not played. penta is the sum of the four runs above, in cengine_pc-as-Engine-1 orientation (the reverse of how they printed). next_offset is set to 60000: the three screens' ranges are unknown, so everything below 60000 is treated as consumed -- conservative in the safe direction. LLR from these counts is +1.128 of +2.944 under [0, 4]."
+  }
+ ]
+}
