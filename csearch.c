@@ -2631,6 +2631,33 @@ static inline int upcoming_repetition(const Board* b, uint64_t key,
 static int g_prune = 1;                 /* 0 = no pruning (verification) */
 void set_prune(int v) { g_prune = v; }
 
+/* FI-103 (R10 wave 1): CUT-NODE awareness. A node is a *cut node* when it is
+ * expected to fail high -- any zero-window child, and every non-first child of
+ * a PV node. Stockfish reduces harder there, and the asymmetry is what makes
+ * it safe: a cut node that really does cut costs nothing to have reduced, and
+ * one that does not gets re-searched at full depth anyway.
+ *
+ * Pygin had NO notion of this. Measured 2026-07-27, `csearch.c` contained
+ * cut-node: 0 refs, ttPv: 0 refs, correction history: 0 refs. LMR was indexed
+ * on TWO dimensions (depth x move number) with three small adjustments
+ * (is_pv, improving, a dormant history nudge) against Stockfish's ~eight
+ * signals -- which is the R10 diagnosis for why nine individual selectivity
+ * items went 2-for-9: the reductions lack the CONTEXT that makes aggressive
+ * reduction safe, so every attempt to make them aggressive by PARAMETER hit
+ * P-26's measured plateau.
+ *
+ * There is room for the parameter because [FI-91] wave 1 deleted P-33's `seb`
+ * from negamax's eleven call sites, freeing an argument register on the
+ * hottest function in the file.
+ *
+ * 0 = off = node-exact. Armed: +1 ply of reduction at non-PV cut nodes.
+ *
+ * PRICED +0 ALONE and first anyway: FI-104 (ttPv) is the counterweight that
+ * lets this be aggressive without over-reducing lines that once mattered, and
+ * FI-105/FI-107 cannot be honestly tested until the signal exists at all. */
+static int g_cutnode_lmr = 0;
+void set_cutnode_lmr(int v) { g_cutnode_lmr = v ? 1 : 0; }
+
 /* P-03: Internal Iterative Reduction. A node with meaningful depth but NO
  * TT move has poor ordering ahead of it -- search it one ply shallower;
  * the TT-fed revisit (same key, now with a move) gets the full depth.
@@ -3636,7 +3663,8 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
 }
 
 static int negamax(Board* b, int depth, int alpha, int beta, int ply,
-                   uint32_t prev12, int in_chk, int hmc, int chk, int srb)
+                   uint32_t prev12, int in_chk, int hmc, int chk, int srb,
+                   int cutnode)
 {
     g_nodes++;
     g_pv_len[ply] = 0;     /* PV-01: see qsearch -- every exit path must
@@ -3867,7 +3895,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                                               * swaps perspectives via turn */
                 g_nn_acc[ply + 1] = g_nn_acc[ply];
             int ns = -negamax(&c, depth - 1 - R, -beta, -beta + 1, ply + 1,
-                              0xFFFFFFFF, 0, 0, chk, srb);
+                              0xFFFFFFFF, 0, 0, chk, srb, 1);   /* FI-103 */
             if (CS_UNWINDING()) return 0;            /* ns is garbage */
             if (ns >= beta) {
                 int verified = 1;
@@ -3876,7 +3904,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                      * no-null re-search at THIS node (same window). */
                     g_no_null = 1;
                     int vs = negamax(b, depth - 1 - R, beta - 1, beta, ply,
-                                     prev12, in_chk, hmc, chk, srb);
+                                     prev12, in_chk, hmc, chk, srb, 1);
                     g_no_null = 0;
                     if (CS_UNWINDING()) return 0;
                     if (vs < beta) verified = 0;     /* zugzwang mis-cut */
@@ -4037,6 +4065,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                 && (quiet || (g_lmr_badcap && badcap))) {   /* FI-64 */
             R = g_lmr[depth < 64 ? depth : 63][i < 64 ? i : 63];
             if (is_pv && R) R--;
+            if (g_cutnode_lmr && cutnode && !is_pv) R++;   /* FI-103 */
             if (g_improving && !improving) R++;      /* P-04: sharpen declining lines */
             if (g_lmr_hist && quiet) {               /* FI-04: history nudge --
                                                       * quiet-only butterfly
@@ -4057,13 +4086,13 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         uint32_t cp = (ply + 1 < CS_MAXPLY) ? (uint32_t)fromto : 0xFFFFFFFF;
         int v;
         if (i == 0) {
-            v = -negamax(&c, nd, -beta, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb);
+            v = -negamax(&c, nd, -beta, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb, cutnode);
         } else {                                     /* PVS scout (reduced) */
-            v = -negamax(&c, nd - R, -alpha - 1, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb);
+            v = -negamax(&c, nd - R, -alpha - 1, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb, 1);
             if (R && v > alpha)                      /* reduced scout beat alpha */
-                v = -negamax(&c, nd, -alpha - 1, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb);
+                v = -negamax(&c, nd, -alpha - 1, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb, 1);
             if (v > alpha && v < beta)               /* full-window PV re-search */
-                v = -negamax(&c, nd, -beta, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb);
+                v = -negamax(&c, nd, -beta, -alpha, ply + 1, cp, gives_check, child_hmc, child_chk, child_srb, 0);
         }
         if (CS_UNWINDING()) return 0;                /* v is garbage: unwind */
         if (is_pv && v > alpha && v < beta)          /* PV-01: in-window best;
@@ -4301,7 +4330,7 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
         uint32_t cp = (uint32_t)((m & 63) << 6 | ((m >> 6) & 63));
         int v;
         if (i == 0) {
-            v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX);
+            v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX, 0);
         } else {
             /* FI-56: reduced zero-window scout for late quiet root moves;
              * a scout that beats alpha verifies at full depth before the
@@ -4313,11 +4342,11 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
                 R = g_lmr[depth < 64 ? depth : 63][i < 64 ? i : 63] / 2;
                 if (R > depth - 2) R = depth - 2;
             }
-            v = -negamax(&c, depth - 1 - R, -alpha - 1, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX);
+            v = -negamax(&c, depth - 1 - R, -alpha - 1, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX, 1);
             if (R && v > alpha && !ABORT_GET() && !(g_is_helper && HSTOP_GET()))
-                v = -negamax(&c, depth - 1, -alpha - 1, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX);
+                v = -negamax(&c, depth - 1, -alpha - 1, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX, 1);
             if (v > alpha && v < beta)
-                v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX);
+                v = -negamax(&c, depth - 1, -beta, -alpha, 1, cp, gc, child_hmc, g_check_ext_budget, SR_EXT_MAX, 0);
         }
         if (ABORT_GET() || (g_is_helper && HSTOP_GET()))
             break;                                   /* v is garbage */

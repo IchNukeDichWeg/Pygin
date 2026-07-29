@@ -990,6 +990,15 @@ class Engine:
     # value 100. PENDING: built 2026-07-27, unmeasured.
     QS_SEE_MARGIN = 0
 
+    # FI-103 (R10 wave 1): cut-node aware LMR. A zero-window child, or any
+    # non-first child of a PV node, is expected to FAIL HIGH -- reduce it one
+    # ply more. Pygin had zero notion of cut nodes; LMR was indexed on two
+    # dimensions with three small adjustments against Stockfish's ~eight
+    # signals, which is R10's diagnosis for the lane's 2-for-9 record.
+    # PRICED +0 ALONE: FI-104 (ttPv) is the counterweight. False = node-exact.
+    # PENDING: built 2026-07-27, unmeasured.
+    CUTNODE_LMR = False
+
     # FB-48: contempt is ON by default and every rule draw routes through
     # draw_score -- insufficient material, 50-move, repetition, FI-29's cycle
     # gate, all three qsearch draws. Stalemate does NOT: all five in-tree
@@ -1212,6 +1221,7 @@ class Engine:
               self.SINGULAR, self.SE_MIN_DEPTH, self.SE_MARGIN, self.SE_BUDGET,
               self.KILLER_INHERIT, self.QUIET_MALUS_ALL, self.HIST_KEEP,
             self.QS_TTFIRST, self.REP_STRICT, self.QS_SEE_MARGIN,
+            self.CUTNODE_LMR,
             self.SM_CONTEMPT,
               # FB-55: the guard covered 49 TOGGLES and not one EVAL VALUE --
               # a hole exactly where the .so-cross-contamination class bites.
@@ -1344,6 +1354,7 @@ class Engine:
         lib.set_qs_ttfirst(1 if self.QS_TTFIRST else 0)             # FI-67
         lib.set_rep_strict(1 if self.REP_STRICT else 0)             # FI-89
         lib.set_qs_see_margin(int(self.QS_SEE_MARGIN))              # FI-90
+        lib.set_cutnode_lmr(1 if self.CUTNODE_LMR else 0)           # FI-103
         lib.set_sm_contempt(1 if self.SM_CONTEMPT else 0)           # FB-48
         # FB-04: entries scored under a PREVIOUS construction's eval params
         # would poison this one (the table is process-global and persistent).
