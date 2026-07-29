@@ -34,6 +34,26 @@ FI-55, FI-59 and FI-64 all cut nodes and all lost Elo. So this can abandon a
 candidate, never confirm one. Identical discipline to `bench/instr_bench.py`,
 and for the identical reason.
 
+**DO NOT CONVERT EBF INTO A DEPTH PREDICTION. IT OVER-PREDICTS ~4x.**
+Measured 2026-07-29 on FI-103+FI-104, the first real use of this tool:
+
+    EBF 1.713 -> 1.585 (-7.49%)
+    implied depth gain at equal nodes: ln(1.713)/ln(1.585) = 1.17x  (~3 plies
+                                                                     at d18)
+    ACTUAL, at a real 1.75M-node budget over three positions:
+      toggles off   d13 d13 d13
+      pair armed    d14 d14 d13     -> ~+0.67 ply, not +3
+
+    and the 2k screen read -0.69 +/-15.2 -- null.
+
+The fit is taken over a FIXED-DEPTH search with a cold TT per position; a real
+node-limited search has iterative deepening over a warm table, aspiration
+windows, and a budget spent across all iterations. The slope of the former does
+not extrapolate to the depth of the latter. Using it that way was a misuse of
+this instrument by its own author, on its first outing, and the game screen is
+what caught it. **The one-sided rule is the whole contract: abandon, never
+predict.**
+
 HOW THE NUMBER IS COMPUTED
 --------------------------
   * A LEAST-SQUARES FIT of ln(nodes) against depth over [lo, hi], not a
