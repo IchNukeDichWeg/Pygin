@@ -1005,7 +1005,9 @@ class Engine:
     # sits at -170 or worse and deserves the skip. Not a value-table artifact
     # -- the engine's own Texel fit prices B over N by a LARGER margin (MG
     # 306/322, EG 342/356) than SEE's 320/330. 0 = v55 node-exact; armed
-    # value 100. PENDING: built 2026-07-27, unmeasured.
+    # value 100. SCREENED NULL twice 2026-07-27: +4.00 +/-15.2 alone, and
+    # -2.95 +/-15.2 batched with FB-48 (LLR +0.268 / -0.423, both flat).
+    # Closed -- batching two +0-priced items rescued neither.
     QS_SEE_MARGIN = 0
 
     # FI-103 (R10 wave 1): cut-node aware LMR. A zero-window child, or any
@@ -1014,7 +1016,8 @@ class Engine:
     # dimensions with three small adjustments against Stockfish's ~eight
     # signals, which is R10's diagnosis for the lane's 2-for-9 record.
     # PRICED +0 ALONE: FI-104 (ttPv) is the counterweight. False = node-exact.
-    # PENDING: built 2026-07-27, unmeasured.
+    # SCREENED 2026-07-27: +2.43 +/-15.2 alone (LLR +0.109) -- the
+    # foundation is not harmful, but priced +0 and it reads +0.
     CUTNODE_LMR = False
 
     # FI-104 (R10 wave 1): ttPv -- a node that was ever on a PV reduces LESS,
@@ -1023,7 +1026,10 @@ class Engine:
     # pruning hard in lines that once mattered. Storage was free (bit 2 of the
     # TT's 16-bit flag word, which carries a 2-bit bound); TT_FLAG masks to the
     # bound at the macro so ~15 existing comparison sites needed no edit.
-    # False = node-exact. PENDING: built 2026-07-29, unmeasured.
+    # False = node-exact. SCREENED AS THE PAIR 2026-07-29: -0.69 +/-15.2.
+    # EBF fell 7.49% (vs -0.76%/+1.85% for the singles -- a real, large
+    # interaction) and it did NOT convert to Elo. R10's thesis holds in
+    # tree shape and fails in strength.
     TTPV_LMR = False
 
     # FB-48: contempt is ON by default and every rule draw routes through
@@ -1053,7 +1059,8 @@ class Engine:
     # floor at the parent. Engagement is narrow by construction (needs
     # hmc >= ply, i.e. shallow plies in high-halfmove-clock positions --
     # grindy endings and shuffle phases, not ordinary middlegame nodes).
-    # False = v55 node-exact. PENDING: built 2026-07-27, unmeasured.
+    # False = v55 node-exact. SCREEN-KILLED 2026-07-27: -20.17 +/-15.3,
+    # which took the correctness class from 8-for-8 to 8-for-9.
     REP_STRICT = False
 
     # FI-15 NNUE (Phases 1-5 BUILT-DORMANT 2026-07-18): hybrid NN eval --
