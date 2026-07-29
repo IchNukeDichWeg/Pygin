@@ -638,6 +638,11 @@ def main():
                          "two are never pooled; 'nnue' writes its own "
                          "wdl_model_nnue.json instead of overwriting the "
                          "hand-crafted-eval model the runtime loads")
+    ap.add_argument("--nnue", dest="nnue", action="store_true",
+                    help="shorthand for --eval-family nnue. This is the flag "
+                         "worth remembering: refitting the NNUE model is a "
+                         "thing you do, whereas '--eval-family hce' is just "
+                         "the default spelled out")
     ap.add_argument("--min-era", type=int, default=None,
                     help="minimum engine<N> snapshot to accept (default "
                          "%d = the whole C era; pass 53 to restrict to the "
@@ -659,6 +664,15 @@ def main():
         _MIN_C_ERA_SNAPSHOT = args.min_era
     if args.cengine_since is not None:
         CENGINE_MIN_DATE = args.cengine_since or None
+    if args.nnue and args.eval_family != "nnue":
+        # Both spellings given and disagreeing: --nnue is the explicit ask,
+        # --eval-family may just be its default sitting there. Refuse rather
+        # than pick, because guessing wrong here silently fits the WRONG
+        # corpus and writes it to the WRONG filename.
+        if "--eval-family" in sys.argv:
+            ap.error("--nnue conflicts with --eval-family "
+                     f"{args.eval_family}; pass only one")
+        args.eval_family = "nnue"
     EVAL_FAMILY = args.eval_family
     # Per-family filenames: an NNUE fit must not land on top of the model
     # match.py/uci.py load for the hand-crafted eval.

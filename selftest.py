@@ -924,6 +924,29 @@ if os.path.exists(_t_rep):
         check("FI-89: repetition rule agrees with the arbiter (REP_STRICT)",
               False, "timeout")
 
+# --- 5j4. WDL adjudication corpus + per-family model ---------------------- #
+# Both of these pin SILENT failures, which is exactly what a selftest is for.
+# The family guard exists because NNUE logs were dropped from the WDL fit with
+# no message (their base names carry no version number), and the per-family
+# consumer because an NNUE arm was being adjudicated on hand-crafted-eval
+# thresholds -- neither shows up as an error, only as a drifted draw rate.
+# No --selftest arg: these run their own checks and exit non-zero on failure.
+for _wdl_t, _wdl_label in (
+        (os.path.join("testing", "test_wdl_family.py"),
+         "WDL corpus is gated by eval FAMILY, not just era"),
+        (os.path.join("testing", "test_wdl_nnue_model.py"),
+         "WDL: --nnue fits its own model and match.py loads it per side")):
+    if not os.path.exists(_wdl_t):
+        continue
+    try:
+        r = subprocess.run([sys.executable, _wdl_t],
+                           capture_output=True, text=True, timeout=180)
+        check(_wdl_label, r.returncode == 0,
+              "" if r.returncode == 0
+              else (r.stdout + r.stderr).strip().splitlines()[-1][:90])
+    except subprocess.TimeoutExpired:
+        check(_wdl_label, False, "timeout")
+
 # --- 5k. NNUE unit checks (FI-15, dormant build-out) --------------------- #
 # Runs in a SUBPROCESS: cengine's FB-04 one-process-one-config rule forbids
 # a second, differently-configured Engine in this process. Exit 42 = no net
