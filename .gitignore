@@ -110,7 +110,8 @@ claudechess
 stockfish-18-asm.js
 openings.epd
 quiet-labeled.v7.epd
-wdl_training_data.csv
+wdl_training_data*.csv
+
 *.book
 elo.md
 audit_engine_*.md
