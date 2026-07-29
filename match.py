@@ -1996,7 +1996,7 @@ def main():
                         seg += (f" -> ~{proj} to {side} "
                                 f"(approx. {_games(rem_games)} more games)")
                     else:
-                        seg += (f" -> runs to budget (would need approx. "
+                        seg += (f" -> runs to budget (approx. "
                                 f"{_games(rem_games)} more games to {side})")
             base += seg
         return base
