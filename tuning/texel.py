@@ -1137,6 +1137,102 @@ def _probe(dirpath):
     return [int(x) for x in r.stdout.strip().split(",")]
 
 
+def cmd_pygdata(a):
+    """FI-98: `.pygdata` -> the tuner's RECORD, at zero generation cost.
+
+    The eval lane's stated blocker is the CORPUS, not the optimizer: another
+    descent over the same ~5M positions keeps returning ~0.08%, under the
+    ~0.15% clean floor. Meanwhile the NNUE program has 82.39M records the
+    tuner cannot read. This makes them readable.
+
+    THE LABELS LINE UP, which is the first thing to check and not assume.
+    `.pygdata` carries BOTH a search label (`score`, White-POV cp) and the
+    game WDL (`result`, +1/0/-1). The tuner fits the GAME RESULT, so only
+    `result` is used and `score` is deliberately dropped -- importing the
+    search label here would silently swap the tuner's objective for NNUE's.
+    Both pipelines also apply the SAME quiet filter (not in check, best move
+    not a capture), so the corpora are comparable in character rather than
+    merely in size.
+
+    GAME IDS ARE RECOVERED, NOT INVENTED. `.pygdata` has no game id and its
+    `flags` byte is always 0, but FB-43's split must cut on game boundaries or
+    the held-out number is meaningless (position-level shuffle put ~97% of
+    games on BOTH sides). The invariant used: **piece count never increases
+    within a game** -- captures only reduce it and promotions keep it constant
+    -- so a count increase MUST be a boundary. The error is one-sided: a missed
+    boundary MERGES two games, which keeps both on the same side of the split
+    and is safe; a spurious boundary would leak, and this rule cannot produce
+    one. Measured on a 3M-record shard: 85,854 boundaries, median implied game
+    length 31, p99 110, nothing above 200.
+
+    `era` is set to 0 (unknown) because `.pygdata` carries no source tag, so
+    FI-97's era-restricted loss simply reports nothing on this corpus rather
+    than reporting something false.
+    """
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "..", "NNUE"))
+    from data_format import read_pygdata
+    src = read_pygdata(a.src)
+    n = len(src) if a.limit <= 0 else min(a.limit, len(src))
+    print(f"{a.src}: {len(src):,} records; converting {n:,}")
+
+    out = np.zeros(n, dtype=RECORD)
+    CH = 2_000_000
+    prev_cnt = -1
+    gid = 0
+    for i in range(0, n, CH):
+        j = min(i + CH, n)
+        c = src[i:j]
+        bb = out["bb"][i:j]
+        for k, f in enumerate(("pawns", "knights", "bishops", "rooks",
+                               "queens", "kings")):
+            bb[:, k] = c[f]
+        bb[:, 6] = c["occ_w"]
+        allp = (c["pawns"] | c["knights"] | c["bishops"] | c["rooks"]
+                | c["queens"] | c["kings"])
+        bb[:, 7] = allp & ~c["occ_w"]        # occ_b is derived, not stored
+        out["cast"][i:j] = c["castling"]
+        out["turn"][i:j] = c["stm"]
+        out["ep"][i:j] = c["ep"]
+        # +1/0/-1 White POV  ->  0 loss / 1 draw / 2 win, the tuner's encoding
+        out["res"][i:j] = (c["result"].astype(np.int16) + 1).astype(np.uint8)
+        cnt = np.unpackbits(allp.view(np.uint8).reshape(-1, 8), axis=1).sum(1)
+        newg = np.empty(len(cnt), dtype=bool)
+        newg[0] = cnt[0] > prev_cnt if prev_cnt >= 0 else True
+        newg[1:] = cnt[1:] > cnt[:-1]
+        out["game"][i:j] = gid + np.cumsum(newg) - 1
+        gid = int(out["game"][j - 1]) + 1
+        prev_cnt = int(cnt[-1])
+        print(f"  {j:,}/{n:,}  games so far {gid:,}", flush=True)
+    out["era"] = 0                            # no source tag in .pygdata
+
+    # FB-43: shuffle at GAME granularity so a contiguous tail slice is whole
+    # games. Identical treatment to cmd_extract -- the tuner's split logic is
+    # unchanged and must stay that way.
+    rng = np.random.default_rng(52)
+    uniq = np.unique(out["game"])
+    rank = rng.permutation(len(uniq))
+    key = rank[np.searchsorted(uniq, out["game"])]
+    out = out[np.argsort(key, kind="stable")]
+
+    # The FB-43 assert, on the converted corpus, exactly as the entry demands.
+    ntrain = int(len(out) * 0.8)
+    g = out["game"]
+    while 0 < ntrain < len(g) and g[ntrain] == g[ntrain - 1]:
+        ntrain -= 1
+    shared = set(np.unique(g[:ntrain]).tolist()) & set(np.unique(g[ntrain:]).tolist())
+    assert not shared, f"FB-43 split leak: {len(shared)} games straddle"
+    print(f"  FB-43 assert OK: {ntrain:,} train / {len(out)-ntrain:,} val, "
+          f"0 games straddle")
+
+    np.save(a.out, out)
+    res = out["res"]
+    print(f"wrote {a.out}: {len(out):,} positions, {gid:,} games "
+          f"({os.path.getsize(a.out)/1048576:.0f} MB)")
+    print(f"  White-POV labels: {int((res==2).sum()):,} win / "
+          f"{int((res==1).sum()):,} draw / {int((res==0).sum()):,} loss")
+
+
 def cmd_pack(a):
     """positions .npy -> a compact .npz small enough to ship via GitHub.
 
@@ -1434,6 +1530,13 @@ def main():
                    help="coordinate-descent step sizes in cp, annealed evenly "
                         "across --rounds (default: 8 3 1)")
     t.set_defaults(fn=cmd_tune)
+
+    g2 = sub.add_parser("pygdata", help="FI-98: .pygdata -> tuner positions")
+    g2.add_argument("--src", default="NNUE/datasets/all.pygdata")
+    g2.add_argument("--out", default="texel_pygdata.npy")
+    g2.add_argument("--limit", type=int, default=0,
+                    help="0 = all (82M records is ~6.5 GB of RECORD)")
+    g2.set_defaults(fn=cmd_pygdata)
 
     k = sub.add_parser("pack", help="positions .npy -> compact .npz for GitHub")
     k.add_argument("--src", default=POSITIONS_NPY)
