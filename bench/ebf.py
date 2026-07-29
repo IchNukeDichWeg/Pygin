@@ -274,6 +274,14 @@ def main():
               'anything.'}")
         return 0 if ok else 1
 
+    if a.arm_b and not a.engine_b:
+        # --arm-b arms the B SIDE, and without a positional engine_b there is
+        # no B side -- the run would print A and exit 0 as if it had gated
+        # something. Silent no-op on the one flag that carries the hypothesis.
+        print("error: --arm-b needs an engine_b (e.g. `ebf.py cengine.py "
+              "cengine.py --arm-b NAME=VALUE`)", file=sys.stderr)
+        return 2
+
     med_a, _ = run_side(a.engine_a, a.depth, a.lo, a.cpu, 0, f"A = {a.engine_a}")
     if not a.engine_b:
         return 0
