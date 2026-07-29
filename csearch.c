@@ -1549,6 +1549,57 @@ int csearch_eval_white(uint64_t pawns, uint64_t knights, uint64_t bishops,
 
 #include <string.h>
 
+/* eval_white's first five lines: the FI-42 accumulator tapered against the
+ * SYNCED PHASE_MAX, plus tempo, flipped to side-to-move POV like
+ * eval_full_stm. Deliberately NOT a call to eval_white -- the whole premise
+ * is that this is the part you can afford. */
+static int cheap_eval_stm(const Board* b)
+{
+    extern int PHASE_MAX;
+    int mg = b->a_mg, eg = b->a_eg, phase = b->a_ph;
+    if (phase > PHASE_MAX) phase = PHASE_MAX;
+    int s = PHASE_MAX > 0
+          ? (mg * phase + eg * (PHASE_MAX - phase)) / PHASE_MAX : mg;
+    s += (b->turn == WHITE) ? g_tempo : -g_tempo;
+    return (b->turn == WHITE) ? s : -s;
+}
+
+/* FI-106: lazy NNUE eval. When the free bound is already past a window edge
+ * by more than the margin, the search's question is answered and the net --
+ * the single most expensive thing at this node -- is never called.
+ *
+ * Default OFF and node-exact when off: the branch below is the only cost.
+ *
+ * FI-105 measured the opportunity (281,700 evals): median |net - cheap| 57cp,
+ * and at margin 200 half of all NN evals become skippable for 1.72% landing
+ * on the wrong side of the window. But that priced only the SAVING. The cost
+ * it could not see is tree damage -- a lazy eval feeds RFP, null move and
+ * futility, so a wrong one prunes the wrong branch and depth gets dearer.
+ *
+ * Time-to-depth, 40 positions from data/fen.txt at depth 12, best of 3
+ * (node counts are deterministic, so the node column is exact):
+ *
+ *   margin     nodes vs off      NPS     time to depth 12
+ *      off              --   3.57 Mn/s              5.61s
+ *      100           -1.3%   4.11 Mn/s   -14.1%     4.82s
+ *      150           -4.1%   4.00 Mn/s   -14.3%     4.81s
+ *      200           -3.0%   3.95 Mn/s   -12.3%     4.92s
+ *      300           -4.6%   3.86 Mn/s   -11.6%     4.96s
+ *
+ * The tree is a WASH across the whole range -- the nodes simply got cheaper.
+ * Beware the small-sample version of this: 6 positions at depth 11 read
+ * margin 200 as +18.6% nodes, which is pure chaos, and it reverses at 40.
+ *
+ * Time-to-depth cannot pick the margin, though, and it is important to see
+ * why: margin 0 skips EVERY eval, which is the fastest possible engine and
+ * also just the HCE, already measured 5.7 Elo weaker. Speed-to-depth is blind
+ * to the strength being traded away, so the margin is an A/B question. 200 is
+ * the screen point: conservative, still +10.6% NPS. */
+static int g_lazy_nnue = 0;
+static int g_lazy_margin = 200;
+void set_lazy_nnue(int on)   { g_lazy_nnue = on ? 1 : 0; }
+void set_lazy_margin(int cp) { g_lazy_margin = cp; }
+
 #ifdef CS_LAZY_PROBE
 /* ==================== FI-105: lazy-eval feasibility probe ==================
  * A MEASUREMENT INSTRUMENT, not a feature. Compile-time gated so the shipped
@@ -1570,21 +1621,6 @@ static int      g_lazy_probe = 0;
 #define LZ_MAX 4000000
 static int32_t* g_lz   = NULL;      /* 4 int32 per sample */
 static long     g_lz_n = 0;
-
-/* eval_white's first five lines: the FI-42 accumulator tapered against the
- * SYNCED PHASE_MAX, plus tempo, flipped to side-to-move POV like
- * eval_full_stm. Deliberately NOT a call to eval_white -- the whole premise
- * is that this is the part you can afford. */
-static int cheap_eval_stm(const Board* b)
-{
-    extern int PHASE_MAX;
-    int mg = b->a_mg, eg = b->a_eg, phase = b->a_ph;
-    if (phase > PHASE_MAX) phase = PHASE_MAX;
-    int s = PHASE_MAX > 0
-          ? (mg * phase + eg * (PHASE_MAX - phase)) / PHASE_MAX : mg;
-    s += (b->turn == WHITE) ? g_tempo : -g_tempo;
-    return (b->turn == WHITE) ? s : -s;
-}
 
 void set_lazy_probe(int on)
 {
@@ -3745,13 +3781,31 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     /* static eval (for pruning); meaningless in check, unused at PV nodes
      * (P-04 additionally computes it at PV nodes to feed the eval stack). */
     int want_eval = !in_chk && (!is_pv || g_improving);
-    int static_eval = want_eval
-        ? (tt_eval != TT_EVAL_NONE ? tt_eval        /* FI-03: exact cache */
-                                   : (g_use_nnue ? nn_eval(b, ply)   /* FI-15
-                                       * hybrid: NN is negamax's static eval;
-                                       * qsearch stand-pat stays HCE */
-                                                 : eval_full_stm(b)))
-        : 0;
+    int lazy_used = 0;                   /* FI-106: this eval is the BOUND */
+    int static_eval;
+    if (!want_eval) {
+        static_eval = 0;
+    } else if (tt_eval != TT_EVAL_NONE) {
+        static_eval = tt_eval;                      /* FI-03: exact cache */
+    } else if (g_use_nnue) {
+        /* FI-15 hybrid: NN is negamax's static eval; qsearch stand-pat stays
+         * HCE. FI-106: the bound gets first refusal -- if it already settles
+         * which side of the window this node is on, nn_eval is never reached,
+         * which is the entire saving. Must sit BEFORE the call, not override
+         * its result: paying for the net and then discarding it is worse than
+         * not having the feature. */
+        int cheap;
+        if (g_lazy_nnue
+                && ((cheap = cheap_eval_stm(b)) - g_lazy_margin >= beta
+                    || cheap + g_lazy_margin <= alpha)) {
+            static_eval = cheap;
+            lazy_used = 1;
+        } else {
+            static_eval = nn_eval(b, ply);
+        }
+    } else {
+        static_eval = eval_full_stm(b);
+    }
 #ifdef CS_LAZY_PROBE
     /* FI-105: only where the net ACTUALLY ran -- a TT-cached eval already
      * cost nothing, so counting it would inflate the skip rate with work
@@ -3759,6 +3813,14 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     if (g_lazy_probe && want_eval && g_use_nnue && tt_eval == TT_EVAL_NONE)
         lazy_probe_record(static_eval, cheap_eval_stm(b), alpha, beta);
 #endif
+
+    /* FI-106: what the FI-03 cache is allowed to remember. A lazy eval is
+     * only valid for THIS node's window -- it says "past the edge by 200",
+     * not "the position is worth this". Storing it would hand a later visit
+     * at a DIFFERENT window a number the net never produced, and that error
+     * outlives the node that took the shortcut. TT_EVAL_NONE just costs the
+     * next visitor a recompute, which it can take lazily again. */
+    int store_eval = (want_eval && !lazy_used) ? static_eval : TT_EVAL_NONE;
 
     /* P-04: record this ply's eval and compare to our own two plies ago.
      * Every ancestor on the current path wrote its slot on the way down, so
@@ -3829,7 +3891,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                         && !CS_UNWINDING()) {
                         if (!g_cb2) {
                             tt_store_raw(tte, key, ns, 0, depth, TT_LOWER,
-                                         static_eval);        /* FI-03 */
+                                         store_eval);         /* FI-106 */
                         } else {
                             /* CB-02(a)/FB-22: obey the replacement policy;
                              * never clobber a DEEPER entry, and keep a
@@ -3843,12 +3905,12 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                                     tt_store_raw(tte, key, ns,
                                                  TT_MOVE(cur) & 0x7FFF,
                                                  depth, TT_LOWER,
-                                                 static_eval);
+                                                 store_eval);
                             } else if (TT_GEN(cur) != (int)(uint16_t)g_gen
                                        || depth >= TT_DEPTH(cur)
                                                    + tt_exact_bonus(cur)) {
                                 tt_store_raw(tte, key, ns, 0, depth,
-                                             TT_LOWER, static_eval);
+                                             TT_LOWER, store_eval);
                             }
                         }
                     }
@@ -4078,7 +4140,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
              * (pawn/bishop/queen) -- TT-move ordering was silently dead
              * for those movers. */
             tt_store_raw(tte, key, sv, best_move & 0x7FFF, depth, flag,
-                         want_eval ? static_eval : TT_EVAL_NONE);  /* FI-03 */
+                         store_eval);                             /* FI-106 */
         }
     }
     return best;
@@ -4602,7 +4664,10 @@ int cs_rep_probe(const uint64_t* path, int ply, const uint64_t* hist,
     return r;
 }
 
-int csearch_abi(void) { return 33; }  /* 33 = FB-48 set_sm_contempt (stalemate
+int csearch_abi(void) { return 34; }  /* 34 = FI-106 set_lazy_nnue /
+                                       *      set_lazy_margin (lazy NNUE eval,
+                                       *      default OFF = node-exact);
+                                       * 33 = FB-48 set_sm_contempt (stalemate
                                        *      routes through draw_score);
                                        * 32 = FI-90 set_qs_see_margin (qsearch
                                        *      losing-capture admission margin);
