@@ -171,6 +171,7 @@ data/UHO_Lichess_4852_v1.epd
 !/testing/pair_identity.py
 !/testing/nodes_calibration.py
 !/testing/test_rep_strict.py
+!/testing/test_wdl_family.py
 !/testing/fi89_cycle_verify.c
 !/testing/fi90_engagement.c
 !/testing/fb48_engagement.c
