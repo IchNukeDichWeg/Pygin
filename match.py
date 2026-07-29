@@ -1170,8 +1170,9 @@ def write_summary(fh, e1, e2, tally, total_games, start_t, stopped,
     if si and si.get("resume_path"):
         lines.append(
             f"SPRT state file: {si['resume_path']}"
-            + ("  (auto-named and STABLE -- the next run with these two "
-               "engines pools with it automatically)"
+            + ("  (auto-named and STABLE -- the next run with the same "
+               "engines AND instrument pools with it automatically; --tag "
+               "names it explicitly)"
                if si.get("resume_auto") else ""))
     # An SPRT stop is a CONCLUSION, not an interruption, so don't mislabel it.
     if stopped and not sprt_decided:
@@ -1466,6 +1467,7 @@ def main():
     sprt_alpha, sprt_beta = 0.05, 0.05
     sprt_model = "normalized"
     sprt_resume_path = None    # FI-82: pooled-tranche state file
+    campaign_tag = None        # --tag: names the state file explicitly
     offset_opt = None          # --offset (overrides the 4th positional)
     seed_opt = None            # --seed
     i = 0
@@ -1548,6 +1550,9 @@ def main():
             i += 2                              # 4th positional
         elif argv[i] == "--seed" and i + 1 < len(argv):
             seed_opt = argv[i + 1].strip()      # "none"/"off" = unshuffled
+            i += 2
+        elif argv[i] == "--tag" and i + 1 < len(argv):
+            campaign_tag = re.sub(r"[^A-Za-z0-9._-]", "_", argv[i + 1].strip())
             i += 2
         elif argv[i].startswith("--"):
             # An unknown --flag used to fall through to `positional`, where it
@@ -1699,6 +1704,16 @@ def main():
                   "depth": f"depth {FIXED_DEPTH}",
                   "nodes": f"nodes {nodes_budget}/move (NPS-calibrated)",
                   "clock": f"clock {tc_label}"}[MODE])
+    # Short, filesystem-safe name for the INSTRUMENT. It goes in the auto-named
+    # state file so two campaigns that differ only in budget cannot silently
+    # pool: `cengine vs cengine_pc` at 1.75M nodes and the same pair at 5M are
+    # different experiments that would otherwise share one file.
+    instrument = ({"time": f"t{TIME_PER_MOVE_MS}ms",
+                   "depth": f"d{FIXED_DEPTH}",
+                   "nodes": f"n{nodes_budget}",
+                   "clock": f"tc{TC_SECONDS:g}+{TC_INCREMENT:g}"}[MODE])
+    if int(ENGINE_SMP) != 1:
+        instrument += f"_smp{int(ENGINE_SMP)}"
     workers_desc = (f"{n_workers} parallel" if parallel else "1 sequential")
     _nn_lines = "".join(x + "\n" for x in _net_lines([e1, e2]))
     banner = (f"Match: {e1.name}  vs  {e2.name}\n"
@@ -1764,7 +1779,14 @@ def main():
     # Same two engines -> same file -> the next run continues the pool.
     sprt_resume_auto = not sprt_resume_path
     if sprt_resume_auto:
-        sprt_resume_path = f"sprt_{e1.name}_vs_{e2.name}.json"
+        # The INSTRUMENT is in the name because the same two engine FILENAMES
+        # get reused across campaigns constantly. What the name still cannot
+        # see is a change INSIDE an engine file (a toggle flipped, a margin
+        # retuned) -- that is what --tag is for, and it is the honest answer
+        # now that nothing is hashed. Name the campaign and its state follows
+        # it; forget to, and you get one file per engine-pair-and-instrument.
+        sprt_resume_path = (f"sprt_{campaign_tag}.json" if campaign_tag else
+                            f"sprt_{e1.name}_vs_{e2.name}_{instrument}.json")
     # Prior runs against these same two engines, pooled into every LLR
     # evaluation below. Read before the first game so any warning costs zero
     # compute. No longer gated on a fingerprint -- see sprt_resume_load.
@@ -1791,6 +1813,25 @@ def main():
                 "seed": SUBSET_SEED, "fen_file": FEN_FILE,
                 "mode": mode_desc, "smp": int(ENGINE_SMP),
                 "started": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+    # The gate is gone, so the CHECK has to be loud instead. Compare against
+    # the last recorded run and say what moved. This is the part that used to
+    # be a refusal: pooling a 1-thread tranche with a 4-thread one, or two
+    # different node budgets, is meaningless -- but it is the operator's call,
+    # not the tool's.
+    if prior_runs:
+        prev = prior_runs[-1]
+        moved = [(k, prev.get(k), this_run[k])
+                 for k in ("engine1", "engine2", "mode", "smp", "seed",
+                           "fen_file")
+                 if k in prev and prev.get(k) != this_run[k]]
+        if moved:
+            print("  ** CONFIG CHANGED since the last run in this file -- "
+                  "pooling anyway (nothing is gated on it):")
+            for k, was, now in moved:
+                print(f"       {k}: {was!r} -> {now!r}")
+            print("     Different instruments must NOT be pooled. Use --tag "
+                  "to give this campaign its own file if that is what you "
+                  "meant.")
     runs_log = list(prior_runs) + [this_run]
     # Create it NOW, before a single game is played. A file that only appears
     # at the end is not a crash-safety net -- it is a summary.
