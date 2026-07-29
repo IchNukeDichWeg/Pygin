@@ -16,7 +16,10 @@ be adjacent versions, cengine pairs with its contemporaries -- both sides'
 samples are then extracted, since each side's score -> outcome mapping is
 unbiased against a near-equal opponent), or when the file is in
 NEAR_EQUAL_STOCKFISH_LOGS (a Stockfish match at matched strength; only the
-engine-family side extracts). Mismatched-strength opponents, odds games and
+engine-family side extracts). Of the sides a usable log offers, only those
+on the selected EVAL FAMILY are extracted (--eval-family, default "hce"):
+NNUE cp and hand-crafted cp are different scales and are never pooled into
+one fit. Mismatched-strength opponents, odds games and
 " copy" duplicates are excluded -- those would bias the fit. For every
 usable game, replay the "--- Engine Logs ---" block move by move with
 python-chess, pull each usable side's "[<name>] move X: info ... score cp
@@ -38,6 +41,8 @@ Usage:
     python3 fit_wdl_model.py                  # extract + fit
     python3 fit_wdl_model.py --extract-only    # just write the training CSV
     python3 fit_wdl_model.py --fit-only        # reuse a previously written CSV
+    python3 fit_wdl_model.py --eval-family nnue   # NNUE-scored sides only,
+                                                  # writes data/wdl_model_nnue.json
 
 Needs numpy + scipy (both already installed in this environment, though not
 otherwise used by the project -- only this offline analysis script imports
@@ -171,6 +176,26 @@ NEAR_EQUAL_EXTRA = {
 _BASE_NUM_RE = re.compile(r"^engine(\d+)$")
 _MIN_C_ERA_SNAPSHOT = 53
 
+# EVAL-FAMILY guard (2026-07-29). The era guards above know about VERSIONS,
+# not about which EVAL produced the cp. A net's output and the hand-crafted
+# eval are different scales -- the same blur the v53 guard exists to prevent,
+# only bigger -- so sides are ALSO classified by eval family and only the
+# selected family is ever extracted (--eval-family, default "hce"). An
+# NNUE-vs-HCE match is still a near-equal PAIRING: it contributes its NNUE
+# side to the NNUE corpus and its HCE side to the HCE corpus, never both to
+# one, exactly like NEAR_EQUAL_STOCKFISH_LOGS contributes one side.
+# NNUE arms are engine_nnue*.py (cengine subclasses with USE_NNUE=True). A
+# new net changes the output scale with it, so NNUE logs get the same
+# date gate cengine has; NNUE_MIN_DATE is the first log of the current net.
+# When USE_NNUE becomes the DEFAULT, the un-suffixed names (cengine,
+# engine<N>) start reporting NNUE cp under the old names -- set
+# NNUE_DEFAULT_SINCE to that ship date then; nothing else needs to change.
+_NNUE_RE = re.compile(r"(?:^|_)nnue(?:_|$)")
+NNUE_MIN_DATE = "2026-07-28"     # nnue_v3_d16_2880b51afe28 (FI-15)
+NNUE_DEFAULT_SINCE = None        # ship date of a USE_NNUE-by-default build
+EVAL_FAMILY = "hce"              # "hce" | "nnue" | None = don't filter,
+                                 #   for scale-free consumers only (texel.py)
+
 
 def _base_num(base):
     m = _BASE_NUM_RE.match(base)
@@ -183,26 +208,59 @@ def _log_date(path):
     return m.group(1) if m else None
 
 
-def _side_usable(base, path=None):
+def _date_ok(path, since):
+    """Is this log dated on/after `since`? No date in the name -> refuse: an
+    unknown era is not a safe one. `since` falsy -> no date gate."""
+    if not since:
+        return True
+    d = _log_date(path)
+    return d is not None and d >= since
+
+
+def eval_family(base, path=None):
+    """Which eval SCALE this side's reported cp is on: 'nnue', 'hce', or
+    None for a base this script does not recognise as an engine arm."""
+    if _NNUE_RE.search(base):
+        return "nnue"
+    if base in NEAR_EQUAL_EXTRA or _base_num(base) is not None:
+        if NNUE_DEFAULT_SINCE and _date_ok(path, NNUE_DEFAULT_SINCE):
+            return "nnue"
+        return "hce"
+    return None
+
+
+def _side_in_era(base, path=None):
+    """Is this side a near-equal-class arm from an accepted era? Says nothing
+    about WHICH eval family it is -- that is _side_usable's half."""
+    if eval_family(base, path) is None:
+        return False
+    if _NNUE_RE.search(base):
+        return _date_ok(path, NNUE_MIN_DATE)
     if base in NEAR_EQUAL_EXTRA:
         # Era-gate the dev build by the log's own date (see CENGINE_MIN_DATE).
-        # No date in the name -> refuse: an unknown era is not a safe one.
-        if CENGINE_MIN_DATE is None:
-            return True
-        d = _log_date(path)
-        return d is not None and d >= CENGINE_MIN_DATE
+        return _date_ok(path, CENGINE_MIN_DATE)
     n = _base_num(base)
     return n is not None and n >= _MIN_C_ERA_SNAPSHOT
 
 
+def _side_usable(base, path=None):
+    """Extractable INTO THE SELECTED CORPUS: right era AND right eval family."""
+    if not _side_in_era(base, path):
+        return False
+    return EVAL_FAMILY is None or eval_family(base, path) == EVAL_FAMILY
+
+
 def near_equal_pair(wb, bb, path=None):
-    """Both sides usable AND the pairing itself is near-equal (see rule)."""
-    if not (_side_usable(wb, path) and _side_usable(bb, path)):
+    """Both sides in-era AND the pairing itself is near-equal (see rule).
+    This is a STRENGTH judgement only -- an NNUE arm vs its contemporary
+    snapshot is near-equal; which of the two sides actually gets extracted
+    is the eval-family question, answered per side by _side_usable()."""
+    if not (_side_in_era(wb, path) and _side_in_era(bb, path)):
         return False
     wn, bn = _base_num(wb), _base_num(bb)
     if wn is not None and bn is not None:
         return abs(wn - bn) <= 1        # numbered pairs: adjacent eras only
-    return True                          # cengine/qtt_off vs a listed base
+    return True                          # cengine/nnue/qtt_off vs a listed base
 
 # Specific Stockfish match logs where Stockfish was configured within a few
 # Elo of the engine, making the engine's own samples from them unbiased.
@@ -215,6 +273,24 @@ def near_equal_pair(wb, bb, path=None):
 NEAR_EQUAL_STOCKFISH_LOGS = {
     # "engine_vs_stockfish_engine_2026-07-04_02-26-12_31615",  # v25 era
 }
+
+
+# Skip bookkeeping, so a dropped corpus is never silent (2026-07-29: the
+# NNUE arms were dropped in full by name alone, and nothing said so).
+# Python-era experiment arms are NOT news -- flag an unplaceable base only
+# when it turns up in a CURRENT-era log, i.e. a new or renamed arm.
+UNRECOGNISED_BASES = defaultdict(int)     # base -> files skipped
+OTHER_FAMILY_PAIRS = defaultdict(int)     # "wb vs bb" -> files skipped
+
+
+def _note_skip(wb, bb, path):
+    """Record a near-equal-eligible-looking log we are dropping anyway."""
+    for base in (wb, bb):
+        if eval_family(base, path) is None and _date_ok(path, CENGINE_MIN_DATE) \
+                and CENGINE_MIN_DATE:
+            UNRECOGNISED_BASES[base] += 1
+    if _side_in_era(wb, path) and _side_in_era(bb, path):
+        OTHER_FAMILY_PAIRS[f"{wb} vs {bb}"] += 1
 
 
 def classify_file(path):
@@ -253,8 +329,13 @@ def classify_file(path):
         return False    # identical tags -> move lines can't be attributed
     if os.path.splitext(os.path.basename(path))[0] in NEAR_EQUAL_STOCKFISH_LOGS:
         return True     # near-equal SF match; only the engine side extracts
-    # Both sides usable AND the pairing near-equal -> BOTH sides extracted.
-    return near_equal_pair(wb, bb, path)
+    # Pairing near-equal AND at least one side on the selected eval family
+    # -> that side (or both, when they share the family) is extracted.
+    if near_equal_pair(wb, bb, path) and (_side_usable(wb, path)
+                                          or _side_usable(bb, path)):
+        return True
+    _note_skip(wb, bb, path)
+    return False
 
 
 def iter_game_blocks(text):
@@ -360,6 +441,19 @@ def extract_all(log_dirs):
     print(f"\nDone. {len(all_files)} files scanned, {files_used} usable, "
           f"{stats['games_used']:,} games parsed, "
           f"{len(samples):,} (cp, phase, result) samples extracted.")
+    if OTHER_FAMILY_PAIRS:
+        n = sum(OTHER_FAMILY_PAIRS.values())
+        print(f"  {n} in-era file(s) skipped: no '{EVAL_FAMILY}'-family side "
+              f"(eval scales are never pooled -- refit with --eval-family "
+              f"for the other corpus):")
+        for pair, k in sorted(OTHER_FAMILY_PAIRS.items(), key=lambda kv: -kv[1]):
+            print(f"      {k:>4}x  {pair}")
+    if UNRECOGNISED_BASES:
+        print("  WARNING -- current-era logs skipped on an UNRECOGNISED base. "
+              "If one of these is a real arm, teach eval_family() about it "
+              "or the corpus just shrank in silence:")
+        for base, k in sorted(UNRECOGNISED_BASES.items(), key=lambda kv: -kv[1]):
+            print(f"      {k:>4}x  {base}")
     for k, v in sorted(stats.items()):
         if k not in ("games_used", "samples_added"):
             print(f"  {k}: {v:,}")
@@ -536,9 +630,14 @@ def wdl(cp, phase):
 #  Main
 # ====================================================================== #
 def main():
-    global _MIN_C_ERA_SNAPSHOT, CENGINE_MIN_DATE
+    global _MIN_C_ERA_SNAPSHOT, CENGINE_MIN_DATE, EVAL_FAMILY
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--eval-family", choices=("hce", "nnue"), default=EVAL_FAMILY,
+                    help="which eval scale to fit (default: %(default)s). The "
+                         "two are never pooled; 'nnue' writes its own "
+                         "wdl_model_nnue.json instead of overwriting the "
+                         "hand-crafted-eval model the runtime loads")
     ap.add_argument("--min-era", type=int, default=None,
                     help="minimum engine<N> snapshot to accept (default "
                          "%d = the whole C era; pass 53 to restrict to the "
@@ -552,16 +651,27 @@ def main():
                     help="only extract + write the training CSV, skip fitting")
     ap.add_argument("--fit-only", action="store_true",
                     help=f"skip extraction, reuse an existing {DATA_CSV}")
-    ap.add_argument("--data-file", default=DATA_CSV,
-                    help=f"CSV path for extracted samples (default: {DATA_CSV})")
+    ap.add_argument("--data-file", default=None,
+                    help=f"CSV path for extracted samples (default: {DATA_CSV}, "
+                         "or wdl_training_data_<family>.csv)")
     args = ap.parse_args()
     if args.min_era is not None:
         _MIN_C_ERA_SNAPSHOT = args.min_era
     if args.cengine_since is not None:
         CENGINE_MIN_DATE = args.cengine_since or None
-    print(f"Corpus gate: engine<N> >= {_MIN_C_ERA_SNAPSHOT}"
+    EVAL_FAMILY = args.eval_family
+    # Per-family filenames: an NNUE fit must not land on top of the model
+    # match.py/uci.py load for the hand-crafted eval.
+    suffix = "" if EVAL_FAMILY == "hce" else f"_{EVAL_FAMILY}"
+    if args.data_file is None:
+        args.data_file = DATA_CSV.replace(".csv", f"{suffix}.csv")
+    model_name = f"wdl_model{suffix}.json"
+    print(f"Corpus gate: eval family '{EVAL_FAMILY}', engine<N> >= "
+          f"{_MIN_C_ERA_SNAPSHOT}"
           + (f", cengine logs on/after {CENGINE_MIN_DATE}"
-             if CENGINE_MIN_DATE else ", no cengine date gate"))
+             if CENGINE_MIN_DATE else ", no cengine date gate")
+          + (f", NNUE logs on/after {NNUE_MIN_DATE}"
+             if EVAL_FAMILY == "nnue" else ""))
 
     if args.fit_only:
         if not os.path.exists(args.data_file):
@@ -590,14 +700,19 @@ def main():
     # Machine-readable model for the runtime consumers (uci.py's UCI_ShowWDL
     # and match.py's adjudication) -- they load this file lazily and stay
     # dormant while it doesn't exist.
+    # ponytail: lib/wdl.py hardcodes wdl_model.json, so a _nnue model sits
+    # unread until something loads it. That wiring belongs to the release
+    # that makes USE_NNUE the default -- the runtime has one eval at a time,
+    # so lib/wdl.py picks a filename then, it doesn't need to hold both.
     import datetime
     import json
     model_path = os.path.join(os.path.dirname(os.path.dirname(
                                   os.path.abspath(__file__))), "data",
-                              "wdl_model.json")
+                              model_name)
     with open(model_path, "w", encoding="utf-8") as f:
         json.dump({
             "fitted": datetime.date.today().isoformat(),
+            "eval_family": EVAL_FAMILY,
             "n_samples": len(samples),
             "phase_max": PHASE_MAX,
             "phase_clamp_min": clamp_min,
