@@ -1032,6 +1032,26 @@ class Engine:
     # tree shape and fails in strength.
     TTPV_LMR = False
 
+    # FI-106 (R10): RAZORING -- the fail-LOW side, absent from Pygin entirely
+    # (0 refs before 2026-07-29). RFP covers fail-high, frontier futility
+    # covers single moves; nothing covered a node whose eval is so far BELOW
+    # alpha that no quiet move plausibly rescues it. A verifying QSEARCH
+    # confirms before anything is returned -- never a static score, because
+    # static forward pruning is what sank FI-18 and FI-23. 0 = node-exact;
+    # armed 400 (+250/ply, depth <= RAZOR_DEPTH).
+    #
+    # ABANDONED ON THE EBF GATE 2026-07-29, before any screen. It cuts nodes
+    # hard at FIXED DEPTH and makes the tree grow FASTER per ply:
+    #     off          bench 1,461,732   EBF 1.713
+    #     margin 400   bench 1,193,315   EBF 1.778  (+3.77%)
+    #     margin 600   bench 1,174,896   EBF 1.795  (+4.74%)
+    # A one-time saving that worsens the growth rate is the opposite of what
+    # razoring claims. Likely mechanism: early fail-low returns seed the TT
+    # with shallow bounds, so deeper nodes get worse information and re-search
+    # more. Mechanism kept at 0; do not re-arm without changing what it stores.
+    RAZOR_MARGIN = 0
+    RAZOR_DEPTH = 3
+
     # FB-48: contempt is ON by default and every rule draw routes through
     # draw_score -- insufficient material, 50-move, repetition, FI-29's cycle
     # gate, all three qsearch draws. Stalemate does NOT: all five in-tree
@@ -1256,6 +1276,7 @@ class Engine:
               self.KILLER_INHERIT, self.QUIET_MALUS_ALL, self.HIST_KEEP,
             self.QS_TTFIRST, self.REP_STRICT, self.QS_SEE_MARGIN,
             self.CUTNODE_LMR, self.TTPV_LMR,
+            self.RAZOR_MARGIN, self.RAZOR_DEPTH,
             self.SM_CONTEMPT,
               # FB-55: the guard covered 49 TOGGLES and not one EVAL VALUE --
               # a hole exactly where the .so-cross-contamination class bites.
@@ -1390,6 +1411,7 @@ class Engine:
         lib.set_qs_see_margin(int(self.QS_SEE_MARGIN))              # FI-90
         lib.set_cutnode_lmr(1 if self.CUTNODE_LMR else 0)           # FI-103
         lib.set_ttpv_lmr(1 if self.TTPV_LMR else 0)                 # FI-104
+        lib.set_razor(int(self.RAZOR_MARGIN), int(self.RAZOR_DEPTH))  # FI-106
         lib.set_sm_contempt(1 if self.SM_CONTEMPT else 0)           # FB-48
         # FB-04: entries scored under a PREVIOUS construction's eval params
         # would poison this one (the table is process-global and persistent).
