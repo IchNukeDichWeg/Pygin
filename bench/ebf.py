@@ -87,9 +87,9 @@ SUITE = [
 # `noprune` is the control hook -- it disables Pygin's pruning on a live handle.
 _CHILD = r'''
 import importlib.util, json, os, sys
-root, path, fen, depth, cpu, noprune = (
+root, path, fen, depth, cpu, noprune, arm = (
     sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]),
-    int(sys.argv[5]), int(sys.argv[6]))
+    int(sys.argv[5]), int(sys.argv[6]), sys.argv[7])
 sys.path[:0] = [root, os.path.join(root, "lib")]
 os.chdir(root)
 if cpu >= 0 and hasattr(os, "sched_setaffinity"):
@@ -98,6 +98,18 @@ if cpu >= 0 and hasattr(os, "sched_setaffinity"):
 import chess
 spec = importlib.util.spec_from_file_location("ebf_engine", path)
 mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+# --arm NAME=VALUE: set a class attr BEFORE construction. Every R10 item is a
+# toggle, and arming one on the B side is how the gate is run without staging
+# a whole directory. Set on the CLASS, not the instance: cengine pushes its
+# toggles to the .so during __init__, so an instance-level set lands too late.
+if arm:
+    _n, _, _v = arm.partition("=")
+    _val = {"1": True, "true": True, "0": False, "false": False}.get(_v.lower())
+    if _val is None:
+        _val = int(_v) if _v.lstrip("-").isdigit() else _v
+    if not hasattr(mod.Engine, _n):
+        sys.exit(f"--arm: {mod.Engine.__module__}.Engine has no attribute {_n!r}")
+    setattr(mod.Engine, _n, _val)
 eng = mod.Engine()
 eng.use_book = False
 try: eng.use_tb = False
@@ -139,9 +151,9 @@ def fit_ebf(rows, lo, hi):
     return math.exp(slope), r2, len(pts)
 
 
-def measure(engine_path, fen, depth, cpu=-1, noprune=0):
+def measure(engine_path, fen, depth, cpu=-1, noprune=0, arm=""):
     r = subprocess.run([sys.executable, "-c", _CHILD, _ROOT_, engine_path, fen,
-                        str(depth), str(cpu), str(noprune)],
+                        str(depth), str(cpu), str(noprune), arm],
                        capture_output=True, text=True, cwd=_ROOT_)
     line = next((l for l in r.stdout.splitlines() if l.startswith("EBF ")), None)
     if line is None:
@@ -149,11 +161,11 @@ def measure(engine_path, fen, depth, cpu=-1, noprune=0):
     return {int(k): v for k, v in json.loads(line[4:]).items()}
 
 
-def run_side(engine_path, depth, lo, cpu, noprune, label):
+def run_side(engine_path, depth, lo, cpu, noprune, label, arm=""):
     print(f"\n  {label}")
     ebfs, out = [], {}
     for name, fen in SUITE:
-        rows = measure(engine_path, fen, depth, cpu, noprune)
+        rows = measure(engine_path, fen, depth, cpu, noprune, arm)
         e, r2, n = fit_ebf(rows, lo, depth)
         top = rows.get(max(rows) if rows else 0, 0)
         if e is None:
@@ -214,6 +226,9 @@ def main():
     ap.add_argument("--control", action="store_true",
                     help="engine vs ITSELF with pruning disabled -- EBF must "
                          "rise sharply, or this instrument sees nothing")
+    ap.add_argument("--arm-b", default="",
+                    help="NAME=VALUE class attr armed on the B side only, e.g. "
+                         "CUTNODE_LMR=1 -- the usual way to gate an R10 toggle")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:
@@ -240,7 +255,9 @@ def main():
     med_a, _ = run_side(a.engine_a, a.depth, a.lo, a.cpu, 0, f"A = {a.engine_a}")
     if not a.engine_b:
         return 0
-    med_b, _ = run_side(a.engine_b, a.depth, a.lo, a.cpu, 0, f"B = {a.engine_b}")
+    med_b, _ = run_side(a.engine_b, a.depth, a.lo, a.cpu, 0,
+                        f"B = {a.engine_b}"
+                        + (f"  [armed {a.arm_b}]" if a.arm_b else ""), a.arm_b)
     delta = (med_b / med_a - 1.0) * 100.0
     print(f"\n  A {med_a:.3f}   B {med_b:.3f}   EBF change {delta:+.2f}%")
     if delta >= 0.0:
