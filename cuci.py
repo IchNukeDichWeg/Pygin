@@ -222,7 +222,8 @@ def run_bench(engine, depth=11):
                                      _py.DRAW_AVOID_MARGIN)  # host's value
 
 
-def _emit_multipv(engine, board, best_mv, k, budget, white_to_move, stop_evt):
+def _emit_multipv(engine, board, best_mv, k, budget, white_to_move,
+                  stop_evt, fixed_depth=None):
     """MultiPV k>1 (analysis feature, never active in match play): line 1 is
     the just-finished main search; lines 2..k re-search with the better
     lines' first moves EXCLUDED at the C root (root_exclude_*, abi 10) --
@@ -246,6 +247,16 @@ def _emit_multipv(engine, board, best_mv, k, budget, white_to_move, stop_evt):
           engine.on_final)
     engine.use_book = False              # book replies would shadow line 2+
     engine.on_depth = engine.on_final = None   # no per-depth spam for extras
+    # `go depth N` asks for depth N on EVERY line, not just line 1. The extras
+    # used to be time-sliced regardless -- (budget or 1.0)*0.25, i.e. 0.25s for
+    # a depth-limited go -- so `go depth 20` reported depth 20 for multipv 1 and
+    # depth 13 for 2..5, which is simply not what was asked for. `go depth 10`
+    # hid it: depth 10 fits inside the slice.
+    #
+    # It cannot key on `budget is None`: that is also true of `go infinite` and
+    # bare `go`, where max_depth is the 60 cap and depth-limiting the extras
+    # would search each to depth 60 and print nothing for minutes. So the go
+    # handler passes fixed_depth ONLY when the user named a depth.
     per = max(0.05, min(1.0, (budget or 1.0) * 0.25))  # per extra line
     try:
         for _ in range(k - 1):
@@ -256,7 +267,10 @@ def _emit_multipv(engine, board, best_mv, k, budget, white_to_move, stop_evt):
                 lib.root_exclude_add(m.from_square | (m.to_square << 6)
                                      | ((m.promotion or 0) << 12))
             t0 = _t.perf_counter()
-            mv = engine.get_best_move_timed(board, per, depth)
+            if fixed_depth is not None:
+                mv = engine.get_best_move(board, fixed_depth)
+            else:
+                mv = engine.get_best_move_timed(board, per, depth)
             dt = _t.perf_counter() - t0
             if mv is None:               # fewer legal moves than k
                 break
@@ -632,7 +646,9 @@ def main():
                         and engine.last_pv and not stop_evt.is_set()
                         and not engine._abort):
                     _emit_multipv(engine, search_board, mv, engine.multipv,
-                                  budget, white_to_move, stop_evt)
+                                  budget, white_to_move, stop_evt,
+                                  fixed_depth=(max_depth if "depth" in params
+                                               else None))
             except Exception as ex:
                 print(f"cuci: search error: {ex!r}", file=sys.stderr)
             finally:
