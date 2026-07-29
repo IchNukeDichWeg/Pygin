@@ -1,5 +1,5 @@
 {
- "decision": null,
+ "decision": "H1",
  "fingerprint": {
   "adjudicate": true,
   "book1": null,
@@ -32,14 +32,14 @@
   "time_ms": 1000,
   "wdl_sha": "50d4e3208fb8d303"
  },
- "llr": 2.488034868108756,
- "next_offset": 1020,
- "pairs": 1000,
+ "llr": 2.9464963394129913,
+ "next_offset": 1584,
+ "pairs": 1559,
  "penta": [
-  32,
-  204,
-  411,
-  285,
-  68
+  55,
+  328,
+  656,
+  420,
+  100
  ]
 }
