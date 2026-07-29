@@ -1784,7 +1784,11 @@ void cs_tt_reset(void)
 void set_tt_bits(int bits)
 {
     if (bits < 16) bits = 16;
-    if (bits > 28) bits = 28;                /* 28 = 6 GB of 24B entries */
+    /* 24B entries: 28 = 6.4 GB, 29 = 12.9 GB, 30 = 25.8 GB. Raised to 30 on
+     * 2026-07-30 so a 20 GB Hash request has somewhere to land. NOTE the size
+     * math is size_t/uint64_t throughout -- 2^30 * 24 exceeds 2^31, so an int
+     * here would overflow and calloc a fraction of the table. */
+    if (bits > 30) bits = 30;
     size_t n = (size_t)1 << bits;
     if (n == g_tt_size && g_tt) return;
     size_t old_size = g_tt_size;             /* FB-26: the comment promised */
@@ -4548,13 +4552,18 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
  * the shared lockless TT; every other piece of search state is __thread.
  * Helper results are discarded -- their value is the TT fill. */
 #include <pthread.h>
+/* Raised 256 -> 512 on 2026-07-30 (user request). The cap is load-bearing in
+ * three places that MUST agree: this clamp and the two fixed-size pool arrays
+ * below. A host asking for more than this gets clamped here rather than
+ * writing past g_pool_tid[]. */
+#define CS_MAX_THREADS 512
 static int g_threads = 1;
 static void pool_stop(void);            /* FB-51: defined with the pool */
 static int g_pool_n_peek(void);
 
 void set_threads(int n)
 {
-    g_threads = (n < 1) ? 1 : (n > 256 ? 256 : n);
+    g_threads = (n < 1) ? 1 : (n > CS_MAX_THREADS ? CS_MAX_THREADS : n);
     /* FB-51: a host that goes Threads 4 -> 1 used to strand the S-06 pool --
      * helpers stayed alive and parked for the process lifetime, because
      * cs_pool_shutdown() existed and nothing called it. Gated on the ACTUAL
@@ -4592,8 +4601,8 @@ typedef struct { Board b; int depth, hmc; uint32_t prev; } HelperArg;
 static pthread_mutex_t g_pool_mx = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  g_pool_go = PTHREAD_COND_INITIALIZER;
 static pthread_cond_t  g_pool_done = PTHREAD_COND_INITIALIZER;
-static pthread_t g_pool_tid[256];
-static HelperArg g_pool_arg[256];
+static pthread_t g_pool_tid[CS_MAX_THREADS];
+static HelperArg g_pool_arg[CS_MAX_THREADS];
 static int      g_pool_n     = 0;   /* threads alive */
 static int      g_pool_want  = 0;   /* helpers active this iteration */
 static int      g_pool_busy  = 0;   /* still running this generation */

@@ -1834,8 +1834,12 @@ def main():
     # be a refusal: pooling a 1-thread tranche with a 4-thread one, or two
     # different node budgets, is meaningless -- but it is the operator's call,
     # not the tool's.
-    if prior_runs:
-        prev = prior_runs[-1]
+    # The last record that actually CARRIES a config. A file may hold
+    # metadata-only entries (a hand-seeded pool documents itself with a note),
+    # and comparing against one of those silenced the check entirely -- the
+    # guard has to skip them, not take prior_runs[-1] on faith.
+    prev = next((r for r in reversed(prior_runs) if "engine1" in r), None)
+    if prev:
         moved = [(k, prev.get(k), this_run[k])
                  for k in ("engine1", "engine2", "mode", "smp", "seed",
                            "fen_file")
