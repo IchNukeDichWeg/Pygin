@@ -1162,21 +1162,15 @@ class Engine:
     # to want it): a visible in-file line, not a hidden env switch.
     NNUE_REQUIRE_SIMD = True
 
-    # FI-106 (SCREENED +26.63 +/- 15.3 @2,000 games, 2026-07-29 -- clears the
-    # +15 bar; nElo +40.40, Ptnml 32/204/411/285/68, pair ratio 1.50, LLR
-    # +2.488 of a +2.944 bound. Owes a TIMED cross-check before it ships: the
-    # mechanism is "go faster" and --nodes is the instrument that prices how
-    # much faster, so the two are not independent. The calibration read the
-    # lazy side at +14.2% NPS where a 40-position time-to-depth read +10.6%,
-    # which is ~4 Elo of overpayment in the same direction as the gap between
-    # the observed +26.63 and the +16.4 that pure speed predicts.)
-    # Lazy NNUE eval: when the
-    # free material+PST bound is already past a window edge by the margin, the
-    # search's question is settled and the net is never called. Only does
-    # anything with USE_NNUE on; OFF here, so the default build is node-exact.
-    # Margin 200cp comes from FI-105's measurement, not from taste: it skips
-    # 50.9% of NN evals for 1.72% landing on the wrong side of the window, the
-    # best ratio in that table. Retune it against a screen, not by feel.
+    # FI-106 (CONFIRMED 2026-07-30 -- SPRT ACCEPT H1 on a CLOCK, the
+    # independent instrument. engine_nnue_lazy vs Old Engine/55, 50s+0.20,
+    # arm64, 1,803 games: +33.83 +/- 16.2 Elo (54.85%), nElo +53.42, Ptnml
+    # 20/170/385/267/59, pair ratio 1.72, LLR +2.955 crossing +2.944.
+    # The bundle -- net + lazy eval -- is the ship candidate, and the timed
+    # run also settles the doubt I had about --nodes: two node-instrument
+    # readings (+5.70 net vs HCE, +26.63 lazy vs net) SUM to +32.33 against
+    # this +33.83, so the calibration was not overpaying the speed feature.
+    # A clock has no calibration to overpay with, which is why it was owed.)
     LAZY_NNUE = False
     LAZY_NNUE_MARGIN = 200
 

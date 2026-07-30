@@ -18,37 +18,41 @@ threat encoding (16 int8 aggregate scalars from one attack-union pass),
 net FT→2×256 → [512+16]→32→32→1, int16/int8 quantization QA=127/QB=64,
 `.nnue` format v1, `.pygdata` training data format v1.
 
-State (2026-07-28): POSITIVE and significant. 0.05 short of an SPRT accept.
+State (2026-07-30): SHIP CANDIDATE CONFIRMED. SPRT accept on a clock.
 
-  net   box   games    Elo             nElo     LLR      run
-  v1    Mac    2,000   +2.95 +/-15.2   +4.39    --       clean
-  v2a   Mac    2,000   -4.52 +/-15.2   -6.93    --       DRIFT-INVALID
-  v3    x86    2,000   -2.26 +/-15.2   -3.39    --       clean
-  v3    x86    8,827   +4.72 +/- 7.3   +7.06   +1.479    clean (tranche 1)
-  v3    x86    4,942   +7.45 +/- 9.7  +10.65   +1.415    clean (tranche 2)
-  v3    x86   13,769   +5.70 +/- 4.6   +8.62   +2.892    POOLED
+  what                        box    inst    games    Elo             verdict
+  v1 net vs HCE               Mac    nodes   2,000    +2.95 +/-15.2   null
+  v2a net vs HCE              Mac    nodes   2,000    -4.52 +/-15.2   DRIFT-INVALID
+  v3 net vs HCE               x86    nodes   2,000    -2.26 +/-15.2   null
+  v3 net vs HCE (pooled)      x86    nodes  13,769    +5.70 +/- 4.6   CI>0, 0.05 short
+  FI-106 lazy vs v3 net       Mac    nodes   2,000   +26.63 +/-15.3   clean screen
+  FI-106 lazy vs v3 net       Mac    nodes   1,122    +9.29 +/-20.4   DRIFT-INVALID
+  net+lazy vs HCE             Mac    CLOCK   1,803   +33.83 +/-16.2   ACCEPT H1
 
-Pooled ptnml 305/1,648/2,845/1,663,408 over 6,869 pairs, pair ratio 1.06,
-50.82%. The CI EXCLUDES ZERO (lower bound +1.1) -- the net is measurably
-stronger than the HCE. The GSPRT[0,4] LLR is +2.892 against a +2.944 accept
-bound: about 200 games short. Calibration held on both tranches (+0.30%,
-+0.02%).
+The last line is the one that decides it: the full bundle against the current
+engine, on the reference machine, at the ledger's own 50s+0.20 -- and on a
+CLOCK, which has no NPS calibration to get wrong. nElo +53.42, Ptnml
+20/170/385/267/59, pair ratio 1.72, LLR +2.955 past a +2.944 bound, stopped
+early. 95% lower bound +17.6.
 
-Both tranches were stopped early for cost, which does NOT contaminate the
-test -- an SPRT's stopping rule is the BOUND, so a short sample is just a
-short sample. Continuing with a third tranche pooled via --sprt-resume is the
-protocol, not sampling-to-significance.
+Three measurements agree across two instruments and two machines: the two
+node-instrument readings SUM to +32.33 (+5.70 net, +26.63 lazy) against the
+timed +33.83. That also kills the live suspicion that --nodes was overpaying
+lazy eval for its own speed -- had it been, the timed figure would have landed
+BELOW the sum.
 
-It does this while CONCEDING 30.6% of its nodes on that box. The Mac's
-deficit is 21.4%, worth ~+11 Elo at the measured 1.16 Elo/%NPS, so the same
-net projects to roughly +17 on arm64 -- untested, and worth testing before
-any ship decision.
+At +33.83 this is the second-largest gain the repo has recorded, behind v53's
+Texel retune (+37.52).
 
-The constraint remains speed, and the cheap wins are spent: the
-4-accumulator kernel and the d2=16 tail took the arm64 deficit 42.5% -> 21%.
-What is left is doing FEWER evaluations rather than cheaper ones (lazy NNUE
-eval, gated on a cheap material+PST bound the way qsearch already gates the
-HCE), which is the one remaining lever of that size.
+THE ARC, because it is the lesson: the evaluation was always worth ~+50 Elo.
+The node tax ate all but +5.70 of it. Lazy eval refunded most of the tax by
+NOT RUNNING THE NET where the answer was never in doubt. The eval was never
+the problem -- the price of consulting it was.
+
+Remaining before it ships: the snapshot ritual (defaults flip to USE_NNUE +
+LAZY_NNUE, FI-104 keeps non-SIMD hosts on the HCE), and a decision on
+refitting the WDL adjudication model for the NNUE cp scale
+(tuning/fit_wdl_model.py --nnue; 813,823 samples are already extracted).
 
 ## Layout
 
