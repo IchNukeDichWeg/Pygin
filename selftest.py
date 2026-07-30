@@ -924,6 +924,28 @@ if os.path.exists(_t_rep):
         check("FI-89: repetition rule agrees with the arbiter (REP_STRICT)",
               False, "timeout")
 
+# --- 5j3b. cuci.py's WDL constants match data/wdl_model.json ------------- #
+# cuci hardcodes the model because the PyInstaller binary ships without data/.
+# That is the right call and it has now drifted from the json THREE times,
+# each caught by eye a release or more later. The curves happened to agree to
+# 0.2pp the last time; that was luck, not a guarantee. Compare the numbers.
+try:
+    import json as _json
+    with open(os.path.join("data", "wdl_model.json"), encoding="utf-8") as _f:
+        _wm = _json.load(_f)
+    import cuci as _cu
+    _same = (_cu._WDL_AS == _wm["as"] and _cu._WDL_BS == _wm["bs"]
+             and _cu._WDL_PHASE_MAX == _wm["phase_max"]
+             and _cu._WDL_PHASE_CLAMP_MIN == _wm["phase_clamp_min"])
+    check("cuci WDL constants match data/wdl_model.json", _same,
+          "" if _same else
+          f"cuci as={_cu._WDL_AS[:2]}... json as={_wm['as'][:2]}... "
+          f"-- re-sync cuci.py (fit_wdl_model.py wrote the json)")
+except FileNotFoundError:
+    pass                                  # no json in this checkout: not a failure
+except Exception as _ex:                  # noqa: BLE001
+    check("cuci WDL constants match data/wdl_model.json", False, repr(_ex))
+
 # --- 5j4. WDL adjudication corpus + per-family model ---------------------- #
 # Both of these pin SILENT failures, which is exactly what a selftest is for.
 # The family guard exists because NNUE logs were dropped from the WDL fit with
