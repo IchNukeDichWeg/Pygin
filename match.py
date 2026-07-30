@@ -2380,6 +2380,16 @@ def main():
                 print(f"\nSPRT state written to: {sprt_resume_path} "
                       f"({sum(pooled):,} pooled pairs; next tranche must use "
                       f"--offset >= {next_off})")
+                # The state file lives on whatever box ran the tranche, and a
+                # rented VM has no git credentials -- setting them up per box
+                # is not a workflow anyone will keep doing. So print the state
+                # INLINE: the run summary is pasted anyway, and this one line
+                # is everything needed to rebuild the file elsewhere. Zero
+                # extra steps on the box, nothing to configure.
+                print(f"STATE-LINE {os.path.basename(sprt_resume_path)}: "
+                      f"penta {'/'.join(str(v) for v in pooled)} "
+                      f"pairs {sum(pooled)} next_offset {next_off} "
+                      f"llr {sprt_state.get('llr')}")
                 if push_state:
                     push_state_file(sprt_resume_path)
             except OSError as ex:
