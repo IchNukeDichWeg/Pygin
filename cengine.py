@@ -1059,20 +1059,36 @@ class Engine:
     # search at depth - PROBCUT_RED confirms, and a deeper TT bound vetoes.
     # 0 = off = node-exact; armed 200 at depth >= 5, reduction 4.
     #
-    # SCREENED NULL 2026-07-29: +2.90 +/- 8.8 over 6,000 games (three 2k
-    # screens, nodes 1.75M, pooled 2975.0/6000 for the baseline). The UPPER
-    # CI edge is +11.7, below the +15 screen gate, so no 10k confirm is owed.
+    # STATUS 2026-07-29 (live campaign, NOT closed): LLR +2.190 of +2.944
+    # under GSPRT[0, 4], pooled over 10,321 pairs / 20,642 games, point
+    # estimate +3.50 Elo. ~1,650 more pairs (~3,300 games, ~1.2 h) to the
+    # accept bound at the current slope. State: sprt_fi107b.json, next
+    # --offset 62358, candidate in slot 1 (cengine_pc.py).
     #
-    # It cut 21.6% of nodes at fixed depth and none of it converted. The EBF
-    # gate had said ABANDON (+0.91%) and was OVERRIDDEN on the argument that
-    # a flat slope with a large node cut is a CONSTANT FACTOR the gate cannot
-    # see. That argument was wrong. This is the gate's calibration point: it
-    # has now called FI-105, FI-106 and FI-107, and FI-107 is the one that was
-    # tested head-on after being overridden. Trust the gate; a future item
-    # that fails it does not need a screen to confirm the failure.
+    # The earlier "SCREENED NULL +2.90" line was WRONG twice over. The Elo was
+    # right, but (a) the +15 screen gate is triage, not the ship threshold --
+    # the ship threshold is the SPRT, and a true +3 sits BETWEEN the [0, 4]
+    # bounds, exactly the case a screen cannot resolve; and (b) the LLR quoted
+    # as ProbCut's (-1.989) was Engine 1's, and Engine 1 was the BASELINE
+    # because the A/B was launched with the candidate in slot 2. The bounds are
+    # not symmetric about the result, so that number was not ProbCut's LLR with
+    # a sign flipped -- ProbCut stood at +0.665 on the same games. Pooled, the
+    # baseline orientation "decided" ACCEPT H0 on a claim nobody had made.
     #
-    # Mechanism kept at 0. Do not re-arm without a different pruning rule --
-    # the margin/depth/reduction knobs are not the reason this read null.
+    # Trajectory, all in the candidate's orientation: screen 3,000 pairs
+    # +0.464 -> tranche 1 (5,000) pooled +1.128 -> tranche 2 partial (2,321)
+    # pooled +2.190. Monotone toward accept across three independent samples.
+    #
+    # Tranche 2 was stopped early and its END calibration read -5.00% drift.
+    # Discount it: the end bench runs while the worker pool is still live, and
+    # 0.9775 is not physically possible for this pair (ProbCut costs ~2.4% NPS,
+    # so as Engine 1 the ratio must exceed 1 -- the START read 1.0289, matching
+    # 1/0.976). The budgets came from the start value and were correct.
+    #
+    # Costs 2.4% NPS; -21.6% nodes at fixed depth (bench 1,145,629 vs
+    # 1,461,732). The EBF gate said ABANDON (+0.91%) and was overridden -- if
+    # this accepts, that override was right and the gate's one-sided rule needs
+    # re-reading for constant-factor changes.
     PROBCUT_MARGIN = 0
     PROBCUT_DEPTH = 5
     PROBCUT_RED = 4
