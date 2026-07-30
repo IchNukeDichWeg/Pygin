@@ -494,6 +494,15 @@ class Engine:
     #     + LMR_HIST  512   -3.32%   (much worse)
     # It claims better reductions and does not deliver them, so the one-sided
     # gate abandons it. This was R10's designated falsification point.
+    #
+    # SCREENED 2026-07-30 anyway, because the same gate produced a FALSE
+    # NEGATIVE on FI-107 (abandoned, then shipped at +4.11). Armed as
+    # CUTNODE_LMR + LMR_HIST 2048, without TTPV_LMR (+31.8% nodes on its own):
+    # -1.51 +/- 12.4 over 3,000 games, LLR -0.404 of -2.944. CLOSED here --
+    # a formal reject costs ~18,900 more games to prove a negative nobody
+    # would ship. The gate was right about this one; it is only discredited
+    # for constant-factor changes, which this is not.
+    # Finer-quiet-signal vein now 0-for-4 at this TC.
     LMR_HIST = 0
 
     # FI-25 TT-value pruning-eval sharpener: ARMED (fourteenth 50+0.20-era
