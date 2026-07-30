@@ -601,6 +601,61 @@ def fit_wdl_model(samples):
     return as_coef, bs_coef, per_phase, MIN_PHASE_FOR_FIT
 
 
+CUCI_CONSTS = {                       # family -> (as-name, bs-name) in cuci.py
+    "hce":  ("_WDL_AS", "_WDL_BS"),
+    "nnue": ("_WDL_AS_NNUE", "_WDL_BS_NNUE"),
+}
+
+
+def sync_cuci(root=None, families=("hce", "nnue")):
+    """Write the fitted coefficients from data/wdl_model*.json into cuci.py.
+
+    cuci HARDCODES the model because the PyInstaller binary ships without
+    data/. That is correct and it also meant a human had to copy four numbers
+    after every refit -- which was missed three times running, each caught by
+    eye a release later. The fit now does it.
+
+    Driven by the JSON rather than by in-memory coefficients so that
+    `--sync-only` can repair a drifted checkout without a 20-minute refit,
+    and so the file on disk is always the single source of truth.
+
+    Only families whose JSON exists are touched: an `--eval-family nnue` run
+    must not blank the hce constants."""
+    import json
+    root = root or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cuci = os.path.join(root, "cuci.py")
+    if not os.path.exists(cuci):
+        print("sync: no cuci.py here, skipping")
+        return []
+    with open(cuci, encoding="utf-8") as f:
+        src = f.read()
+    changed = []
+    for fam in families:
+        suffix = "" if fam == "hce" else f"_{fam}"
+        path = os.path.join(root, "data", f"wdl_model{suffix}.json")
+        if not os.path.exists(path):
+            continue
+        with open(path, encoding="utf-8") as f:
+            m = json.load(f)
+        a_name, b_name = CUCI_CONSTS[fam]
+        for name, vals in ((a_name, m["as"]), (b_name, m["bs"])):
+            new = f"{name} = {vals!r}"
+            pat = re.compile(rf"^{re.escape(name)} = \[.*?\]$", re.M)
+            if not pat.search(src):
+                print(f"sync: {name} not found in cuci.py -- skipped")
+                continue
+            if pat.search(src).group(0) != new:
+                src = pat.sub(lambda _m: new, src, count=1)
+                changed.append(name)
+    if changed:
+        with open(cuci, "w", encoding="utf-8") as f:
+            f.write(src)
+        print(f"sync: updated cuci.py -> {', '.join(changed)}")
+    else:
+        print("sync: cuci.py already matches the JSON models")
+    return changed
+
+
 def print_engine_snippet(as_coef, bs_coef, clamp_min, n_samples):
     def fmt(coefs):
         return ", ".join(f"{c:+.6f}" for c in coefs)
@@ -671,6 +726,14 @@ def main():
                     help="also require dev-build ('cengine') logs to be dated "
                          "on/after this, since the name alone cannot tell "
                          "one eval era from another (default: no date gate)")
+    ap.add_argument("--sync-only", action="store_true",
+                    help="do not fit: just write the coefficients already in "
+                         "data/wdl_model*.json into cuci.py, then exit")
+    ap.add_argument("--both", action="store_true",
+                    help="fit BOTH eval families in one run (hce then nnue), "
+                         "each into its own corpus and JSON. The NNUE model is "
+                         "written and synced but stays DORMANT until USE_NNUE "
+                         "is the default")
     ap.add_argument("--extract-only", action="store_true",
                     help="only extract + write the training CSV, skip fitting")
     ap.add_argument("--fit-only", action="store_true",
@@ -692,6 +755,9 @@ def main():
             ap.error("--nnue conflicts with --eval-family "
                      f"{args.eval_family}; pass only one")
         args.eval_family = "nnue"
+    if args.sync_only:
+        sync_cuci()
+        return
     EVAL_FAMILY = args.eval_family
     # Per-family filenames: an NNUE fit must not land on top of the model
     # match.py/uci.py load for the hand-crafted eval.
@@ -754,6 +820,10 @@ def main():
         }, f, indent=1)
     print(f"\nWrote {model_path} (consumed by uci.py UCI_ShowWDL and "
           "match.py adjudication).")
+    # The step that kept being forgotten. cuci hardcodes the model (the
+    # PyInstaller binary ships without data/), so a refit that does not reach
+    # cuci.py leaves the shipped engine on the old curve.
+    sync_cuci(families=(EVAL_FAMILY,))
 
 
 if __name__ == "__main__":
@@ -761,4 +831,19 @@ if __name__ == "__main__":
     # sample set here would overwrite the existing multi-million-row CSV
     # with a truncated one -- the destructive outcome, not the safe one.
     with interruptible.salvage():
-        main()
+        if "--both" in sys.argv:
+            # Each family needs its OWN corpus (different sides are
+            # extractable), so this is two full passes, not one fit reused.
+            # Run them as separate main() calls rather than threading a family
+            # loop through main's globals: EVAL_FAMILY and the filename suffix
+            # are module state, and re-entering cleanly beats mutating it.
+            base = [a for a in sys.argv[1:]
+                    if a != "--both" and not a.startswith("--eval-family")]
+            for _fam in ("hce", "nnue"):
+                print("\n" + "=" * 72)
+                print(f"  eval family: {_fam}")
+                print("=" * 72)
+                sys.argv = [sys.argv[0], "--eval-family", _fam] + base
+                main()
+        else:
+            main()
