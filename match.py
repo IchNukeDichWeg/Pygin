@@ -1110,7 +1110,7 @@ def calibrate_nodes(engine1, engine2, when):
             "spread": spread, "lines": lines}
 
 
-def calibration_drift(cal_start, cal_end):
+def calibration_drift(cal_start, cal_end, interrupted=False):
     """FI-101: did the host stay the same machine for the whole campaign?
 
     Compares the two RAW medians. Anything past the deadband means the budget
@@ -1128,6 +1128,19 @@ def calibration_drift(cal_start, cal_end):
         return []
     lines = [f"NPS calibration drift (FI-101): start {cal_start['raw']:.4f} -> "
              f"end {cal_end['raw']:.4f}  ({drift*100:+.2f}%)"]
+    if interrupted:
+        # The end bench runs BEFORE _shutdown_workers, so on an interrupted run
+        # it competes with up to N still-live engine processes mid-search. The
+        # reading is contended, not the host degrading -- and the START
+        # calibration is what actually set every budget, so a bogus end value
+        # must not be dressed up as "treat the Elo as suspect". Seen live: a
+        # Ctrl-C'd tranche read 1.0289 -> 0.9775 (-5.00%), where a ratio below
+        # 1.0 was not physically possible for that engine pair.
+        lines.append("  (run was INTERRUPTED: the end bench ran while the "
+                     "worker pool was still live, so this reading is "
+                     "contended. The START calibration set the budgets and is "
+                     "the one that matters.)")
+        return lines
     if abs(drift) > CAL_DEADBAND:
         lines.append(f"  ** WARNING: drift exceeds the {CAL_DEADBAND*100:.0f}% "
                      f"deadband. The node budgets were set for a machine this "
@@ -2304,7 +2317,8 @@ def main():
             try:
                 print("Re-measuring the NPS calibration (FI-101)...")
                 cal_lines = calibration_drift(
-                    cal_start, calibrate_nodes(engine1, engine2, "end"))
+                    cal_start, calibrate_nodes(engine1, engine2, "end"),
+                    interrupted=interrupted)
             except Exception as ex:
                 cal_lines = [f"NPS calibration drift (FI-101): "
                              f"end-of-run measurement failed -- {ex}"]
