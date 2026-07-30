@@ -1,14 +1,14 @@
 {
  "decision": null,
- "llr": null,
- "next_offset": 60000,
- "pairs": 8000,
+ "llr": 2.1897386756453363,
+ "next_offset": 62358,
+ "pairs": 10321,
  "penta": [
-  382,
-  1922,
-  3323,
-  1933,
-  440
+  495,
+  2503,
+  4209,
+  2527,
+  587
  ],
  "runs": [
   {
@@ -92,6 +92,18 @@
   },
   {
    "seed_note": "SEEDED BY HAND, not played. penta is the sum of the four runs above, in cengine_pc-as-Engine-1 orientation (the reverse of how they printed). next_offset is set to 60000: the three screens' ranges are unknown, so everything below 60000 is treated as consumed -- conservative in the safe direction. LLR from these counts is +1.128 of +2.944 under [0, 4]."
+  },
+  {
+   "engine1": "cengine_pc",
+   "engine2": "cengine",
+   "fen_file": "UHO_4060_v4.epd",
+   "mode": "nodes 1750000/move (NPS-calibrated)",
+   "offset": 60000,
+   "positions": 5000,
+   "positions_played": 2358,
+   "seed": 55,
+   "smp": 1,
+   "started": "2026-07-29 23:10:34"
   }
  ]
 }
