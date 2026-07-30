@@ -1059,37 +1059,18 @@ class Engine:
     # search at depth - PROBCUT_RED confirms, and a deeper TT bound vetoes.
     # 0 = off = node-exact; armed 200 at depth >= 5, reduction 4.
     #
-    # STATUS 2026-07-29 (live campaign, NOT closed): LLR +2.190 of +2.944
-    # under GSPRT[0, 4], pooled over 10,321 pairs / 20,642 games, point
-    # estimate +3.50 Elo. ~1,650 more pairs (~3,300 games, ~1.2 h) to the
-    # accept bound at the current slope. State: sprt_fi107b.json, next
-    # --offset 62358, candidate in slot 1 (cengine_pc.py).
+    # CONFIRMED 2026-07-30, SPRT ACCEPT: +4.11 Elo over 21,806 games
+    # (10,903 pairs), GSPRT[0,4] LLR +2.971 -> ACCEPT H1. Fourth SPRT accept
+    # in the program's history, and the first pruning MECHANISM to pay since
+    # the search lane was declared exhausted.
     #
-    # The earlier "SCREENED NULL +2.90" line was WRONG twice over. The Elo was
-    # right, but (a) the +15 screen gate is triage, not the ship threshold --
-    # the ship threshold is the SPRT, and a true +3 sits BETWEEN the [0, 4]
-    # bounds, exactly the case a screen cannot resolve; and (b) the LLR quoted
-    # as ProbCut's (-1.989) was Engine 1's, and Engine 1 was the BASELINE
-    # because the A/B was launched with the candidate in slot 2. The bounds are
-    # not symmetric about the result, so that number was not ProbCut's LLR with
-    # a sign flipped -- ProbCut stood at +0.665 on the same games. Pooled, the
-    # baseline orientation "decided" ACCEPT H0 on a claim nobody had made.
-    #
-    # Trajectory, all in the candidate's orientation: screen 3,000 pairs
-    # +0.464 -> tranche 1 (5,000) pooled +1.128 -> tranche 2 partial (2,321)
-    # pooled +2.190. Monotone toward accept across three independent samples.
-    #
-    # Tranche 2 was stopped early and its END calibration read -5.00% drift.
-    # Discount it: the end bench runs while the worker pool is still live, and
-    # 0.9775 is not physically possible for this pair (ProbCut costs ~2.4% NPS,
-    # so as Engine 1 the ratio must exceed 1 -- the START read 1.0289, matching
-    # 1/0.976). The budgets came from the start value and were correct.
-    #
-    # Costs 2.4% NPS; -21.6% nodes at fixed depth (bench 1,145,629 vs
-    # 1,461,732). The EBF gate said ABANDON (+0.91%) and was overridden -- if
-    # this accepts, that override was right and the gate's one-sided rule needs
-    # re-reading for constant-factor changes.
-    PROBCUT_MARGIN = 0
+    # It was nearly lost twice: the EBF gate said ABANDON (+0.91%) -- a FALSE
+    # NEGATIVE, because the gate reads the tree's SLOPE and this is a constant
+    # factor (-21.6% nodes at fixed depth, flat growth rate) -- and I then read
+    # the SPRT's LLR off the wrong engine and closed it as null. Both are
+    # written up in the memory; the operative lesson for this file is that the
+    # +15 screen gate is TRIAGE, not the ship threshold.
+    PROBCUT_MARGIN = 200
     PROBCUT_DEPTH = 5
     PROBCUT_RED = 4
 
