@@ -940,7 +940,18 @@ try:
     check("cuci WDL constants match data/wdl_model.json", _same,
           "" if _same else
           f"cuci as={_cu._WDL_AS[:2]}... json as={_wm['as'][:2]}... "
-          f"-- re-sync cuci.py (fit_wdl_model.py wrote the json)")
+          f"-- run `python3 tuning/fit_wdl_model.py --sync-only`")
+    # The NNUE pair is DORMANT (nothing reads it while USE_NNUE is False) but
+    # is still pinned: an unread constant that has silently drifted is worse
+    # than one that was never there, because the switch-on looks safe.
+    _np = os.path.join("data", "wdl_model_nnue.json")
+    if os.path.exists(_np):
+        with open(_np, encoding="utf-8") as _f:
+            _wn = _json.load(_f)
+        _nsame = (_cu._WDL_AS_NNUE == _wn["as"] and _cu._WDL_BS_NNUE == _wn["bs"])
+        check("cuci NNUE WDL constants match data/wdl_model_nnue.json (dormant)",
+              _nsame, "" if _nsame else
+              "-- run `python3 tuning/fit_wdl_model.py --sync-only`")
 except FileNotFoundError:
     pass                                  # no json in this checkout: not a failure
 except Exception as _ex:                  # noqa: BLE001
