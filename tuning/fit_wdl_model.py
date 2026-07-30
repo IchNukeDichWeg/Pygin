@@ -72,8 +72,15 @@ import interruptible
 # ====================================================================== #
 #  CONFIG
 # ====================================================================== #
-LOG_DIRS = ["New logs", "logs"]
-DATA_CSV = "wdl_training_data.csv"
+# Anchored to the REPO, not the cwd. These used to be bare relative names, so
+# running the script from inside tuning/ scanned tuning/New logs -- which does
+# not exist -- and reported "0 files scanned, 0 usable, nothing to fit". That
+# reads as "there is no data for this family", which is a different and much
+# more alarming statement than "you are in the wrong directory". The fitted
+# model was already written repo-relative via __file__; these now match it.
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOG_DIRS = [os.path.join(_REPO, "New logs"), os.path.join(_REPO, "logs")]
+DATA_CSV = os.path.join(_REPO, "wdl_training_data.csv")
 
 # Mirrors engine.py's PHASE_WEIGHTS / PHASE_MAX (engine.py:816-820) exactly:
 # knights+bishops weight 1, rooks weight 2, queens weight 4, capped at 24.
@@ -417,9 +424,21 @@ def extract_all(log_dirs):
     samples = []
     stats = defaultdict(int)
     all_files = []
+    missing = []
     for d in log_dirs:
+        if not os.path.isdir(d):
+            missing.append(d)
+            continue
         all_files.extend(sorted(glob.glob(os.path.join(d, "*.txt"))))
-    print(f"Scanning {len(all_files)} log files across {log_dirs} ...")
+    # Say it. An empty scan and an absent directory produce the same "0 usable"
+    # ending, and only one of them means what it looks like.
+    for d in missing:
+        print(f"  !! no such log directory: {d}")
+    if not all_files:
+        print(f"  !! nothing to scan -- 'no usable samples' below would be "
+              f"about the SEARCH PATH, not about the corpus")
+    print(f"Scanning {len(all_files)} log files across "
+          f"{[os.path.relpath(d, _REPO) for d in log_dirs]} ...")
 
     files_used = 0
     for path in all_files:
