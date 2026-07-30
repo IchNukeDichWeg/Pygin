@@ -1101,6 +1101,26 @@ class Engine:
     # gate rather than carried on Board: FI-31's incremental key would add 8
     # bytes to a struct copied at every node, an NPS cost paid even when this
     # is off. Dormant here costs nothing.
+    # CLOSED PRE-SCREEN 2026-07-30, no server time spent. The dispute
+    # resolves in P-42's favour (it measured -16.4 in the Python engine).
+    #
+    #   uncapped (+-512cp)  -25.5% nodes, tactics 289 -> 277  (-12)
+    #   capped at 64cp      +4.9% nodes,  tactics 289 -> 284  (-5)
+    #
+    # The -25.5% was not the mechanism working, it was over-pruning driven by
+    # an absurd clamp: a historical average was allowed to move prune_eval by
+    # half a queen, and all four consumers prune on it at once. Bounded
+    # sanely, the correction is BIDIRECTIONAL and costs 4.9% MORE nodes while
+    # still losing 5 tactical positions -- worse than baseline on both axes,
+    # so there is no path to positive Elo (cf. FI-49, rejected at -3.65 for a
+    # node cost alone). Fifth item closed pre-A/B on measurement.
+    #
+    # WHY IT DOES NOT PAY HERE, which is the transferable part: correction
+    # history corrects SYSTEMATIC eval bias. v53's Texel retune refitted 44
+    # scalars against game results on Pygin's own self-play -- which is
+    # precisely the procedure that removes systematic bias. There is little
+    # left for the table to learn. Do not retry unless the eval changes
+    # family (an NNUE net would be a different eval, and the argument resets).
     CORR_HIST = False
     CORR_CAP = 64          # max cp the correction may move prune_eval
 
