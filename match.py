@@ -13,6 +13,10 @@ Usage::
                                                                works, but this wins and is unambiguous. The
                                                                range is printed at the start, in the log
                                                                header and in the closing summary.)
+                     [--push-state]                           (git add+commit+push the state file when the
+                                                               run ends -- the campaign lives in git, the
+                                                               rented box is disposable. Silent no-op without
+                                                               a repo/remote/credentials.)
                      [--seed S]                               (SUBSET_SEED for the pool shuffle; "none" =
                                                                unshuffled. The pool is shuffled BEFORE it is
                                                                sliced, so the same offset under a different
@@ -388,6 +392,35 @@ def sprt_resume_save(path, penta, next_offset, sprt_state, runs):
 
 # How often the state file is refreshed mid-run, in completed GAMES.
 SAVE_EVERY = 50
+
+
+def push_state_file(path):
+    """Commit+push the state file from whatever box the campaign ran on.
+
+    A campaign spans machines: the state file IS the campaign and the rented
+    box is disposable. A tranche played on box A and left only on box A means
+    box B resumes from a stale pool and silently discards real games -- which
+    nearly cost 2,321 pairs of a 21,806-game verdict.
+
+    Best-effort and silent about the boring failures: no git, no remote, no
+    credentials on a fresh rental, nothing to commit. Never raises -- this runs
+    next to the summary, and the summary is the point of the run. Adds ONLY the
+    state file, never -A, so it cannot sweep up unrelated edits."""
+    import subprocess
+    name = os.path.basename(path)
+    try:
+        run = lambda *a: subprocess.run(a, capture_output=True, text=True,
+                                        timeout=120,
+                                        cwd=os.path.dirname(os.path.abspath(path)) or ".")
+        if run("git", "rev-parse", "--git-dir").returncode != 0:
+            return                                  # not a repo; nothing to do
+        run("git", "add", "--", path)
+        run("git", "commit", "-m", f"{name}: tranche state")
+        r = run("git", "push")
+        print(f"State pushed to git: {name}" if r.returncode == 0 else
+              f"State NOT pushed ({name}): {r.stderr.strip().splitlines()[-1] if r.stderr.strip() else 'push failed'}")
+    except Exception as ex:
+        print(f"State NOT pushed ({name}): {ex!r}")
 
 
 # ====================================================================== #
@@ -1545,6 +1578,7 @@ def main():
     sprt_alpha, sprt_beta = 0.05, 0.05
     sprt_model = "normalized"
     sprt_resume_path = None    # FI-82: pooled-tranche state file
+    push_state = False         # --push-state
     campaign_tag = None        # --tag: names the state file explicitly
     offset_opt = None          # --offset (overrides the 4th positional)
     seed_opt = None            # --seed
@@ -1629,6 +1663,9 @@ def main():
         elif argv[i] == "--seed" and i + 1 < len(argv):
             seed_opt = argv[i + 1].strip()      # "none"/"off" = unshuffled
             i += 2
+        elif argv[i] == "--push-state":
+            push_state = True                   # git add+commit+push the state
+            i += 1                              # file when the run ends
         elif argv[i] == "--tag" and i + 1 < len(argv):
             campaign_tag = re.sub(r"[^A-Za-z0-9._-]", "_", argv[i + 1].strip())
             i += 2
@@ -2343,6 +2380,8 @@ def main():
                 print(f"\nSPRT state written to: {sprt_resume_path} "
                       f"({sum(pooled):,} pooled pairs; next tranche must use "
                       f"--offset >= {next_off})")
+                if push_state:
+                    push_state_file(sprt_resume_path)
             except OSError as ex:
                 print(f"\n!! could not write SPRT state {sprt_resume_path!r}: "
                       f"{ex}  (the ptnml above is the recovery path)")
