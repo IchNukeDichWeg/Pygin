@@ -87,6 +87,14 @@ def main():
     print(f"dot kernel compiled into this build: {kern}\n")
     print(f"{'position':<12}{'forward':>10}{'threats':>10}{'tail':>10}"
           f"{'refresh':>10}{'increm':>10}   threats% of forward")
+    # WARM-UP, discarded. The first timed position used to absorb the cost of
+    # faulting in the weights and filling the caches: on the Mac it read 368n
+    # against ~192n for every other position, a 90% overstatement that looked
+    # exactly like a position-dependent result. Same lesson as the NPS work --
+    # round 1 is not data. Cheap: 1% of one position's iterations.
+    _wb = chess.Board(POSITIONS[0][1])
+    lib.nnue_profile(*bargs(_wb), max(1000, args.iters // 100), buf)
+
     for name, fen in POSITIONS:
         b = chess.Board(fen)
         if lib.nnue_profile(*bargs(b), args.iters, buf) != 0:

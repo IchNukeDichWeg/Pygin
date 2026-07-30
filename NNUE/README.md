@@ -54,6 +54,26 @@ LAZY_NNUE, FI-104 keeps non-SIMD hosts on the HCE), and a decision on
 refitting the WDL adjudication model for the NNUE cp scale
 (tuning/fit_wdl_model.py --nnue; 813,823 samples are already extracted).
 
+OPEN LEAD (2026-07-30): the AVX2 tail is 27% off its own machine's pace.
+
+Same net, same profiler, both machines, steady-state positions only:
+
+  stage         Mac (neon)   x86 (avx2+vnni)   x86/Mac
+  threats             17n              44n      2.54x
+  refresh            342n             879n      2.57x
+  incremental         22n              54n      2.48x
+  TAIL               167n             536n      3.21x
+
+Every stage except the tail runs ~2.5x slower on the Xeon, which is just the
+machine. The tail runs 3.21x -- 27% off the pace that machine sets everywhere
+else. The NEON tail got a four-accumulator rewrite that nearly doubled it; the
+AVX2 path was written once and never given the same scrutiny.
+
+At machine pace the x86 tail would be 423n, not 536n: forward 607n -> 493n
+(-18.7%), the net's x86 NPS deficit 30.6% -> ~24.9% (arm64 is at 21.4%), worth
+~+6.6 Elo there. That is roughly two thirds of the measured arm64-vs-x86 gap
+turning out to be a fixable kernel problem rather than an architectural fact.
+
 ## Layout
 
 | file | what |
