@@ -2723,6 +2723,59 @@ void set_razor(int margin, int depth)
     g_razor_depth  = depth  < 1 ? 1 : depth;
 }
 
+/* FI-109: CORRECTION HISTORY. The static eval is systematically wrong in
+ * ways that repeat: for a given pawn structure it reliably reads high or low
+ * against what the search then proves. Track that per (side, pawn key) and
+ * correct prune_eval before every pruning decision that consumes it -- so RFP,
+ * razoring, futility and the null-move gate all improve from one signal. This
+ * is the "one signal, many consumers" shape, and prune_eval (FI-25) is already
+ * the single place they all read.
+ *
+ * DISPUTED, and the dispute is the point: P-42 measured this idea at -16.4 in
+ * the Python engine at depth ~8. The counter-argument is that FI-25 (+13.52)
+ * since proved the prune_eval slot pays in the C core. The screen settles it.
+ *
+ * The pawn key is computed FROM SCRATCH inside the gate, not carried on Board.
+ * FI-31's incremental key would add 8 bytes to a struct copied at every node,
+ * i.e. an NPS cost paid even with this off. From-scratch costs exactly nothing
+ * when dormant and is node-exact by construction; if the screen pays, the
+ * incremental key is the obvious follow-up.
+ *
+ * 0 = off = node-exact. Armed: 1 (the divisor is CORR_GRAIN, not this). */
+#define CORR_BITS  14
+#define CORR_SIZE  (1 << CORR_BITS)
+#define CORR_GRAIN 32                      /* stored in cp * CORR_GRAIN */
+#define CORR_MAX   (512 * CORR_GRAIN)      /* clamp: +-512 cp */
+static int g_corr_hist = 0;
+static int g_corr_cap  = 64;   /* max cp the correction may move prune_eval */
+static __thread int16_t g_corr[2][CORR_SIZE];
+void set_corr_hist(int v, int cap)
+{
+    g_corr_hist = v ? 1 : 0;
+    g_corr_cap  = cap < 1 ? 1 : cap;
+}
+
+static inline uint64_t pawn_key(const Board* b)
+{
+    uint64_t k = 0;
+    for (int c = 0; c < 2; c++)
+        for (uint64_t t = b->pawns & b->occ[c]; t; t &= t - 1)
+            k ^= Z_PSQ[c][PT_PAWN][__builtin_ctzll(t)];
+    return k;
+}
+
+/* EWMA toward the observed (search - static) gap, weighted by depth: a
+ * depth-12 disagreement is better evidence than a depth-4 one. */
+static inline void corr_update(const Board* b, int diff, int depth)
+{
+    int16_t* e = &g_corr[b->turn][pawn_key(b) & (CORR_SIZE - 1)];
+    int w = depth > 16 ? 16 : depth;
+    int v = ((int)*e * (256 - w * 8) + diff * CORR_GRAIN * (w * 8)) / 256;
+    if (v >  CORR_MAX) v =  CORR_MAX;
+    if (v < -CORR_MAX) v = -CORR_MAX;
+    *e = (int16_t)v;
+}
+
 /* FI-107 (R10): ProbCut -- absent entirely, and one of Stockfish's biggest
  * node savers. The fail-HIGH mirror of FI-106: if a SHALLOW search at a
  * window well ABOVE beta still fails high, the full-depth search almost
@@ -3980,6 +4033,20 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             prune_eval = tt_sh_val;
     }
 
+    /* FI-109: correct the static eval with what the search has historically
+     * proved about this pawn structure, BEFORE any consumer reads it. */
+    if (g_corr_hist && prune_eval > -MATE_THRESH && prune_eval < MATE_THRESH) {
+        int cv = g_corr[b->turn][pawn_key(b) & (CORR_SIZE - 1)] / CORR_GRAIN;
+        /* Bound what a HISTORICAL average may do to a CONCRETE eval. The
+         * stored EWMA is allowed to range far (it is a measurement), but
+         * applying +-512cp to prune_eval hands the pruners a number the
+         * position never earned -- and every consumer of prune_eval prunes on
+         * it at once, so the error is amplified four ways. */
+        if (cv >  g_corr_cap) cv =  g_corr_cap;
+        if (cv < -g_corr_cap) cv = -g_corr_cap;
+        prune_eval += cv;
+    }
+
     /* --- pre-move pruning (non-PV, not in check) ------------------- */
     if (g_prune && !is_pv && !in_chk && abs(beta) < MATE_THRESH) {
         /* reverse futility / static null-move (P-04: an improving node
@@ -4307,6 +4374,31 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         /* FI-48: flag hoisted above the replace test (the shield needs it). */
         int flag = (best <= alpha_orig) ? TT_UPPER
                  : (best >= beta)       ? TT_LOWER : TT_EXACT;
+        /* FI-109: this node just PROVED a value. Where it disagrees with the
+         * static eval, that disagreement is the signal -- learn it against
+         * this pawn structure. EXACT only: a bound is not a measurement. Depth
+         * >= 4 so shallow noise is not learned. `want_eval` is required
+         * because static_eval is a SENTINEL 0 when the node never evaluated
+         * (in check, or a PV node without improving) -- learning from that
+         * would poison the table with fake -eval-sized gaps. `lazy_used`
+         * excludes FI-106's bound, which is also not a measurement.
+         * Fires on resolution, not on winning the replacement race.
+         *
+         * NOT "EXACT stores only", which is what FI-36 specified: TT_EXACT
+         * needs alpha_orig < best < beta, i.e. a full window, i.e. a PV node
+         * -- and want_eval is (!is_pv || g_improving) with g_improving 0 by
+         * default, so it is FALSE at exactly those nodes. The two conditions
+         * are mutually exclusive under the shipped defaults and the spec's
+         * version measured as a DEAD GATE (bench byte-identical). */
+        if (g_corr_hist && depth >= 4 && want_eval && !lazy_used
+                && best > -MATE_THRESH && best < MATE_THRESH
+                /* The bound must be INFORMATIVE in the direction of the gap:
+                 * a fail-high proves only a lower bound, so it cannot testify
+                 * that the search came in BELOW the static eval, and vice
+                 * versa. This is Stockfish's rule. */
+                && ((best < static_eval && flag != TT_LOWER)
+                    || (best > static_eval && flag != TT_UPPER)))
+            corr_update(b, best - static_eval, depth);
         int replace = (cur_key == key)
                     ? (TT_DEPTH(cur) <= depth
                        && !tt_exact_shield(cur, depth, flag))   /* FI-48 */
@@ -4851,7 +4943,9 @@ int cs_rep_probe(const uint64_t* path, int ply, const uint64_t* hist,
     return r;
 }
 
-int csearch_abi(void) { return 35; }  /* 35 = FI-103/104/106/107
+int csearch_abi(void) { return 36; }  /* 36 = FI-109 set_corr_hist
+                                       *      (correction history);
+                                       * 35 = FI-103/104/106/107
                                        *      set_cutnode_lmr / set_ttpv_lmr /
                                        *      set_razor / set_probcut. ONE bump
                                        *      for four exports: none of them

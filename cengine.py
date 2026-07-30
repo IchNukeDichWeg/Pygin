@@ -1079,6 +1079,31 @@ class Engine:
     # the SPRT's LLR off the wrong engine and closed it as null. Both are
     # written up in the memory; the operative lesson for this file is that the
     # +15 screen gate is TRIAGE, not the ship threshold.
+    # FI-109 (R10, the last item): CORRECTION HISTORY. Static eval is
+    # systematically wrong in ways that REPEAT -- for a given pawn structure it
+    # reads reliably high or low against what the search then proves. Track
+    # that per (side, pawn key) as a depth-weighted EWMA and add it to
+    # prune_eval, so RFP, razoring, futility and the null-move gate all get a
+    # better number from ONE signal.
+    #
+    # DISPUTED and that is the point: P-42 measured this at -16.4 in the Python
+    # engine at depth ~8. The counter is that FI-25 (+13.52) since proved the
+    # prune_eval slot pays in the C core. Pre-registered as a 2k screen.
+    #
+    # It earns a build despite R10's abandonment rule (FI-105 read null, which
+    # by that rule closes the section) because R10's items split by CATEGORY,
+    # not by lane: missing-context-SIGNAL items went 0-for-3 (FI-103/104/105),
+    # while ABSENT MECHANISMS went 1-for-2 and the winner was FI-107 at +11.44
+    # -- shipped with both signal toggles OFF, so it never needed the
+    # prerequisites R10 claimed. This is the last absent mechanism in the file.
+    #
+    # 0 = off = node-exact. The pawn key is computed from scratch inside the
+    # gate rather than carried on Board: FI-31's incremental key would add 8
+    # bytes to a struct copied at every node, an NPS cost paid even when this
+    # is off. Dormant here costs nothing.
+    CORR_HIST = False
+    CORR_CAP = 64          # max cp the correction may move prune_eval
+
     PROBCUT_MARGIN = 200
     PROBCUT_DEPTH = 5
     PROBCUT_RED = 4
@@ -1264,7 +1289,7 @@ class Engine:
         lib = ctypes.CDLL(os.path.join(_DIR, self.CSEARCH_SO))
         # BUG-04: must match the NEWEST abi whose exports this file calls
         # (abi 35 = FI-103/104/106/107 set_cutnode_lmr/ttpv_lmr/razor/probcut) -- bump with csearch_abi.
-        if lib.csearch_abi() < 35:
+        if lib.csearch_abi() < 36:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -1314,6 +1339,7 @@ class Engine:
             self.CUTNODE_LMR, self.TTPV_LMR,
             self.RAZOR_MARGIN, self.RAZOR_DEPTH,
             self.PROBCUT_MARGIN, self.PROBCUT_DEPTH, self.PROBCUT_RED,
+            self.CORR_HIST, self.CORR_CAP,
             self.SM_CONTEMPT,
               # FB-55: the guard covered 49 TOGGLES and not one EVAL VALUE --
               # a hole exactly where the .so-cross-contamination class bites.
@@ -1451,6 +1477,8 @@ class Engine:
         lib.set_razor(int(self.RAZOR_MARGIN), int(self.RAZOR_DEPTH))  # FI-106
         lib.set_probcut(int(self.PROBCUT_MARGIN), int(self.PROBCUT_DEPTH),
                         int(self.PROBCUT_RED))               # FI-107
+        lib.set_corr_hist(1 if self.CORR_HIST else 0,
+                          int(self.CORR_CAP))                       # FI-109
         lib.set_sm_contempt(1 if self.SM_CONTEMPT else 0)           # FB-48
         # FB-04: entries scored under a PREVIOUS construction's eval params
         # would poison this one (the table is process-global and persistent).
