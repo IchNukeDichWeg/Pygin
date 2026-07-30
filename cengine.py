@@ -555,6 +555,28 @@ class Engine:
     # each doubling, so 24 (384 MB) would gain ~+1.5 = sub-noise; not worth
     # a campaign (RAM would still fit at ~85 GB). The UCI Hash option (cuci)
     # maps MB onto this; a resize wipes the table. 22 = v46 exact.
+    #
+    # RE-EXAMINED 2026-07-30 and the verdict STANDS, but the note above lacked
+    # the counter-argument, so here it is measured. Warm table across a real
+    # game at 1.4s/move (the 50+0.20 operating point), hashfull in permille:
+    #
+    #             ply 8   ply 16   ply 24   ply 32   ply 40
+    #   192 MB      833      974      995     1000     1000
+    #   768 MB      329      564      721      813      886
+    #
+    # 192 MB is FULLY SATURATED from move 16 and stays full for the rest of
+    # every game -- every store after that evicts something. A cold search
+    # hides this completely (bench hashfull reads 17 permille), which is why
+    # it had never been seen.
+    #
+    # It still does not justify a raise, for a reason that is about the
+    # HARNESS rather than the engine: match.py runs TWO engine processes per
+    # worker and each allocates its own table, so the default is multiplied by
+    # 2N. At 111 workers, 768 MB is 170 GB and 384 MB is 85 GB; on a 16 GB
+    # laptop 768 MB caps local runs at ~5 workers instead of ~20. Measuring a
+    # ~+1.5 item would cost a 4x slower campaign. Hash is exposed over UCI up
+    # to 20 GB -- serious long games set it there, which is the right place
+    # for this knob to live.
     TT_BITS = 23
 
     # Simplify-at-500 (v30's use_simplify ported: material-diff bonus past a

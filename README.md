@@ -269,7 +269,7 @@ GUI options:
 | Option | Type | Default | Range | Purpose |
 |:-------|:-----|--------:|:------|:--------|
 | `Threads` | spin | 1 | 1–512 | Lazy-SMP search threads. The ceiling is a limit, not advice: set it above your PHYSICAL core count and threads timeshare cores, which costs strength rather than adding it |
-| `Hash` | spin | 192 | 2–20480 | Transposition-table size (MB); resize wipes the table. The table is a power of two of 24-byte entries, so a request lands on the largest such size ≤ it (20480 → 12288) and an info string says so |
+| `Hash` | spin | 192 | 2–20480 | Transposition-table size (MB); resize wipes the table. The table is a power of two of 24-byte entries, so a request lands on the largest such size ≤ it (20480 → 12288) and an info string says so. **Raise it for long games or analysis:** at 50+0.20 the default fills completely by move 16 and every later store evicts something. The default is deliberately modest because A/B harnesses run two engine processes per worker, each allocating its own table |
 | `MultiPV` | spin | 1 | 1–20 | PV lines reported. >1 is an analysis mode: it bypasses the book and is never active in match play |
 | `OwnBook` | check | true | — | Use opening book |
 | `BookFile` | string |  | — | Path to Polyglot `.bin` book (empty ⇒ bundled `Perfect2023.bin`) |
