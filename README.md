@@ -21,8 +21,8 @@ representation, move generation and legality.
 | | | | |
 |---|---|---|---|
 | **~2885 Elo** | SF-18 UCI_Elo bracket | **4.3M nps** | 7.4M at 4 threads |
-| **+294 Elo** | A/B-confirmed, v31→v55 | **~18 ply** | from startpos in 5 s |
-| **+9.66 Elo** | v55 speed pair, node-identical | **1.79x** | single-thread vs v31 |
+| **+298 Elo** | A/B-confirmed, v31→v56 | **~18 ply** | from startpos in 5 s |
+| **+4.11 Elo** | v56 ProbCut, −21.6% nodes | **1.79x** | single-thread vs v31 |
 | **v53+v54** eval lane | +37.52 & +31.20, the two biggest | **1 dependency** | `python-chess` only |
 
 <table>
@@ -91,6 +91,7 @@ summarise it. Regenerate with `bench/bench_progress.py` and `scripts/make_readme
 <details>
 <summary><b>Every version in full</b> — complete milestone + Elo list</summary>
 
+- **v56** — **ProbCut**: the fail-high half of forward pruning, which Pygin had no equivalent of. At a shallow non-PV node a qsearch filters each capture at `beta + 200` and a real reduced-depth search confirms before anything is cut, so nothing is ever pruned on a static score. Cuts **21.6% of nodes** at fixed depth (bench 1,461,732 → 1,145,629). *(**+4.11 ±4.2** over 21,806 games, `--nodes 1.75M`, GSPRT[0,4] LLR **+2.971 ACCEPT** — the fourth SPRT accept, and the first pruning MECHANISM to pay since the search lane was declared exhausted: what was exhausted was the parameter space, not the mechanism space)*
 - **v55** — **node-identical speed pair**: FI-11 pin-aware legality + FI-42 the (mg,eg,phase) accumulator on Board. Bench signature UNCHANGED at 1,461,732, perft --deep clean, ladder node-exact — the search plays the SAME moves, it just gets there faster: **+8.3% NPS on x86, +13.5% on arm64**. *(**+9.66 ±8.2** over 6,874 games, TIMED 50+0.20, GSPRT[0,4] LLR +2.946 ACCEPT — measured on the clock because a fixed-node instrument reads zero for a node-identical change; **~1.16 Elo per 1% NPS**)*
 - **v54** — **PST retune** (736 piece-square entries fitted for the first time, texel.py --pst, 735 values moved; GSPRT[0,2] LLR +7.806, 11.7k games — second-largest release) *(**+31.20 ±5.6**)*
 - **v53** — **Texel eval retune** (44 scalars refitted on 4M own-self-play positions, game-result labels; fourth SPRT accept, LLR +9.918, 12k pooled games — largest single release) *(**+37.52 ±6.3**)*
@@ -175,6 +176,7 @@ summarise it. Regenerate with `bench/bench_progress.py` and `scripts/make_readme
 | **v43→v44** | 3.23M → 3.67M | TT prefetch: +13.31 Elo, ~2.7 Elo per 1% NPS |
 | **v53** | — | Texel eval retune: +37.52 Elo, biggest single release |
 | **v54→v55** | 3.69× → **4.19×** | pin-aware legality + eval accumulator: +9.66 Elo, ~1.16 Elo per 1% NPS |
+| **v55→v56** | **4.19×** | ProbCut: +4.11 Elo at −21.6% nodes; S-06 persistent SMP pool +9.83% at 4 threads |
 
 *Not visible as NPS:* v39→v40 (ep-key merge) and the v41→v43 verified-null
 removal are nodes-to-depth gains at flat speed.
