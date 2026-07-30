@@ -139,7 +139,28 @@ calibration would cancel the speed being tested). THE CALIBRATION THIS BOUGHT:
 historical 1-2.7 band (v39 ~1, v44 ~2.7) -- so future bench items are worth
 about a point per percent, which prices FI-83 (0-3%) at 0-3.5 Elo and makes
 the NPS lane a minor one from here. Snapshotted Old Engine/55; campaigns now
-run vs Old Engine/55 on SUBSET_SEED 55. Armed candidate: none pinned.
+run vs Old Engine/55 on SUBSET_SEED 55.
+v56 = v55 + **FI-107 ProbCut** -- the fail-high half of forward pruning, which
+this engine simply did not have. At a non-PV node past depth 5 a qsearch
+filters each capture at beta + 200 and a real depth-4-reduced negamax CONFIRMS
+before anything is cut; a deeper TT bound vetoes the probe. Nothing is ever
+pruned on a static score, which is what sank FI-18 (-1.25) and FI-23 (-5.23) --
+the two-stage verify is a different mechanism, not a wider-margin retry.
+**Bench signature 1,461,732 -> 1,145,629 (-21.6%)** at a 2.4% NPS cost.
+CONFIRMED 2026-07-30: **+4.11 +/-4.2 over 21,806 games** on --nodes 1.75M
+(50.59%, ptnml 530/2606/4452/2706/609, GSPRT[0,4] LLR +2.971 ACCEPT), then the
+pre-registered TIMED cross-check owed since FI-24: **+11.44 +/-6.9 over 5,940
+games** at 50+0.20 vs Old Engine/55 (LLR +2.953 ACCEPT, nElo +17.07). The
+timed figure is what the ledger banks (+294 -> +305), and the gap between the
+two is the release's real lesson: **--nodes UNDER-CREDITS a node-saving
+change**, because its NPS calibration charges the change for its own overhead
+up front while a clock lets the saving become depth. Two more lessons banked:
+the +15 screen gate is TRIAGE not a ship threshold (this read +2.90 on a 2k
+screen and was wrongly closed as null), and match.py scores its pentanomial
+from ENGINE 1 so the CANDIDATE GOES IN SLOT 1. Snapshotted Old Engine/56;
+campaigns now run vs Old Engine/56 on SUBSET_SEED 56. Armed candidate: none
+pinned. NNUE (FI-15 + FI-106) is CONFIRMED at +33.83 on a clock but is NOT
+armed and NOT in this release -- it ships separately.
 FI-15 NNUE Phases 1-5
 BUILT-DORMANT 2026-07-18 (abi 19): the full NN-eval infrastructure --
 KA8T king-bucketed features + T16 threats, quantized int16/int8 net,
