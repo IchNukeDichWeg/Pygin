@@ -1265,15 +1265,17 @@ class Engine:
     # to want it): a visible in-file line, not a hidden env switch.
     NNUE_REQUIRE_SIMD = True
 
-    # FI-106 (CONFIRMED 2026-07-30 -- SPRT ACCEPT H1 on a CLOCK, the
-    # independent instrument. engine_nnue_lazy vs Old Engine/55, 50s+0.20,
-    # arm64, 1,803 games: +33.83 +/- 16.2 Elo (54.85%), nElo +53.42, Ptnml
-    # 20/170/385/267/59, pair ratio 1.72, LLR +2.955 crossing +2.944.
-    # The bundle -- net + lazy eval -- is the ship candidate, and the timed
-    # run also settles the doubt I had about --nodes: two node-instrument
-    # readings (+5.70 net vs HCE, +26.63 lazy vs net) SUM to +32.33 against
-    # this +33.83, so the calibration was not overpaying the speed feature.
-    # A clock has no calibration to overpay with, which is why it was owed.)
+    # FI-106 (CONFIRMED. Best measurement 2026-07-31: engine_nnue_lazy vs
+    # Old Engine/56 -- the CURRENT engine, ProbCut armed on BOTH sides -- on a
+    # clock 50s+0.20, arm64, FULL 2,000-game budget with NO early stop:
+    # +19.30 +/- 15.3 Elo (52.78%), nElo +29.43, Ptnml 40/203/420/280/57,
+    # pair ratio 1.39, 95% lower bound +4.00. Unbiased: the point estimate is
+    # not conditioned on crossing a bound.
+    # An earlier read of +33.83 was vs v55 with ProbCut off, and STOPPED EARLY
+    # at the accept bound -- superseded, and its magnitude was inflated by the
+    # stopping rule. x86 is weaker (+5.91 vs v55, 4,000 games), but ~2/3 of
+    # that gap is the AVX2 tail running 27% off its own machine's pace, which
+    # is fixable code rather than an architectural fact -- see NNUE/README.md.)
     LAZY_NNUE = False
     LAZY_NNUE_MARGIN = 200
 
