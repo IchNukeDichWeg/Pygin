@@ -1,14 +1,14 @@
 {
  "decision": null,
- "llr": 0.961,
- "next_offset": 5000,
- "pairs": 5000,
+ "llr": 1.620007799487004,
+ "next_offset": 11000,
+ "pairs": 11000,
  "penta": [
-  253,
-  1180,
-  2068,
-  1217,
-  282
+  557,
+  2620,
+  4515,
+  2702,
+  606
  ],
  "runs": [
   {
@@ -21,7 +21,7 @@
    "positions_played": 2500,
    "seed": 56,
    "smp": 1,
-   "started": "2026-07-30 (tranche 1, +4.93)"
+   "started": "2026-07-30 19:21:44"
   },
   {
    "engine1": "cengine_cn",
@@ -33,7 +33,43 @@
    "positions_played": 2500,
    "seed": 56,
    "smp": 1,
-   "started": "2026-07-30 (tranche 2, +1.67)"
+   "started": "2026-07-30 20:28:42"
+  },
+  {
+   "engine1": "cengine_cn",
+   "engine2": "cengine",
+   "fen_file": "UHO_4060_v4.epd",
+   "mode": "clock 50.00+0.20",
+   "offset": 5000,
+   "positions": 4000,
+   "positions_played": 4000,
+   "seed": 56,
+   "smp": 1,
+   "started": "2026-07-30 21:46:06"
+  },
+  {
+   "engine1": "cengine_cn",
+   "engine2": "cengine",
+   "fen_file": "UHO_4060_v4.epd",
+   "mode": "clock 50.00+0.20",
+   "offset": 9000,
+   "positions": 1000,
+   "positions_played": 1000,
+   "seed": 56,
+   "smp": 1,
+   "started": "2026-07-30 23:32:11"
+  },
+  {
+   "engine1": "cengine_cn",
+   "engine2": "cengine",
+   "fen_file": "UHO_4060_v4.epd",
+   "mode": "clock 50.00+0.20",
+   "offset": 10000,
+   "positions": 1000,
+   "positions_played": 1000,
+   "seed": 56,
+   "smp": 1,
+   "started": "2026-07-31 00:00:24"
   }
  ]
 }
