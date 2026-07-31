@@ -786,6 +786,21 @@ def main():
                 out("option name Clear Hash type button")
                 out("option name Contempt type spin default 50 min -100 max 100")
                 out("option name Move Overhead type spin default 40 min 0 max 5000")
+                # P-35/U-06 time policy, exposed so the neighbourhood can be
+                # swept from a GUI or a match harness without editing source
+                # or rebuilding. Defaults ARE the shipped values, so an engine
+                # nobody configures is byte-identical to before.
+                out(f"option name SoftStop type spin default "
+                    f"{0 if SOFT_BASE is None else int(round(SOFT_BASE * 100))}"
+                    f" min 0 max 100")
+                out(f"option name SoftStopStable type spin default "
+                    f"{int(round(engine.SOFT_STOP_STABLE_FRAC * 100))}"
+                    f" min 0 max 100")
+                out(f"option name SoftStopUnstable type spin default "
+                    f"{int(round(engine.SOFT_STOP_UNSTABLE_FRAC * 100))}"
+                    f" min 0 max 100")
+                out(f"option name SoftStopStableIters type spin default "
+                    f"{int(engine.SOFT_STOP_STABLE_ITERS)} min 1 max 20")
                 out(f"option name Hash type spin default 192 min 2 "
                     f"max {HASH_MAX_MB}")
                 # FI-13d: self-identifying config line (A/B forensics: PGN
@@ -920,6 +935,15 @@ def main():
                                                         # hardcode 200 here
                 elif name == "moveoverhead":            # FI-13b
                     engine.move_overhead_ms = max(0, int(value))
+                elif name == "softstop":                # P-35 base fraction;
+                    v = max(0, min(100, int(value)))    # 0 = spend the whole
+                    SOFT_BASE = None if v == 0 else v / 100.0   # budget
+                elif name == "softstopstable":          # U-06 neighbourhood
+                    engine.SOFT_STOP_STABLE_FRAC = max(0, min(100, int(value))) / 100.0
+                elif name == "softstopunstable":
+                    engine.SOFT_STOP_UNSTABLE_FRAC = max(0, min(100, int(value))) / 100.0
+                elif name == "softstopstableiters":
+                    engine.SOFT_STOP_STABLE_ITERS = max(1, min(20, int(value)))
                 elif name == "hash":                    # FI-10: MB -> bits
                     if not searching():                 # resize = realloc;
                         apply_hash(engine, value)        # never mid-search
