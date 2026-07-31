@@ -55,7 +55,7 @@ from engine import Engine
 from time_manager import calculate_move_time
 
 ENGINE_NAME = "ClaudeChess"
-ENGINE_AUTHOR = "sam"
+ENGINE_AUTHOR = "Nuke"
 
 # Cap on iterative-deepening depth for timed/infinite searches (the clock, not
 # this, is the real limit; it only bounds a search given an enormous budget).
