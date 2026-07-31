@@ -572,38 +572,20 @@ static inline int8_t nn_act(int32_t v)
     return (int8_t)(v >> 6);
 }
 
-/* raw quantized net output for the side to move, in centipawns -- NO
- * post-network shaping (cantwin is applied by nn_eval, matching how
- * shaping wraps eval_white today; F5-19 keeps it outside the net). */
-static int nn_forward(const Board* b, const NNAccum* a)
+/* FI-110: THE tail. One definition, called by nn_forward and by nnue_profile
+ * alike -- nnue_profile used to carry its own copy of these loops, so after
+ * the x4 rework the profiler's "tail" stage was timing the OLD kernel while
+ * "forward" timed the new one. The giveaway was arithmetic that cannot hold:
+ * a mean forward of 554n against a tail of 546n plus threats of 46n. A
+ * measurement tool with a private copy of the thing it measures reports on a
+ * program nobody runs.
+ *
+ * Rows go four at a time (see nn_dot_row_x4): on x86 that trades four
+ * horizontal reductions for one and loads the activation vector once instead
+ * of four times; on arm64 it compiles to what the per-row loop already did.
+ * Any rows past the last full group fall back per row. */
+static inline int nn_tail(const int8_t* x)
 {
-    const int h = g_net.h, tdim = g_net.tdim;
-    const int us = b->turn, them = us ^ 1;
-    int8_t x[2 * NN_H_MAX + NN_T_MAX + 16] __attribute__((aligned(16)));
-    const int16_t* au = a->v[us];
-    const int16_t* at = a->v[them];
-    for (int i = 0; i < h; i++) {
-        int v = au[i];
-        x[i] = (int8_t)(v < 0 ? 0 : (v > NN_QA ? NN_QA : v));
-        v = at[i];
-        x[h + i] = (int8_t)(v < 0 ? 0 : (v > NN_QA ? NN_QA : v));
-    }
-    if (tdim) {
-        uint8_t tw[8], tb[8];
-        nn_threat_vec(b, tw, tb);
-        const uint8_t* tus = (us == WHITE) ? tw : tb;
-        const uint8_t* tth = (us == WHITE) ? tb : tw;
-        for (int i = 0; i < 8; i++) {
-            x[2 * h + i] = (int8_t)tus[i];
-            x[2 * h + 8 + i] = (int8_t)tth[i];
-        }
-    }
-    for (int i = 2 * h + tdim; i < g_net.in2p; i++) x[i] = 0;   /* pads */
-
-    /* FI-110: four output rows per pass. See nn_dot_row_x4 -- on x86 this
-     * replaces four horizontal reductions with one and loads the activation
-     * vector once instead of four times; on arm64 it compiles to the old
-     * loop. Rows past the last full group of four fall back per row. */
     int32_t acc4[4];
     int8_t h1[NN_D2_MAX + 16] __attribute__((aligned(16)));
     int j = 0;
@@ -632,6 +614,37 @@ static int nn_forward(const Board* b, const NNAccum* a)
 
     int32_t out = g_net.b4 + nn_dot_row(g_net.w4, h2, g_net.d3p);
     return (int)((int64_t)out * 400 / NN_ACT_MAX);   /* trunc division */
+}
+
+/* raw quantized net output for the side to move, in centipawns -- NO
+ * post-network shaping (cantwin is applied by nn_eval, matching how
+ * shaping wraps eval_white today; F5-19 keeps it outside the net). */
+static int nn_forward(const Board* b, const NNAccum* a)
+{
+    const int h = g_net.h, tdim = g_net.tdim;
+    const int us = b->turn, them = us ^ 1;
+    int8_t x[2 * NN_H_MAX + NN_T_MAX + 16] __attribute__((aligned(16)));
+    const int16_t* au = a->v[us];
+    const int16_t* at = a->v[them];
+    for (int i = 0; i < h; i++) {
+        int v = au[i];
+        x[i] = (int8_t)(v < 0 ? 0 : (v > NN_QA ? NN_QA : v));
+        v = at[i];
+        x[h + i] = (int8_t)(v < 0 ? 0 : (v > NN_QA ? NN_QA : v));
+    }
+    if (tdim) {
+        uint8_t tw[8], tb[8];
+        nn_threat_vec(b, tw, tb);
+        const uint8_t* tus = (us == WHITE) ? tw : tb;
+        const uint8_t* tth = (us == WHITE) ? tb : tw;
+        for (int i = 0; i < 8; i++) {
+            x[2 * h + i] = (int8_t)tus[i];
+            x[2 * h + 8 + i] = (int8_t)tth[i];
+        }
+    }
+    for (int i = 2 * h + tdim; i < g_net.in2p; i++) x[i] = 0;   /* pads */
+
+    return nn_tail(x);
 }
 
 /* the engine's NN static eval: stm-relative, with post-network shaping
@@ -923,19 +936,7 @@ int nnue_profile(uint64_t pawns, uint64_t knights, uint64_t bishops,
             }
         }
         for (int k = 2 * h + tdim; k < g_net.in2p; k++) x[k] = 0;
-        int8_t h1[NN_D2_MAX + 16] __attribute__((aligned(16)));
-        for (int j = 0; j < g_net.d2; j++)
-            h1[j] = nn_act(g_net.b2[j]
-                           + nn_dot_row(g_net.w2 + (size_t)j * g_net.in2p, x,
-                                        g_net.in2p));
-        for (int j = g_net.d2; j < g_net.d2p; j++) h1[j] = 0;
-        int8_t h2[NN_D3_MAX + 16] __attribute__((aligned(16)));
-        for (int j = 0; j < g_net.d3; j++)
-            h2[j] = nn_act(g_net.b3[j]
-                           + nn_dot_row(g_net.w3 + (size_t)j * g_net.d2p, h1,
-                                        g_net.d2p));
-        for (int j = g_net.d3; j < g_net.d3p; j++) h2[j] = 0;
-        sink += g_net.b4 + nn_dot_row(g_net.w4, h2, g_net.d3p);
+        sink += nn_tail(x);   /* FI-110: THE tail, not a copy of it */
     }, 2);
 
     NN_TIME(nn_refresh(&b, 0), 3);
