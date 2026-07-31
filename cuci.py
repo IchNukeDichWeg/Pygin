@@ -57,6 +57,7 @@ _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 
 
 import sys
 import threading
+import time
 import traceback
 
 import chess
@@ -595,7 +596,18 @@ def main():
         # for the search itself).
         search_board = board.copy()
         prev_nodes = [0]                     # FI-45: per-go EBF tracking
+        # HOST-01: best-move stability, tracked here because the ponder search
+        # runs on the DEPTH-mode hold rail -- cengine's own soft-stop lives in
+        # get_best_move_timed and never sees this search.
+        stab = {"move": None, "iters": 0, "changed": False}
         def on_depth(rec):
+            mv = rec.get("move")
+            if mv:
+                if mv == stab["move"]:
+                    stab["iters"] += 1
+                    stab["changed"] = False
+                else:
+                    stab["move"], stab["iters"], stab["changed"] = mv, 0, True
             if rec.get("book"):
                 out(f"info string book move {rec['move']}")
             elif rec.get("tb"):
@@ -730,6 +742,8 @@ def main():
         th.holding = holding
         th.ponder = {"active": ponder_mode, "hit": False,
                      "params": params, "board": search_board}
+        th.stab = stab                       # HOST-01: read by the ponderhit
+                                             # watcher, written by on_depth
         return th
 
     for raw in sys.stdin:
@@ -1042,7 +1056,30 @@ def main():
                         pbudget = None   # clockless go ponder: hold to stop
                     if pbudget is not None:
                         def _release(th=search_thread, budget=pbudget):
-                            th.holding.wait(timeout=budget)
+                            # HOST-01: apply the P-35/U-06 soft-stop that the
+                            # depth-mode ponder search cannot apply itself. A
+                            # ponderhit arrives with the search ALREADY warm --
+                            # often with the same best move for several
+                            # iterations -- and spending the whole fresh budget
+                            # re-confirming that is the v1 deviation this
+                            # closes. Same constants as cengine's ID loop, so
+                            # a pondered move and a normal one stop on the same
+                            # rule. Poll rather than one long wait: stability
+                            # changes DURING the budget.
+                            t0 = time.perf_counter()
+                            while not th.holding.wait(timeout=0.02):
+                                el = time.perf_counter() - t0
+                                if el >= budget:
+                                    break
+                                soft = engine.soft_stop_frac
+                                if soft is not None and engine.use_stability_time:
+                                    if th.stab["changed"]:
+                                        soft = engine.SOFT_STOP_UNSTABLE_FRAC
+                                    elif (th.stab["iters"]
+                                          >= engine.SOFT_STOP_STABLE_ITERS):
+                                        soft = engine.SOFT_STOP_STABLE_FRAC
+                                if soft is not None and el >= soft * budget:
+                                    break
                             with swap_lock:    # FB-44: only stop the search
                                 if search_thread is not th:   # this watcher
                                     return     # was armed for -- a newer go
