@@ -650,6 +650,33 @@ benchmark" below.
   =1 and all match play are byte-identical). ``TT_BITS=22`` restores v46.
   Snapshotted as Old Engine/47.
 
+* **v56 -> v57** (2026-07-31, lives in ``cuci.py``): host layer only, and the
+  **last pure-HCE release** -- from here the engine is an HCE/NNUE hybrid.
+  Node-identical to v56 (bench 1,145,629), so no A/B slot and no ledger
+  movement. Ponderhit now honours the P-35/U-06 soft-stop instead of spending
+  the whole fresh budget re-confirming a settled move (1.666s -> 0.686s); the
+  soft-stop neighbourhood is exposed over UCI; and cuci no longer overwrites
+  the engine's own ``soft_stop_frac`` with a hardcoded copy of it.
+
+* **v54 -> v55** (2026-07-25, lives in ``cengine.py``/``csearch.c``): a
+  node-identical SPEED pair, FI-11 pin-aware legality + FI-42 the (mg,eg,phase)
+  accumulator on Board. Bench signature UNCHANGED at 1,461,732 -- the search
+  plays the same moves, it just gets there faster (+8.3% NPS on x86, +13.5% on
+  arm64). **+9.66 +/-8.2 over 6,874 games**, TIMED 50+0.20, GSPRT[0,4] LLR
+  +2.946 ACCEPT. Timed on purpose: a fixed-node instrument reads exactly zero
+  for a change that buys no new nodes. Gave the conversion **~1.16 Elo per 1%
+  NPS**, which prices every bench item since.
+
+* **v55 -> v56** (2026-07-30, lives in ``csearch.c``): **FI-107 ProbCut**, the
+  fail-high half of forward pruning. A qsearch filters each capture at
+  beta + 200 and a reduced real search confirms before anything is cut, so no
+  prune ever rests on a static score. Bench 1,461,732 -> 1,145,629 (-21.6%) at
+  a 2.4% NPS cost. **+4.11 +/-4.2 over 21,806 games** on --nodes, and
+  **+11.44 +/-6.9 over 5,940 games** TIMED vs Old Engine/55 -- the timed
+  figure is banked (ledger +305). The gap is the lesson: --nodes under-credits
+  node-saving changes because its calibration charges them for their own NPS
+  cost. Nothing in this file changed.
+
 * **v53 -> v54 (2026-07-23, lives HERE in ``engine.py``): the PST retune --
   the second-largest release, and the first time the piece-square tables
   themselves were fitted.** v53 tuned the 44 scalars *conditioned on* the
