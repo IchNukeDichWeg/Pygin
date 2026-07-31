@@ -346,6 +346,19 @@ static inline int32_t nn_dot_row(const int8_t* w, const int8_t* x, int n)
 #endif
     return vaddvq_s32(vaddq_s32(vaddq_s32(a0, a1), vaddq_s32(a2, a3)));
 }
+
+/* FI-110: the x4 entry point exists on every path so the layer loops below
+ * are uniform. Only AVX2 needs a real implementation -- NEON already reduces
+ * a row in ONE instruction (vaddvq_s32), so there is nothing to amortise and
+ * four calls compile to exactly what the old loop did. Byte-identical on
+ * arm64 by construction, which the ladder then re-proves. */
+static inline void nn_dot_row_x4(const int8_t* w, size_t stride,
+                                 const int8_t* x, int n, int32_t out[4])
+{
+    for (int k = 0; k < 4; k++)
+        out[k] = nn_dot_row(w + (size_t)k * stride, x, n);
+}
+
 #elif defined(__AVX2__)
 #include <immintrin.h>
 /* x86 path (FI-92). Without this, every non-Apple box -- which is every
@@ -434,12 +447,119 @@ static inline int32_t nn_dot_row(const int8_t* w, const int8_t* x, int n)
     for (; i < n; i++) s += (int32_t)w[i] * (int32_t)x[i];   /* <16 leftover */
     return s;
 }
+
+/* FI-110: four rows at once -- the fix for a 27% x86 shortfall.
+ *
+ * MEASURED SYMPTOM: profiled on both machines with the same net, every stage
+ * ran 2.48-2.57x slower on a Xeon Gold 6330 than on the reference Mac -- the
+ * machine -- except the tail, which ran 3.21x. 27% off its own CPU's pace.
+ *
+ * CAUSE: the per-row horizontal reduction. nn_dot_row ends with extract, two
+ * shuffles, two adds and a move-to-scalar; NEON does the same job in ONE
+ * instruction (vaddvq_s32). At layer 1's shape -- d2=16 rows of in2p=528 --
+ * that is ~8 high-latency ops against 16.5 VPDPBUSD of actual work, per row,
+ * sixteen times. The AVX2 kernel was never slow at multiplying; it was slow
+ * at finishing.
+ *
+ * FIX: accumulate FOUR rows in four independent chains and reduce them
+ * together (the hadd tree below yields four sums in ~5 ops instead of ~32).
+ * The ILP is unchanged -- four independent chains either way -- and the
+ * activation vector is now loaded ONCE for four rows instead of four times,
+ * which also cuts load traffic on the hot layer by 4x.
+ *
+ * Bit-identical: exact integer sums, so grouping them differently cannot
+ * change a result. verify_c.py forward is the empirical gate on the target. */
+static inline __m128i nn_haddx4(__m256i a0, __m256i a1,
+                                __m256i a2, __m256i a3)
+{
+    a0 = _mm256_hadd_epi32(a0, a1);
+    a2 = _mm256_hadd_epi32(a2, a3);
+    a0 = _mm256_hadd_epi32(a0, a2);
+    return _mm_add_epi32(_mm256_castsi256_si128(a0),
+                         _mm256_extracti128_si256(a0, 1));
+}
+
+static inline void nn_dot_row_x4(const int8_t* w, size_t stride,
+                                 const int8_t* x, int n, int32_t out[4])
+{
+    const int8_t* w0 = w;
+    const int8_t* w1 = w + stride;
+    const int8_t* w2 = w + 2 * stride;
+    const int8_t* w3 = w + 3 * stride;
+    __m256i a0 = _mm256_setzero_si256(), a1 = a0, a2 = a0, a3 = a0;
+    __m128i q0 = _mm_setzero_si128(), q1 = q0, q2 = q0, q3 = q0;
+    int i = 0;
+    for (; i + 32 <= n; i += 32) {
+        const __m256i xv = _mm256_loadu_si256((const __m256i*)(x + i));
+#if defined(__AVX512VNNI__) || defined(__AVXVNNI__)
+        a0 = _mm256_dpbusd_epi32(a0, xv, _mm256_loadu_si256((const __m256i*)(w0 + i)));
+        a1 = _mm256_dpbusd_epi32(a1, xv, _mm256_loadu_si256((const __m256i*)(w1 + i)));
+        a2 = _mm256_dpbusd_epi32(a2, xv, _mm256_loadu_si256((const __m256i*)(w2 + i)));
+        a3 = _mm256_dpbusd_epi32(a3, xv, _mm256_loadu_si256((const __m256i*)(w3 + i)));
+#else
+        const __m256i ones = _mm256_set1_epi16(1);
+        a0 = _mm256_add_epi32(a0, _mm256_madd_epi16(ones, _mm256_maddubs_epi16(
+                xv, _mm256_loadu_si256((const __m256i*)(w0 + i)))));
+        a1 = _mm256_add_epi32(a1, _mm256_madd_epi16(ones, _mm256_maddubs_epi16(
+                xv, _mm256_loadu_si256((const __m256i*)(w1 + i)))));
+        a2 = _mm256_add_epi32(a2, _mm256_madd_epi16(ones, _mm256_maddubs_epi16(
+                xv, _mm256_loadu_si256((const __m256i*)(w2 + i)))));
+        a3 = _mm256_add_epi32(a3, _mm256_madd_epi16(ones, _mm256_maddubs_epi16(
+                xv, _mm256_loadu_si256((const __m256i*)(w3 + i)))));
+#endif
+    }
+    /* Same 16-element tail nn_dot_row needs, for the same reason: the padded
+     * widths are multiples of 16, not of 32. Four 128-bit accumulators, then
+     * one hadd tree -- never a scalar loop (that omission is what made this
+     * kernel profile at 767 ns once already). */
+    for (; i + 16 <= n; i += 16) {
+        const __m128i xv = _mm_loadu_si128((const __m128i*)(x + i));
+#if defined(__AVX512VNNI__) || defined(__AVXVNNI__)
+        q0 = _mm_dpbusd_epi32(q0, xv, _mm_loadu_si128((const __m128i*)(w0 + i)));
+        q1 = _mm_dpbusd_epi32(q1, xv, _mm_loadu_si128((const __m128i*)(w1 + i)));
+        q2 = _mm_dpbusd_epi32(q2, xv, _mm_loadu_si128((const __m128i*)(w2 + i)));
+        q3 = _mm_dpbusd_epi32(q3, xv, _mm_loadu_si128((const __m128i*)(w3 + i)));
+#else
+        const __m128i ones = _mm_set1_epi16(1);
+        q0 = _mm_add_epi32(q0, _mm_madd_epi16(ones, _mm_maddubs_epi16(
+                xv, _mm_loadu_si128((const __m128i*)(w0 + i)))));
+        q1 = _mm_add_epi32(q1, _mm_madd_epi16(ones, _mm_maddubs_epi16(
+                xv, _mm_loadu_si128((const __m128i*)(w1 + i)))));
+        q2 = _mm_add_epi32(q2, _mm_madd_epi16(ones, _mm_maddubs_epi16(
+                xv, _mm_loadu_si128((const __m128i*)(w2 + i)))));
+        q3 = _mm_add_epi32(q3, _mm_madd_epi16(ones, _mm_maddubs_epi16(
+                xv, _mm_loadu_si128((const __m128i*)(w3 + i)))));
+#endif
+    }
+    __m128i r = _mm_add_epi32(nn_haddx4(a0, a1, a2, a3),
+                              _mm_hadd_epi32(_mm_hadd_epi32(q0, q1),
+                                             _mm_hadd_epi32(q2, q3)));
+    _mm_storeu_si128((__m128i*)out, r);
+    if (i < n) {                       /* <16 leftover; padding makes it dead */
+        for (int k = 0; k < 4; k++) {
+            const int8_t* wk = w + (size_t)k * stride;
+            for (int j = i; j < n; j++) out[k] += (int32_t)wk[j] * (int32_t)x[j];
+        }
+    }
+}
 #else
 static inline int32_t nn_dot_row(const int8_t* w, const int8_t* x, int n)
 {
     int32_t s = 0;
     for (int i = 0; i < n; i++) s += (int32_t)w[i] * (int32_t)x[i];
     return s;
+}
+
+/* FI-110: the x4 entry point exists on every path so the layer loops below
+ * are uniform. Only AVX2 needs a real implementation -- NEON already reduces
+ * a row in ONE instruction (vaddvq_s32), so there is nothing to amortise and
+ * four calls compile to exactly what the old loop did. Byte-identical on
+ * arm64 by construction, which the ladder then re-proves. */
+static inline void nn_dot_row_x4(const int8_t* w, size_t stride,
+                                 const int8_t* x, int n, int32_t out[4])
+{
+    for (int k = 0; k < 4; k++)
+        out[k] = nn_dot_row(w + (size_t)k * stride, x, n);
 }
 #endif
 
@@ -480,19 +600,35 @@ static int nn_forward(const Board* b, const NNAccum* a)
     }
     for (int i = 2 * h + tdim; i < g_net.in2p; i++) x[i] = 0;   /* pads */
 
+    /* FI-110: four output rows per pass. See nn_dot_row_x4 -- on x86 this
+     * replaces four horizontal reductions with one and loads the activation
+     * vector once instead of four times; on arm64 it compiles to the old
+     * loop. Rows past the last full group of four fall back per row. */
+    int32_t acc4[4];
     int8_t h1[NN_D2_MAX + 16] __attribute__((aligned(16)));
-    for (int j = 0; j < g_net.d2; j++)
+    int j = 0;
+    for (; j + 4 <= g_net.d2; j += 4) {
+        nn_dot_row_x4(g_net.w2 + (size_t)j * g_net.in2p, g_net.in2p, x,
+                      g_net.in2p, acc4);
+        for (int k = 0; k < 4; k++) h1[j + k] = nn_act(g_net.b2[j + k] + acc4[k]);
+    }
+    for (; j < g_net.d2; j++)
         h1[j] = nn_act(g_net.b2[j]
                        + nn_dot_row(g_net.w2 + (size_t)j * g_net.in2p, x,
                                     g_net.in2p));
-    for (int j = g_net.d2; j < g_net.d2p; j++) h1[j] = 0;
+    for (j = g_net.d2; j < g_net.d2p; j++) h1[j] = 0;
 
     int8_t h2[NN_D3_MAX + 16] __attribute__((aligned(16)));
-    for (int j = 0; j < g_net.d3; j++)
+    for (j = 0; j + 4 <= g_net.d3; j += 4) {
+        nn_dot_row_x4(g_net.w3 + (size_t)j * g_net.d2p, g_net.d2p, h1,
+                      g_net.d2p, acc4);
+        for (int k = 0; k < 4; k++) h2[j + k] = nn_act(g_net.b3[j + k] + acc4[k]);
+    }
+    for (; j < g_net.d3; j++)
         h2[j] = nn_act(g_net.b3[j]
                        + nn_dot_row(g_net.w3 + (size_t)j * g_net.d2p, h1,
                                     g_net.d2p));
-    for (int j = g_net.d3; j < g_net.d3p; j++) h2[j] = 0;
+    for (j = g_net.d3; j < g_net.d3p; j++) h2[j] = 0;
 
     int32_t out = g_net.b4 + nn_dot_row(g_net.w4, h2, g_net.d3p);
     return (int)((int64_t)out * 400 / NN_ACT_MAX);   /* trunc division */

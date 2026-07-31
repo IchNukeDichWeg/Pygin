@@ -968,7 +968,9 @@ for _wdl_t, _wdl_label in (
         (os.path.join("testing", "test_wdl_family.py"),
          "WDL corpus is gated by eval FAMILY, not just era"),
         (os.path.join("testing", "test_wdl_nnue_model.py"),
-         "WDL: --nnue fits its own model and match.py loads it per side")):
+         "WDL: --nnue fits its own model and match.py loads it per side"),
+        (os.path.join("testing", "test_avx2_kernel.py"),
+         "FI-110: x86 NNUE dot kernel == scalar (skips off x86)")):
     if not os.path.exists(_wdl_t):
         continue
     try:
