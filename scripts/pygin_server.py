@@ -10,10 +10,14 @@ import subprocess
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 
 import chess
 
-ENGINE = "/home/user/Desktop/bot/NeuerOrdner/ClaudeChess/dist/pygin"
+# Derived, never hardcoded: this file lives in scripts/, so the repo root is one level up. A machine
+# path baked in here is both wrong on anyone else's checkout and a personal detail in a public repo.
+REPO = Path(__file__).resolve().parent.parent
+ENGINE = str(REPO / "dist" / "pygin")
 
 # PM-01 instant-reply chains. Flip to False to turn the whole feature off:
 # gates BOTH the engine setoption and the reply collector (with the option
@@ -29,7 +33,7 @@ PREMOVE = True
 # the engine (otherwise pygin dumps its own KeyboardInterrupt traceback).
 eng = subprocess.Popen([ENGINE], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                        text=True, bufsize=1, start_new_session=True,
-                       cwd="/home/user/Desktop/bot/NeuerOrdner/ClaudeChess")
+                       cwd=str(REPO))
 
 
 def send(cmd):
