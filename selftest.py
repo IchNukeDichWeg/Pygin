@@ -1024,6 +1024,23 @@ if os.path.isdir("Old Engine"):
     else:
         print("  ok    all Old Engine snapshots with C sources have built .so")
 
+# --- no personal paths in a public repo ---------------------------------- #
+# scripts/pygin_server.py shipped a hardcoded /Users/<name>/... for both the engine path and the
+# working directory. It is a public repo, so that is a personal detail nobody meant to publish -- and
+# it is also just wrong on any other checkout. Derive paths from __file__ instead. Checked over
+# TRACKED files only, so a local scratch file or an untracked log never fails the ladder.
+print("\n--- repo hygiene ---")
+try:
+    _tracked = subprocess.run(["git", "grep", "-Il", "-e", "/Users/", "-e", "/home/", "--",
+                               ".", ":(exclude)selftest.py"],
+                              capture_output=True, text=True,
+                              cwd=os.path.dirname(os.path.abspath(__file__)))
+    _hits = [ln for ln in _tracked.stdout.split("\n") if ln.strip()]
+    check("no absolute home paths in tracked files", not _hits,
+          detail=", ".join(_hits[:4]) if _hits else "")
+except Exception as _e:                                   # no git, or not a checkout
+    print(f"  note  could not run the path scan ({_e})")
+
 # --- verdict ------------------------------------------------------------- #
 if _failed:
     print(f"\n== FAILED: {len(_failed)} check(s): {', '.join(_failed)} ==")
