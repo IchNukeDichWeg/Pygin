@@ -79,6 +79,25 @@ selectivity at all and no verdict from it means anything.
 
 That control needs no production change: the driver flips the toggle on a live
 handle after construction, so nothing ships differently.
+
+FIT RANGE AUDITED 2026-07-31 and LEFT ALONE. A deep `go infinite` pair
+(v55 vs v56, startpos to d30) appeared to show ProbCut's node saving growing
+to 3.6x by d30 -- suggesting this tool's d10..d18 default was simply too
+shallow to see it, and that its ABANDON on FI-107 was a range artifact. It was
+not. Re-fitted over d18..d24, single-threaded, six positions:
+
+    d10..d18   EBF 1.691 -> 1.706   +0.91%
+    d18..d24   EBF 1.623 -> 1.630   +0.43%
+
+Identical verdict. What ProbCut actually does at d24 is cut nodes by a median
+11% (startpos -26.5%, tactical +11.2%) with the SLOPE unchanged -- a constant
+factor at every depth measured, which is exactly what this instrument cannot
+see and says so below. The 3.6x came from comparing two runs that were not
+thread-matched (111.6M vs 80.5M nps at d21); Lazy SMP node counts include
+helper duplication and are not comparable across thread counts.
+
+So: do not deepen the default to chase a constant-factor change. It will not
+appear at any depth. Use time-to-depth or a timed A/B for those.
 """
 import argparse
 import json
@@ -247,6 +266,11 @@ def main():
     ap.add_argument("--control", action="store_true",
                     help="engine vs ITSELF with pruning disabled -- EBF must "
                          "rise sharply, or this instrument sees nothing")
+    ap.add_argument("--arm-a", default="",
+                    help="class attrs to set on the A side, same syntax as "
+                         "--arm-b. Needed to audit a SHIPPED default: the "
+                         "control is then 'the feature turned off', which "
+                         "cannot be expressed by arming B alone")
     ap.add_argument("--arm-b", default="",
                     help="NAME=VALUE[,NAME=VALUE...] class attrs armed on the "
                          "B side only, e.g. CUTNODE_LMR=1,TTPV_LMR=1 -- the "
@@ -282,7 +306,9 @@ def main():
               "cengine.py --arm-b NAME=VALUE`)", file=sys.stderr)
         return 2
 
-    med_a, _ = run_side(a.engine_a, a.depth, a.lo, a.cpu, 0, f"A = {a.engine_a}")
+    med_a, _ = run_side(a.engine_a, a.depth, a.lo, a.cpu, 0,
+                        f"A = {a.engine_a}"
+                        + (f"  [armed {a.arm_a}]" if a.arm_a else ""), a.arm_a)
     if not a.engine_b:
         return 0
     med_b, _ = run_side(a.engine_b, a.depth, a.lo, a.cpu, 0,
