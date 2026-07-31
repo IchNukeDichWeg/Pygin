@@ -48,25 +48,41 @@ this full-budget run, never the magnitude from the stopped one.
 
 x86 remains weaker and is the open item, not a blocker -- see below.
 
-OPEN LEAD (2026-07-30): the AVX2 tail is 27% off its own machine's pace.
+CLOSED (2026-07-31): the x86 tail gap is ARCHITECTURAL, not a code defect.
 
-Same net, same profiler, both machines, steady-state positions only:
+The lead recorded here on 2026-07-30 was that the AVX2 tail ran 27% off its
+own machine's pace and that ~2/3 of the arm64-vs-x86 Elo gap was therefore
+fixable code. FI-110 tested that and it is WRONG.
 
-  stage         Mac (neon)   x86 (avx2+vnni)   x86/Mac
-  threats             17n              44n      2.54x
-  refresh            342n             879n      2.57x
-  incremental         22n              54n      2.48x
-  TAIL               167n             536n      3.21x
+Diagnosis was: nn_dot_row ends with a horizontal reduction (extract, two
+shuffles, two adds, move-to-scalar) where NEON needs one instruction, so the
+per-row finish was the x86-specific cost. FI-110 amortised it -- four rows per
+pass, one reduction, activation vector loaded once. Measured:
 
-Every stage except the tail runs ~2.5x slower on the Xeon, which is just the
-machine. The tail runs 3.21x -- 27% off the pace that machine sets everywhere
-else. The NEON tail got a four-accumulator rewrite that nearly doubled it; the
-AVX2 path was written once and never given the same scrutiny.
+  tail       before    after
+  arm64        174n     154n    -11.5%
+  x86          546n     499n     -8.6%     (predicted -21%)
 
-At machine pace the x86 tail would be 423n, not 536n: forward 607n -> 493n
-(-18.7%), the net's x86 NPS deficit 30.6% -> ~24.9% (arm64 is at 21.4%), worth
-~+6.6 Elo there. That is roughly two thirds of the measured arm64-vs-x86 gap
-turning out to be a fixable kernel problem rather than an architectural fact.
+  x86/Mac by stage, BOTH on the new kernel:
+    threats 2.56x   refresh 2.48x   increm 2.58x   -> baseline 2.54x
+    tail    3.24x                                  -> 1.28x off pace
+
+The optimisation is real and was kept -- ~+3.0 Elo on x86, ~+2.6 on arm64,
+free and node-exact. But it helped BOTH platforms by a similar proportion, so
+the ratio did not move: 27% off pace before, 28% after. A cost that arm64 also
+pays cannot be what makes x86 slower.
+
+What is left is most likely microarchitecture: the tail is pure int8 dot
+product, while threats/refresh/incremental are mixed integer and memory work.
+The M-series' advantage on SDOT throughput is simply larger than its general
+advantage over an Ice Lake-SP core. That is hardware, and no kernel rewrite
+recovers it.
+
+CONSEQUENCE: the x86 result (+5.91 +/- 8.1 vs v55, 4,000 games) should be read
+as roughly genuine rather than as an artifact awaiting a fix. NNUE is worth
+materially less on Intel than on Apple silicon, and a release note has to say
+so. Do not spend another kernel pass chasing this ratio without a NEW
+hypothesis -- this one is spent.
 
 ## Layout
 
