@@ -18,41 +18,35 @@ threat encoding (16 int8 aggregate scalars from one attack-union pass),
 net FT→2×256 → [512+16]→32→32→1, int16/int8 quantization QA=127/QB=64,
 `.nnue` format v1, `.pygdata` training data format v1.
 
-State (2026-07-30): SHIP CANDIDATE CONFIRMED. SPRT accept on a clock.
+State (2026-07-31): BEST MEASUREMENT -- +19.30 +/- 15.3 vs the CURRENT engine.
 
-  what                        box    inst    games    Elo             verdict
-  v1 net vs HCE               Mac    nodes   2,000    +2.95 +/-15.2   null
-  v2a net vs HCE              Mac    nodes   2,000    -4.52 +/-15.2   DRIFT-INVALID
-  v3 net vs HCE               x86    nodes   2,000    -2.26 +/-15.2   null
-  v3 net vs HCE (pooled)      x86    nodes  13,769    +5.70 +/- 4.6   CI>0, 0.05 short
-  FI-106 lazy vs v3 net       Mac    nodes   2,000   +26.63 +/-15.3   clean screen
-  FI-106 lazy vs v3 net       Mac    nodes   1,122    +9.29 +/-20.4   DRIFT-INVALID
-  net+lazy vs HCE             Mac    CLOCK   1,803   +33.83 +/-16.2   ACCEPT H1
+  candidate vs baseline      box    inst    games    Elo             note
+  net vs HCE/55 (pooled)     x86    nodes  13,769   +5.70 +/- 4.6   CI>0
+  lazy vs net                Mac    nodes   2,000  +26.63 +/-15.3   screen
+  net+lazy vs 55             Mac    CLOCK   1,803  +33.83 +/-16.2   STOPPED EARLY
+  net+lazy vs 55             x86    CLOCK   4,000   +5.91 +/- 8.1   full budget
+  net+lazy vs 56             Mac    CLOCK   2,000  +19.30 +/-15.3   FULL BUDGET
 
-The last line is the one that decides it: the full bundle against the current
-engine, on the reference machine, at the ledger's own 50s+0.20 -- and on a
-CLOCK, which has no NPS calibration to get wrong. nElo +53.42, Ptnml
-20/170/385/267/59, pair ratio 1.72, LLR +2.955 past a +2.944 bound, stopped
-early. 95% lower bound +17.6.
+The last row is the one to quote. It is the only measurement with every
+confound controlled at once: the CURRENT baseline (v56, ProbCut armed on both
+sides), a clock instead of an NPS calibration, the reference machine,
+per-family WDL adjudication, and the full budget played -- so the point
+estimate is NOT conditioned on having crossed a bound. nElo +29.43, Ptnml
+40/203/420/280/57, pair ratio 1.39, 95% lower bound +4.00, P(Elo>0) ~99%.
 
-Three measurements agree across two instruments and two machines: the two
-node-instrument readings SUM to +32.33 (+5.70 net, +26.63 lazy) against the
-timed +33.83. That also kills the live suspicion that --nodes was overpaying
-lazy eval for its own speed -- had it been, the timed figure would have landed
-BELOW the sum.
+The +33.83 above is SUPERSEDED, and how it died is the lesson: it was measured
+against v55 with ProbCut off, and it stopped the instant it crossed the SPRT
+bound. An SPRT accept is always taken at a favourable fluctuation, so its
+magnitude is biased upward by construction -- fine as a verdict, useless as an
+effect size. Re-run to a fixed budget it fell 14.5 Elo.
 
-At +33.83 this is the second-largest gain the repo has recorded, behind v53's
-Texel retune (+37.52).
+Not yet an SPRT accept vs v56: the LLR stands at +1.783 of +2.944, and ~2,000
+more games at this shape would cross. The state file auto-names and pools, so
+a second tranche continues it. Note that a pooled accept answers a DIFFERENT
+question than +19.30 -- take the verdict from the SPRT and the magnitude from
+this full-budget run, never the magnitude from the stopped one.
 
-THE ARC, because it is the lesson: the evaluation was always worth ~+50 Elo.
-The node tax ate all but +5.70 of it. Lazy eval refunded most of the tax by
-NOT RUNNING THE NET where the answer was never in doubt. The eval was never
-the problem -- the price of consulting it was.
-
-Remaining before it ships: the snapshot ritual (defaults flip to USE_NNUE +
-LAZY_NNUE, FI-104 keeps non-SIMD hosts on the HCE), and a decision on
-refitting the WDL adjudication model for the NNUE cp scale
-(tuning/fit_wdl_model.py --nnue; 813,823 samples are already extracted).
+x86 remains weaker and is the open item, not a blocker -- see below.
 
 OPEN LEAD (2026-07-30): the AVX2 tail is 27% off its own machine's pace.
 
