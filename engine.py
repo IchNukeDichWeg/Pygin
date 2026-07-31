@@ -650,6 +650,14 @@ benchmark" below.
   =1 and all match play are byte-identical). ``TT_BITS=22`` restores v46.
   Snapshotted as Old Engine/47.
 
+* **v56 -> v57** (2026-07-31, lives in ``cuci.py``): host layer only, and the
+  **last pure-HCE release** -- from here the engine is an HCE/NNUE hybrid.
+  Node-identical to v56 (bench 1,145,629), so no A/B slot and no ledger
+  movement. Ponderhit now honours the P-35/U-06 soft-stop instead of spending
+  the whole fresh budget re-confirming a settled move (1.666s -> 0.686s); the
+  soft-stop neighbourhood is exposed over UCI; and cuci no longer overwrites
+  the engine's own ``soft_stop_frac`` with a hardcoded copy of it.
+
 * **v54 -> v55** (2026-07-25, lives in ``cengine.py``/``csearch.c``): a
   node-identical SPEED pair, FI-11 pin-aware legality + FI-42 the (mg,eg,phase)
   accumulator on Board. Bench signature UNCHANGED at 1,461,732 -- the search

@@ -161,6 +161,21 @@ from ENGINE 1 so the CANDIDATE GOES IN SLOT 1. Snapshotted Old Engine/56;
 campaigns now run vs Old Engine/56 on SUBSET_SEED 56. Armed candidate: none
 pinned. NNUE (FI-15 + FI-106) is CONFIRMED at +33.83 on a clock but is NOT
 armed and NOT in this release -- it ships separately.
+v57 = v56 + HOST-LAYER work only, and **the last pure-HCE release**: from here
+the engine becomes an HCE/NNUE hybrid. NODE-IDENTICAL to v56 -- bench
+signature 1,145,629 unchanged, ladder node-exact, every search toggle at its
+v56 value -- so NO A/B slot was spent and the ledger stays at +305. What it
+carries: the ponderhit soft-stop (a prediction hit used to spend the FULL
+fresh budget re-confirming an already-stable move -- the documented v1
+deviation from when ponder shipped; it now applies the same P-35/U-06
+fractions the ID loop uses, measured 1.666s -> 0.686s, a ratio of 0.412
+against the designed 0.40); the SoftStop/SoftStopStable/SoftStopUnstable/
+SoftStopStableIters UCI options, which make the time-policy neighbourhood
+sweepable with no rebuild; and a latent bug where cuci restored a HARDCODED
+0.55 soft-stop fraction over whatever cengine.py had set -- harmless today
+because the two agree, but it meant any future soft-stop tuning would work
+under match.py and be silently discarded under UCI, i.e. in every real game.
+Also dormant-but-present: FI-109 correction history (closed pre-screen).
 FI-15 NNUE Phases 1-5
 BUILT-DORMANT 2026-07-18 (abi 19): the full NN-eval infrastructure --
 KA8T king-bucketed features + T16 threats, quantized int16/int8 net,
