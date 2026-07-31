@@ -242,3 +242,6 @@ gg_shim.lua
 
 # NNUE handoff note (local-only, like nnue_readme.md)
 NNUE_HANDOFF.md
+
+# lichess puzzle database (user-supplied, ~300MB compressed) -- never commit
+lichess_db_puzzle.csv*
