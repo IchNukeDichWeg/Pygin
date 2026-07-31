@@ -437,6 +437,15 @@ def certify_premoves(engine, board, my_move, stop_evt):
 
 def main():
     engine = cengine.Engine()
+    # The engine's OWN time-policy defaults, captured once. `go movetime`
+    # disables the soft-stop and clock mode restores it -- and "restore" used
+    # to mean the literal 0.55, which silently overwrote whatever cengine.py
+    # had set. Nothing broke because the two agreed, but it meant any future
+    # soft-stop tuning would work under match.py and be discarded under UCI:
+    # tuned in testing, ignored in every real game. Restore what the engine
+    # actually shipped with.
+    SOFT_BASE = engine.soft_stop_frac
+    STAB_BASE = engine.use_stability_time
     # FB-42: _board_phase (wdl display) and time_manager._phase_24 hand-type
     # the 1/1/2/4/24 taper weights. If PHASE_WEIGHTS is ever retuned, fail
     # loudly here instead of letting the wdl field and the moves-to-go guess
@@ -564,8 +573,9 @@ def main():
             engine.use_stability_time = False
             engine.soft_stop_frac = None
         else:
-            engine.use_stability_time = True
-            engine.soft_stop_frac = 0.55     # cengine constructor default
+            engine.use_stability_time = STAB_BASE
+            engine.soft_stop_frac = SOFT_BASE   # what cengine.py shipped,
+                                                # not a hardcoded copy of it
 
         # FI-13e ponder: search the predicted position open-ended on the
         # OPPONENT'S clock, holding bestmove until ponderhit/stop -- the
