@@ -120,12 +120,15 @@ def out(line):
 TT_ENTRY_BYTES = 24          # csearch.c TTEntry -- keep in sync with the C side
 
 
-# Hash ceiling in MB. 20 GB (user request 2026-07-30). The table is a power of
-# two of 24-byte entries, so the reachable sizes near the top are 2^29 = 12,288
-# MB and 2^30 = 24,576 MB -- a 20 GB request therefore LANDS ON 12 GB, and
-# apply_hash says so on the info string rather than shrinking in silence.
-# csearch.c's set_tt_bits caps at 30 bits, which is the real backstop.
-HASH_MAX_MB = 20480
+# Hash ceiling in MB. The table is indexed with `key & TT_MASK`, so the entry
+# count must be a power of two; at 24 bytes/entry the reachable sizes near the
+# top are 2^29 = 12,288 MB and 2^30 = 24,576 MB. NOTHING lands on 20,480.
+#
+# The ceiling is therefore 24,576, not the 20,480 first set here on 2026-07-30
+# for a "20 GB" request: a 20,480 cap makes the 2^30 rung UNREACHABLE, so the
+# largest table anyone could actually get was 12 GB while the option advertised
+# 20. Cap on a reachable size, not on the number that was asked for.
+HASH_MAX_MB = 24576
 
 
 def apply_hash(engine, mb):
@@ -142,8 +145,14 @@ def apply_hash(engine, mb):
     engine.TT_BITS = bits                    # FB-30: fingerprint honesty
     actual = (1 << bits) * TT_ENTRY_BYTES // (1024 * 1024)
     if actual != mb:
+        # Name the next rung UP too: "rounded down" alone leaves the user
+        # guessing which number would not have been rounded at all.
+        nxt = (1 << (bits + 1)) * TT_ENTRY_BYTES // (1024 * 1024)
+        hint = (f"; {nxt} MB is the next size up"
+                if nxt <= HASH_MAX_MB else "")
         out(f"info string Hash {mb} MB rounded down to {actual} MB "
-            f"(power-of-two table)")
+            f"(the table is a power of two of {TT_ENTRY_BYTES}-byte "
+            f"entries{hint})")
 
 
 def info_line(rec, white_to_move, engine, multipv=None, board=None):
