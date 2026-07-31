@@ -1070,6 +1070,31 @@ class Engine:
     # PRICED +0 ALONE: FI-104 (ttPv) is the counterweight. False = node-exact.
     # SCREENED 2026-07-27: +2.43 +/-15.2 alone (LLR +0.109) -- the
     # foundation is not harmful, but priced +0 and it reads +0.
+    # CLOSED 2026-07-31 on the PRE-REGISTERED stopping rule. Reopened after
+    # ProbCut showed a 2k screen is triage (this had been closed on +2.43
+    # +/-15.2), and rerun TIMED because --nodes was suspected of
+    # under-crediting node savings.
+    #
+    #   pooled  +2.84 +/- 4.6 over 22,000 games (11,000 pairs), nElo +4.22
+    #   penta   557 / 2620 / 4515 / 2702 / 606
+    #   LLR     +0.870 -> +0.961 -> +1.698 -> +1.391 -> +1.620 of +2.944
+    #
+    # The rule was: at 10,000 pairs the LLR must be >= +1.9 or stop. It was
+    # +1.391. Stopped. Switching to [0,2] post hoc would not have rescued it
+    # either -- that reads +1.174, LOWER, because the effect sits between the
+    # bounds in both brackets.
+    #
+    # TWO THINGS BANKED. (1) The instrument hypothesis is FALSIFIED: --nodes
+    # read +2.43 and the clock reads +2.84, so ProbCut's +4.11 -> +11.44 gap
+    # was specific to ProbCut, NOT general to node-saving changes -- the
+    # backlog's --nodes nulls do not need re-reading. (2) A ~+3 effect is not
+    # resolvable at any budget we will pay: 22,000 games left the CI at
+    # [-1.8, +7.4]. Pick the SPRT bracket to match the expected effect BEFORE
+    # the campaign, never after seeing the data.
+    #
+    # Mechanism stays off. Not "rejected" -- consistently positive across five
+    # tranches and never confirmable. Costs 10.5% nodes; if a future change
+    # makes the tree cheaper, it is worth one more look.
     CUTNODE_LMR = False
 
     # FI-104 (R10 wave 1): ttPv -- a node that was ever on a PV reduces LESS,
