@@ -69,7 +69,7 @@ games without conceding a win or a draw, retiring a stale 95.5% from v49. Pawn
 odds (f2) is the only rung left, at 87.66% over 1,900 games at v54 (+339.63
 ±41.0 on the 1,500-game half), and the one handicap SF still scores against.
 Stockfish manages its own clock in that run. Under the older setup, where
-Pygin's time manager budgeted both sides, the same rung read 84.88% — our
+Pygin's time manager budgeted both sides, the same rung read 84.88% -- our
 manager was over-feeding SF by ~370 ms a move, so the old figure understated
 the gap by +2.78% ±2.16.
 
@@ -89,65 +89,65 @@ Full per-version speed/depth/Elo is in the list below; the charts above
 summarise it. Regenerate with `bench/bench_progress.py` and `scripts/make_readme_charts.py`.
 
 <details>
-<summary><b>Every version in full</b> — complete milestone + Elo list</summary>
+<summary><b>Every version in full</b> -- complete milestone + Elo list</summary>
 
-- **v57** — **the last pure-HCE release**; from here Pygin is an HCE/NNUE hybrid. Host layer only and **node-identical** to v56 (bench signature 1,145,629 unchanged, ladder node-exact), so no A/B slot was spent and the ledger is untouched. **Ponderhit now honours the soft-stop** — a prediction hit used to spend the full fresh budget re-confirming an already-settled move; it now applies the same P-35/U-06 fractions the main search uses (1.666 s → 0.686 s, a ratio of 0.412 against the designed 0.40). The soft-stop neighbourhood is exposed over UCI (`SoftStop`, `SoftStopStable`, `SoftStopUnstable`, `SoftStopStableIters`) so it can be swept without a rebuild. And a latent bug is fixed: `cuci.py` restored a *hardcoded* 0.55 soft-stop fraction over whatever the engine set, which meant any future tuning would have worked in testing and been silently discarded in every real game.
-- **v56** — **ProbCut**: the fail-high half of forward pruning, which Pygin had no equivalent of. At a shallow non-PV node a qsearch filters each capture at `beta + 200` and a real reduced-depth search confirms before anything is cut, so nothing is ever pruned on a static score. Cuts **21.6% of nodes** at fixed depth (bench 1,461,732 → 1,145,629). *(**+11.44 ±6.9** over 5,924 games TIMED 50+0.20, GSPRT[0,4] LLR **+2.953 ACCEPT** — the ledger's own instrument; the `--nodes` campaign that shipped it read **+4.11 ±4.2** over 21,806 games (LLR +2.971), so the fixed-node instrument reads CONSERVATIVE. Fifth SPRT accept, and the first pruning MECHANISM to pay since the search lane was declared exhausted: what was exhausted was the parameter space, not the mechanism space)*
-- **v55** — **node-identical speed pair**: FI-11 pin-aware legality + FI-42 the (mg,eg,phase) accumulator on Board. Bench signature UNCHANGED at 1,461,732, perft --deep clean, ladder node-exact — the search plays the SAME moves, it just gets there faster: **+8.3% NPS on x86, +13.5% on arm64**. *(**+9.66 ±8.2** over 6,874 games, TIMED 50+0.20, GSPRT[0,4] LLR +2.946 ACCEPT — measured on the clock because a fixed-node instrument reads zero for a node-identical change; **~1.16 Elo per 1% NPS**)*
-- **v54** — **PST retune** (736 piece-square entries fitted for the first time, texel.py --pst, 735 values moved; GSPRT[0,2] LLR +7.806, 11.7k games — second-largest release) *(**+31.20 ±5.6**)*
-- **v53** — **Texel eval retune** (44 scalars refitted on 4M own-self-play positions, game-result labels; fourth SPRT accept, LLR +9.918, 12k pooled games — largest single release) *(**+37.52 ±6.3**)*
-- **v52** — null-move refinements (no double null + eval-scaled R; third SPRT accept, 12k pooled games) *(+6.63 ±4.5)*
-- **v51** — root-move LMR (late quiet root scouts reduced; second SPRT accept, 9.3k pooled games) *(+11.12 ±5.3)*
-- **v50** — rule50 TT staleness guard + depth-independent TT mate handling (permanent terminal entries; null kept as correctness) *(+1.60 ±6.8)*
-- **v49** — cuckoo upcoming-repetition (forcible draw scored one ply early; null kept as correctness) *(+0.97 ±6.8)*
-- **v48** — qsearch TT-quality batch (TT value sharpens stand-pat; first SPRT accept, 21.6k games) *(+4.73 ±3.2)*
-- **v47** — TT to 192 MB (diminishing) + MultiPV (node-exact off) *(+3.16 ±6.8)*
-- **v46** — transposition table doubled to 96 MB (borderline; less TT thrash per game) *(+5.94 ±6.8)*
-- **v45** — TT search value sharpens the pruning eval (same NPS, smarter cuts) *(+13.52 ±6.8)*
-- **v44** — TT prefetch (node-identical, +5–6 % NPS) *(+13.31 ±6.8)*
-- **v43** — verified-null REMOVED (the insurance cost ~1 ply; isolation A/B) *(+5.18 ±6.8)*
-- **v42** — cannot-win eval clamp (correctness) *(+3.27 ±6.8)*
-- **v41** — verified null + 50-move + TT-store policy (correctness) *(−2.88 ±6.8)*
-- **v40** — FIDE-exact en-passant hashing (correctness) *(+4.31 ±6.8)*
-- **v39** — incremental Zobrist + eval-in-TT + NPS batch *(+8.86 ±6.8)*
-- **v38** — score-hygiene batch (correctness) *(+1.36 ±6.8)*
-- **v37** — exact PV (correctness) *(+0.17 ±6.8)*
-- **v36** — staged move ordering *(+24.67 ±6.8)*
-- **v35** — noisy-only qsearch gen + qsearch TT *(≈ +72)*
-- **v34** — check extensions *(+6.81 ±6.8)*
-- **v33** — transposition table kept warm across moves *(+23.52 ±6.8)*
-- **v32** — internal iterative reduction *(+7.30 ±6.8)*
-- **v31** — **C search core** (whole per-node loop in C) *(≈ +215 ¹)*
-- **v30** — stability-scaled time (U-06); last Python *(+10.91 ±6.8)*
-- **v29** — soft-stop time management (P-35) *(+38.34 ±6.9)*
-- **v28** — node-identical speed batch (+4 %) *(+13.13 ±6.0)*
-- **v27** — node-identical speed batch (+12 %) *(+35.17 ±7.7)*
-- **v26** — node-identical speed batch *(+41.90 ±5.7)*
-- **v25** — 18-item bug block; Lazy-SMP production fixes *(+2.91 ±11.6)*
-- **v24** — TT-dispatch de-branching (± is the v21→v24 span) *(+11.75 ±6.8 ²)*
-- **v23** — Zobrist dispatch de-branching (code quality) *(≈ +0 est ²)*
-- **v22** — nine correctness bug fixes + six NPS wins *(≈ +8 est ²)*
-- **v21** — capture history, SEE capture pruning, LMR losing captures *(+16 ±10 ⁴)*
-- **v20** — rook-on-7th, mobility area, threats; one-call C eval *(+45 ±11 ⁴)*
-- **v19** — lock-free shared TT, multi-process SMP, packed move word *(≈ +5 est ⁵)*
-- **v18** — incremental Zobrist hashing (off by default; SMP infra) *(≈ +0 est ⁵)*
-- **v17** — **move generation ported to C** (`movegen.c`) *(+69 ±16 ³)*
-- **v16** — **evaluation ported to C** (`eval_c.c`) *((in ³))*
-- **v15** — LMR-divisor tune (tie); probcut tried & removed *(≈ +0 est ⁵)*
-- **v14** — Syzygy TB probe, internal iterative reduction, pawn hash *(≈ +8 est ⁵)*
-- **v13** — eval-weight retune *(≈ +4 est ⁵)*
-- **v12** — check-extension budgeting + max-extensions cap *(≈ +4 est ⁵)*
-- **v11** — incremental base eval (byte-identical) *(≈ +3 est ⁵)*
-- **v10** — TT refactor (two-tier + depth-preferred replacement) *(≈ +8 est ⁵)*
-- **v9** — late-move pruning, history malus, improving heuristic *(≈ +12 est ⁵)*
-- **v8** — quiescence stand-pat, trade-down simplify, PV extraction *(≈ +12 est ⁵)*
-- **v7** — pin evaluation *(≈ +4 est ⁵)*
-- **v6** — lone-king endgame eval fix *(≈ +8 est ⁵)*
-- **v5** — recapture extension *(≈ +3 est ⁵)*
-- **v4** — SEE move ordering + losing-capture pruning *(≈ +20 est ⁵)*
-- **v3** — endgame mop-up, contempt draws, counter-moves *(≈ +15 est ⁵)*
-- **v2** — search + eval build-out: PVS, futility, LMR, aspiration, pawn/mobility/king-safety eval, book *(≈ +120 est ⁵)*
-- **v1** — first working engine (naive negamax + material eval) *(—)*
+- **v57** -- **the last pure-HCE release**; from here Pygin is an HCE/NNUE hybrid. Host layer only and **node-identical** to v56 (bench signature 1,145,629 unchanged, ladder node-exact), so no A/B slot was spent and the ledger is untouched. **Ponderhit now honours the soft-stop** -- a prediction hit used to spend the full fresh budget re-confirming an already-settled move; it now applies the same P-35/U-06 fractions the main search uses (1.666 s → 0.686 s, a ratio of 0.412 against the designed 0.40). The soft-stop neighbourhood is exposed over UCI (`SoftStop`, `SoftStopStable`, `SoftStopUnstable`, `SoftStopStableIters`) so it can be swept without a rebuild. And a latent bug is fixed: `cuci.py` restored a *hardcoded* 0.55 soft-stop fraction over whatever the engine set, which meant any future tuning would have worked in testing and been silently discarded in every real game.
+- **v56** -- **ProbCut**: the fail-high half of forward pruning, which Pygin had no equivalent of. At a shallow non-PV node a qsearch filters each capture at `beta + 200` and a real reduced-depth search confirms before anything is cut, so nothing is ever pruned on a static score. Cuts **21.6% of nodes** at fixed depth (bench 1,461,732 → 1,145,629). *(**+11.44 ±6.9** over 5,924 games TIMED 50+0.20, GSPRT[0,4] LLR **+2.953 ACCEPT** -- the ledger's own instrument; the `--nodes` campaign that shipped it read **+4.11 ±4.2** over 21,806 games (LLR +2.971), so the fixed-node instrument reads CONSERVATIVE. Fifth SPRT accept, and the first pruning MECHANISM to pay since the search lane was declared exhausted: what was exhausted was the parameter space, not the mechanism space)*
+- **v55** -- **node-identical speed pair**: FI-11 pin-aware legality + FI-42 the (mg,eg,phase) accumulator on Board. Bench signature UNCHANGED at 1,461,732, perft --deep clean, ladder node-exact -- the search plays the SAME moves, it just gets there faster: **+8.3% NPS on x86, +13.5% on arm64**. *(**+9.66 ±8.2** over 6,874 games, TIMED 50+0.20, GSPRT[0,4] LLR +2.946 ACCEPT -- measured on the clock because a fixed-node instrument reads zero for a node-identical change; **~1.16 Elo per 1% NPS**)*
+- **v54** -- **PST retune** (736 piece-square entries fitted for the first time, texel.py --pst, 735 values moved; GSPRT[0,2] LLR +7.806, 11.7k games -- second-largest release) *(**+31.20 ±5.6**)*
+- **v53** -- **Texel eval retune** (44 scalars refitted on 4M own-self-play positions, game-result labels; fourth SPRT accept, LLR +9.918, 12k pooled games -- largest single release) *(**+37.52 ±6.3**)*
+- **v52** -- null-move refinements (no double null + eval-scaled R; third SPRT accept, 12k pooled games) *(+6.63 ±4.5)*
+- **v51** -- root-move LMR (late quiet root scouts reduced; second SPRT accept, 9.3k pooled games) *(+11.12 ±5.3)*
+- **v50** -- rule50 TT staleness guard + depth-independent TT mate handling (permanent terminal entries; null kept as correctness) *(+1.60 ±6.8)*
+- **v49** -- cuckoo upcoming-repetition (forcible draw scored one ply early; null kept as correctness) *(+0.97 ±6.8)*
+- **v48** -- qsearch TT-quality batch (TT value sharpens stand-pat; first SPRT accept, 21.6k games) *(+4.73 ±3.2)*
+- **v47** -- TT to 192 MB (diminishing) + MultiPV (node-exact off) *(+3.16 ±6.8)*
+- **v46** -- transposition table doubled to 96 MB (borderline; less TT thrash per game) *(+5.94 ±6.8)*
+- **v45** -- TT search value sharpens the pruning eval (same NPS, smarter cuts) *(+13.52 ±6.8)*
+- **v44** -- TT prefetch (node-identical, +5–6 % NPS) *(+13.31 ±6.8)*
+- **v43** -- verified-null REMOVED (the insurance cost ~1 ply; isolation A/B) *(+5.18 ±6.8)*
+- **v42** -- cannot-win eval clamp (correctness) *(+3.27 ±6.8)*
+- **v41** -- verified null + 50-move + TT-store policy (correctness) *(−2.88 ±6.8)*
+- **v40** -- FIDE-exact en-passant hashing (correctness) *(+4.31 ±6.8)*
+- **v39** -- incremental Zobrist + eval-in-TT + NPS batch *(+8.86 ±6.8)*
+- **v38** -- score-hygiene batch (correctness) *(+1.36 ±6.8)*
+- **v37** -- exact PV (correctness) *(+0.17 ±6.8)*
+- **v36** -- staged move ordering *(+24.67 ±6.8)*
+- **v35** -- noisy-only qsearch gen + qsearch TT *(≈ +72)*
+- **v34** -- check extensions *(+6.81 ±6.8)*
+- **v33** -- transposition table kept warm across moves *(+23.52 ±6.8)*
+- **v32** -- internal iterative reduction *(+7.30 ±6.8)*
+- **v31** -- **C search core** (whole per-node loop in C) *(≈ +215 ¹)*
+- **v30** -- stability-scaled time (U-06); last Python *(+10.91 ±6.8)*
+- **v29** -- soft-stop time management (P-35) *(+38.34 ±6.9)*
+- **v28** -- node-identical speed batch (+4 %) *(+13.13 ±6.0)*
+- **v27** -- node-identical speed batch (+12 %) *(+35.17 ±7.7)*
+- **v26** -- node-identical speed batch *(+41.90 ±5.7)*
+- **v25** -- 18-item bug block; Lazy-SMP production fixes *(+2.91 ±11.6)*
+- **v24** -- TT-dispatch de-branching (± is the v21→v24 span) *(+11.75 ±6.8 ²)*
+- **v23** -- Zobrist dispatch de-branching (code quality) *(≈ +0 est ²)*
+- **v22** -- nine correctness bug fixes + six NPS wins *(≈ +8 est ²)*
+- **v21** -- capture history, SEE capture pruning, LMR losing captures *(+16 ±10 ⁴)*
+- **v20** -- rook-on-7th, mobility area, threats; one-call C eval *(+45 ±11 ⁴)*
+- **v19** -- lock-free shared TT, multi-process SMP, packed move word *(≈ +5 est ⁵)*
+- **v18** -- incremental Zobrist hashing (off by default; SMP infra) *(≈ +0 est ⁵)*
+- **v17** -- **move generation ported to C** (`movegen.c`) *(+69 ±16 ³)*
+- **v16** -- **evaluation ported to C** (`eval_c.c`) *((in ³))*
+- **v15** -- LMR-divisor tune (tie); probcut tried & removed *(≈ +0 est ⁵)*
+- **v14** -- Syzygy TB probe, internal iterative reduction, pawn hash *(≈ +8 est ⁵)*
+- **v13** -- eval-weight retune *(≈ +4 est ⁵)*
+- **v12** -- check-extension budgeting + max-extensions cap *(≈ +4 est ⁵)*
+- **v11** -- incremental base eval (byte-identical) *(≈ +3 est ⁵)*
+- **v10** -- TT refactor (two-tier + depth-preferred replacement) *(≈ +8 est ⁵)*
+- **v9** -- late-move pruning, history malus, improving heuristic *(≈ +12 est ⁵)*
+- **v8** -- quiescence stand-pat, trade-down simplify, PV extraction *(≈ +12 est ⁵)*
+- **v7** -- pin evaluation *(≈ +4 est ⁵)*
+- **v6** -- lone-king endgame eval fix *(≈ +8 est ⁵)*
+- **v5** -- recapture extension *(≈ +3 est ⁵)*
+- **v4** -- SEE move ordering + losing-capture pruning *(≈ +20 est ⁵)*
+- **v3** -- endgame mop-up, contempt draws, counter-moves *(≈ +15 est ⁵)*
+- **v2** -- search + eval build-out: PVS, futility, LMR, aspiration, pawn/mobility/king-safety eval, book *(≈ +120 est ⁵)*
+- **v1** -- first working engine (naive negamax + material eval) *(--)*
 
 </details>
 
@@ -161,7 +161,7 @@ summarise it. Regenerate with `bench/bench_progress.py` and `scripts/make_readme
   by v25.
 - **Bundled A/Bs:** v16+v17 vs v15 = +69 ±16 ³; v22–24 vs v21 = +11.75 ±6.8 ²;
   v31's ≈+215 ¹ is odds-derived.
-- **NPS 4T** is "—" for v1–24 (no reliable SMP). v25–30 were multi-process,
+- **NPS 4T** is "--" for v1–24 (no reliable SMP). v25–30 were multi-process,
   v31+ pthread Lazy-SMP, so the v30→v31 jump is partly methodology.
 
 </details>
@@ -175,7 +175,7 @@ summarise it. Regenerate with `bench/bench_progress.py` and `scripts/make_readme
 | **v30→v31** | 69.0k → **2.34M (~34×)** | whole per-node loop moves to C |
 | **v34→v36** | 2.13M → 3.19M | noisy-only qsearch gen + staged ordering |
 | **v43→v44** | 3.23M → 3.67M | TT prefetch: +13.31 Elo, ~2.7 Elo per 1% NPS |
-| **v53** | — | Texel eval retune: +37.52 Elo, biggest single release |
+| **v53** | -- | Texel eval retune: +37.52 Elo, biggest single release |
 | **v54→v55** | 3.69× → **4.19×** | pin-aware legality + eval accumulator: +9.66 Elo, ~1.16 Elo per 1% NPS |
 | **v55→v56** | **4.19×** | ProbCut: **+11.44 timed** (+4.11 on `--nodes`) at −21.6% nodes; S-06 pool +9.83% at 4 threads |
 | **v56→v57** | **4.19×** | host layer only, node-identical: ponderhit soft-stop + the time-policy knobs over UCI. **Last pure-HCE release** |
@@ -271,15 +271,15 @@ GUI options:
 | Option | Type | Default | Range | Purpose |
 |:-------|:-----|--------:|:------|:--------|
 | `Threads` | spin | 1 | 1–512 | Lazy-SMP search threads. The ceiling is a limit, not advice: set it above your PHYSICAL core count and threads timeshare cores, which costs strength rather than adding it |
-| `Hash` | spin | 192 | 2–24576 | Transposition-table size (MB); resize wipes the table. The entry count is a power of two of 24-byte entries, so the sizes near the top are **6144 / 12288 / 24576** — anything between rounds DOWN to one of them, and an info string names the next size up. **Raise it for long games or analysis:** at 50+0.20 the default fills completely by move 16 and every later store evicts something. The default is deliberately modest because A/B harnesses run two engine processes per worker, each allocating its own table |
+| `Hash` | spin | 192 | 2–24576 | Transposition-table size (MB); resize wipes the table. The entry count is a power of two of 24-byte entries, so the sizes near the top are **6144 / 12288 / 24576** -- anything between rounds DOWN to one of them, and an info string names the next size up. **Raise it for long games or analysis:** at 50+0.20 the default fills completely by move 16 and every later store evicts something. The default is deliberately modest because A/B harnesses run two engine processes per worker, each allocating its own table |
 | `MultiPV` | spin | 1 | 1–20 | PV lines reported. >1 is an analysis mode: it bypasses the book and is never active in match play |
-| `OwnBook` | check | true | — | Use opening book |
-| `BookFile` | string |  | — | Path to Polyglot `.bin` book (empty ⇒ bundled `Perfect2023.bin`) |
-| `UseTB` | check | false | — | Probe the online Lichess Syzygy tablebase at the root (needs network; no local path) |
+| `OwnBook` | check | true | -- | Use opening book |
+| `BookFile` | string |  | -- | Path to Polyglot `.bin` book (empty ⇒ bundled `Perfect2023.bin`) |
+| `UseTB` | check | false | -- | Probe the online Lichess Syzygy tablebase at the root (needs network; no local path) |
 | `Move Overhead` | spin | 40 | 0–5000 | Clock margin (ms) for GUI/network lag |
-| `Premove` | check | false | — | Emit certified instant-reply premoves (opt-in) |
-| `UCI_ShowWDL` | check | true | — | Emit `wdl` on info lines (opt-out for strict arenas) |
-| `Clear Hash` | button | — | — | Wipe the transposition table without `ucinewgame` |
+| `Premove` | check | false | -- | Emit certified instant-reply premoves (opt-in) |
+| `UCI_ShowWDL` | check | true | -- | Emit `wdl` on info lines (opt-out for strict arenas) |
+| `Clear Hash` | button | -- | -- | Wipe the transposition table without `ucinewgame` |
 | `Contempt` | spin | 50 | −100–100 | Draw score bias (cp) when ahead/behind |
 
 ---
@@ -338,8 +338,8 @@ its [README](Old%20Engine/README.md).
 
 ## License
 
-- **Source:** MIT — see [`LICENSE`](LICENSE).
+- **Source:** MIT -- see [`LICENSE`](LICENSE).
 - **Released binaries** bundle [`python-chess`](https://github.com/niklasf/python-chess)
   (GPL-3.0+), so the binary distribution is GPL-3.0 as a whole. Full text,
-  source pointers and credits (Perfect2023 book — Sedat Canbaz; UHO suites —
+  source pointers and credits (Perfect2023 book -- Sedat Canbaz; UHO suites --
   Stefan Pohl) in [`THIRD_PARTY_LICENSES.md`](docs/THIRD_PARTY_LICENSES.md).

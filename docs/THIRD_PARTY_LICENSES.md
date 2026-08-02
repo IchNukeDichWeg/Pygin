@@ -44,13 +44,13 @@ governing license for the binary distribution as a whole**.
 
 ## Tools and inspirations (not distributed)
 
-- **Stockfish** (GPL-3.0) — techniques referenced by name throughout the
+- **Stockfish** (GPL-3.0) -- techniques referenced by name throughout the
   source comments are reimplemented from public descriptions; no
   Stockfish code is included. Stockfish binaries used in testing are the
   user's own installs.
-- **Fishtest** (GPL-3.0) — `sprt.py` implements the published GSPRT
+- **Fishtest** (GPL-3.0) -- `sprt.py` implements the published GSPRT
   statistics used by Fishtest for its sequential tests.
-- **matetrack** (https://github.com/official-stockfish/matetrack) — used
+- **matetrack** (https://github.com/official-stockfish/matetrack) -- used
   locally as a test oracle; not part of this repository.
 - **python-chess, numpy, scipy, PySide6, PyInstaller** development
   dependencies not listed above are used unmodified from PyPI and are not
