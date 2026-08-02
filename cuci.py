@@ -331,16 +331,25 @@ def _emit_multipv(engine, board, best_mv, k, budget, white_to_move,
 # sub-searches -- a new go/stop/ucinewgame aborts the in-flight one (FB-32) and
 # joins within one ms-scale step.
 # --------------------------------------------------------------------------- #
-PREMOVE_CHECK_DEPTH = 6
-PREMOVE_TABLE_DEPTH = 9
+# Certification gate raised 2026-08-01 (user call): agreement at d13 AND d14,
+# and nothing is offered unless the real search reached d14. The old d6/d9 pair
+# cost ~0.03s and proved little; d13/d14 costs ~0.7s per pair and is a genuine
+# claim. MEASURED first, because the caps below had to move with it: d13 runs
+# 0.24-0.35s and d14 0.38-0.48s, against the previous 0.25s per-search cap --
+# left unchanged, cert_search would have missed its depth every time, returned
+# None, and the feature would have silently never fired again.
+PREMOVE_CHECK_DEPTH = 13
+PREMOVE_TABLE_DEPTH = 14
+PREMOVE_MIN_DEPTH = 14   # the REAL search must have reached this before any
+                         # premove is offered at all
 PREMOVE_FORCED_DEPTH = 10
 PREMOVE_MIN_LINE = 10    # a choice-pair may only be played while the line
                          # REMAINING after it is >= this deep: each instant
                          # reply consumes 2 plies of the searched line, so a
                          # d13 search affords 1 pair (13-2=11 ok, 13-4=9 no),
                          # d14+ affords the max 2, below d12 none at all
-PREMOVE_CAP_S = 0.1      # budget checkpoint: no NEW sub-search starts past it
-PREMOVE_SEARCH_CAP_S = 0.25   # FB-45: and each sub-search carries its own
+PREMOVE_CAP_S = 1.5      # budget checkpoint: no NEW sub-search starts past it
+PREMOVE_SEARCH_CAP_S = 0.8    # FB-45: and each sub-search carries its own
                          # deadline, so the true wall-clock bound on the whole
                          # certification is CAP_S + SEARCH_CAP_S = 0.35 s --
                          # spent on the OPPONENT's clock and abortable by
@@ -371,11 +380,25 @@ def certify_premoves(engine, board, my_move, stop_evt):
         real bound instead of a between-search checkpoint; a search that did
         not REACH `depth` returns None so a truncated result can never be
         certified while wearing the deeper search's name."""
-        mv = engine.get_best_move_timed(pos, PREMOVE_SEARCH_CAP_S, depth)
+        # The soft-stop must NOT apply here. This search's contract is "reach
+        # `depth` or return None", and a timed search normally ends at
+        # soft_stop_frac (0.55) of its budget -- so it would stop at ~0.44s of
+        # a 0.8s cap, never reach d13/d14, and certify nothing. With the old
+        # d6/d9 gate that never bit, because those finish in milliseconds; the
+        # deeper gate exposed it. The cap still bounds the search: the deadline
+        # is enforced regardless of the fraction.
+        _sv = (engine.soft_stop_frac, engine.use_stability_time)
+        engine.soft_stop_frac, engine.use_stability_time = None, False
+        try:
+            mv = engine.get_best_move_timed(pos, PREMOVE_SEARCH_CAP_S, depth)
+        finally:
+            engine.soft_stop_frac, engine.use_stability_time = _sv
         return None if engine.last_depth < depth else mv
 
     pv = (engine.last_pv or "").split()      # read BEFORE any cert search
     d0 = engine.last_depth or 0              # the searched line's depth
+    if d0 < PREMOVE_MIN_DEPTH:
+        return []                            # too shallow to certify anything
     b = board.copy()
     b.push(my_move)
     chain = []
