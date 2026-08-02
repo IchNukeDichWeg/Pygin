@@ -9,6 +9,12 @@ crucially, under PyPy:
 Usage::
 
     python3 match.py [engine1.py] [engine2.py] [num_positions] [--workers N] [--engine-smp N]
+                     [--total-time 1d,10h,4m,10s]             (WALL-CLOCK budget: play until it expires,
+                                                               then stop. Overrides the position count --
+                                                               the schedule becomes the rest of the pool and
+                                                               the clock decides. --offset, --seed, --sprt and
+                                                               the state file all still apply. Any subset of
+                                                               d/h/m/s, e.g. 4h or 30m or "2h 15m".)
                      [--offset N]                             (opening-pool offset; the 4th POSITIONAL still
                                                                works, but this wins and is unambiguous. The
                                                                range is printed at the start, in the log
@@ -1436,6 +1442,45 @@ def _worker_loop(in_q, out_q, engine1_path, engine2_path, mode_cfg,
         e2.kill()
 
 
+_DUR_UNITS = {"d": 86400, "h": 3600, "m": 60, "s": 1}
+
+
+def parse_duration(text):
+    """'1d,10h,4m,10s' -> seconds. Any subset, any order, commas optional.
+
+    Raises ValueError on anything it cannot read rather than guessing: a
+    mistyped budget that silently became 0 or 10x would waste the run it was
+    meant to bound."""
+    total, seen = 0, False
+    for part in re.split(r"[,\s]+", str(text).strip()):
+        if not part:
+            continue
+        m = re.fullmatch(r"(\d+(?:\.\d+)?)\s*([dhms])", part.lower())
+        if not m:
+            raise ValueError(f"--total-time: cannot read {part!r}; "
+                             f"use forms like 1d,10h,4m,10s")
+        total += float(m.group(1)) * _DUR_UNITS[m.group(2)]
+        seen = True
+    if not seen or total <= 0:
+        raise ValueError(f"--total-time: {text!r} is not a positive duration")
+    return total
+
+
+def fmt_duration_short(sec):
+    sec = int(sec)
+    out = []
+    for unit, n in (("d", 86400), ("h", 3600), ("m", 60), ("s", 1)):
+        if sec >= n:
+            out.append(f"{sec // n}{unit}")
+            sec %= n
+    return "".join(out) or "0s"
+
+
+class _TimeStop(Exception):
+    """Raised when --total-time expires. Same unwind path as _SPRTStop: the
+    games already played are a complete, poolable result, not a truncation."""
+
+
 class _SPRTStop(Exception):
     """Raised from the result loop when the SPRT crosses a bound, so the match
     unwinds through the SAME finally-block shutdown that Ctrl-C uses (workers
@@ -1579,6 +1624,7 @@ def main():
     sprt_model = "normalized"
     sprt_resume_path = None    # FI-82: pooled-tranche state file
     push_state = False         # --push-state
+    total_time = None          # --total-time: wall-clock budget
     campaign_tag = None        # --tag: names the state file explicitly
     offset_opt = None          # --offset (overrides the 4th positional)
     seed_opt = None            # --seed
@@ -1666,6 +1712,9 @@ def main():
         elif argv[i] == "--push-state":
             push_state = True                   # git add+commit+push the state
             i += 1                              # file when the run ends
+        elif argv[i] == "--total-time" and i + 1 < len(argv):
+            total_time = parse_duration(argv[i + 1])   # wall-clock budget;
+            i += 2                                     # overrides the count
         elif argv[i] == "--tag" and i + 1 < len(argv):
             campaign_tag = re.sub(r"[^A-Za-z0-9._-]", "_", argv[i + 1].strip())
             i += 2
@@ -1685,6 +1734,11 @@ def main():
     # Positional arg is the number of POSITIONS; each is played twice (both
     # colours), so total games = num_positions * 2.
     num_positions = max(1, int(positional[2]) if len(positional) > 2 else NUM_GAMES)
+    if total_time is not None:
+        # The clock decides when to stop, so the SCHEDULE must never be the
+        # binding constraint -- take the rest of the pool and let the deadline
+        # end it. Offset still applies; everything else about sizing is moot.
+        num_positions = 10 ** 9
     # The 4th positional still works so old commands do not silently change
     # meaning, but --offset wins -- an opening range is the one field that
     # must never be ambiguous, and it is now printed at both ends of the run.
@@ -1838,7 +1892,9 @@ def main():
               f"{len(fens)} positions x 2 colours = {total_games} games\n"
               f"Workers: {workers_desc}\n"
               f"Openings: {openings_desc}\n"
-              f"Log: {log_path}\n" + "-" * 72)
+              + (f"Budget: {fmt_duration_short(total_time)} wall-clock "
+                 f"(overrides the game count)\n" if total_time is not None else "")
+              + f"Log: {log_path}\n" + "-" * 72)
     print(banner)
     if fh is not None:
         # FI-101: the calibration used to exist only on stdout, so a --nodes
@@ -1864,6 +1920,7 @@ def main():
     tally = {"e1": 0, "e2": 0, "draws": 0, "errors": 0, "completed": 0,
               "penta": {0: 0, 1: 0, 2: 0, 3: 0, 4: 0}, "penta_incomplete": 0}
     start_t = time.time()
+    deadline = (start_t + total_time) if total_time is not None else None
     stopped = False
     interrupted = False        # Ctrl-C / SIGTERM: skip the in_q sentinel dance
     _install_signal_handlers()
@@ -2294,6 +2351,8 @@ def main():
                     continue
                 g = _unpack_result(r, e1, e2)
                 handle_result(g, g["round"])
+                if deadline and time.time() >= deadline:
+                    raise _TimeStop()
                 if sprt_state["decided"]:
                     # Leave via exception so the finally-block shutdown runs
                     # and feeder.join() (which would block on a still-filling
@@ -2310,9 +2369,23 @@ def main():
                 black = e2 if white_is_e1 else e1
                 g = play_game(round_no, fen, white, black, e1, mode_cfg)
                 handle_result(g, round_no)
+                if deadline and time.time() >= deadline:
+                    raise _TimeStop()
                 if sprt_state["decided"]:
                     raise _SPRTStop()
 
+    except _TimeStop:
+        stopped = True
+        # Take the TERMINATE path, not the sentinel dance. --total-time sizes
+        # the schedule to the whole remaining pool, so N sentinels would queue
+        # behind a backlog of hundreds of thousands of jobs and never be seen:
+        # the joins time out one by one and the process hangs for minutes after
+        # the summary is already printed. _shutdown_workers' own docstring says
+        # this; it simply never applied at A/B budgets before.
+        interrupted = True
+        _clear_status()
+        print(f"\n[--total-time {fmt_duration_short(total_time)} reached -- "
+              f"stopping; the games played are a complete result]")
     except _SPRTStop:
         stopped = True
         _clear_status()
