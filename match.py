@@ -39,6 +39,12 @@ Usage::
                                                                unshuffled. The pool is shuffled BEFORE it is
                                                                sliced, so the same offset under a different
                                                                seed is a DIFFERENT set of openings.)
+                     [--tc 10+0.1]                            (time control: base+increment in seconds,
+                                                               e.g. 50+0.2 or 10+0.1 or plain 10. Implies
+                                                               --mode clock. --tc-seconds/--tc-increment set
+                                                               the two halves separately.)
+                     [--time-per-move MS] [--fixed-depth D]   (fixed ms or fixed plies per move; each implies
+                                                               its own --mode, like --nodes does)
                      [--book1 book.bin] [--book2 book.bin]   (per-engine opening books; book testing)
                      [--start-pos True]                       (all games from startpos, ignore the FEN file)
                      [--sprt]                                 (SPRT early-stop: quit as soon as the result is
@@ -1653,6 +1659,20 @@ def main():
         elif argv[i] == "--mode" and i + 1 < len(argv):
             MODE = argv[i + 1]
             i += 2
+        elif argv[i] == "--tc" and i + 1 < len(argv):
+            # "50+0.2" / "10+0.1" / "10" -- the whole time control in one arg,
+            # written the way it is spoken. Implies clock mode.
+            spec = argv[i + 1].strip()
+            try:
+                base, _, inc = spec.partition("+")
+                TC_SECONDS = float(base)
+                TC_INCREMENT = float(inc) if inc else 0.0
+            except ValueError:
+                print(f"ERROR: --tc wants BASE[+INC] in seconds, got {spec!r} "
+                      f"(e.g. 10+0.1)")
+                return
+            MODE = "clock"
+            i += 2
         elif argv[i] == "--tc-seconds" and i + 1 < len(argv):
             # float, not int: a fractional base clock (e.g. 7.5s hyper-TC)
             # was silently impossible from the CLI while --tc-increment
@@ -1664,6 +1684,7 @@ def main():
             i += 2
         elif argv[i] == "--time-per-move" and i + 1 < len(argv):
             TIME_PER_MOVE_MS = int(argv[i + 1])
+            MODE = "time"                    # the flag implies its mode, as --nodes does
             i += 2
         elif argv[i] == "--book1" and i + 1 < len(argv):
             BOOK_ENGINE1 = argv[i + 1]       # book testing: engine 1's .bin
@@ -1676,6 +1697,7 @@ def main():
             i += 2
         elif argv[i] == "--fixed-depth" and i + 1 < len(argv):
             FIXED_DEPTH = int(argv[i + 1])
+            MODE = "depth"                   # the flag implies its mode, as --nodes does
             i += 2
         elif argv[i] == "--adj" and i + 1 < len(argv):
             v = argv[i + 1].strip().lower()
@@ -1803,6 +1825,11 @@ def main():
 
     if nodes_budget is not None:
         MODE = "nodes"                   # --nodes overrides the module default
+    if MODE not in ("clock", "time", "depth", "nodes"):
+        # A bad --mode used to survive until the mode-label dicts below and
+        # die on a KeyError, after the workers had already started.
+        print(f"ERROR: unknown --mode {MODE!r} (clock | time | depth | nodes)")
+        return
     mode_cfg = {"mode": MODE, "time_ms": TIME_PER_MOVE_MS, "depth": FIXED_DEPTH,
                 "tc_seconds": TC_SECONDS, "tc_increment": TC_INCREMENT,
                 "nodes": nodes_budget,
