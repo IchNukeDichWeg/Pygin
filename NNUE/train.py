@@ -43,13 +43,7 @@ import numpy as np
 NNUE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, NNUE_DIR)
 
-try:
-    import torch
-except ModuleNotFoundError:                      # the deps are opt-in
-    raise SystemExit(
-        "NNUE/train.py needs torch, which setup.sh does NOT install by "
-        "default -- it is ~0.5 GB and only training uses it, while every A/B "
-        "box runs setup.sh.\n\n    ./setup.sh --with-torch\n")
+import torch
 
 from config import (OUT_CP, THREAT_DIM, QA, CHECKPOINTS_DIR, TOY_NET, D2,
                     LABEL_MAX_ABS_CP, stamp_net_hash)
