@@ -9,6 +9,18 @@ crucially, under PyPy:
 Usage::
 
     python3 match.py [engine1.py] [engine2.py] [num_positions] [--workers N] [--engine-smp N]
+                     [--force-nodes-1 N --force-nodes-2 M]    (explicit per-side node budgets, NO
+                                                               calibration. --nodes derives each side's budget
+                                                               from THIS box's NPS, which is what makes such a
+                                                               run un-poolable with the same run elsewhere;
+                                                               naming both budgets removes the machine from the
+                                                               experiment so two boxes play the identical
+                                                               contest and their pentanomials add. Both are
+                                                               required together. Fairness becomes yours to
+                                                               own: take the pair from ONE calibrated run and
+                                                               reuse it. The mode string records them, so a
+                                                               calibrated run resuming a forced state file
+                                                               warns.)
                      [--total-time 1d,10h,4m,10s]             (WALL-CLOCK budget: play until it expires,
                                                                then stop. Overrides the position count --
                                                                the schedule becomes the rest of the pool and
@@ -1624,6 +1636,8 @@ def main():
     sprt_model = "normalized"
     sprt_resume_path = None    # FI-82: pooled-tranche state file
     push_state = False         # --push-state
+    force_nodes_1 = None       # --force-nodes-1/2: explicit per-side budgets,
+    force_nodes_2 = None       #   no calibration -> comparable ACROSS boxes
     total_time = None          # --total-time: wall-clock budget
     campaign_tag = None        # --tag: names the state file explicitly
     offset_opt = None          # --offset (overrides the 4th positional)
@@ -1712,6 +1726,12 @@ def main():
         elif argv[i] == "--push-state":
             push_state = True                   # git add+commit+push the state
             i += 1                              # file when the run ends
+        elif argv[i] == "--force-nodes-1" and i + 1 < len(argv):
+            force_nodes_1 = max(1, int(argv[i + 1]))   # skip calibration for
+            i += 2                                     # this side
+        elif argv[i] == "--force-nodes-2" and i + 1 < len(argv):
+            force_nodes_2 = max(1, int(argv[i + 1]))
+            i += 2
         elif argv[i] == "--total-time" and i + 1 < len(argv):
             total_time = parse_duration(argv[i + 1])   # wall-clock budget;
             i += 2                                     # overrides the count
@@ -1800,7 +1820,31 @@ def main():
     tpm = TIME_PER_MOVE_MS if MODE == "time" else None
 
     cal_start = None                    # FI-101: compared against at the end
-    if MODE == "nodes":
+    forced_both = force_nodes_1 is not None and force_nodes_2 is not None
+    if MODE == "nodes" and forced_both:
+        # CROSS-BOX MODE. The calibration exists to give each engine an equal
+        # TIME-equivalent budget on THIS machine, which is exactly what makes a
+        # --nodes run un-poolable with the same run on a different box: the
+        # budgets are functions of that box's NPS. Naming both budgets outright
+        # removes the machine from the experiment, so two boxes play the
+        # identical contest and their pentanomials add.
+        #
+        # The cost is that fairness becomes the caller's problem: pass the same
+        # number twice and a slower engine is simply handicapped. Get the pair
+        # from ONE calibrated run and reuse it everywhere.
+        mode_cfg["nodes_e1"] = int(force_nodes_1)
+        mode_cfg["nodes_e2"] = int(force_nodes_2)
+        print(f"Forced --nodes budgets (NO calibration, cross-box comparable):"
+              f"\n  engine1: {mode_cfg['nodes_e1']:,} nodes/move"
+              f"\n  engine2: {mode_cfg['nodes_e2']:,} nodes/move")
+    elif MODE == "nodes":
+        if force_nodes_1 is not None or force_nodes_2 is not None:
+            print("ERROR: --force-nodes-1 and --force-nodes-2 must be given "
+                  "TOGETHER. Forcing one side and calibrating the other would "
+                  "hand one engine a budget derived from this box's NPS and "
+                  "the other a fixed one -- neither fair here nor comparable "
+                  "elsewhere.")
+            return
         print(f"Calibrating --nodes budgets ({CAL_ROUNDS} interleaved bench "
               "rounds per engine)...")
         cal_start = calibrate_nodes(engine1, engine2, "start")
@@ -1871,7 +1915,14 @@ def main():
     interp = f"{impl.name} {sys.version.split()[0]}" if impl else "python"
     mode_desc = ({"time": f"{TIME_PER_MOVE_MS} ms/move",
                   "depth": f"depth {FIXED_DEPTH}",
-                  "nodes": f"nodes {nodes_budget}/move (NPS-calibrated)",
+                  # The mode string is the experiment's identity in the state
+                  # file, so a forced pair must read differently from a
+                  # calibrated one: two boxes with the same forced budgets pool
+                  # silently, and a calibrated run against them warns.
+                  "nodes": (f"nodes e1={mode_cfg.get('nodes_e1')}/"
+                            f"e2={mode_cfg.get('nodes_e2')} FORCED"
+                            if forced_both else
+                            f"nodes {nodes_budget}/move (NPS-calibrated)"),
                   "clock": f"clock {tc_label}"}[MODE])
     # Short, filesystem-safe name for the INSTRUMENT. It goes in the auto-named
     # state file so two campaigns that differ only in budget cannot silently
