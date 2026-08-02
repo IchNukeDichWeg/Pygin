@@ -246,3 +246,7 @@ NNUE_HANDOFF.md
 
 # lichess puzzle database (user-supplied, ~300MB compressed) -- never commit
 lichess_db_puzzle.csv*
+
+# chess.com puzzle scraper -- holds a session cookie, and its output
+fetch_puzzles.py
+puzzles.json
