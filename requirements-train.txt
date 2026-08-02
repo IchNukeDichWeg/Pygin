@@ -1,9 +1,0 @@
-# Pygin NNUE TRAINING dependencies -- NOT installed by default.
-#
-#     ./setup.sh --with-torch
-#
-# Kept out of requirements.txt on purpose: torch is ~0.5 GB installed and only
-# NNUE/train.py and NNUE/model.py import it. Every A/B box runs setup.sh and
-# almost none of them train, so paying for it there is pure waste. numpy and
-# scipy are already in requirements.txt (fit_wdl_model.py needs them).
-torch>=2.0

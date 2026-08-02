@@ -4,21 +4,12 @@
 # present (install them if missing), then build the C libraries so you can
 # immediately run a headless match. Safe to re-run.
 #
-#     ./setup.sh                 build + runtime deps
-#     ./setup.sh --with-torch    ...and NNUE training deps (torch, ~0.5 GB)
+#     ./setup.sh
 #
 # Works on macOS (Homebrew) and Linux (apt / dnf / pacman / zypper).
 # ======================================================================
 set -euo pipefail
 cd "$(dirname "$0")"
-
-WITH_TORCH=0
-for _arg in "$@"; do
-    case "$_arg" in
-        --with-torch) WITH_TORCH=1 ;;
-        *) echo "unknown option: $_arg (try --with-torch)"; exit 2 ;;
-    esac
-done
 
 echo "== Pygin setup =="
 
@@ -195,13 +186,6 @@ export PIP_BREAK_SYSTEM_PACKAGES=1   # Debian/Ubuntu PEP 668 guard -- this box i
 echo "-> installing Python dependencies (python-chess, numpy, scipy) ..."
 python3 -m pip install --upgrade pip >/dev/null 2>&1 || true
 python3 -m pip install -r requirements.txt
-
-# NNUE training deps are opt-in: torch is ~0.5 GB and only train.py needs it,
-# while every A/B box runs this script and almost none of them train.
-if [ "${WITH_TORCH}" = "1" ]; then
-    echo "-> installing NNUE training dependencies (torch) ..."
-    python3 -m pip install -r requirements-train.txt
-fi
 
 # --- 5. compiler target flags ----------------------------------------- #
 ARCH="$(uname -m)"
