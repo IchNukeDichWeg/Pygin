@@ -250,3 +250,6 @@ lichess_db_puzzle.csv*
 # chess.com puzzle scraper -- holds a session cookie, and its output
 fetch_puzzles.py
 puzzles.json
+
+fetch_rush.py
+message.json
