@@ -615,7 +615,7 @@ def main():
             write_back(best_params, src=args.engine, dst=args.output_engine)
 
         if n_changed == 0:
-            print("  Converged — no parameters improved this round.")
+            print("  Converged -- no parameters improved this round.")
             # Try larger delta if we're stuck
             if args.delta < 4:
                 args.delta += 1

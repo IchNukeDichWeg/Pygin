@@ -1455,7 +1455,7 @@ class Engine:
     # Bayesian game-based tuning (chess-tuning-tools, Jun 2026): ran ~500
     # iterations (100 games each, 5+0.05 TC) on 8 structural params.  GP
     # converged to an optimum of ~+12 Elo but CI straddled 0.  Direct match
-    # (1000 games) showed candidate -8 ±22 Elo vs current values — no
+    # (1000 games) showed candidate -8 ±22 Elo vs current values -- no
     # improvement confirmed.  Current values retained.
     # ------------------------------------------------------------------ #
     # Bishop pair bonus: worth more in the endgame (fewer pieces to block diags).
@@ -1853,7 +1853,7 @@ class Engine:
 
         # Pawn storm: bonus for friendly pawns that have crossed the midline on
         # the three files centred on the enemy king's file (ranks 5-7 for white,
-        # ranks 2-4 for black). Pure MG term (EG=0) — attacking pawn advances
+        # ranks 2-4 for black). Pure MG term (EG=0) -- attacking pawn advances
         # only matter while pieces are on the board. OFF by default; toggle via
         # engine_storm.py wrapper for A/B. Passed to C via set_storm_params.
         # CAUTION (roadmap bug #9): C-ONLY, no Python fallback -- see the
@@ -1865,8 +1865,8 @@ class Engine:
         # King shelter depth: more granular pawn shield. Replaces the legacy
         # flat "popcount(king_ring & own_pieces) * KING_SHIELD_MG" with a
         # per-file, per-distance assessment for the three files around the king:
-        #   SHELTER_CLOSE — cp bonus for a pawn 1 rank in front of the king
-        #   SHELTER_FAR   — cp bonus for a pawn 2 ranks in front of the king
+        #   SHELTER_CLOSE -- cp bonus for a pawn 1 rank in front of the king
+        #   SHELTER_FAR   -- cp bonus for a pawn 2 ranks in front of the king
         # Pawns beyond rank+2 don't contribute. Tapered to 0 in the EG (king
         # should be active there). OFF by default; toggle via engine_shelter.py
         # wrapper for A/B. Passed to C via set_shelter_params.
@@ -4479,7 +4479,7 @@ class Engine:
         else:
             futile = False
 
-        # IIR: flying blind at full depth wastes nodes — reduce by 1 when we
+        # IIR: flying blind at full depth wastes nodes -- reduce by 1 when we
         # have no TT move to guide ordering.
         if depth >= 4 and tt_move is None and not in_check:
             depth -= 1

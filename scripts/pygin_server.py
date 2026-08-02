@@ -139,7 +139,7 @@ def normalize_moves(moves_str):
 
 def full_fen(fen):
     """Lichess ws FENs are board+side only; pad to 6 fields.
-    ponytail: castling rights guessed from start squares — wrong only if
+    ponytail: castling rights guessed from start squares -- wrong only if
     king/rook moved away and back (rare); ep square always '-' (misses
     rare en-passant best moves)."""
     parts = fen.split()

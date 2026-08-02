@@ -8,10 +8,10 @@ OpenBench-compliant as of v51:
 
 - **`Makefile`** (repo root): `make EXE=<name> CC=<cc>` produces a single
   self-contained UCI binary at `./<name>` (PyInstaller onefile bundling
-  cuci.py + the C libraries + the opening book) — the single-file artifact
+  cuci.py + the C libraries + the opening book) -- the single-file artifact
   the OpenBench client caches and moves around.
 - **CLI bench**: `./<name> bench` prints `<nodes> nodes <nps> nps` and
-  exits — the signature check every worker runs. Node count is
+  exits -- the signature check every worker runs. Node count is
   deterministic per machine class (v51 on the dev Mac: `1083772`).
 
 ## Worker prerequisites
@@ -35,7 +35,7 @@ python3 manage.py runserver 0.0.0.0:8000
 ```
 
 Then register Pygin as an engine in the OpenBench config (the config
-format moves between OpenBench versions — follow the repo's wiki page
+format moves between OpenBench versions -- follow the repo's wiki page
 "Adding New Engines"; the values that matter are below):
 
 | Field | Value |
@@ -52,13 +52,13 @@ python3 Client/Client.py -U <user> -P <pass> -S http://<server>:8000 -T <threads
 ```
 
 (The `-U/-P` account is created through the web UI's registration page and
-approved from the admin panel — `createsuperuser` above only makes the
+approved from the admin panel -- `createsuperuser` above only makes the
 admin. Workers need a user with engine access.)
 
 ## Running a test (typical workflow)
 
 1. Push the candidate to a branch on the GitHub repo (the worker builds
-   from GitHub, not from a local checkout — an unpushed branch is
+   from GitHub, not from a local checkout -- an unpushed branch is
    invisible to it).
 2. Measure the candidate's bench on the fleet machine:
    `make EXE=t && ./t bench` on that branch's checkout.

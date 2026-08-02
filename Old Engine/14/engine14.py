@@ -418,7 +418,7 @@ class Engine:
     # Bayesian game-based tuning (chess-tuning-tools, Jun 2026): ran ~500
     # iterations (100 games each, 5+0.05 TC) on 8 structural params.  GP
     # converged to an optimum of ~+12 Elo but CI straddled 0.  Direct match
-    # (1000 games) showed candidate -8 ±22 Elo vs current values — no
+    # (1000 games) showed candidate -8 ±22 Elo vs current values -- no
     # improvement confirmed.  Current values retained.
     # ------------------------------------------------------------------ #
     # Bishop pair bonus: worth more in the endgame (fewer pieces to block diags).
@@ -2085,7 +2085,7 @@ class Engine:
                   and abs(alpha) < self.MATE_THRESHOLD
                   and static_eval + self.FUTILITY_MARGIN[depth] <= alpha)
 
-        # IIR: flying blind at full depth wastes nodes — reduce by 1 when we
+        # IIR: flying blind at full depth wastes nodes -- reduce by 1 when we
         # have no TT move to guide ordering.
         if depth >= 4 and tt_move is None and not in_check:
             depth -= 1
