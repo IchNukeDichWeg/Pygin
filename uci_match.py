@@ -37,10 +37,12 @@ skipped with a warning, not an error.
 import argparse
 import datetime
 import os
+import queue
 import random
 import re
 import shlex
 import sys
+import threading
 import time
 
 import chess
@@ -85,11 +87,11 @@ def parse_tc(spec):
     return float(base), float(inc) if inc else 0.0
 
 
-def configure(engine, name, opts):
+def configure(engine, name, opts, quiet=False):
     for key, val in opts.items():
         if key in engine.options:
             engine.configure({key: val})
-        else:
+        elif not quiet:
             print(f"[{name}] does not advertise option {key!r} -- skipped")
 
 
@@ -270,12 +272,17 @@ def main():
             ap.add_argument(f"--{flag}{n}", **{**kw, "help": argparse.SUPPRESS})
     ap.add_argument("--positions", type=int, default=50,
                     help="openings to play; each is played twice (default 50)")
+    ap.add_argument("--workers", type=int, default=1, metavar="N",
+                    help="parallel game workers, each with its own engine "
+                         "pair; 0 = system cores - 1 (default 1)")
     ap.add_argument("--openings", default=DEFAULT_EPD,
                     help=f"EPD/FEN file, one position per line (default {DEFAULT_EPD})")
     ap.add_argument("--offset", type=int, default=0,
                     help="skip this many positions into the shuffled pool "
                          "(disjoint shards / SPRT tranches)")
-    ap.add_argument("--seed", type=int, default=57)
+    ap.add_argument("--seed", type=int,
+                    help="shuffle seed for the opening pool (default: random; "
+                         "pass a value for reproducible / poolable shards)")
     ap.add_argument("--pgn", help="PGN output path (default match.py-style auto-name)")
     ap.add_argument("--sprt", action="store_true",
                     help="GSPRT early stop, defaults [0, 4] normalized")
@@ -289,6 +296,12 @@ def main():
                     help="pool with this state file (default: auto-named, stable)")
     ap.add_argument("--tag", help="campaign tag: names the state file sprt_<tag>.json")
     args = ap.parse_args()
+
+    if args.seed is None:
+        args.seed = random.randrange(1_000_000)
+        # printed (and recorded in Openings/state file) so any run can still
+        # be reproduced or sharded after the fact
+        print(f"shuffle seed: {args.seed} (random; --seed {args.seed} reproduces)")
 
     # Names land in a log filename AND the state-file name, so anything a
     # shell command line can contain (slashes, spaces) has to go first.
@@ -397,13 +410,20 @@ def main():
     # ---- engines ----------------------------------------------------------
     specs = [(args.engine1, name1, "1"), (args.engine2, name2, "2")]
 
-    def start_engine(ix):
+    def start_engine(ix, quiet=False):
         cmd, name, n = specs[ix]
         e = chess.engine.SimpleEngine.popen_uci(
             shlex.split(cmd), cwd=pick(args, "dir", n))
-        configure(e, name, engine_opts(args, n))
+        configure(e, name, engine_opts(args, n), quiet=quiet)
         return e
 
+    n_workers = args.workers if args.workers > 0 else max(1, (os.cpu_count() or 2) - 1)
+    n_workers = min(n_workers, max(1, len(fens)))
+
+    # Worker 0's pair starts eagerly in the main thread: a wrong command or
+    # cwd should fail loudly up front, and a python-chess traceback buries
+    # which of the two engines it was. Extra workers start their own pairs
+    # lazily inside their threads (warnings silenced -- one set is enough).
     engines = []
     try:
         for ix in (0, 1):
@@ -411,8 +431,6 @@ def main():
     except Exception as ex:
         for e in engines:
             e.close()
-        # A wrong command or cwd is the most common way to start, and a
-        # python-chess traceback buries which of the two engines it was.
         cmd, nm, n = specs[len(engines)]
         sys.exit(f"could not start engine {len(engines) + 1} ({nm}): "
                  f"{type(ex).__name__}: {ex}\n"
@@ -429,7 +447,7 @@ def main():
               f"Interpreter: {interp}\n"
               f"Mode: {mode_desc}   |   "
               f"{len(fens)} positions x 2 colours = {total_games} games\n"
-              f"Workers: 1 sequential\n"
+              f"Workers: {f'{n_workers} parallel' if n_workers > 1 else '1 sequential'}\n"
               f"Openings: {openings_desc}\n"
               f"Log: {log_path}\n" + "-" * 72)
     print(banner)
@@ -509,91 +527,149 @@ def main():
             pass
 
     # ---- game loop --------------------------------------------------------
+    # One machinery for both cases: N worker threads (each owning an engine
+    # PAIR, both games of a position stay on one worker) push finished games
+    # to a queue; the main thread does all scoring/printing and writes the
+    # .txt/.pgn in schedule order through a reorder buffer, like match.py.
+    work_q = queue.SimpleQueue()
+    for i in range(len(fens)):
+        work_q.put(i)
+    res_q = queue.SimpleQueue()
+    stop_evt = threading.Event()
+
+    def worker(wid, pair):
+        try:
+            if pair is None:
+                pair = [start_engine(0, quiet=True), start_engine(1, quiet=True)]
+            while not stop_evt.is_set():
+                try:
+                    i = work_q.get_nowait()
+                except queue.Empty:
+                    break
+                for e1_is_white in (True, False):
+                    white_ix = 0 if e1_is_white else 1
+                    eng = {chess.WHITE: pair[white_ix],
+                           chess.BLACK: pair[1 - white_ix]}
+                    sid = {chess.WHITE: (side1, side2)[white_ix],
+                           chess.BLACK: (side2, side1)[white_ix]}
+                    nam = {chess.WHITE: (name1, name2)[white_ix],
+                           chess.BLACK: (name2, name1)[white_ix]}
+                    rno = 2 * i + 2 - e1_is_white
+                    # a fresh game id makes python-chess send ucinewgame itself
+                    g = play_game(eng, sid, nam, fens[i], rno,
+                                  (wid, i, e1_is_white))
+                    if g["error"] is not None:
+                        # dead process stays dead: restart it for the next game
+                        for ix in (0, 1):
+                            if pair[ix].transport.get_returncode() is not None:
+                                pair[ix].close()
+                                pair[ix] = start_engine(ix, quiet=True)
+                    res_q.put(("game", i, e1_is_white, g))
+        except Exception as ex:
+            res_q.put(("worker_error", wid, f"{type(ex).__name__}: {ex}"))
+        finally:
+            for e in pair or []:
+                try:
+                    e.quit()
+                except Exception:
+                    e.close()
+            res_q.put(("done", wid))
+
+    threads = [threading.Thread(target=worker, args=(w, engines if w == 0 else None),
+                                daemon=True)
+               for w in range(n_workers)]
+    for t in threads:
+        t.start()
+
+    pending = {}                 # round -> (g, e1_is_white), files stay in order
+    next_rno = 1
+    pos_scores = {}              # position index -> [e1 scores of the pair]
+    done_workers = 0
     try:
-        for i, fen in enumerate(fens):
-            pair_scores = []
-            for e1_is_white in (True, False):
-                white_ix = 0 if e1_is_white else 1
-                eng = {chess.WHITE: engines[white_ix],
-                       chess.BLACK: engines[1 - white_ix]}
-                sid = {chess.WHITE: (side1, side2)[white_ix],
-                       chess.BLACK: (side2, side1)[white_ix]}
-                nam = {chess.WHITE: (name1, name2)[white_ix],
-                       chess.BLACK: (name2, name1)[white_ix]}
-                wstub, bstub = (e1s, e2s) if e1_is_white else (e2s, e1s)
-                rno = 2 * i + 2 - e1_is_white
-                # a fresh game id makes python-chess send ucinewgame itself
-                g = play_game(eng, sid, nam, fen, rno, (i, e1_is_white))
-
-                if g["error"] is not None:
-                    tally["errors"] += 1
-                    pair_scores.append(None)
-                    tag = f"ERR ({g['error'][:40]})"
-                    # dead process stays dead: restart it for the next game
-                    for ix in (0, 1):
-                        if engines[ix].transport.get_returncode() is not None:
-                            engines[ix].close()
-                            print(f"\nrestarting crashed engine {specs[ix][1]} ...")
-                            engines[ix] = start_engine(ix)
-                else:
-                    tally["completed"] += 1
-                    e1_score = {"1-0": 1.0, "0-1": 0.0, "1/2-1/2": 0.5}[g["result"]]
-                    if not e1_is_white:
-                        e1_score = 1.0 - e1_score
-                    pair_scores.append(e1_score)
-                    if e1_score == 0.5:
-                        tally["draws"] += 1
-                        tag = f"draw  {m.short_reason(g['reason'])}"
-                    elif e1_score == 1.0:
-                        tally["e1"] += 1
-                        tag = f"{name1} wins  {m.short_reason(g['reason'])}"
-                    else:
-                        tally["e2"] += 1
-                        tag = f"{name2} wins  {m.short_reason(g['reason'])}"
-
-                if len(pair_scores) == 2:
-                    if None in pair_scores:
-                        tally["penta_incomplete"] += 1
-                    else:
-                        tally["penta"][m.pentanomial_bucket(*pair_scores)] += 1
-
-                write_game_block(fh, pgn_fh, g, wstub, bstub, e1s, mode_desc)
-
-                if tally["completed"]:
-                    sc = (tally["e1"] + 0.5 * tally["draws"]) / tally["completed"]
-                    el, mar = m.elo(sc, tally["completed"])
-                    run = (f"{name1} {tally['e1']:,}W | {tally['draws']:,} D | "
-                           f"{name2} {tally['e2']:,}W "
-                           f"({100*sc:.2f}%, {el:+.2f} +/-{mar:.1f} Elo)")
-                else:
-                    run = "no scored games yet"
-                _update_sprt()
-                played = tally["completed"] + tally["errors"]
-                if played % m.SAVE_EVERY == 0:
-                    _save_state()
-                line = (f"[{played:>4}/{total_games}] "
-                        f"{nam[chess.WHITE]} vs {nam[chess.BLACK]}  ->  "
-                        f"{g['result']:>7}  {tag:<24} | {run}")
+        while done_workers < n_workers:
+            msg = res_q.get()
+            if msg[0] == "done":
+                done_workers += 1
+                continue
+            if msg[0] == "worker_error":
                 _clear_status()
-                print(line)
-                _draw_status()
-                if not _is_tty and played % 500 == 0:
-                    print(_status_text())
-            if args.sprt and sprt_state["decided"]:
+                print(f"!! worker {msg[1]} died: {msg[2]} -- its remaining "
+                      f"games fall to the other workers")
+                continue
+            _, i, e1_is_white, g = msg
+
+            if g["error"] is not None:
+                tally["errors"] += 1
+                score = None
+                tag = f"ERR ({g['error'][:40]})"
+            else:
+                tally["completed"] += 1
+                score = {"1-0": 1.0, "0-1": 0.0, "1/2-1/2": 0.5}[g["result"]]
+                if not e1_is_white:
+                    score = 1.0 - score
+                if score == 0.5:
+                    tally["draws"] += 1
+                    tag = f"draw  {m.short_reason(g['reason'])}"
+                elif score == 1.0:
+                    tally["e1"] += 1
+                    tag = f"{name1} wins  {m.short_reason(g['reason'])}"
+                else:
+                    tally["e2"] += 1
+                    tag = f"{name2} wins  {m.short_reason(g['reason'])}"
+
+            pos_scores.setdefault(i, []).append(score)
+            if len(pos_scores[i]) == 2:
+                a, b = pos_scores.pop(i)
+                if a is None or b is None:
+                    tally["penta_incomplete"] += 1
+                else:
+                    tally["penta"][m.pentanomial_bucket(a, b)] += 1
+
+            pending[g["round"]] = (g, e1_is_white)
+            while next_rno in pending:
+                pg, pw = pending.pop(next_rno)
+                wstub, bstub = (e1s, e2s) if pw else (e2s, e1s)
+                write_game_block(fh, pgn_fh, pg, wstub, bstub, e1s, mode_desc)
+                next_rno += 1
+
+            if tally["completed"]:
+                sc = (tally["e1"] + 0.5 * tally["draws"]) / tally["completed"]
+                el, mar = m.elo(sc, tally["completed"])
+                run = (f"{name1} {tally['e1']:,}W | {tally['draws']:,} D | "
+                       f"{name2} {tally['e2']:,}W "
+                       f"({100*sc:.2f}%, {el:+.2f} +/-{mar:.1f} Elo)")
+            else:
+                run = "no scored games yet"
+            _update_sprt()
+            played = tally["completed"] + tally["errors"]
+            if played % m.SAVE_EVERY == 0:
+                _save_state()
+            wname, bname = (name1, name2) if e1_is_white else (name2, name1)
+            line = (f"[{played:>4}/{total_games}] {wname} vs {bname}  ->  "
+                    f"{g['result']:>7}  {tag:<24} | {run}")
+            _clear_status()
+            print(line)
+            _draw_status()
+            if not _is_tty and played % 500 == 0:
+                print(_status_text())
+
+            if args.sprt and sprt_state["decided"] and not stop_evt.is_set():
                 stopped = True
-                break
+                stop_evt.set()      # workers stop after their current game
     except KeyboardInterrupt:
         stopped = True
     finally:
+        stop_evt.set()
         _clear_status()
-        for e in engines:
-            try:
-                e.quit()
-            except Exception:
-                e.close()
+        # flush whatever the reorder buffer still holds (early stop leaves
+        # gaps in the round numbering; keep ascending order)
+        for rno in sorted(pending):
+            pg, pw = pending[rno]
+            wstub, bstub = (e1s, e2s) if pw else (e2s, e1s)
+            write_game_block(fh, pgn_fh, pg, wstub, bstub, e1s, mode_desc)
         _save_state()
         m.write_summary(fh, e1s, e2s, tally, total_games, start_t, stopped,
-                        n_workers=1, sprt_info=dict(sprt_state),
+                        n_workers=n_workers, sprt_info=dict(sprt_state),
                         mode_desc=mode_desc, openings=openings_desc)
         fh.close()
         pgn_fh.close()
