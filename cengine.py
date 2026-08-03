@@ -185,6 +185,30 @@ v50+armed-defaults BYTE-EXACT; every gate in NNUE/README.md passed:
 forward 100k/0 mismatches, increment 1.02M/0, NPS -37.8% with the toy
 net on). Waits on Phases 6-8: real 50M dataset, bootstrap, screens.
 
+v58 = v57 + **the NNUE net armed** -- the first HCE/NNUE hybrid release, and
+the first net that pays. USE_NNUE flips True on nnue_v4_6f910e35bb1e.nnue:
+GSPRT[0,4] ACCEPT H1 at 1,702 pairs, **+19.11 +/- 7.8 Elo** vs v57 on a clock
+50s+0.20 (x86), ptnml 71/358/691/477/105, LLR +2.950 stopped early. Ledger
++305 -> +324. Bench signature 1,145,629 -> **1,074,820** and NPS drops ~30%
+to the SIMD tail, which is the price the +19 is measured NET of.
+
+The lesson is that the net was never the problem -- the TRAINING was. v3 read
++0.52 +/- 6.8 on this same instrument, i.e. nothing, and v4 changed neither
+the dataset nor a single dimension: a cosine LR schedule in place of a flat
+one took held-out val 0.074417 -> 0.066663, and that alone is the +19. Same
+dims means same NPS, so none of it is speed. The 40-epoch run also settled
+the next question by accident: val plateaued at epoch 4 while train fell
+another 22%, so the net is DATA-limited, not epoch-limited, and more epochs
+on this dataset are dead money. Labels are still 5,000-node searches while
+the engine plays at 1.75M (FI-98 priced that at -0.580%), which is the
+standing ceiling and the reason label DEPTH, not volume, is the next lever.
+
+OWED: an arm64 confirmation. v3 measured +5.70 +/- 4.6 on arm64 against
++0.52 on x86, so the architecture spread is real and v4 has only been
+measured on x86. Shipped armed anyway because the risk direction is
+favourable (arm64 read HIGHER for v3) and NNUE_REQUIRE_SIMD already refuses
+to arm the net on a scalar build, where it would make the engine worse.
+
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
   * v30's P-35/U-06 soft-stop time management (stability-scaled),
@@ -1249,12 +1273,19 @@ class Engine:
     # Architecture: KA8T king-bucketed features + T16 threat vector,
     # 6144->2x256->528->32->32->1 quantized int16/int8 (DESIGN_nnue.md
     # "Phase 1 spec" is the frozen contract; NNUE/README.md has every
-    # command). False = the CURRENT confirmed defaults BYTE-EXACT (the
-    # bench signature re-baselines per ship, but NOT for a node-identical
-    # one: v54 = v55 = 1,461,732 (the v55 speed pair changed no node),
-    # v53 = 1,122,753; built-out and verified against the v50-era 1,083,772 /
-    # 1,508,415 pair); no real net exists yet -- Phases 6-8 (50M
-    # dataset, bootstrap, 2k screen -> 10k A/B) decide if this ever flips.
+    # command). CONFIRMED and ARMED 2026-08-03 with the v4 net: engine_nnue_v4
+    # vs Old Engine/57 on a clock 50s+0.20, x86, GSPRT[0,4] ACCEPT H1 at 1,702
+    # pairs (3,404 games) -- LLR +2.950, +19.11 +/- 7.8 Elo, ptnml
+    # 71/358/691/477/105, ratio 1.36. Ledger +305 -> +324, the second-largest
+    # confirmed gain after the v53 Texel retune, and the FIRST net to pay.
+    # What changed between v3 (+0.52 +/- 6.8 on the same x86 instrument, i.e.
+    # nothing) and v4 was the TRAINING, not the net: same dataset, same
+    # dimensions, a cosine LR schedule instead of a flat one took held-out val
+    # 0.074417 -> 0.066663. Identical dims means identical NPS, so the whole
+    # +19 is judgement, not speed. OWED: an arm64 confirmation -- v3 read
+    # +5.70 +/- 4.6 there against +0.52 here, so the architecture spread is
+    # real and only x86 has been measured for v4 (risk direction is
+    # favourable, arm64 read HIGHER for v3).
     # Net naming convention: NNUE/nets/nnue_vN_<first 12 hex of the file's
     # own sha256>.nnue -- Stockfish's scheme (nn-<12 hex>.nnue), so a net
     # can never be silently swapped for a different net under the same
@@ -1263,12 +1294,11 @@ class Engine:
     # the hash on at export (config.stamp_net_hash); retired nets move
     # FLAT into "NNUE/Old NNUE/". toy.nnue is the pipeline-proof artifact,
     # not a version, and is exempt from the hash.
-    # The line below is a PLACEHOLDER: no real net exists yet, so there is
-    # no hash to name. Phase 7 replaces it with the actual v1 filename the
-    # trainer printed. Only read when USE_NNUE is True (load fails loudly
-    # if the file does not exist -- no silent HCE fallback).
-    USE_NNUE = False
-    NNUE_FILE = os.path.join("NNUE", "nets", "nnue_v1_PLACEHOLDER.nnue")
+    # Only read when USE_NNUE is True (load fails loudly if the file does
+    # not exist -- no silent HCE fallback).
+    USE_NNUE = True
+    NNUE_FILE = os.path.join("NNUE", "nets",
+                             "nnue_v4_6f910e35bb1e.nnue")
     # FI-104. The net's value is a RACE between its better judgement and the
     # nodes that judgement costs: v3 measured +5.70 +/- 4.6 while conceding
     # 30.6% of its nodes to a SIMD build. On a CPU with neither NEON nor AVX2

@@ -650,6 +650,16 @@ benchmark" below.
   =1 and all match play are byte-identical). ``TT_BITS=22`` restores v46.
   Snapshotted as Old Engine/47.
 
+* **v57 -> v58** (2026-08-03, lives in ``cengine.py``/``NNUE/``): the **first
+  HCE/NNUE hybrid** and the first net that pays. ``USE_NNUE`` armed on
+  ``nnue_v4_6f910e35bb1e.nnue``: **+19.11 +/-7.8 over 3,404 games**, TIMED
+  50+0.20 on x86, GSPRT[0,4] LLR +2.950 ACCEPT H1 at 1,702 pairs, ptnml
+  71/358/691/477/105. Ledger +305 -> +324. Bench 1,145,629 -> 1,074,820 with
+  NPS down ~30% to the SIMD tail -- the +19 is measured net of that cost.
+  Against v3's +0.52 +/-6.8 on the same instrument, the difference is purely
+  the TRAINING: same data, same dimensions, cosine LR instead of flat, val
+  0.074417 -> 0.066663. arm64 confirmation is owed (v3 read +5.70 there).
+
 * **v56 -> v57** (2026-07-31, lives in ``cuci.py``): host layer only, and the
   **last pure-HCE release** -- from here the engine is an HCE/NNUE hybrid.
   Node-identical to v56 (bench 1,145,629), so no A/B slot and no ledger
