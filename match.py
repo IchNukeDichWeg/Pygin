@@ -104,7 +104,7 @@ _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 
 #  CONFIG  -- edit these
 # ====================================================================== #
 ENGINE_1 = "engine.py"                       # path to engine 1
-ENGINE_2 = "Old Engine/55/engine55.py"       # path to engine 2
+ENGINE_2 = "Old Engine/58/engine58.py"       # path to engine 2
                                              # FB-50 fold-in: was v51 while
                                              # SUBSET_SEED said 55 -- the
                                              # default opponent tracks the
@@ -196,7 +196,7 @@ BOOK_ENGINE2 = None
 # random move choice -- two bookless deterministic engines from startpos
 # would repeat the same game, so leave this False for normal A/Bs.
 START_POS = False
-SUBSET_SEED = 57            # FIXED so parallel windows shuffle identically.
+SUBSET_SEED = 58            # FIXED so parallel windows shuffle identically.
                             # ROTATION POLICY (2026-07-18): bump to the new
                             # version number at every vN snapshot -- within an
                             # era every campaign (and its extension tranches,
