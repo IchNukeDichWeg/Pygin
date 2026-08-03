@@ -73,17 +73,18 @@ import math
 # works on pygin too. Local-only (pygin is not in the public fork). Refit via tuning/fit_wdl_model.py; do
 # not hand-edit the coefficients.
 #
-# REFIT 2026-07-30 from 7,118,512 samples. Keep these in step with
+# REFIT 2026-08-04 from 8,733,752 samples (hce) and 2,136,411 (nnue).
+# Keep these in step with
 # data/wdl_model.json -- they drifted apart once already, and the file said it
 # took its numbers from there the whole time. match.py reads the json directly.
-_WDL_AS = [-154.49547856532422, 466.4939695291876, -487.11758027359485, 278.4905365867601]
-_WDL_BS = [64.74697423223117, 37.73597427793397, -117.57754102674723, 110.48854297027535]
+_WDL_AS = [-151.58713377613108, 460.9199378084894, -482.86178712580806, 277.13822821938635]
+_WDL_BS = [80.44549112811502, 8.306092240244862, -100.75699084504622, 107.45592689590313]
 # NNUE-family WDL model, fitted by fit_wdl_model.py alongside the hce one and
 # kept in step by it. LIVE since v58: the runtime reports WDL on the eval it
 # actually plays, so arming USE_NNUE has to move this too or every `wdl` line
 # is calibrated to an eval the engine is no longer using.
-_WDL_AS_NNUE = [42.071916662425465, 139.0946342938222, -326.2722693585161, 245.79444690050704]
-_WDL_BS_NNUE = [233.37608251359228, -268.75945483234966, 52.58470461676946, 79.50824458291065]
+_WDL_AS_NNUE = [130.28037886336492, -36.86654388100893, -220.18364735358352, 228.15063451313355]
+_WDL_BS_NNUE = [272.23948584968497, -338.3296310013338, 89.46748919185758, 75.2577593028893]
 
 # Which family the class default says we play. Read once here rather than per
 # call: a mid-session UCI toggle of the net is not a thing, and _win_rate_model
