@@ -255,3 +255,4 @@ fetch_rush.py
 message.json
 accounts.json
 fetch_daily.py
+coverage.py
