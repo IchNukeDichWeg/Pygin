@@ -130,9 +130,13 @@ def _nnue_banner(engine):
     and the int32 fields), so this cannot drift from what the C side loaded.
     """
     if not getattr(engine, "USE_NNUE", False):
+        # A net that was ASKED for and then disarmed is a different story from
+        # one that was never asked for: the class attribute is the request,
+        # the instance is what survived construction. An engine whose class
+        # default is already False (a pre-v58 snapshot) never wanted a net.
+        wanted = getattr(type(engine), "USE_NNUE", False)
         why = ("no SIMD on this CPU, and the scalar tail is ~3x slower than "
-               "the eval is worth" if getattr(engine, "NNUE_REQUIRE_SIMD", False)
-               else "USE_NNUE is off")
+               "the eval is worth" if wanted else "this build has USE_NNUE off")
         return f"info string NNUE evaluation disabled ({why}) -- playing the HCE"
     path = engine.NNUE_FILE
     if not os.path.isabs(path):
