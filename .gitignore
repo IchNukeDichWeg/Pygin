@@ -257,3 +257,12 @@ accounts.json
 fetch_daily.py
 coverage.py
 puzzles_by_fen.csv
+
+# Throwaway SPRT state. Real campaign state is COMMITTED (a stale or missing
+# state file silently discards a tranche with no error), so this ignores only
+# what is provably not a campaign: smoke tests at a fixed depth or movetime,
+# and the numbfish cross-engine probes another agent owns.
+sprt_*_d[0-9].json
+sprt_*_d1[0-9].json
+sprt_*_mt[0-9]*.json
+sprt_*numbfish*.json
