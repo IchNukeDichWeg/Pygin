@@ -21,8 +21,8 @@ representation, move generation and legality.
 | | | | |
 |---|---|---|---|
 | **~2885 Elo** | SF-18 UCI_Elo bracket | **4.3M nps** | 7.4M at 4 threads |
-| **+305 Elo** | A/B-confirmed, v31→v57 | **~18 ply** | from startpos in 5 s |
-| **+11.44 Elo** | v56 ProbCut, TIMED | **1.79x** | single-thread vs v31 |
+| **+324 Elo** | A/B-confirmed, v31→v58 | **~18 ply** | from startpos in 5 s |
+| **+19.11 Elo** | v58 NNUE, TIMED | **1.79x** | single-thread vs v31 |
 | **v53+v54** eval lane | +37.52 & +31.20, the two biggest | **1 dependency** | `python-chess` only |
 
 <table>
@@ -91,6 +91,7 @@ summarise it. Regenerate with `bench/bench_progress.py` and `scripts/make_readme
 <details>
 <summary><b>Every version in full</b> -- complete milestone + Elo list</summary>
 
+- **v58** -- **the first HCE/NNUE hybrid, and the first net that pays.** `USE_NNUE` is armed on `nnue_v4_6f910e35bb1e.nnue`: the net replaces the hand-crafted eval inside negamax, while qsearch stand-pat stays HCE. Bench signature 1,145,629 -> **1,074,820**, and single-thread NPS drops roughly 30% to the SIMD tail, so the Elo below is measured *net* of that cost. The interesting part is what changed from v3, which read **+0.52 ±6.8** on this same instrument, i.e. nothing at all: not the dataset, not one dimension of the architecture, only the **learning-rate schedule**. Cosine in place of flat took held-out val 0.074417 -> 0.066663, and that is the whole gain; identical dimensions mean identical speed, so none of it is bought with nodes. `NNUE_REQUIRE_SIMD` keeps the net off scalar builds, where the ~3x slower tail would make the engine *worse*. *(**+19.11 ±7.8** over 3,404 games TIMED 50+0.20 on x86, GSPRT[0,4] LLR **+2.950 ACCEPT** at 1,702 pairs, ptnml 71/358/691/477/105 -- sixth SPRT accept, and the second-largest release after the v53 Texel retune. An arm64 confirmation is owed: v3 read +5.70 ±4.6 there against +0.52 here, so the architecture spread is real and only x86 has been measured for v4)*
 - **v57** -- **the last pure-HCE release**; from here Pygin is an HCE/NNUE hybrid. Host layer only and **node-identical** to v56 (bench signature 1,145,629 unchanged, ladder node-exact), so no A/B slot was spent and the ledger is untouched. **Ponderhit now honours the soft-stop** -- a prediction hit used to spend the full fresh budget re-confirming an already-settled move; it now applies the same P-35/U-06 fractions the main search uses (1.666 s → 0.686 s, a ratio of 0.412 against the designed 0.40). The soft-stop neighbourhood is exposed over UCI (`SoftStop`, `SoftStopStable`, `SoftStopUnstable`, `SoftStopStableIters`) so it can be swept without a rebuild. And a latent bug is fixed: `cuci.py` restored a *hardcoded* 0.55 soft-stop fraction over whatever the engine set, which meant any future tuning would have worked in testing and been silently discarded in every real game.
 - **v56** -- **ProbCut**: the fail-high half of forward pruning, which Pygin had no equivalent of. At a shallow non-PV node a qsearch filters each capture at `beta + 200` and a real reduced-depth search confirms before anything is cut, so nothing is ever pruned on a static score. Cuts **21.6% of nodes** at fixed depth (bench 1,461,732 → 1,145,629). *(**+11.44 ±6.9** over 5,924 games TIMED 50+0.20, GSPRT[0,4] LLR **+2.953 ACCEPT** -- the ledger's own instrument; the `--nodes` campaign that shipped it read **+4.11 ±4.2** over 21,806 games (LLR +2.971), so the fixed-node instrument reads CONSERVATIVE. Fifth SPRT accept, and the first pruning MECHANISM to pay since the search lane was declared exhausted: what was exhausted was the parameter space, not the mechanism space)*
 - **v55** -- **node-identical speed pair**: FI-11 pin-aware legality + FI-42 the (mg,eg,phase) accumulator on Board. Bench signature UNCHANGED at 1,461,732, perft --deep clean, ladder node-exact -- the search plays the SAME moves, it just gets there faster: **+8.3% NPS on x86, +13.5% on arm64**. *(**+9.66 ±8.2** over 6,874 games, TIMED 50+0.20, GSPRT[0,4] LLR +2.946 ACCEPT -- measured on the clock because a fixed-node instrument reads zero for a node-identical change; **~1.16 Elo per 1% NPS**)*
@@ -179,6 +180,7 @@ summarise it. Regenerate with `bench/bench_progress.py` and `scripts/make_readme
 | **v54→v55** | 3.69× → **4.19×** | pin-aware legality + eval accumulator: +9.66 Elo, ~1.16 Elo per 1% NPS |
 | **v55→v56** | **4.19×** | ProbCut: **+11.44 timed** (+4.11 on `--nodes`) at −21.6% nodes; S-06 pool +9.83% at 4 threads |
 | **v56→v57** | **4.19×** | host layer only, node-identical: ponderhit soft-stop + the time-policy knobs over UCI. **Last pure-HCE release** |
+| **v57→v58** | **~2.9×** | NNUE armed: **+19.11 timed** while GIVING BACK ~30% NPS to the net. First hybrid; the gain is the training schedule, not the architecture |
 
 *Not visible as NPS:* v39→v40 (ep-key merge) and the v41→v43 verified-null
 removal are nodes-to-depth gains at flat speed.

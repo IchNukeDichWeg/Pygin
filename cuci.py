@@ -76,13 +76,18 @@ import math
 # took its numbers from there the whole time. match.py reads the json directly.
 _WDL_AS = [-154.49547856532422, 466.4939695291876, -487.11758027359485, 278.4905365867601]
 _WDL_BS = [64.74697423223117, 37.73597427793397, -117.57754102674723, 110.48854297027535]
-# NNUE-family WDL model. DORMANT: fitted by fit_wdl_model.py alongside the
-# hce one and kept in step by it, but nothing reads it yet -- the runtime
-# reports WDL on the eval it actually plays and USE_NNUE is False. When NNUE
-# becomes the default, _win_rate_model selects the pair by family; until then
-# these exist so the switch is a one-line change and not a refit.
+# NNUE-family WDL model, fitted by fit_wdl_model.py alongside the hce one and
+# kept in step by it. LIVE since v58: the runtime reports WDL on the eval it
+# actually plays, so arming USE_NNUE has to move this too or every `wdl` line
+# is calibrated to an eval the engine is no longer using.
 _WDL_AS_NNUE = [42.071916662425465, 139.0946342938222, -326.2722693585161, 245.79444690050704]
 _WDL_BS_NNUE = [233.37608251359228, -268.75945483234966, 52.58470461676946, 79.50824458291065]
+
+# Which family the class default says we play. Read once here rather than per
+# call: a mid-session UCI toggle of the net is not a thing, and _win_rate_model
+# sits on the info-line path.
+_WDL_A, _WDL_B = ((_WDL_AS_NNUE, _WDL_BS_NNUE) if cengine.Engine.USE_NNUE
+                  else (_WDL_AS, _WDL_BS))
 
 _WDL_PHASE_MAX = 24
 _WDL_PHASE_CLAMP_MIN = 6
@@ -91,8 +96,8 @@ def _win_rate_model(cp, phase):
     """P(win) for a score of `cp` centipawns (side-to-move POV) at game `phase` (0..24)."""
     cp = max(-1000, min(1000, cp))                       # match the fit's cp clamp
     m = min(max(phase, _WDL_PHASE_CLAMP_MIN), _WDL_PHASE_MAX) / _WDL_PHASE_MAX
-    a = ((_WDL_AS[0] * m + _WDL_AS[1]) * m + _WDL_AS[2]) * m + _WDL_AS[3]
-    b = ((_WDL_BS[0] * m + _WDL_BS[1]) * m + _WDL_BS[2]) * m + _WDL_BS[3]
+    a = ((_WDL_A[0] * m + _WDL_A[1]) * m + _WDL_A[2]) * m + _WDL_A[3]
+    b = ((_WDL_B[0] * m + _WDL_B[1]) * m + _WDL_B[2]) * m + _WDL_B[3]
     z = max(-60.0, min(60.0, (a - cp) / b))              # guard math.exp overflow
     return 1.0 / (1.0 + math.exp(z))
 
