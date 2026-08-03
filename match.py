@@ -1650,7 +1650,12 @@ def main():
     seed_opt = None            # --seed
     i = 0
     while i < len(argv):
-        if argv[i] == "--workers" and i + 1 < len(argv):
+        if argv[i] in ("--help", "-h"):
+            # The module docstring IS the help text -- printing it beats
+            # keeping a second copy that drifts out of date.
+            print(__doc__)
+            return
+        elif argv[i] == "--workers" and i + 1 < len(argv):
             workers_str = argv[i + 1]
             i += 2
         elif argv[i].startswith("--workers="):
@@ -1765,8 +1770,7 @@ def main():
             # became engine1/engine2/num_positions/offset. `--depth 4` (the
             # flag is --fixed-depth) silently tried to parse "--depth" as an
             # OFFSET. A typo must never quietly change what the run measures.
-            print(f"ERROR: unknown option {argv[i]!r}. See the Usage block at "
-                  f"the top of match.py.")
+            print(f"ERROR: unknown option {argv[i]!r}. Try: python3 match.py --help")
             return
         else:
             positional.append(argv[i])
