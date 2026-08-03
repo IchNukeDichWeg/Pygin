@@ -256,4 +256,4 @@ message.json
 accounts.json
 fetch_daily.py
 coverage.py
-puzzles_by_fen.json
+puzzles_by_fen.csv
