@@ -86,11 +86,21 @@ _WDL_BS = [80.44549112811502, 8.306092240244862, -100.75699084504622, 107.455926
 _WDL_AS_NNUE = [130.28037886336492, -36.86654388100893, -220.18364735358352, 228.15063451313355]
 _WDL_BS_NNUE = [272.23948584968497, -338.3296310013338, 89.46748919185758, 75.2577593028893]
 
-# Which family the class default says we play. Read once here rather than per
-# call: a mid-session UCI toggle of the net is not a thing, and _win_rate_model
-# sits on the info-line path.
-_WDL_A, _WDL_B = ((_WDL_AS_NNUE, _WDL_BS_NNUE) if cengine.Engine.USE_NNUE
-                  else (_WDL_AS, _WDL_BS))
+# Which family we report WDL on. Bound ONCE, by _bind_wdl_family() right after
+# the engine is constructed -- deliberately not from cengine.Engine.USE_NNUE at
+# import time. The class attribute is only the REQUEST: NNUE_REQUIRE_SIMD
+# disarms the net during construction on a CPU with neither NEON nor AVX2, and
+# such a host plays the HCE while the class still says True. Reading the class
+# would report NNUE-calibrated win probabilities for hand-crafted scores on
+# exactly the machines the guard exists to protect.
+_WDL_A, _WDL_B = _WDL_AS, _WDL_BS
+
+
+def _bind_wdl_family(engine):
+    """Point the WDL polynomials at the eval the engine ACTUALLY armed."""
+    global _WDL_A, _WDL_B
+    _WDL_A, _WDL_B = ((_WDL_AS_NNUE, _WDL_BS_NNUE) if engine.USE_NNUE
+                      else (_WDL_AS, _WDL_BS))
 
 _WDL_PHASE_MAX = 24
 _WDL_PHASE_CLAMP_MIN = 6
@@ -502,6 +512,8 @@ def certify_premoves(engine, board, my_move, stop_evt):
 
 def main():
     engine = cengine.Engine()
+    _bind_wdl_family(engine)     # AFTER construction: the SIMD guard may have
+                                 # disarmed the net, and WDL follows what plays
     # The engine's OWN time-policy defaults, captured once. `go movetime`
     # disables the soft-stop and clock mode restores it -- and "restore" used
     # to mean the literal 0.55, which silently overwrote whatever cengine.py
