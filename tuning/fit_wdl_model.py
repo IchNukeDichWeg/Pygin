@@ -35,14 +35,42 @@ to the empirical win rate per phase bucket (scipy curve_fit), then fit
 smooth 3rd-order polynomials a(phase) and b(phase) across buckets -- same
 shape Stockfish's own win_rate_model() uses -- so any phase in between
 interpolates cleanly instead of jumping between discrete buckets. Prints a
-ready-to-paste win_rate_model()/wdl() snippet for engine.py.
+win_rate_model()/wdl() snippet and writes data/wdl_model<_family>.json,
+which match.py's adjudication reads directly.
+
+Stage 3 (sync): write the fitted coefficients from data/wdl_model*.json into
+cuci.py's own `_WDL_AS`/`_WDL_BS` (hce) or `_WDL_AS_NNUE`/`_WDL_BS_NNUE`
+(nnue) constants, so the runtime cannot drift from the JSON. Which PAIR the
+UCI layer reads is chosen by the armed eval family, not by this script. v58
+armed the net, so the NNUE pair is the LIVE one now; the hce pair is what a
+CPU without SIMD falls back to.
 
 Usage:
-    python3 fit_wdl_model.py                  # extract + fit
-    python3 fit_wdl_model.py --extract-only    # just write the training CSV
-    python3 fit_wdl_model.py --fit-only        # reuse a previously written CSV
-    python3 fit_wdl_model.py --eval-family nnue   # NNUE-scored sides only,
-                                                  # writes data/wdl_model_nnue.json
+    python3 fit_wdl_model.py                     # extract + fit + sync, hce
+    python3 fit_wdl_model.py --both              # BOTH families, one run
+
+  choosing the eval scale (the two are never pooled -- different cp scales):
+    --eval-family {hce,nnue}    which scale to fit (default: hce)
+    --nnue                      shorthand for --eval-family nnue; writes
+                                data/wdl_model_nnue.json rather than
+                                overwriting the hce model
+    --both                      fit hce then nnue, each into its own corpus
+                                and JSON
+
+  choosing which logs count as training data:
+    --min-era N                 minimum engine<N> snapshot to accept
+                                (default: the whole C era)
+    --cengine-since YYYY-MM-DD  also require dev-build ("cengine") logs to be
+                                dated on/after this -- the name alone cannot
+                                tell one eval era from another
+
+  which stages to run:
+    --extract-only              write the training CSV, do not fit
+    --fit-only                  skip extraction, reuse an existing CSV
+    --sync-only                 do not fit: push the coefficients already in
+                                data/wdl_model*.json into cuci.py and exit
+    --data-file PATH            CSV path for extracted samples
+                                (default: wdl_training_data_<family>.csv)
 
 Needs numpy + scipy (both already installed in this environment, though not
 otherwise used by the project -- only this offline analysis script imports
@@ -731,9 +759,10 @@ def main():
                          "data/wdl_model*.json into cuci.py, then exit")
     ap.add_argument("--both", action="store_true",
                     help="fit BOTH eval families in one run (hce then nnue), "
-                         "each into its own corpus and JSON. The NNUE model is "
-                         "written and synced but stays DORMANT until USE_NNUE "
-                         "is the default")
+                         "each into its own corpus and JSON. Since v58 armed "
+                         "the net, the NNUE pair is the one the runtime "
+                         "actually reads; the hce pair is the fallback a "
+                         "CPU without SIMD would play on")
     ap.add_argument("--extract-only", action="store_true",
                     help="only extract + write the training CSV, skip fitting")
     ap.add_argument("--fit-only", action="store_true",
