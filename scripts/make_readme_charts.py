@@ -32,6 +32,17 @@ DATA = {
     # 3.69x by the arm64 paired ratio (+13.5%); the Elo is the x86 figure
     # (+8.34% there), so this row mixes machines by necessity.
     55: (9.66, 4.19),
+    # v56 = FI-107 ProbCut. The TIMED cross-check (+11.44 +/-6.9 @5,924) is
+    # the ledger's own instrument and the number banked; the --nodes campaign
+    # that shipped it read +4.11 and is CONSERVATIVE for a node-saving change.
+    # Node count falls 21.6% at fixed depth, which is not an NPS change.
+    56: (11.44, 4.19),
+    # v57 = host layer only, node-identical to v56. No A/B slot, no movement.
+    57: (0.0, 4.19),
+    # v58 = the NNUE net armed. The engine hands the net ~30% of its NPS and
+    # is still +19.11 ahead, so the speed column drops while the Elo climbs --
+    # the one row in this table where those two move in opposite directions.
+    58: (19.11, 3.34),
 }
 
 # Knight odds win% vs FULL-STRENGTH Stockfish 18 -- the external yardstick.
