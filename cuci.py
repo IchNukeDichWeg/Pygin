@@ -55,6 +55,8 @@ startup stick: cs_stop() alone was erased by cs_search_begin, leaving
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "lib"))
 
+import os
+import struct
 import sys
 import threading
 import time
@@ -109,6 +111,40 @@ def _wdl_permille(cp, phase):
     vals = [round(w * 1000), round(d * 1000), round(l * 1000)]
     vals[vals.index(max(vals))] += 1000 - sum(vals)       # rounding can miss 1000 by +/-1
     return vals[0], vals[1], vals[2]
+
+def _nnue_banner(engine):
+    """Stockfish-style `info string` naming the net actually in use.
+
+    Dimensions come from the file's own header (magic PYGINNUE, then version
+    and the int32 fields), so this cannot drift from what the C side loaded.
+    """
+    if not getattr(engine, "USE_NNUE", False):
+        why = ("no SIMD on this CPU, and the scalar tail is ~3x slower than "
+               "the eval is worth" if getattr(engine, "NNUE_REQUIRE_SIMD", False)
+               else "USE_NNUE is off")
+        return f"info string NNUE evaluation disabled ({why}) -- playing the HCE"
+    path = engine.NNUE_FILE
+    if not os.path.isabs(path):
+        path = os.path.join(os.path.dirname(os.path.abspath(cengine.__file__)),
+                            path)
+    try:
+        with open(path, "rb") as fh:
+            hdr = fh.read(64)
+        f = struct.unpack("<7I", hdr[12:40])       # feature_set, in, h, tdim, kb, d2, d3
+        arch = f"({f[1]}, {f[2]}, {f[3]}, {f[5]}, {f[6]}, 1)"
+        mib = max(1, round(os.path.getsize(path) / (1 << 20)))
+        extra = ""
+        try:
+            extra = f", {engine._lib.nnue_kernel_name().decode()}"
+        except Exception:
+            pass                                   # pre-FI-104 csearch.so
+        return (f"info string NNUE evaluation using {os.path.basename(path)} "
+                f"({mib}MiB, {arch}{extra})")
+    except (OSError, struct.error) as ex:
+        # The net loaded (construction raises otherwise), so this is only the
+        # banner failing -- say so rather than claiming the eval is off.
+        return f"info string NNUE evaluation armed; could not read header ({ex})"
+
 
 def _board_phase(board):
     """Mirror engine.py's tapered-eval phase: N/B weight 1, R weight 2, Q weight 4, capped at 24."""
@@ -831,6 +867,12 @@ def main():
                     f"{int(engine.SOFT_STOP_STABLE_ITERS)} min 1 max 20")
                 out(f"option name Hash type spin default 192 min 2 "
                     f"max {HASH_MAX_MB}")
+                # Stockfish-style eval banner, read from the net's own 64-byte
+                # header rather than from constants that could drift from the
+                # file. self.USE_NNUE (not the class attr) is what actually
+                # got armed, so a SIMD guard that disarmed the net says so
+                # here instead of leaving the GUI to guess from a silent line.
+                out(_nnue_banner(engine))
                 # FI-13d: self-identifying config line (A/B forensics: PGN
                 # headers grep this to know exactly what was playing).
                 out(f"info string abi={engine._lib.csearch_abi()}"
