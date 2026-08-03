@@ -2,6 +2,12 @@
 # Build a self-contained single-file UCI executable of the C-core engine:
 #     ./scripts/build_exe.sh          ->  dist/pygin
 #
+# From v58 the NNUE net is bundled too, at the NNUE/nets/ path cengine
+# resolves against its own directory (_MEIPASS in a onefile build). It is
+# NOT optional: USE_NNUE has no silent HCE fallback, so a binary built
+# without it fails to construct the engine at all. Bump the filename here
+# whenever the shipped net changes.
+#
 # Bundles cuci.py + cengine/engine + csearch.so/eval_c.so/movegen.so +
 # Perfect2023.bin. The result runs on machines WITHOUT Python or the repo
 # (same OS/arch as the build machine only -- PyInstaller does not
@@ -31,6 +37,7 @@ python3 -m PyInstaller --onefile --name pygin cuci.py \
     --add-binary "$D/eval_c.so:." \
     --add-binary "$D/movegen.so:." \
     --add-data   "$D/data/Perfect2023.bin:." \
+    --add-data   "$D/NNUE/nets/nnue_v4_6f910e35bb1e.nnue:NNUE/nets" \
     --hidden-import engine --hidden-import chess.polyglot \
     --exclude-module pygame --exclude-module tkinter --exclude-module numpy \
     --exclude-module PySide6 --exclude-module matplotlib --exclude-module flask \
