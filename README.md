@@ -2,15 +2,18 @@
 
 # Pygin
 
-**A from-scratch chess engine in Python + C.** Hand-written search and
-evaluation, no NNUE, no external engine.<br/>
+**A from-scratch chess engine in Python + C.** Hand-written search, and an
+**HCE/NNUE hybrid** evaluation since v58: the neural net evaluates inside the
+main search, the hand-crafted eval keeps qsearch. No external engine, and the
+net is trained **only on Pygin's own self-play games** -- no borrowed data, no
+borrowed weights.<br/>
 [`python-chess`](https://pypi.org/project/chess/) is used *only* for board
 representation, move generation and legality.
 
 ![Strength](https://img.shields.io/badge/strength-~2885_Elo-3fb950)
-![Speed](https://img.shields.io/badge/speed-3.8M_nps-58a6ff)
-![Versions](https://img.shields.io/badge/versions-54-8b949e)
-![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B284_Elo-f0883e)
+![Speed](https://img.shields.io/badge/speed-3.3M_nps-58a6ff)
+![Versions](https://img.shields.io/badge/versions-58-8b949e)
+![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B324_Elo-f0883e)
 ![Source](https://img.shields.io/badge/source-MIT-green)
 &nbsp;·&nbsp; Built with **[Claude Code](https://claude.com/claude-code)**
 
@@ -20,15 +23,15 @@ representation, move generation and legality.
 
 | | | | |
 |---|---|---|---|
-| **~2885 Elo** | SF-18 UCI_Elo bracket | **4.3M nps** | 7.4M at 4 threads |
+| **~2885 Elo** | SF-18 UCI_Elo bracket | **3.3M nps** | the net costs ~30% of it |
 | **+324 Elo** | A/B-confirmed, v31→v58 | **~18 ply** | from startpos in 5 s |
-| **+19.11 Elo** | v58 NNUE, TIMED | **1.79x** | single-thread vs v31 |
+| **+19.11 Elo** | v58 NNUE, TIMED | **1.43x** | single-thread vs v31 |
 | **v53+v54** eval lane | +37.52 & +31.20, the two biggest | **1 dependency** | `python-chess` only |
 
 <table>
 <tr>
-<td><img src="docs/elo_progression.svg" width="100%" alt="Cumulative A/B Elo across the C era, v31=0 climbing to +284"/></td>
-<td><img src="docs/speed_progression.svg" width="100%" alt="Single-thread speed as a multiple of v31, ending at 1.58x"/></td>
+<td><img src="docs/elo_progression.svg" width="100%" alt="Cumulative A/B Elo across the C era, v31=0 climbing to +324"/></td>
+<td><img src="docs/speed_progression.svg" width="100%" alt="Single-thread speed as a multiple of v31, peaking at 1.79x and ending at 1.43x once the net is armed"/></td>
 </tr>
 <tr>
 <td><img src="docs/odds_knight.svg" width="100%" alt="Odds win rate vs full-strength Stockfish 18: knight 76.75 percent at v31 rising to 100 percent at v54, pawn at 87.7 percent at v54"/></td>
@@ -37,7 +40,9 @@ representation, move generation and legality.
 </table>
 
 Top row, self-play: every C-era version (v31+) is A/B-tested against the one
-before it. Gains stacked to +284 Elo, single-thread speed to 1.58×. The v30→v31
+before it. Gains stacked to +324 Elo. Single-thread speed peaked at 1.79× and
+sits at 1.43× now, because v58 spends ~30% of it on the net and comes out
++19.11 ahead anyway. The v30→v31
 C rewrite (~34× faster, +215 odds-derived) is off the left edge, so v31 is the
 honest zero.
 
@@ -49,12 +54,20 @@ only rung with headroom left, so it is the yardstick now.
 ### Two engines, one eval
 
 `cengine.py` + `csearch.c` are the C search core, the strongest engine. The
-whole per-node loop runs in C (board, ordering, TT, pruning, quiescence,
-bit-exact eval); Python keeps only the root, meaning iterative deepening, time
-management and the book. About 50× the Python core.
+whole per-node loop runs in C (board, ordering, TT, pruning, quiescence, and
+since v58 the NNUE forward pass); Python keeps only the root, meaning iterative
+deepening, time management and the book. About 50× the Python core.
 
-`engine.py` is the reference Python engine and the single source of eval truth:
-the C core reads every eval parameter from it at startup.
+The eval is a **hybrid**: the net scores positions inside negamax, while
+qsearch stand-pat stays on the hand-crafted eval. That split is deliberate --
+the earlier all-NN attempt measured −203 to −273 Elo. The net is trained purely
+on Pygin's own self-play, and `NNUE_REQUIRE_SIMD` keeps it off CPUs with
+neither NEON nor AVX2, where the scalar tail costs more than the eval is
+worth.
+
+`engine.py` is the reference Python engine and the single source of *hand-crafted*
+eval truth: the C core reads every HCE parameter from it at startup. The net's
+weights live in `NNUE/nets/`, not there.
 
 ### Measured strength
 
@@ -81,9 +94,9 @@ at UCI_Elo 2450.
 
 ## Version progression
 
-54 versions, each A/B-tested against the one before it. Speed is nodes/s and
+58 versions, each A/B-tested against the one before it. Speed is nodes/s and
 depth from startpos in 5 s (book off, best-of-N). `Elo Δ` is the A/B result vs
-the previous version, cumulative ≈ +284 over v31.
+the previous version, cumulative ≈ +324 over v31.
 
 Full per-version speed/depth/Elo is in the list below; the charts above
 summarise it. Regenerate with `bench/bench_progress.py` and `scripts/make_readme_charts.py`.
