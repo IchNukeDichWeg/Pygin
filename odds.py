@@ -28,6 +28,11 @@ once and plays its share of the games; results stream back to one log/PGN.
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "lib"))
 
+# The A/B harness owns the time control; importing it here only defines
+# constants and functions (~0.2 s, no side effects) and keeps the odds
+# yardstick on the SAME clock as the campaigns it contextualises.
+import match as _match_tc
+
 # ====================================================================== #
 #  CONFIG  -- edit these
 # ====================================================================== #
@@ -130,14 +135,19 @@ ODDS_SQUARES = ["f2"]                   # PAWN odds (f-pawn) -- the ACTIVE
 ENGINE_1_MODE             = "clock"
 ENGINE_1_TIME_MS          = 1000
 ENGINE_1_DEPTH            = 6
-ENGINE_1_CLOCK_SECONDS    = 45        # 45s + 0.15s, same TC as the SF-2450 match
-ENGINE_1_CLOCK_INCREMENT  = 0.15
+# TC comes from match.py so the odds yardstick and every A/B share ONE
+# source of truth. It did not until 2026-08-04: odds.py carried its own
+# 45+0.15 while the ledger ran at 50+0.20, so the external yardstick was
+# quietly on a different clock from the campaigns it was meant to contextualise.
+# --tc-seconds / --tc-inc still override per run.
+ENGINE_1_CLOCK_SECONDS    = _match_tc.TC_SECONDS
+ENGINE_1_CLOCK_INCREMENT  = _match_tc.TC_INCREMENT
 
 ENGINE_2_MODE             = "clock"
 ENGINE_2_TIME_MS          = 500
 ENGINE_2_DEPTH            = 6
-ENGINE_2_CLOCK_SECONDS    = 45
-ENGINE_2_CLOCK_INCREMENT  = 0.15
+ENGINE_2_CLOCK_SECONDS    = _match_tc.TC_SECONDS
+ENGINE_2_CLOCK_INCREMENT  = _match_tc.TC_INCREMENT
 
 # --- Output ----------------------------------------------------------- #
 SHOW_BOARD            = False           # print the board after each move in terminal

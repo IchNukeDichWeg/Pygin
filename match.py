@@ -140,13 +140,22 @@ MODE = "clock"             # "time"  -> fixed milliseconds per move (TIME_PER_MO
 TIME_PER_MOVE_MS = 1000      # used when MODE == "time"
 FIXED_DEPTH = 10             # used when MODE == "depth"
 TC_SECONDS = 50             # used when MODE == "clock": starting clock per side, in seconds
-TC_INCREMENT = 0.20         # used when MODE == "clock": seconds added per move
+TC_INCREMENT = 0.50         # used when MODE == "clock": seconds added per move
                             # ERA NOTE: 45+0.10 through v36 (the whole ledger
-                            # v21..v36); 50+0.20 from v37-era A/Bs on (0.30
-                            # was deemed increment-heavy on a 50s base;
-                            # revisit 60+0.30 if the base grows). The engine
-                            # got ~2x faster and outgrew the old TC.
-                            # Cross-era Elo numbers are NOT the same currency.
+                            # v21..v36); 50+0.20 from v37-era A/Bs through v58;
+                            # 50+0.50 from 2026-08-04 on. Cross-era Elo numbers
+                            # are NOT the same currency, and this is an era
+                            # BOUNDARY: nothing measured at 50+0.20 pools with
+                            # anything measured here.
+                            # WHY 0.50 and not 0.25: increment = base/100 is
+                            # Fishtest's whole family (10+0.1, 60+0.6,
+                            # 150+1.5), so a screen and a confirmation stay in
+                            # one ratio and outside rules of thumb transfer.
+                            # 50+0.25 scales arithmetically but matches nobody.
+                            # odds.py reads THESE values -- one source of truth
+                            # (it carried its own 45+0.15 until this change,
+                            # which is why the odds yardstick was quietly on a
+                            # different clock from every A/B).
 
 # --- WDL-based adjudication (OFF until data/wdl_model.json is calibrated) ------- #
 # Shortens decided games: a win is adjudicated when BOTH engines' own
