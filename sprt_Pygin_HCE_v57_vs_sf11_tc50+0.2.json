@@ -1,0 +1,26 @@
+{
+ "decision": null,
+ "llr": null,
+ "next_offset": 425,
+ "pairs": 425,
+ "penta": [
+  72,
+  158,
+  133,
+  60,
+  2
+ ],
+ "runs": [
+  {
+   "engine1": "Pygin_HCE_v57",
+   "engine2": "sf11",
+   "fen_file": "UHO_4060_v4.epd",
+   "mode": "clock 50+0.2",
+   "offset": 0,
+   "positions": 425,
+   "seed": 58,
+   "smp": 1,
+   "started": "2026-08-04 04:57:47"
+  }
+ ]
+}
