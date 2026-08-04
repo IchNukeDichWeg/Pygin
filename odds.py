@@ -192,8 +192,14 @@ def _apply_config(cfg=None):
     g = lambda k, d=None: (cfg or {}).get(k, d)
     NUM_GAMES = int(g("num_games", NUM_GAMES))
     N_WORKERS = int(g("workers", N_WORKERS))
-    if N_WORKERS <= 0:                    # 0 / auto => all cores but one (match.py rule)
-        N_WORKERS = max(1, multiprocessing.cpu_count() - 1)
+    if N_WORKERS <= 0:
+        # 0 / auto => cores/2, NOT match.py's cores-1. An odds game runs OUR
+        # engine plus a full-strength Stockfish, so a worker needs two cores,
+        # and the yardstick is an ABSOLUTE claim about SF rather than a
+        # relative one where both sides are starved equally. Measured
+        # 2026-08-04 at cores-1: SF fell to a median 353k nps (min 10.6k) and
+        # drew 450 of 850 games by threefold from a position it scored +2.10.
+        N_WORKERS = max(1, multiprocessing.cpu_count() // 2)
     STOCKFISH_ELO = int(g("stockfish_elo", STOCKFISH_ELO))
     SF_OUR_CLOCK = bool(g("sf_our_clock", SF_OUR_CLOCK))   # FI-88
     ENGINE_SMP = int(g("smp", ENGINE_SMP))
