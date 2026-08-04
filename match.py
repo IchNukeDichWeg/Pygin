@@ -26,7 +26,8 @@ Usage::
                                                                the schedule becomes the rest of the pool and
                                                                the clock decides. --offset, --seed, --sprt and
                                                                the state file all still apply. Any subset of
-                                                               d/h/m/s, e.g. 4h or 30m or "2h 15m".)
+                                                               d/h/m/s, run together or separated:
+                                                               4h, 30m, 2h50m, "2h 15m", 1d,10h.)
                      [--offset N]                             (opening-pool offset; the 4th POSITIONAL still
                                                                works, but this wins and is unambiguous. The
                                                                range is printed at the start, in the log
@@ -1464,7 +1465,8 @@ _DUR_UNITS = {"d": 86400, "h": 3600, "m": 60, "s": 1}
 
 
 def parse_duration(text):
-    """'1d,10h,4m,10s' -> seconds. Any subset, any order, commas optional.
+    """'1d,10h,4m,10s' or '2h50m' -> seconds. Any subset, any order;
+    separators optional and units may be run together.
 
     Raises ValueError on anything it cannot read rather than guessing: a
     mistyped budget that silently became 0 or 10x would waste the run it was
@@ -1473,11 +1475,15 @@ def parse_duration(text):
     for part in re.split(r"[,\s]+", str(text).strip()):
         if not part:
             continue
-        m = re.fullmatch(r"(\d+(?:\.\d+)?)\s*([dhms])", part.lower())
-        if not m:
+        # Several units may be RUN TOGETHER in one part ("2h50m"), which is how
+        # everyone writes a duration and how this was first typed into an
+        # overnight command -- it raised, and the run never started.
+        pieces = re.findall(r"(\d+(?:\.\d+)?)\s*([dhms])", part.lower())
+        if not pieces or re.sub(r"(\d+(?:\.\d+)?)\s*([dhms])", "", part.lower()):
             raise ValueError(f"--total-time: cannot read {part!r}; "
-                             f"use forms like 1d,10h,4m,10s")
-        total += float(m.group(1)) * _DUR_UNITS[m.group(2)]
+                             f"use forms like 1d,10h,4m,10s or 2h50m")
+        for num, unit in pieces:
+            total += float(num) * _DUR_UNITS[unit]
         seen = True
     if not seen or total <= 0:
         raise ValueError(f"--total-time: {text!r} is not a positive duration")
