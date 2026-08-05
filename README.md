@@ -10,7 +10,7 @@ borrowed weights.<br/>
 [`python-chess`](https://pypi.org/project/chess/) is used *only* for board
 representation, move generation and legality.
 
-![Strength](https://img.shields.io/badge/strength-~2885_Elo-3fb950)
+![Strength](https://img.shields.io/badge/strength-~3010_Elo-3fb950)
 ![Speed](https://img.shields.io/badge/speed-3.3M_nps-58a6ff)
 ![Versions](https://img.shields.io/badge/versions-58-8b949e)
 ![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B324_Elo-f0883e)
@@ -23,7 +23,7 @@ representation, move generation and legality.
 
 | | | | |
 |---|---|---|---|
-| **~2885 Elo** | SF-18 UCI_Elo bracket | **3.3M nps** | the net costs ~30% of it |
+| **~3010 Elo** | SF-18 UCI_Elo scale | **3.3M nps** | the net costs ~30% of it |
 | **+324 Elo** | A/B-confirmed, v31→v58 | **~18 ply** | from startpos in 5 s |
 | **+19.11 Elo** | v58 NNUE, TIMED | **1.43x** | single-thread vs v31 |
 | **v53+v54** eval lane | +37.52 & +31.20, the two biggest | **1 dependency** | `python-chess` only |
@@ -34,8 +34,8 @@ representation, move generation and legality.
 <td><img src="docs/speed_progression.svg" width="100%" alt="Single-thread speed as a multiple of v31, peaking at 1.79x and ending at 1.43x once the net is armed"/></td>
 </tr>
 <tr>
-<td><img src="docs/odds_knight.svg" width="100%" alt="Odds win rate vs full-strength Stockfish 18: knight 76.75 percent at v31 rising to 100 percent at v54, pawn at 87.7 percent at v54"/></td>
-<td><img src="docs/odds_ladder.svg" width="100%" alt="Odds it can spot full-strength Stockfish 18 and still win: queen 100, rook 100, knight 100, pawn 87.7 percent"/></td>
+<td><img src="docs/odds_knight.svg" width="100%" alt="Odds win rate vs full-strength Stockfish 18: knight 76.75 percent at v31 rising to 100 percent at v54, pawn at 90.3 percent at v58"/></td>
+<td><img src="docs/odds_ladder.svg" width="100%" alt="Odds it can spot full-strength Stockfish 18 and still win: queen 100, rook 100, knight 100, pawn 90.3 percent"/></td>
 </tr>
 </table>
 
@@ -48,7 +48,7 @@ honest zero.
 
 Bottom row, vs Stockfish 18 at full strength: knight odds climbed 76.75 → 100%
 (v31 → v54) and closed. On the handicap ladder Pygin now spots SF a queen, rook
-or knight, all at 100%, or a pawn at 87.7%, and still wins. Pawn odds is the
+or knight, all at 100%, or a pawn at 90.3%, and still wins. Pawn odds is the
 only rung with headroom left, so it is the yardstick now.
 
 ### Two engines, one eval
@@ -71,27 +71,32 @@ weights live in `NNUE/nets/`, not there.
 
 ### Measured strength
 
-**~2885 Elo** on the SF-18 UCI_Elo bracket (v51): 62.5% over the 2850 cap,
-46.4% under 2900, 2,000 games each. That is a class bracket, not a rating.
+**~3010 Elo** on the SF-18 UCI_Elo scale (v58, 2026-08-05): 65.47% against
+the engine capped at 2900 over 333 games at 50+0.50, which places it 111 points
+above that cap. This supersedes the v51 figure of ~2885, which came from
+bracketing between the 2850 and 2900 caps (62.5% over one, 46.4% under the
+other, 2,000 games each). Two caveats: it is an extrapolation from ONE cap
+rather than a two-cap bracket, and Stockfish's UCI_Elo is its own limiter, not
+an external rating. Both figures use that same limiter, so the movement between
+them is real even where the absolute is not.
 
 **Odds vs full-strength SF-18** is the external yardstick. Knight odds ran
 76.75% → 79.05% → 81.65% → 100% (v31 → v49 → v52 → v54) and is now saturated:
 the PST candidate that shipped as v54 took 197 games without conceding a win or
 a draw. Queen and rook went the same way. Rook, re-measured at v54, took 106
 games without conceding a win or a draw, retiring a stale 95.5% from v49. Pawn
-odds (f2) is the only rung left, at 87.66% over 1,900 games at v54 (+339.63
-±41.0 on the 1,500-game half), and the one handicap SF still scores against.
-Stockfish manages its own clock in that run. Under the older setup, where
-Pygin's time manager budgeted both sides, the same rung read 84.88% -- our
-manager was over-feeding SF by ~370 ms a move, so the old figure understated
-the gap by +2.78% ±2.16.
+odds (f2) is the only rung left, and the one handicap SF still scores against:
+**90.30% over 500 games at v58** (420W/63D/17L, +387.57 ±93.0), up from 87.66%
+over 1,900 games at v54. That pair is not a clean delta -- the TC era moved
+45+0.15 -> 50+0.50 between them, and the worker count halved to cores/2 so
+Stockfish gets a full core and is never starved. Both are real measurements of
+the same rung; the step between them crosses an era change.
 
-**vs SF-18 capped at UCI_Elo 2900** (50+0.50, 5 workers so Stockfish is never
-starved): v57 scored **65.81%, +113.78 ±41.8** over 332 games and v58 scored
-**65.47%, +111.10 ±41.5** over 333. Both clear the 2900 cap comfortably. The
-two are indistinguishable at this sample size, which is a statement about the
-sample and not about the net: v58's confirmed +19.11 sits well inside a ±41
-bar, and separating the two would take roughly ten times the games.
+**v57 measured alongside it** on the 2900 cap: **65.81%, +113.78 ±41.8** over
+332 games, against v58's 65.47%. The two are indistinguishable at this sample
+size, which says something about the sample rather than the net -- v58's
+confirmed +19.11 sits well inside a ±41 bar, and separating them would take
+roughly ten times the games.
 
 **vs its own Python engine: 1,815–0–40.** No rating is quoted; the gap is past
 what Elo can express. The Python engine alone is ~2440–2450, level with SF-18

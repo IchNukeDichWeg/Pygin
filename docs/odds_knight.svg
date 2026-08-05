@@ -12,22 +12,27 @@
 <text x="50" y="103.5" fill="#8b949e" font-size="11" text-anchor="end">95%</text>
 <line x1="58" y1="44.0" x2="738" y2="44.0" stroke="#8b949e33"/>
 <text x="50" y="48.0" fill="#8b949e" font-size="11" text-anchor="end">102%</text>
-<path d="M58.0,266.0 L58.0,244.2 L590.2,226.0 L678.9,205.3 L738.0,59.9 L738.0,266.0 Z" fill="url(#ga371f7)"/>
-<polyline points="58.0,244.2 590.2,226.0 678.9,205.3 738.0,59.9" fill="none" stroke="#a371f7" stroke-width="2.5" stroke-linejoin="round"/>
+<path d="M58.0,266.0 L58.0,244.2 L511.3,226.0 L586.9,205.3 L637.3,59.9 L637.3,266.0 Z" fill="url(#ga371f7)"/>
+<polyline points="58.0,244.2 511.3,226.0 586.9,205.3 637.3,59.9" fill="none" stroke="#a371f7" stroke-width="2.5" stroke-linejoin="round"/>
 <circle cx="58.0" cy="244.2" r="4" fill="#a371f7"/>
 <text x="58.0" y="233.2" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">76.75%</text>
-<circle cx="590.2" cy="226.0" r="4" fill="#a371f7"/>
-<text x="590.2" y="215.0" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">79.05%</text>
-<circle cx="678.9" cy="205.3" r="4" fill="#a371f7"/>
-<text x="671.9" y="194.3" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="end">81.65%</text>
-<circle cx="738.0" cy="59.9" r="4" fill="#a371f7"/>
-<text x="738.0" y="48.9" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="end">100.00%</text>
+<circle cx="511.3" cy="226.0" r="4" fill="#a371f7"/>
+<text x="511.3" y="215.0" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">79.05%</text>
+<circle cx="586.9" cy="205.3" r="4" fill="#a371f7"/>
+<text x="579.9" y="194.3" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="end">81.65%</text>
+<circle cx="637.3" cy="59.9" r="4" fill="#a371f7"/>
+<text x="637.3" y="48.9" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">100.00%</text>
 <text x="67.0" y="260.2" fill="#a371f7" font-size="12" font-weight="600" text-anchor="start">knight</text>
-<circle cx="738.0" cy="157.7" r="4" fill="#3fb950"/>
-<text x="729.0" y="146.7" fill="#3fb950" font-size="12.5" font-weight="700" text-anchor="end">87.66%</text>
-<text x="729.0" y="173.7" fill="#3fb950" font-size="12" font-weight="600" text-anchor="end">pawn</text>
+<path d="M637.3,266.0 L637.3,157.7 L738.0,136.8 L738.0,266.0 Z" fill="url(#g3fb950)"/>
+<polyline points="637.3,157.7 738.0,136.8" fill="none" stroke="#3fb950" stroke-width="2.5" stroke-linejoin="round"/>
+<circle cx="637.3" cy="157.7" r="4" fill="#3fb950"/>
+<text x="637.3" y="146.7" fill="#3fb950" font-size="12.5" font-weight="700" text-anchor="middle">87.66%</text>
+<circle cx="738.0" cy="136.8" r="4" fill="#3fb950"/>
+<text x="738.0" y="125.8" fill="#3fb950" font-size="12.5" font-weight="700" text-anchor="end">90.30%</text>
+<text x="646.3" y="173.7" fill="#3fb950" font-size="12" font-weight="600" text-anchor="start">pawn</text>
 <text x="58.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v31</text>
-<text x="590.2" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v49</text>
-<text x="678.9" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v52</text>
-<text x="738.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v54</text>
+<text x="511.3" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v49</text>
+<text x="586.9" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v52</text>
+<text x="637.3" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v54</text>
+<text x="738.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v58</text>
 </svg>
