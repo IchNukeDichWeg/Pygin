@@ -4,12 +4,44 @@
 # present (install them if missing), then build the C libraries so you can
 # immediately run a headless match. Safe to re-run.
 #
-#     ./setup.sh
+#     ./setup.sh                     everything
+#     ./setup.sh --old 57,50,45      only those Old Engine/ snapshots
+#     ./setup.sh --no-old-engines    no snapshots at all
+#
+# There are ~58 snapshots and each builds three shared objects, which is the
+# slowest part of a fresh setup. An A/B usually needs one of them, so name it.
 #
 # Works on macOS (Homebrew) and Linux (apt / dnf / pacman / zypper).
 # ======================================================================
 set -euo pipefail
 cd "$(dirname "$0")"
+
+# --no-old-engines skips step 7. There are ~58 snapshots and each builds
+# three shared objects, which is the slowest part of a fresh setup and is
+# only needed to play A/Bs against an older version. The live engine, the
+# selftest and a match between two CURRENT engines are unaffected.
+BUILD_OLD=1
+OLD_ONLY=""                       # empty = every snapshot
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --no-old-engines) BUILD_OLD=0 ;;
+        --old)
+            shift
+            OLD_ONLY="${1:-}"
+            [ -n "$OLD_ONLY" ] || {
+                echo "--old wants a comma-separated list, e.g. --old 57,50,45" >&2
+                exit 2; } ;;
+        --old=*) OLD_ONLY="${1#--old=}" ;;
+        -h|--help)
+            sed -n '3,12p' "$0" | sed 's/^# \{0,1\}//'
+            exit 0 ;;
+        *)
+            echo "unknown option: $1" >&2
+            echo "usage: ./setup.sh [--no-old-engines | --old 57,50,45]" >&2
+            exit 2 ;;
+    esac
+    shift
+done
 
 echo "== Pygin setup =="
 
@@ -246,10 +278,27 @@ if [ -f csearch.c ]; then
 fi
 
 # --- 7. Old Engine snapshots (best effort, for A/B matches) ----------- #
-if [ -d "Old Engine" ]; then
-    echo "-> building Old Engine snapshot libraries (for A/B; best effort) ..."
+if [ -d "Old Engine" ] && [ "$BUILD_OLD" -eq 0 ]; then
+    echo "-> SKIPPING Old Engine snapshot libraries (--no-old-engines)."
+    echo "   An A/B against a snapshot will fail to load until you re-run"
+    echo "   ./setup.sh without the flag."
+elif [ -d "Old Engine" ]; then
+    if [ -n "$OLD_ONLY" ]; then
+        echo "-> building Old Engine snapshots $OLD_ONLY only (--old) ..."
+        # A named snapshot that does not exist is almost always a typo, and a
+        # silent no-op there means the A/B fails hours later at engine load.
+        for want in ${OLD_ONLY//,/ }; do
+            [ -d "Old Engine/$want" ] || echo "   !! no such snapshot: Old Engine/$want"
+        done
+    else
+        echo "-> building Old Engine snapshot libraries (for A/B; best effort) ..."
+    fi
     for d in "Old Engine"/*/; do
         d="${d%/}"
+        if [ -n "$OLD_ONLY" ] \
+            && ! printf '%s' ",$OLD_ONLY," | grep -q ",$(basename "$d"),"; then
+            continue
+        fi
         build_so "$d" eval_c
         build_so "$d" movegen
         # C-era snapshots (31+): csearch.so links the SNAPSHOT's eval_c.c
