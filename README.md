@@ -86,6 +86,13 @@ Pygin's time manager budgeted both sides, the same rung read 84.88% -- our
 manager was over-feeding SF by ~370 ms a move, so the old figure understated
 the gap by +2.78% ±2.16.
 
+**vs SF-18 capped at UCI_Elo 2900** (50+0.50, 5 workers so Stockfish is never
+starved): v57 scored **65.81%, +113.78 ±41.8** over 332 games and v58 scored
+**65.47%, +111.10 ±41.5** over 333. Both clear the 2900 cap comfortably. The
+two are indistinguishable at this sample size, which is a statement about the
+sample and not about the net: v58's confirmed +19.11 sits well inside a ±41
+bar, and separating the two would take roughly ten times the games.
+
 **vs its own Python engine: 1,815–0–40.** No rating is quoted; the gap is past
 what Elo can express. The Python engine alone is ~2440–2450, level with SF-18
 at UCI_Elo 2450.

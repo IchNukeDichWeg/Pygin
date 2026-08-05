@@ -94,6 +94,14 @@ ODDS_GIVEN_BY = "engine_2"
                                         # the ceiling -- rook odds went the same way.
 ODDS_SQUARES = ["f2"]                   # PAWN odds (f-pawn) -- the ACTIVE
                                         # yardstick, the rung with headroom.
+                                        # 2026-08-05 @v58 (first hybrid):
+                                        #   90.30% (500g, +387.57 +/-93.0)
+                                        #   420W / 63D / 17L, 50+0.50
+                                        #   NOT a clean delta on v54: the TC
+                                        #   era moved (45+0.15 -> 50+0.50) and
+                                        #   the worker count was halved to stop
+                                        #   starving SF, so this is a NEW
+                                        #   baseline, not a continuation.
                                         # FIRST MEASUREMENT 2026-07-24 @v54:
                                         #   84.88% (2000g, +299.63 +/-29.8)
                                         #   1531W / 333D / 136L, 45+0.15
