@@ -59,7 +59,11 @@ ODDS_KNIGHT = [(31, 76.75), (49, 79.05), (52, 81.65), (54, 100.0)]
 # 84.88% over 2,000 games, when OUR time_manager budgeted SF's moves -- that
 # turned out to OVER-feed it (~926ms/move where SF gives itself 549ms median),
 # so the old figure UNDERSTATED us by +2.78% +/-2.16 (z=2.53).
-ODDS_PAWN = [(54, 87.66)]
+# v58 2026-08-05: 90.30% over 500 games (420W/63D/17L). NOT a clean
+# continuation of the v54 dot -- the TC era moved 45+0.15 -> 50+0.50 AND the
+# worker count halved to cores/2 so SF is never starved. Both points are real
+# measurements of the same rung; the line between them crosses an era change.
+ODDS_PAWN = [(54, 87.66), (58, 90.30)]
 # The odds LADDER vs full-strength SF: how big a material handicap the engine
 # can spot it and still win. Latest measurement of each. Queen, rook and
 # knight are all SATURATED at v54 -- rook was re-measured 2026-07-24 (106
@@ -67,7 +71,7 @@ ODDS_PAWN = [(54, 87.66)]
 # stale v49 number, not a real inversion under knight. Pawn is the only rung
 # with headroom left, which is why it is the active yardstick.
 ODDS_LADDER = [("Queen", 100.0, "v-"), ("Rook", 100.0, "v54"),
-               ("Knight", 100.0, "v54"), ("Pawn", 87.66, "v54")]
+               ("Knight", 100.0, "v54"), ("Pawn", 90.30, "v58")]
 
 W, H = 760, 300
 ML, MR, MT, MB = 58, 22, 44, 34          # margins
