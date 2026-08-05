@@ -138,14 +138,39 @@ def describe_nnue_source(engine_py):
         return out
     if not re.search(r"USE_NNUE\s*=\s*True", src):
         return out
-    m = re.findall(r'NNUE_FILE\s*=\s*["\']([^"\']+\.nnue)["\']', src)
     out["on"] = True
-    if not m:
+    # NNUE_FILE is written either as ONE literal (the A/B shims) or as an
+    # os.path.join(...) of pieces over several lines, which cengine.py and
+    # every Old Engine snapshot use. The old single-literal pattern could not
+    # see the join form, so it reported "NNUE ON but net missing" for engines
+    # whose net was loaded fine -- and this same scan picks the WDL family in
+    # match.py, so the miss also chose the wrong model for adjudication.
+    # Bounded slice, then take quoted pieces up to and including the one that
+    # ends in .nnue. Deliberately NOT a multi-line regex: a pattern spanning
+    # newlines backtracks catastrophically on a 5,000-line source when it does
+    # not match, which hangs the scan instead of failing it.
+    # Anchored at line start so `self.NNUE_FILE` inside the loader cannot win:
+    # a plain rfind lands there, 250 lines past the assignment, and finds no
+    # literal. Last match, so a subclass shim overriding the default wins.
+    hits = list(re.finditer(r"^\s*NNUE_FILE\s*=", src, re.M))
+    i = hits[-1].start() if hits else -1
+    parts = []
+    if i >= 0:
+        for piece in re.findall(r'["\']([^"\']+)["\']', src[i:i + 400]):
+            parts.append(piece)
+            if piece.endswith(".nnue"):
+                break
+        else:
+            parts = []          # no .nnue in range: treat as unset
+    if not parts:
         out["missing"] = True
         return out
-    path = m[-1]
+    path = os.path.join(*parts)
     if not os.path.isabs(path):
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), path)
+        # Against the ENGINE's directory, not this file's: cengine resolves
+        # NNUE_FILE against its own _DIR, and a frozen snapshot climbs back
+        # out of "Old Engine/<N>/" with "../../".
+        path = os.path.join(os.path.dirname(os.path.abspath(engine_py)), path)
     out["net"] = os.path.basename(path)
     if not os.path.isfile(path):
         out["missing"] = True
