@@ -2,11 +2,11 @@
 
 # Pygin
 
-**A from-scratch chess engine in Python + C.** Hand-written search, and an
-**HCE/NNUE hybrid** evaluation since v58: the neural net evaluates inside the
-main search, the hand-crafted eval keeps qsearch. No external engine, and the
-net is trained **only on Pygin's own self-play games** -- no borrowed data, no
-borrowed weights.<br/>
+**A from-scratch chess engine in Python + C.** The search is hand-written.
+Since v58 the evaluation is an HCE/NNUE hybrid: the neural net scores positions
+inside the main search, and the hand-crafted eval keeps quiescence. There is no
+external engine, and the net learned from Pygin's own self-play games only, with
+no borrowed data and no borrowed weights.<br/>
 [`python-chess`](https://pypi.org/project/chess/) is used *only* for board
 representation, move generation and legality.
 
@@ -39,79 +39,83 @@ representation, move generation and legality.
 </tr>
 </table>
 
-Top row, self-play: every C-era version (v31+) is A/B-tested against the one
-before it. Gains stacked to +324 Elo. Single-thread speed peaked at 1.79× and
-sits at 1.43× now, because v58 spends ~30% of it on the net and comes out
-+19.11 ahead anyway. The v30→v31
-C rewrite (~34× faster, +215 odds-derived) is off the left edge, so v31 is the
-honest zero.
+Top row is self-play. Every C-era version (v31 and up) is A/B-tested against
+the one before it, and the gains stack to +324 Elo. Single-thread speed peaked
+at 1.79× and sits at 1.43× today: v58 hands about 30% of it to the net and still
+comes out +19.11 ahead. The v30→v31 C rewrite (~34× faster, +215 odds-derived)
+is off the left edge, so v31 is the honest zero.
 
-Bottom row, vs Stockfish 18 at full strength: knight odds climbed 76.75 → 100%
-(v31 → v54) and closed. On the handicap ladder Pygin now spots SF a queen, rook
-or knight, all at 100%, or a pawn at 90.3%, and still wins. Pawn odds is the
-only rung with headroom left, so it is the yardstick now.
+Bottom row is against Stockfish 18 at full strength. Knight odds climbed from
+76.75% to 100% between v31 and v54, and closed. Pygin now spots SF a queen, a
+rook or a knight and wins every time, or spots a pawn and wins 90.3%. Pawn odds
+is the only rung with headroom left, so that is the yardstick now.
 
 ### Two engines, one eval
 
-`cengine.py` + `csearch.c` are the C search core, the strongest engine. The
-whole per-node loop runs in C (board, ordering, TT, pruning, quiescence, and
-since v58 the NNUE forward pass); Python keeps only the root, meaning iterative
-deepening, time management and the book. About 50× the Python core.
+`cengine.py` and `csearch.c` are the C search core, and the strongest engine
+here. The whole per-node loop runs in C: board, ordering, TT, pruning,
+quiescence, and since v58 the NNUE forward pass. Python keeps only the root,
+which means iterative deepening, time management and the book. That is about
+50× the Python core.
 
-The eval is a **hybrid**: the net scores positions inside negamax, while
-qsearch stand-pat stays on the hand-crafted eval. That split is deliberate --
-the earlier all-NN attempt measured −203 to −273 Elo. The net is trained purely
-on Pygin's own self-play, and `NNUE_REQUIRE_SIMD` keeps it off CPUs with
-neither NEON nor AVX2, where the scalar tail costs more than the eval is
-worth.
+The eval is a hybrid. The net scores positions inside negamax, while qsearch
+stand-pat stays on the hand-crafted eval. The split is deliberate: an earlier
+all-NN attempt measured −203 to −273 Elo. `NNUE_REQUIRE_SIMD` keeps the net off
+CPUs with neither NEON nor AVX2, where the scalar tail costs more than the eval
+is worth.
 
-`engine.py` is the reference Python engine and the single source of *hand-crafted*
-eval truth: the C core reads every HCE parameter from it at startup. The net's
-weights live in `NNUE/nets/`, not there.
+`engine.py` is the reference Python engine, and the single source of
+*hand-crafted* eval truth: the C core reads every HCE parameter from it at
+startup. The net's weights live in `NNUE/nets/` instead.
 
 ### Measured strength
 
-**~3010 Elo** on the SF-18 UCI_Elo scale (v58, 2026-08-05): 65.47% against
-the engine capped at 2900 over 333 games at 50+0.50, which places it 111 points
-above that cap. This supersedes the v51 figure of ~2885, which came from
-bracketing between the 2850 and 2900 caps (62.5% over one, 46.4% under the
-other, 2,000 games each). Two caveats: it is an extrapolation from ONE cap
-rather than a two-cap bracket, and Stockfish's UCI_Elo is its own limiter, not
-an external rating. Both figures use that same limiter, so the movement between
-them is real even where the absolute is not.
+**~3010 Elo** on the SF-18 UCI_Elo scale, measured at v58 on 2026-08-05.
+Pygin scored 65.47% against Stockfish capped at 2900, over 333 games at
+50+0.50, which puts it 111 points above that cap.
 
-**Odds vs full-strength SF-18** is the external yardstick. Knight odds ran
-76.75% → 79.05% → 81.65% → 100% (v31 → v49 → v52 → v54) and is now saturated:
-the PST candidate that shipped as v54 took 197 games without conceding a win or
-a draw. Queen and rook went the same way. Rook, re-measured at v54, took 106
-games without conceding a win or a draw, retiring a stale 95.5% from v49. Pawn
-odds (f2) is the only rung left, and the one handicap SF still scores against:
-**90.30% over 500 games at v58** (420W/63D/17L, +387.57 ±93.0), up from 87.66%
-over 1,900 games at v54. That pair is not a clean delta -- the TC era moved
-45+0.15 -> 50+0.50 between them, and the worker count halved to cores/2 so
-Stockfish gets a full core and is never starved. Both are real measurements of
-the same rung; the step between them crosses an era change.
+That replaces the v51 figure of ~2885, which came from bracketing between the
+2850 and 2900 caps (62.5% over one, 46.4% under the other, 2,000 games each).
+Two caveats. It is an extrapolation from a single cap rather than a two-cap
+bracket, and UCI_Elo is Stockfish's own limiter, not an external rating. Both
+figures use that same limiter, so the movement between them is real even where
+the absolute number is not.
 
-**v57 measured alongside it** on the 2900 cap: **65.81%, +113.78 ±41.8** over
-332 games, against v58's 65.47%. The two are indistinguishable at this sample
-size, which says something about the sample rather than the net -- v58's
+Odds against full-strength SF-18 is the external yardstick. Knight odds ran
+76.75% → 79.05% → 81.65% → 100% across v31, v49, v52 and v54, and is now
+saturated: the PST candidate that shipped as v54 played 197 games without
+conceding a win or a draw. Queen and rook went the same way. Rook was
+re-measured at v54 over 106 games, again conceding neither, which retired a
+stale 95.5% from v49.
+
+Pawn odds (f2) is the only rung left, and the one handicap Stockfish still
+scores against. v58 took 90.30% over 500 games (420W/63D/17L, +387.57 ±93.0),
+up from 87.66% over 1,900 games at v54. Those two are not a clean delta: the TC
+era moved from 45+0.15 to 50+0.50 between them, and the worker count halved to
+cores/2 so Stockfish gets a full core and is never starved. Both measure the
+same rung, but the step between them crosses an era change.
+
+v57 was measured alongside v58 on the 2900 cap and scored 65.81%, +113.78 ±41.8
+over 332 games, against v58's 65.47%. At this sample size the two are
+indistinguishable, which says more about the sample than about the net: v58's
 confirmed +19.11 sits well inside a ±41 bar, and separating them would take
 roughly ten times the games.
 
-**vs its own Python engine: 1,815–0–40.** No rating is quoted; the gap is past
-what Elo can express. The Python engine alone is ~2440–2450, level with SF-18
-at UCI_Elo 2450.
+Against its own Python engine the record is 1,815–0–40. No rating is quoted
+there; the gap is past what Elo can express. The Python engine on its own is
+~2440–2450, level with SF-18 at UCI_Elo 2450.
 
 ---
 
 ## Version progression
 
-58 versions, each A/B-tested against the one before it. Speed is nodes/s and
-depth from startpos in 5 s (book off, best-of-N). `Elo Δ` is the A/B result vs
-the previous version, cumulative ≈ +324 over v31.
+58 versions, each A/B-tested against the one before it. Speed is nodes/s,
+depth is from startpos in 5 s (book off, best-of-N), and `Elo Δ` is the A/B
+result against the previous version. Cumulatively that is ≈ +324 over v31.
 
-Full per-version speed/depth/Elo is in the list below; the charts above
-summarise it. Regenerate with `bench/bench_progress.py` and `scripts/make_readme_charts.py`.
+The list below has the full per-version speed, depth and Elo, and the charts
+above summarise it. Regenerate both with `bench/bench_progress.py` and
+`scripts/make_readme_charts.py`.
 
 <details>
 <summary><b>Every version in full</b> -- complete milestone + Elo list</summary>
