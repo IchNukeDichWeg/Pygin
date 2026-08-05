@@ -50,6 +50,7 @@ synthesized UCI-style "info ..." string for the battle log).
 
 import hashlib
 import os
+import sys
 import re
 import importlib.util
 import time
@@ -84,7 +85,7 @@ def _format_info(depth, score_cp, mate, nodes, nps, time_ms):
             f"nps {nps} time {time_ms}")
 
 
-def describe_nnue(engine):
+def describe_nnue(engine, engine_py=None):
     """What net, if any, this engine will actually play with.
 
     Returns {"on", "net", "hash", "missing"} for ANY engine, including ones
@@ -109,7 +110,21 @@ def describe_nnue(engine):
         out["missing"] = True
         return out
     if not os.path.isabs(path):
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), path)
+        # Against the ENGINE MODULE's directory, which is what cengine's own
+        # loader uses (_DIR). Resolving against this file instead made an
+        # "Old Engine/<N>" snapshot -- whose NNUE_FILE climbs out with
+        # "../../" -- report "net missing" in the summary while the header,
+        # which scans the source, resolved it correctly. Same engine, two
+        # answers in one run, and the engine had the net loaded all along.
+        # engine_py is passed by the caller, which always knows it. Deriving
+        # it from type(engine).__module__ does NOT work: the worker loads
+        # engines under a unique spec name and never registers them in
+        # sys.modules, so the lookup silently returns None.
+        base = engine_py or getattr(
+            sys.modules.get(type(engine).__module__, None), "__file__", None)
+        root = os.path.dirname(os.path.abspath(base)) if base else \
+            os.path.dirname(os.path.abspath(__file__))
+        path = os.path.join(root, path)
     out["net"] = os.path.basename(path)
     if not os.path.isfile(path):
         out["missing"] = True
@@ -238,7 +253,7 @@ def engine_worker(conn, engine_path, use_book, pv_uci=False, book_path=None,
             engine.pv_uci = pv_uci      # PV log format (SAN vs UCI)
         except Exception:
             pass            # older engines may not expose it; fine
-        conn.send(("ready", describe_nnue(engine)))
+        conn.send(("ready", describe_nnue(engine, engine_path)))
     except Exception:
         conn.send(("fatal", traceback.format_exc()))
         return
