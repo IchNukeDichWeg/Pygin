@@ -1022,12 +1022,12 @@ function renderHce(){
   rows.innerHTML="";
   const big=$("hcebig");
   if(!HCE_P){
-    big.textContent="—";
+    big.textContent="\u2014";
     $("hcenote").textContent="hce_params.json was not injected into this page "+
       "-- run: python3 NNUE/tools/export_hce_params.py";
     return;
   }
-  if(!POS){ big.textContent="—"; return; }
+  if(!POS){ big.textContent="\u2014"; return; }
   const r=hceBase(hceSquares(POS),!!POS.stm);
   big.textContent=(r.score>0?"+":"")+(r.score/100).toFixed(2);
   big.style.color=r.score>0?"var(--warm)":r.score<0?"var(--cool)":"var(--ink)";
@@ -1064,7 +1064,7 @@ function renderHce(){
     add("<b>Total</b>","<b>"+pawns(F.total)+"</b>");
   }
   const nn=$("evalbig").textContent;
-  if(nn&&nn!=="—")
+  if(nn&&nn!=="\u2014")
     add("Net minus HCE",((parseFloat(nn)-r.score/100)>=0?"+":"")+
         (parseFloat(nn)-r.score/100).toFixed(2));
 }
