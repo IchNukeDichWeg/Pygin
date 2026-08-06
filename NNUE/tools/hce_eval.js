@@ -194,6 +194,107 @@ export function mopUp(squares, P, strong = false) {
   return adv > 0 ? bonus : -bonus;
 }
 
+/* ---- attack sets ----------------------------------------------------- *
+ * Ray walks, not magic bitboards. Magics are a speed trick for an engine
+ * searching millions of nodes; a walk yields the identical set, and the
+ * browser evaluates one position at a time. Correctness is the only
+ * property that matters here, and a walk is the version you can read.
+ */
+const NOT_A = ~0x0101010101010101n & ((1n << 64n) - 1n);
+const NOT_H = ~0x8080808080808080n & ((1n << 64n) - 1n);
+const MASK64 = (1n << 64n) - 1n;
+
+const KNIGHT_ATK = (() => {
+  const t = new Array(64).fill(0n);
+  for (let s = 0; s < 64; s++) {
+    const f = s & 7, r = s >> 3;
+    let a = 0n;
+    for (const [df, dr] of [[1, 2], [2, 1], [2, -1], [1, -2],
+                            [-1, -2], [-2, -1], [-2, 1], [-1, 2]]) {
+      const nf = f + df, nr = r + dr;
+      if (nf >= 0 && nf < 8 && nr >= 0 && nr < 8) a |= 1n << BigInt(nr * 8 + nf);
+    }
+    t[s] = a;
+  }
+  return t;
+})();
+
+function rayAttacks(sq, occ, dirs) {
+  let a = 0n;
+  const f0 = sq & 7, r0 = sq >> 3;
+  for (const [df, dr] of dirs) {
+    let f = f0 + df, r = r0 + dr;
+    while (f >= 0 && f < 8 && r >= 0 && r < 8) {
+      const b = 1n << BigInt(r * 8 + f);
+      a |= b;
+      if (occ & b) break;                 // blockers are included, then stop
+      f += df; r += dr;
+    }
+  }
+  return a;
+}
+const DIAG = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+const ORTH = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+export const bishopAtk = (sq, occ) => rayAttacks(sq, occ, DIAG);
+export const rookAtk = (sq, occ) => rayAttacks(sq, occ, ORTH);
+
+/* Mobility and threats, transcribed from engine.py's _mobility_bb. Threats
+ * live in the same function there, so they port together rather than as a
+ * separate term. Mobility is NOT tapered: that function's own comment
+ * records it as deliberate, since the live path is mobility_king_safety and
+ * adding a phase argument to a dead branch would be worse than the
+ * inconsistency. Reproducing the quirk is the whole job.
+ */
+export function mobilityThreats(squares, P) {
+  let occW = 0n, occB = 0n, wp = 0n, bp = 0n;
+  const bbOfKind = { knight: [0n, 0n], bishop: [0n, 0n], rook: [0n, 0n], queen: [0n, 0n] };
+  for (let s = 0; s < 64; s++) {
+    const p = squares[s];
+    if (!p) continue;
+    const b = 1n << BigInt(s);
+    if (p.white) occW |= b; else occB |= b;
+    if (p.kind === "pawn") { if (p.white) wp |= b; else bp |= b; }
+    else if (bbOfKind[p.kind]) bbOfKind[p.kind][p.white ? 0 : 1] |= b;
+  }
+  const occ = occW | occB;
+  const patkW = (((wp << 9n) & MASK64) & NOT_A) | (((wp << 7n) & MASK64) & NOT_H);
+  const patkB = ((bp >> 7n) & NOT_A) | ((bp >> 9n) & NOT_H);
+  const wSafe = P.use_mobility_area ? (~occW & ~patkB & MASK64) : (~occW & MASK64);
+  const bSafe = P.use_mobility_area ? (~occB & ~patkW & MASK64) : (~occB & MASK64);
+  const pc = b => { let n = 0; while (b) { b &= b - 1n; n++; } return n; };
+  const lsbi = b => { let n = 0, x = b & -b; while (x > 1n) { x >>= 1n; n++; } return n; };
+  const atk = (kind, sq) => kind === "knight" ? KNIGHT_ATK[sq]
+    : kind === "bishop" ? bishopAtk(sq, occ)
+    : kind === "rook" ? rookAtk(sq, occ)
+    : bishopAtk(sq, occ) | rookAtk(sq, occ);
+
+  let score = 0, wMinor = 0n, bMinor = 0n;
+  for (const kind of ["knight", "bishop", "rook", "queen"]) {
+    const w = P["mob_" + kind];
+    const isMinor = kind === "knight" || kind === "bishop";
+    for (const [bb, mine, sign] of [[bbOfKind[kind][0], wSafe, 1],
+                                    [bbOfKind[kind][1], bSafe, -1]]) {
+      let t = bb;
+      while (t) {
+        const sq = lsbi(t); t &= t - 1n;
+        const a = atk(kind, sq);
+        score += sign * w * pc(a & mine);
+        if (isMinor) { if (sign > 0) wMinor |= a; else bMinor |= a; }
+      }
+    }
+  }
+  if (P.use_threats) {
+    const bNonPawn = occB & ~bp, wNonPawn = occW & ~wp;
+    const bMajor = (bbOfKind.rook[1] | bbOfKind.queen[1]);
+    const wMajor = (bbOfKind.rook[0] | bbOfKind.queen[0]);
+    score += P.threat_pawn * pc(patkW & bNonPawn);
+    score -= P.threat_pawn * pc(patkB & wNonPawn);
+    score += P.threat_minor * pc(wMinor & bMajor);
+    score -= P.threat_minor * pc(bMinor & wMajor);
+  }
+  return score;
+}
+
 function lsbIndex(b) {
   let n = 0, x = b & -b;
   while (x > 1n) { x >>= 1n; n++; }
