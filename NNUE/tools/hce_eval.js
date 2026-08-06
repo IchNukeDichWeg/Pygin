@@ -295,6 +295,138 @@ export function mobilityThreats(squares, P) {
   return score;
 }
 
+const KING_ATK = (() => {
+  const t = new Array(64).fill(0n);
+  for (let s = 0; s < 64; s++) {
+    const f = s & 7, r = s >> 3;
+    let a = 0n;
+    for (let df = -1; df <= 1; df++) for (let dr = -1; dr <= 1; dr++) {
+      if (!df && !dr) continue;
+      const nf = f + df, nr = r + dr;
+      if (nf >= 0 && nf < 8 && nr >= 0 && nr < 8) a |= 1n << BigInt(nr * 8 + nf);
+    }
+    t[s] = a;
+  }
+  return t;
+})();
+const PAWN_ATK = (white => {
+  const t = new Array(64).fill(0n);
+  for (let s = 0; s < 64; s++) {
+    const f = s & 7, r = s >> 3, nr = r + (white ? 1 : -1);
+    let a = 0n;
+    if (nr >= 0 && nr < 8) {
+      if (f > 0) a |= 1n << BigInt(nr * 8 + f - 1);
+      if (f < 7) a |= 1n << BigInt(nr * 8 + f + 1);
+    }
+    t[s] = a;
+  }
+  return t;
+});
+const PAWN_ATK_W = PAWN_ATK(true), PAWN_ATK_B = PAWN_ATK(false);
+
+/* Shelter: per-file, per-distance own-pawn bonus in front of the king.
+   Mirrors engine.py's _py_shelter, itself a mirror of C compute_shelter.
+   Only the NEAREST own pawn on each of the three files counts, and only at
+   distance 1 or 2 -- a pawn further up the board shelters nothing. */
+function shelter(ksq, ownPawns, isWhite, sc, sf, P) {
+  let score = 0;
+  const kf = ksq & 7, kr = ksq >> 3;
+  const MASK = (1n << 64n) - 1n;
+  for (const df of [-1, 0, 1]) {
+    const f = kf + df;
+    if (f < 0 || f > 7) continue;
+    const fmask = BigInt(P.file_bb[f]);
+    let ahead, psq, dist;
+    if (isWhite) {
+      const belowIncl = kr < 7 ? ((1n << BigInt((kr + 1) * 8)) - 1n) : MASK;
+      ahead = ownPawns & fmask & ~belowIncl & MASK;
+      if (!ahead) continue;
+      psq = lsbIndex(ahead & -ahead);              // lowest set bit
+      dist = (psq >> 3) - kr;
+    } else {
+      const aboveIncl = kr > 0 ? (~((1n << BigInt(kr * 8)) - 1n) & MASK) : MASK;
+      ahead = ownPawns & fmask & ~aboveIncl & MASK;
+      if (!ahead) continue;
+      psq = 63 - clz64(ahead);                     // highest set bit
+      dist = kr - (psq >> 3);
+    }
+    if (dist === 1) score += sc;
+    else if (dist === 2) score += sf;
+  }
+  return score;
+}
+function clz64(b) { let n = 0; while (b > 1n) { b >>= 1n; n++; } return 63 - n; }
+
+/* King safety: shield or shelter, ring-attacker penalty, open-file penalty.
+ * The ring-attack counts come from the same piece loops mobility walks, plus
+ * enemy pawn and king attacks into the ring, so this shares mobility's attack
+ * generation rather than duplicating it.
+ */
+export function kingSafety(squares, phase, P) {
+  const MASK = (1n << 64n) - 1n;
+  let occW = 0n, occB = 0n, wp = 0n, bp = 0n, wk = -1, bk = -1;
+  const kinds = { knight: [0n, 0n], bishop: [0n, 0n], rook: [0n, 0n], queen: [0n, 0n] };
+  for (let s = 0; s < 64; s++) {
+    const p = squares[s];
+    if (!p) continue;
+    const b = 1n << BigInt(s);
+    if (p.white) occW |= b; else occB |= b;
+    if (p.kind === "pawn") { if (p.white) wp |= b; else bp |= b; }
+    else if (p.kind === "king") { if (p.white) wk = s; else bk = s; }
+    else kinds[p.kind][p.white ? 0 : 1] |= b;
+  }
+  const occ = occW | occB;
+  const wring = wk >= 0 ? KING_ATK[wk] : 0n, bring = bk >= 0 ? KING_ATK[bk] : 0n;
+  const pc = b => { let n = 0; while (b) { b &= b - 1n; n++; } return n; };
+  const lsbi = b => lsbIndex(b & -b);
+
+  let wRingAtt = 0, bRingAtt = 0;
+  const atk = (kind, sq) => kind === "knight" ? KNIGHT_ATK[sq]
+    : kind === "bishop" ? bishopAtk(sq, occ)
+    : kind === "rook" ? rookAtk(sq, occ)
+    : bishopAtk(sq, occ) | rookAtk(sq, occ);
+  for (const kind of ["knight", "bishop", "rook", "queen"]) {
+    let t = kinds[kind][0];
+    while (t) { const s = lsbi(t); t &= t - 1n; bRingAtt += pc(atk(kind, s) & bring); }
+    t = kinds[kind][1];
+    while (t) { const s = lsbi(t); t &= t - 1n; wRingAtt += pc(atk(kind, s) & wring); }
+  }
+  if (wring) {
+    let t = bp;
+    while (t) { const s = lsbi(t); t &= t - 1n; wRingAtt += pc(PAWN_ATK_B[s] & wring); }
+    if (bk >= 0) wRingAtt += pc(KING_ATK[bk] & wring);
+  }
+  if (bring) {
+    let t = wp;
+    while (t) { const s = lsbi(t); t &= t - 1n; bRingAtt += pc(PAWN_ATK_W[s] & bring); }
+    if (wk >= 0) bRingAtt += pc(KING_ATK[wk] & bring);
+  }
+
+  const pm = P.phase_max;
+  const bl = (mg, eg) => Math.floor((mg * phase + eg * (pm - phase)) / pm);
+  const shieldV = bl(P.king_shield_mg, P.king_shield_eg);
+  const ringV = bl(P.king_ring_mg, P.king_ring_eg);
+  const openV = bl(P.king_open_mg, P.king_open_eg);
+  /* Shelter tapers to ZERO at the endgame, not to an EG constant. */
+  const sc = pm ? Math.floor((P.shelter_close * phase) / pm) : 0;
+  const sf = pm ? Math.floor((P.shelter_far * phase) / pm) : 0;
+
+  let score = 0;
+  if (wk >= 0) {
+    score += P.use_king_shelter ? shelter(wk, wp, true, sc, sf, P)
+                                : pc(wring & occW) * shieldV;
+    score -= wRingAtt * ringV;
+    if (!(wp & BigInt(P.file_bb[wk & 7]))) score -= openV;
+  }
+  if (bk >= 0) {
+    score -= P.use_king_shelter ? shelter(bk, bp, false, sc, sf, P)
+                                : pc(bring & occB) * shieldV;
+    score += bRingAtt * ringV;
+    if (!(bp & BigInt(P.file_bb[bk & 7]))) score += openV;
+  }
+  return score;
+}
+
 function lsbIndex(b) {
   let n = 0, x = b & -b;
   while (x > 1n) { x >>= 1n; n++; }
