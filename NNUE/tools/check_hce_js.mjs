@@ -9,7 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { evalBase, squareValues, pawnStructure, rookFiles, bishopPair } from "./hce_eval.js";
+import { evalBase, squareValues, pawnStructure, rookFiles, bishopPair, mopUp } from "./hce_eval.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const P = JSON.parse(fs.readFileSync(path.join(HERE, "hce_params.json"), "utf8"));
@@ -110,6 +110,26 @@ for (const row of V.positions) {
 console.log(`rook files:     ${V.positions.length - rbad}/${V.positions.length} exact (${rnz} nonzero)`);
 console.log(`bishop pair:    ${V.positions.length - bbad}/${V.positions.length} exact (${bnz} nonzero)`);
 
-const fail = bad || decomp || asym || pbad || rbad || bbad;
+/* Mop-up, both weight modes. Only 11 of the 266 positions clear
+   MOPUP_MIN_ADV, which is why the edge list carries ten hand-written
+   lopsided endgames -- without them the term fires ONCE and the gate is
+   decorative. */
+let mbad = 0, mnz = 0;
+for (const row of V.positions) {
+  if (row.mopup === undefined) continue;
+  const sq = sqArray(row.fen);
+  if (row.mopup !== 0) mnz++;
+  for (const [key, strong] of [["mopup", false], ["mopup_strong", true]]) {
+    const g = mopUp(sq, P, strong);
+    if (g !== row[key]) {
+      mbad++;
+      if (mbad <= 4) console.log(`  MOPUP${strong ? "*" : " "} ${g} vs ${row[key]}  ${row.fen}`);
+    }
+  }
+}
+console.log(`mop-up:         ${2 * V.positions.length - mbad}/${2 * V.positions.length} exact `
+  + `(${mnz} positions where it fires, both weight modes)`);
+
+const fail = bad || decomp || asym || pbad || rbad || bbad || mbad;
 console.log(fail ? "\nFAIL" : "\nall checks pass");
 process.exit(fail ? 1 : 0);

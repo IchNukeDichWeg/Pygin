@@ -159,6 +159,41 @@ export function bishopPair(squares, phase, P) {
   return (w >= 2 ? v : 0) - (b >= 2 ? v : 0);
 }
 
+/* Endgame mop-up: drive the losing king to a corner and the winning king
+ * toward it. Mirrors engine.py's _mopup_bb. No attack generation involved,
+ * only material counts and two king distances.
+ *
+ * `strong` is the bare-king mating mode, which cranks both weights so the
+ * king-driving gradient dominates instead of being drowned by the extra
+ * winning material -- that noise is what used to make a winning K+Q vs K
+ * shuffle into a draw.
+ *
+ * The material sum uses PIECE_VALUES, NOT the tapered MG/EG values: they are
+ * a different scale, and csearch.c keeps a third copy (PIECE_VAL), so all
+ * three move together at a retune or the bit-exact oracle splits.
+ */
+export function mopUp(squares, P, strong = false) {
+  const PV = P.piece_values;
+  const IDX = { pawn: 1, knight: 2, bishop: 3, rook: 4, queen: 5 };
+  let npmW = 0, npmB = 0, wk = -1, bk = -1;
+  for (let s = 0; s < 64; s++) {
+    const p = squares[s];
+    if (!p) continue;
+    if (p.kind === "king") { if (p.white) wk = s; else bk = s; continue; }
+    if (p.kind === "pawn") continue;              // non-pawn material only
+    const v = PV[IDX[p.kind]];
+    if (p.white) npmW += v; else npmB += v;
+  }
+  const adv = npmW - npmB;
+  if (Math.abs(adv) < P.mopup_min_adv || wk < 0 || bk < 0) return 0;
+  const loser = adv > 0 ? bk : wk;
+  const md = Math.abs((wk & 7) - (bk & 7)) + Math.abs((wk >> 3) - (bk >> 3));
+  const cmdW = strong ? P.mopup_cmd_weight : P.mopup_cmd_weight_normal;
+  const kingW = strong ? P.mopup_king_weight : P.mopup_king_weight_normal;
+  const bonus = cmdW * P.center_manhattan[loser] + kingW * (14 - md);
+  return adv > 0 ? bonus : -bonus;
+}
+
 function lsbIndex(b) {
   let n = 0, x = b & -b;
   while (x > 1n) { x >>= 1n; n++; }
