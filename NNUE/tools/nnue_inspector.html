@@ -220,6 +220,11 @@ summary{cursor:pointer;font-size:12.5px;color:var(--ink-2)}
 <div class="grid">
   <section class="card">
     <h2>Value of each piece</h2>
+    <div class="seg" style="margin:0 0 10px">
+      <button id="ovnnue" aria-pressed="true">Net</button>
+      <button id="ovhce" aria-pressed="false">HCE</button>
+      <button id="ovdiff" aria-pressed="false">Net &minus; HCE</button>
+    </div>
     <div class="board" id="board"></div>
     <div class="coords" id="files"></div>
     <div class="palette" id="palette" hidden></div>
@@ -345,7 +350,10 @@ function hceRemoval(sqArr,whiteToMove){
   for(let s=0;s<64;s++){
     const p=sqArr[s]; if(!p||p.kind==="king") continue;   // a kingless position has no eval
     const cut=sqArr.slice(); cut[s]=null;
-    out[s]={kind:p.kind,white:p.white,delta:full.score-hceBase(cut,whiteToMove).score};
+    /* SIGN: score-after-removal minus score-now, matching the net overlay's
+       convention exactly. Inverting it here would tint the same piece the
+       opposite colour in the two views and make the diff a sum. */
+    out[s]={kind:p.kind,white:p.white,delta:hceBase(cut,whiteToMove).score-full.score};
   }
   return {full,out};
 }
@@ -743,21 +751,39 @@ $("netfile").addEventListener("change",async e=>{
 
 /* ---------- board ---------- */
 const FILES="abcdefgh";
+let OVERLAY="nnue";        // "nnue" | "hce" | "diff"
 function render(){
   const bd=$("board"); bd.innerHTML="";
   const fo=FLIP?[...FILES].reverse():[...FILES];
   $("files").innerHTML=fo.map(f=>`<span>${f}</span>`).join("");
   if(!POS) return;
   let base=null, deltas=null, maxAbs=1;
-  if(NET){
-    base=evalPos(NET,POS);
-    deltas=new Map();
-    const men=sqList((POS.occ[0]|POS.occ[1])&~POS.bb.k);
-    for(const s of men){
-      const d=evalPos(NET,removePiece(POS,s)).whiteCp-base.whiteCp;
-      deltas.set(s,d); maxAbs=Math.max(maxAbs,Math.abs(d));
-    }
-  }
+  /* Overlay source: the net, the hand-crafted eval, or the gap between them.
+     All three are REMOVAL deltas -- take the piece off and re-evaluate -- so
+     they read on one scale and "diff" is a real subtraction rather than two
+     unrelated quantities put side by side. The diff view is the interesting
+     one: it shows where the net disagrees with the eval it replaced. */
+  const nnueDeltas=()=>{
+    const b=evalPos(NET,POS), m=new Map();
+    for(const s of sqList((POS.occ[0]|POS.occ[1])&~POS.bb.k))
+      m.set(s,evalPos(NET,removePiece(POS,s)).whiteCp-b.whiteCp);
+    return {base:b,map:m};
+  };
+  const hceDeltas=()=>{
+    const r=hceRemoval(hceSquares(POS),!!POS.stm); if(!r) return null;
+    const m=new Map();
+    r.out.forEach((v,s)=>{ if(v) m.set(s,v.delta); });
+    return {base:null,map:m};
+  };
+  if(NET) base=evalPos(NET,POS);
+  const src=OVERLAY==="hce"?hceDeltas()
+           :OVERLAY==="diff"?(NET&&HCE_P?(()=>{
+               const n=nnueDeltas().map, h=hceDeltas().map, m=new Map();
+               for(const [s,v] of n) if(h.has(s)) m.set(s,v-h.get(s));
+               return {base:null,map:m};
+             })():null)
+           :(NET?nnueDeltas():null);
+  if(src){ deltas=src.map; for(const v of deltas.values()) maxAbs=Math.max(maxAbs,Math.abs(v)); }
   const ranks=FLIP?[0,1,2,3,4,5,6,7]:[7,6,5,4,3,2,1,0];
   const files=FLIP?[7,6,5,4,3,2,1,0]:[0,1,2,3,4,5,6,7];
   for(const rank of ranks) for(const file of files){
@@ -806,6 +832,17 @@ function render(){
   }
   renderReadouts(base);
 }
+
+/* Overlay source buttons. HCE needs no net, so its view works before one is
+   loaded; the diff needs both and says so rather than silently drawing the
+   net's numbers as if they were a comparison. */
+for(const [id,mode] of [["ovnnue","nnue"],["ovhce","hce"],["ovdiff","diff"]])
+  $(id).addEventListener("click",()=>{
+    OVERLAY=mode;
+    for(const o of ["ovnnue","ovhce","ovdiff"])
+      $(o).setAttribute("aria-pressed",String(o===id));
+    render();
+  });
 
 /* The hand-crafted side, laid out like the Stockfish evaluation guide's
    subterms: the two taper halves, the phase that blends them, and tempo.
