@@ -501,6 +501,12 @@
  ],
  "isolated_eg": 14,
  "isolated_mg": 14,
+ "king_open_eg": 0,
+ "king_open_mg": 31,
+ "king_ring_eg": 0,
+ "king_ring_mg": 17,
+ "king_shield_eg": 0,
+ "king_shield_mg": 10,
  "mg_tables": {
   "bishop": [
    -36,
@@ -1350,6 +1356,8 @@
  ],
  "rook_open": 22,
  "rook_semi": 17,
+ "shelter_close": 8,
+ "shelter_far": 4,
  "stop_atk_mask": {
   "black": [
    "0",
@@ -1621,6 +1629,7 @@
  "tempo": 8,
  "threat_minor": 44,
  "threat_pawn": 46,
+ "use_king_shelter": false,
  "use_mobility_area": true,
  "use_threats": true
 }

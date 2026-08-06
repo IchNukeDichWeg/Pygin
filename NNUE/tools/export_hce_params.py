@@ -82,6 +82,14 @@ def main():
         "use_threats": bool(e.use_threats),
         "threat_pawn": e.THREAT_PAWN,
         "threat_minor": e.THREAT_MINOR,
+        # king safety: shield / ring attackers / open file / shelter. All
+        # tapered, and the shelter pair tapers to ZERO at the endgame rather
+        # than to an EG constant -- mirroring C.
+        "king_shield_mg": e.KING_SHIELD_MG, "king_shield_eg": e.KING_SHIELD_EG,
+        "king_ring_mg": e.KING_RING_ATTACK_MG, "king_ring_eg": e.KING_RING_ATTACK_EG,
+        "king_open_mg": e.KING_OPEN_FILE_MG, "king_open_eg": e.KING_OPEN_FILE_EG,
+        "shelter_close": e.SHELTER_CLOSE, "shelter_far": e.SHELTER_FAR,
+        "use_king_shelter": bool(e.use_king_shelter),
     }
     # Pawn-structure masks, as decimal strings (they are 64-bit, and JSON
     # numbers are doubles). Exported rather than re-derived in JS: the passed

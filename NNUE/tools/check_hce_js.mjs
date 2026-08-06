@@ -9,7 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { evalBase, squareValues, pawnStructure, rookFiles, bishopPair, mopUp, mobilityThreats } from "./hce_eval.js";
+import { evalBase, squareValues, pawnStructure, rookFiles, bishopPair, mopUp, mobilityThreats, kingSafety } from "./hce_eval.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const P = JSON.parse(fs.readFileSync(path.join(HERE, "hce_params.json"), "utf8"));
@@ -143,6 +143,59 @@ for (const row of V.positions) {
 }
 console.log(`mobility+threats: ${V.positions.length - mobbad}/${V.positions.length} exact`);
 
-const fail = bad || decomp || asym || pbad || rbad || bbad || mbad || mobbad;
+/* King safety: shelter, ring attackers, open file. Nonzero in 194 of 266. */
+let ksbad = 0, ksnz = 0;
+for (const row of V.positions) {
+  if (row.kingsafety === undefined) continue;
+  if (row.kingsafety !== 0) ksnz++;
+  const g = kingSafety(sqArray(row.fen), evalBase(row.fen, P).phase, P);
+  if (g !== row.kingsafety) {
+    ksbad++;
+    if (ksbad <= 5) console.log(`  KS ${g} vs ${row.kingsafety}  ${row.fen}`);
+  }
+}
+console.log(`king safety:    ${V.positions.length - ksbad}/${V.positions.length} exact (${ksnz} nonzero)`);
+
+/* The capstone: do the eight terms SUM to _evaluate_static? Each term being
+   individually exact does not prove the whole eval is reproduced -- a missing
+   term, or one added twice, only shows up here. Positions where the two
+   disagree are reported with the gap so a structural miss is visible rather
+   than averaged away. */
+let sbad = 0; const gaps = new Map();
+for (const row of V.positions) {
+  if (row.full === undefined || row.kingsafety === undefined) continue;
+  const sq = sqArray(row.fen), ph = evalBase(row.fen, P).phase;
+  /* The engine's own dispatch: when one side is down to a lone king (plus
+     pawns) AND the non-pawn material gap clears MOPUP_MIN_ADV, the positional
+     half RETURNS strong mop-up and skips every other term. Summing them all
+     unconditionally over-counts in exactly those positions, which is what the
+     first run of this check caught -- 11 disagreements, and 11 is precisely
+     how many positions fire mop-up. */
+  let npmW = 0, npmB = 0, hasNonPawnW = false, hasNonPawnB = false;
+  const PVi = { pawn: 1, knight: 2, bishop: 3, rook: 4, queen: 5 };
+  for (const p of sq) {
+    if (!p || p.kind === "king" || p.kind === "pawn") continue;
+    if (p.white) { npmW += P.piece_values[PVi[p.kind]]; hasNonPawnW = true; }
+    else { npmB += P.piece_values[PVi[p.kind]]; hasNonPawnB = true; }
+  }
+  const loneLoser = hasNonPawnW !== hasNonPawnB;
+  const positional = (loneLoser && Math.abs(npmW - npmB) >= P.mopup_min_adv)
+    ? mopUp(sq, P, true)
+    : pawnStructure(sq, ph, P).score + rookFiles(sq, P) + bishopPair(sq, ph, P)
+      + mobilityThreats(sq, P) + kingSafety(sq, ph, P) + mopUp(sq, P, false);
+  const sum = evalBase(row.fen, P).score + positional;
+  if (sum !== row.full) {
+    sbad++;
+    const d = sum - row.full;
+    gaps.set(d, (gaps.get(d) || 0) + 1);
+  }
+}
+console.log(`SUM vs _evaluate_static: ${V.positions.length - sbad}/${V.positions.length} exact`);
+if (sbad) {
+  const top = [...gaps.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  console.log(`  gaps (delta x count): ${top.map(([d, c]) => `${d > 0 ? "+" : ""}${d}x${c}`).join(", ")}`);
+}
+
+const fail = bad || decomp || asym || pbad || rbad || bbad || mbad || mobbad || ksbad;
 console.log(fail ? "\nFAIL" : "\nall checks pass");
 process.exit(fail ? 1 : 0);
