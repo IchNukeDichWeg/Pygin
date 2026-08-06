@@ -907,6 +907,10 @@
   "queen": 1076,
   "rook": 450
  },
+ "mob_bishop": 5,
+ "mob_knight": 6,
+ "mob_queen": 3,
+ "mob_rook": 3,
  "mopup_cmd_weight": 32,
  "mopup_cmd_weight_normal": 12,
  "mopup_king_weight": 16,
@@ -1614,5 +1618,9 @@
    "4629771061636907072"
   ]
  },
- "tempo": 8
+ "tempo": 8,
+ "threat_minor": 44,
+ "threat_pawn": 46,
+ "use_mobility_area": true,
+ "use_threats": true
 }

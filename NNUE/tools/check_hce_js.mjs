@@ -9,7 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { evalBase, squareValues, pawnStructure, rookFiles, bishopPair, mopUp } from "./hce_eval.js";
+import { evalBase, squareValues, pawnStructure, rookFiles, bishopPair, mopUp, mobilityThreats } from "./hce_eval.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const P = JSON.parse(fs.readFileSync(path.join(HERE, "hce_params.json"), "utf8"));
@@ -130,6 +130,19 @@ for (const row of V.positions) {
 console.log(`mop-up:         ${2 * V.positions.length - mbad}/${2 * V.positions.length} exact `
   + `(${mnz} positions where it fires, both weight modes)`);
 
-const fail = bad || decomp || asym || pbad || rbad || bbad || mbad;
+/* Mobility + threats. Live in 259 of 266 positions, so this one needs no
+   special edge cases -- the book exercises it everywhere. */
+let mobbad = 0;
+for (const row of V.positions) {
+  if (row.mobility === undefined) continue;
+  const g = mobilityThreats(sqArray(row.fen), P);
+  if (g !== row.mobility) {
+    mobbad++;
+    if (mobbad <= 5) console.log(`  MOB ${g} vs ${row.mobility}  ${row.fen}`);
+  }
+}
+console.log(`mobility+threats: ${V.positions.length - mobbad}/${V.positions.length} exact`);
+
+const fail = bad || decomp || asym || pbad || rbad || bbad || mbad || mobbad;
 console.log(fail ? "\nFAIL" : "\nall checks pass");
 process.exit(fail ? 1 : 0);

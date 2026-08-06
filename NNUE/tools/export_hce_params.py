@@ -70,6 +70,18 @@ def main():
         "mopup_cmd_weight_normal": e.MOPUP_CMD_WEIGHT,
         "mopup_king_weight_normal": e.MOPUP_KING_WEIGHT,
         "center_manhattan": list(e._center_manhattan),
+        # mobility + threats (engine.py _mobility_bb). Attack sets are ray
+        # walks in JS rather than magic bitboards: magics are a speed trick,
+        # and a walk produces the identical set at a scale the browser will
+        # never notice.
+        "mob_knight": e.MOBILITY_WEIGHT[chess.KNIGHT],
+        "mob_bishop": e.MOBILITY_WEIGHT[chess.BISHOP],
+        "mob_rook": e.MOBILITY_WEIGHT[chess.ROOK],
+        "mob_queen": e.MOBILITY_WEIGHT[chess.QUEEN],
+        "use_mobility_area": bool(e.use_mobility_area),
+        "use_threats": bool(e.use_threats),
+        "threat_pawn": e.THREAT_PAWN,
+        "threat_minor": e.THREAT_MINOR,
     }
     # Pawn-structure masks, as decimal strings (they are 64-bit, and JSON
     # numbers are doubles). Exported rather than re-derived in JS: the passed
