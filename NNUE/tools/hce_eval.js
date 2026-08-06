@@ -121,6 +121,44 @@ export function pawnStructure(squares, phase, P) {
   return { score, dbl, iso, bwd, passers: passers.length };
 }
 
+/* Rook (semi-)open files and the bishop pair. In eval_c.c both are folded
+ * into the mobility loop for speed, but neither actually depends on attack
+ * generation -- rook files need only the pawn bitboards, and the pair is a
+ * popcount -- so they port without the magic bitboards the rest of that pass
+ * requires. Mirrors eval_c.c lines 425-443 and 514-521.
+ */
+export function rookFiles(squares, P) {
+  let wp = 0n, bp = 0n, wr = [], br = [];
+  for (let s = 0; s < 64; s++) {
+    const p = squares[s];
+    if (!p) continue;
+    if (p.kind === "pawn") { if (p.white) wp |= 1n << BigInt(s); else bp |= 1n << BigInt(s); }
+    else if (p.kind === "rook") (p.white ? wr : br).push(s);
+  }
+  let score = 0;
+  const FILE = f => 0x0101010101010101n << BigInt(f);
+  for (const s of wr) {
+    const fm = FILE(s & 7);
+    if (!(wp & fm)) score += (bp & fm) ? P.rook_semi : P.rook_open;
+  }
+  for (const s of br) {
+    const fm = FILE(s & 7);
+    if (!(bp & fm)) score -= (wp & fm) ? P.rook_semi : P.rook_open;
+  }
+  return score;
+}
+
+export function bishopPair(squares, phase, P) {
+  const PM = P.phase_max;
+  if (!(PM > 0)) return 0;
+  let w = 0, b = 0;
+  for (const p of squares) if (p && p.kind === "bishop") { if (p.white) w++; else b++; }
+  /* Integer division on a positive blend: C truncates, and both operands are
+     positive here, so Math.floor matches. */
+  const v = Math.floor((P.bishop_pair_mg * phase + P.bishop_pair_eg * (PM - phase)) / PM);
+  return (w >= 2 ? v : 0) - (b >= 2 ? v : 0);
+}
+
 function lsbIndex(b) {
   let n = 0, x = b & -b;
   while (x > 1n) { x >>= 1n; n++; }

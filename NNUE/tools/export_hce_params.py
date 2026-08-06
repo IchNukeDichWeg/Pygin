@@ -55,6 +55,13 @@ def main():
         "mopup_king_weight": e.MOPUP_STRONG_KING_WEIGHT,
         # phase taper
         "phase_max": getattr(e, "PHASE_MAX", None),
+        # rook files + bishop pair: independent of mobility despite being
+        # folded into its loop in eval_c.c, so they port without the magic
+        # bitboard attack generation the rest of that pass needs.
+        "rook_open": e.ROOK_OPEN_FILE,
+        "rook_semi": e.ROOK_SEMIOPEN_FILE,
+        "bishop_pair_mg": e.BISHOP_PAIR_MG,
+        "bishop_pair_eg": e.BISHOP_PAIR_EG,
     }
     # Pawn-structure masks, as decimal strings (they are 64-bit, and JSON
     # numbers are doubles). Exported rather than re-derived in JS: the passed

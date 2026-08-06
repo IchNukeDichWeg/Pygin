@@ -12,6 +12,8 @@
  ],
  "backward_eg": 13,
  "backward_mg": 13,
+ "bishop_pair_eg": 59,
+ "bishop_pair_mg": 29,
  "doubled_eg": 23,
  "doubled_mg": 23,
  "eg_tables": {
@@ -1265,6 +1267,8 @@
   "queen": 4,
   "rook": 2
  },
+ "rook_open": 22,
+ "rook_semi": 17,
  "stop_atk_mask": {
   "black": [
    "0",

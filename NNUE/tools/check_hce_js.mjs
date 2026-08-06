@@ -9,7 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { evalBase, squareValues, pawnStructure } from "./hce_eval.js";
+import { evalBase, squareValues, pawnStructure, rookFiles, bishopPair } from "./hce_eval.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const P = JSON.parse(fs.readFileSync(path.join(HERE, "hce_params.json"), "utf8"));
@@ -90,6 +90,26 @@ for (const row of V.positions) {
 console.log(`pawn structure: ${V.positions.length - pbad}/${V.positions.length} exact `
   + `(${pnzOk}/${pnz} of the nonzero ones)`);
 
-const fail = bad || decomp || asym || pbad;
+/* Rook files and bishop pair. Both are sparse -- nonzero in 19 and 23 of the
+   256 -- so the nonzero subset is reported for the same reason as the pawn
+   term: a function returning 0 would otherwise score above 90%. */
+let rbad = 0, rnz = 0, bbad = 0, bnz = 0;
+for (const row of V.positions) {
+  const sq = sqArray(row.fen), ph = evalBase(row.fen, P).phase;
+  if (row.rookfiles !== undefined) {
+    if (row.rookfiles !== 0) rnz++;
+    const g = rookFiles(sq, P);
+    if (g !== row.rookfiles) { rbad++; if (rbad <= 3) console.log(`  ROOKF ${g} vs ${row.rookfiles}  ${row.fen}`); }
+  }
+  if (row.bishoppair !== undefined) {
+    if (row.bishoppair !== 0) bnz++;
+    const g = bishopPair(sq, ph, P);
+    if (g !== row.bishoppair) { bbad++; if (bbad <= 3) console.log(`  BPAIR ${g} vs ${row.bishoppair}  ${row.fen}`); }
+  }
+}
+console.log(`rook files:     ${V.positions.length - rbad}/${V.positions.length} exact (${rnz} nonzero)`);
+console.log(`bishop pair:    ${V.positions.length - bbad}/${V.positions.length} exact (${bnz} nonzero)`);
+
+const fail = bad || decomp || asym || pbad || rbad || bbad;
 console.log(fail ? "\nFAIL" : "\nall checks pass");
 process.exit(fail ? 1 : 0);

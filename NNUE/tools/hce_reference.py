@@ -49,8 +49,11 @@ def main():
         # ctx = (occ_w, occ_b, pawns, knights, bishops, rooks, queens, kings,
         #        white pawns, black pawns, phase) -- see _eval_base_white.
         wp, bp, phase = ctx[8], ctx[9], ctx[10]
+        occ_w, occ_b = ctx[0], ctx[1]
         rows.append({"fen": b.fen(), "base": int(base),
                      "pawns": int(e._pawn_structure_bb(wp, bp, phase)),
+                     "rookfiles": int(e._rook_files_bb(ctx[5], occ_w, occ_b, wp, bp)),
+                     "bishoppair": int(e._bishop_pair_bb(ctx[4], occ_w, occ_b, phase)),
                      "full": int(e._evaluate_static(b))})
 
     for fen in EDGE:
