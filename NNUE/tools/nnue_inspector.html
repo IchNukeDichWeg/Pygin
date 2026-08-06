@@ -340,6 +340,41 @@ function hceBase(sqArr,whiteToMove){
   return {score:Math.trunc(num/PM)+tempo,mg,eg,phase,rawPhase:raw,tempo};
 }
 
+/* Pawn structure: doubled, isolated, backward, passed -- engine.py's
+   _pawn_structure_bb. Two traps: the three penalties blend as POSITIVE
+   scalars and are multiplied by the signed count afterwards, and that blend
+   FLOORS where the material blend truncates toward zero. Gated at
+   256/256 by check_hce_js.mjs, 75/75 of the positions where it is nonzero. */
+function hcePawns(sqArr,phase){
+  if(!HCE_P) return null;
+  const P=HCE_P, B=s=>BigInt(s);
+  let wp=0n,bp=0n;
+  for(let s=0;s<64;s++){const p=sqArr[s];
+    if(p&&p.kind==="pawn"){ if(p.white) wp|=1n<<BigInt(s); else bp|=1n<<BigInt(s); }}
+  const file=P.file_bb.map(B), adj=P.adj_files_bb.map(B);
+  const M=k=>({white:P[k].white.map(B),black:P[k].black.map(B)});
+  const passed=M("passed_mask"), support=M("support_mask"), stop=M("stop_atk_mask");
+  const pc=b=>{let n=0;while(b){b&=b-1n;n++;}return n;};
+  const lsbi=b=>{let n=0,x=b&-b;while(x>1n){x>>=1n;n++;}return n;};
+  let dbl=0,iso=0,bwd=0; const passers=[];
+  for(const [own,opp,sign,side] of [[wp,bp,1,"white"],[bp,wp,-1,"black"]]){
+    for(let f=0;f<8;f++){const c=pc(own&file[f]); if(c>1) dbl+=sign*(c-1);}
+    let bb=own;
+    while(bb){ const s=lsbi(bb); bb&=bb-1n; const f=s&7;
+      if(!(own&adj[f])) iso+=sign;
+      else if(!(own&support[side][s])&&(opp&stop[side][s])) bwd+=sign;
+      if(!(opp&passed[side][s])) passers.push([sign,side==="white"?(s>>3):7-(s>>3)]);
+    }
+  }
+  const PM=P.phase_max>0?P.phase_max:1, ph=phase<0?0:(phase>PM?PM:phase);
+  const bl=(mg,eg)=>Math.floor((mg*ph+eg*(PM-ph))/PM);
+  let score=-(bl(P.doubled_mg,P.doubled_eg)*dbl+bl(P.isolated_mg,P.isolated_eg)*iso
+             +bl(P.backward_mg,P.backward_eg)*bwd);
+  const tap=P.passed_taper[ph];
+  for(const [sign,rel] of passers) score+=sign*tap[rel];
+  return {score,dbl,iso,bwd,passers:passers.length};
+}
+
 /* Per-square contribution BY REMOVAL, the way the Stockfish evaluation guide
    does it: take the piece off and re-evaluate. A PST lookup would be correct
    for this eval and meaningless for the net, so removal is the one mechanism
@@ -871,7 +906,19 @@ function renderHce(){
   add("Phase",`${r.phase} / ${HCE_P.phase_max}`+
       (r.rawPhase>HCE_P.phase_max?` (raw ${r.rawPhase}, capped)`:""));
   add("Tempo",(r.tempo>0?"+":"")+r.tempo);
-  add("Total, White&rsquo;s side",pawns(r.score));
+  const pw=hcePawns(hceSquares(POS),r.phase);
+  if(pw){
+    const bits=[pw.dbl?`${pw.dbl>0?"+":""}${pw.dbl} doubled`:"",
+                pw.iso?`${pw.iso>0?"+":""}${pw.iso} isolated`:"",
+                pw.bwd?`${pw.bwd>0?"+":""}${pw.bwd} backward`:"",
+                pw.passers?`${pw.passers} passed`:""].filter(Boolean).join(", ");
+    add("Pawn structure",pawns(pw.score)+(bits?` <span class="mono" style="opacity:.6">${bits}</span>`:""));
+  }
+  add("Base total, White&rsquo;s side",pawns(r.score));
+  /* Base + pawns is NOT the full hand-crafted eval: mobility, king safety,
+     rook files, bishop pair, threats and mop-up are not ported yet. Naming
+     the total honestly beats a "Total" row that is quietly short. */
+  if(pw) add("Base + pawns",pawns(r.score+pw.score));
   const nn=$("evalbig").textContent;
   if(nn&&nn!=="—")
     add("Net minus HCE",((parseFloat(nn)-r.score/100)>=0?"+":"")+
