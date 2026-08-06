@@ -24,6 +24,25 @@ sys.path[:0] = [_ROOT, os.path.join(_ROOT, "lib")]
 import chess                                             # noqa: E402
 import engine as eng_mod                                 # noqa: E402
 
+# King safety has no standalone function: it is computed inside
+# _mobility_king_safety_bb. It is recovered as that MINUS _mobility_bb, which
+# is only valid while the two weight mobility identically -- the first uses
+# _mob_blend(pt, phase), the second the flat MOBILITY_WEIGHT[pt]. They agree
+# today because every mobility MG half equals its EG half. Split those halves
+# and this subtraction silently starts measuring the taper difference as if it
+# were king safety, so the assumption is asserted rather than trusted.
+def _assert_mobility_taper_flat(e):
+    for pt in (chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN):
+        flat = e.MOBILITY_WEIGHT[pt]
+        for ph in range(0, (e.PHASE_MAX or 24) + 1):
+            if e._mob_blend(pt, ph) != flat:
+                raise SystemExit(
+                    f"mobility taper is no longer flat (piece {pt}, phase {ph}: "
+                    f"{e._mob_blend(pt, ph)} vs {flat}).\n"
+                    "The king-safety reference is _mobility_king_safety_bb minus "
+                    "_mobility_bb, which is only pure king safety while these "
+                    "agree. Give king safety its own oracle before regenerating.")
+
 # Cases chosen because they break naive ports, not because they are typical.
 EDGE = [
     "8/8/8/4k3/8/4K3/8/8 w - - 0 1",                     # bare kings, phase 0
@@ -52,8 +71,10 @@ EDGE = [
 
 def main():
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 300
+    eng_mod._USE_C_EVAL = False             # take the readable Python path
     e = eng_mod.Engine()
     e.use_incremental_eval = False          # force the from-scratch scan
+    _assert_mobility_taper_flat(e)
     rows = []
 
     def add(fen):
@@ -74,6 +95,12 @@ def main():
                      "mobility": int(e._mobility_bb(b, occ_w, occ_b, ctx[3],
                                                     ctx[4], ctx[5], ctx[6],
                                                     wp, bp)),
+                     "kingsafety": int(
+                         e._mobility_king_safety_bb(b, occ_w, occ_b, ctx[3],
+                                                    ctx[4], ctx[5], ctx[6],
+                                                    wp, bp, phase)
+                         - e._mobility_bb(b, occ_w, occ_b, ctx[3], ctx[4],
+                                          ctx[5], ctx[6], wp, bp)),
                      "full": int(e._evaluate_static(b))})
 
     for fen in EDGE:
