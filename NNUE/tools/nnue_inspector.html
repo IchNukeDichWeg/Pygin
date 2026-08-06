@@ -375,6 +375,139 @@ function hcePawns(sqArr,phase){
   return {score,dbl,iso,bwd,passers:passers.length};
 }
 
+/* The remaining terms, all gated at 266/266 against engine.py by
+   check_hce_js.mjs. Attack sets are ray walks, not magic bitboards: magics
+   buy speed for an engine searching millions of nodes, and a walk yields the
+   identical set for the one position this page evaluates. */
+const HCE_MASK=(1n<<64n)-1n;
+const HCE_NOTA=~0x0101010101010101n&HCE_MASK, HCE_NOTH=~0x8080808080808080n&HCE_MASK;
+const HCE_PC=b=>{let n=0;while(b){b&=b-1n;n++;}return n;};
+const HCE_LSB=b=>{let n=0,x=b&-b;while(x>1n){x>>=1n;n++;}return n;};
+const HCE_TBL=(f)=>{const t=new Array(64).fill(0n);
+  for(let s=0;s<64;s++)t[s]=f(s&7,s>>3);return t;};
+const HCE_N_ATK=HCE_TBL((f,r)=>{let a=0n;
+  for(const [df,dr] of [[1,2],[2,1],[2,-1],[1,-2],[-1,-2],[-2,-1],[-2,1],[-1,2]]){
+    const nf=f+df,nr=r+dr; if(nf>=0&&nf<8&&nr>=0&&nr<8)a|=1n<<BigInt(nr*8+nf);}return a;});
+const HCE_K_ATK=HCE_TBL((f,r)=>{let a=0n;
+  for(let df=-1;df<=1;df++)for(let dr=-1;dr<=1;dr++){ if(!df&&!dr)continue;
+    const nf=f+df,nr=r+dr; if(nf>=0&&nf<8&&nr>=0&&nr<8)a|=1n<<BigInt(nr*8+nf);}return a;});
+const HCE_PW=HCE_TBL((f,r)=>{let a=0n;const nr=r+1; if(nr<8){
+  if(f>0)a|=1n<<BigInt(nr*8+f-1); if(f<7)a|=1n<<BigInt(nr*8+f+1);}return a;});
+const HCE_PB=HCE_TBL((f,r)=>{let a=0n;const nr=r-1; if(nr>=0){
+  if(f>0)a|=1n<<BigInt(nr*8+f-1); if(f<7)a|=1n<<BigInt(nr*8+f+1);}return a;});
+function hceRay(sq,occ,dirs){let a=0n;const f0=sq&7,r0=sq>>3;
+  for(const [df,dr] of dirs){let f=f0+df,r=r0+dr;
+    while(f>=0&&f<8&&r>=0&&r<8){const b=1n<<BigInt(r*8+f);a|=b;if(occ&b)break;f+=df;r+=dr;}}
+  return a;}
+const HCE_DIAG=[[1,1],[1,-1],[-1,1],[-1,-1]], HCE_ORTH=[[1,0],[-1,0],[0,1],[0,-1]];
+function hceBits(sqArr){
+  let occW=0n,occB=0n,wp=0n,bp=0n,wk=-1,bk=-1;
+  const K={knight:[0n,0n],bishop:[0n,0n],rook:[0n,0n],queen:[0n,0n]};
+  for(let s=0;s<64;s++){const p=sqArr[s]; if(!p)continue; const b=1n<<BigInt(s);
+    if(p.white)occW|=b; else occB|=b;
+    if(p.kind==="pawn"){if(p.white)wp|=b;else bp|=b;}
+    else if(p.kind==="king"){if(p.white)wk=s;else bk=s;}
+    else K[p.kind][p.white?0:1]|=b;}
+  return {occW,occB,wp,bp,wk,bk,K,occ:occW|occB};
+}
+const hceAtk=(kind,sq,occ)=>kind==="knight"?HCE_N_ATK[sq]
+  :kind==="bishop"?hceRay(sq,occ,HCE_DIAG)
+  :kind==="rook"?hceRay(sq,occ,HCE_ORTH)
+  :hceRay(sq,occ,HCE_DIAG)|hceRay(sq,occ,HCE_ORTH);
+
+function hceRookFiles(B){const P=HCE_P;let sc=0;const F=f=>0x0101010101010101n<<BigInt(f);
+  for(const [rk,own,opp,sg] of [[B.K.rook[0],B.wp,B.bp,1],[B.K.rook[1],B.bp,B.wp,-1]]){
+    let t=rk; while(t){const s=HCE_LSB(t);t&=t-1n;const fm=F(s&7);
+      if(!(own&fm)) sc+=sg*((opp&fm)?P.rook_semi:P.rook_open);}}
+  return sc;}
+function hceBishopPair(B,phase){const P=HCE_P,PM=P.phase_max; if(!(PM>0))return 0;
+  const v=Math.floor((P.bishop_pair_mg*phase+P.bishop_pair_eg*(PM-phase))/PM);
+  return (HCE_PC(B.K.bishop[0])>=2?v:0)-(HCE_PC(B.K.bishop[1])>=2?v:0);}
+function hceMopUp(B,strong){const P=HCE_P,PV=P.piece_values;
+  const IX={knight:2,bishop:3,rook:4,queen:5};let nw=0,nb=0;
+  for(const k in IX){nw+=PV[IX[k]]*HCE_PC(B.K[k][0]);nb+=PV[IX[k]]*HCE_PC(B.K[k][1]);}
+  const adv=nw-nb; if(Math.abs(adv)<P.mopup_min_adv||B.wk<0||B.bk<0)return 0;
+  const loser=adv>0?B.bk:B.wk;
+  const md=Math.abs((B.wk&7)-(B.bk&7))+Math.abs((B.wk>>3)-(B.bk>>3));
+  const cw=strong?P.mopup_cmd_weight:P.mopup_cmd_weight_normal;
+  const kw=strong?P.mopup_king_weight:P.mopup_king_weight_normal;
+  const bonus=cw*P.center_manhattan[loser]+kw*(14-md);
+  return adv>0?bonus:-bonus;}
+function hceMobility(B){const P=HCE_P;
+  const patkW=(((B.wp<<9n)&HCE_MASK)&HCE_NOTA)|(((B.wp<<7n)&HCE_MASK)&HCE_NOTH);
+  const patkB=((B.bp>>7n)&HCE_NOTA)|((B.bp>>9n)&HCE_NOTH);
+  const wS=P.use_mobility_area?(~B.occW&~patkB&HCE_MASK):(~B.occW&HCE_MASK);
+  const bS=P.use_mobility_area?(~B.occB&~patkW&HCE_MASK):(~B.occB&HCE_MASK);
+  let sc=0,wM=0n,bM=0n;
+  for(const kind of ["knight","bishop","rook","queen"]){
+    const w=P["mob_"+kind], minor=kind==="knight"||kind==="bishop";
+    for(const [bb,safe,sg] of [[B.K[kind][0],wS,1],[B.K[kind][1],bS,-1]]){
+      let t=bb; while(t){const s=HCE_LSB(t);t&=t-1n;const a=hceAtk(kind,s,B.occ);
+        sc+=sg*w*HCE_PC(a&safe); if(minor){if(sg>0)wM|=a;else bM|=a;}}}}
+  if(P.use_threats){
+    sc+=P.threat_pawn*HCE_PC(patkW&(B.occB&~B.bp));
+    sc-=P.threat_pawn*HCE_PC(patkB&(B.occW&~B.wp));
+    sc+=P.threat_minor*HCE_PC(wM&(B.K.rook[1]|B.K.queen[1]));
+    sc-=P.threat_minor*HCE_PC(bM&(B.K.rook[0]|B.K.queen[0]));}
+  return sc;}
+function hceShelter(ksq,own,isW,sc,sf){const P=HCE_P;let s=0;
+  const kf=ksq&7,kr=ksq>>3;
+  for(const df of [-1,0,1]){const f=kf+df; if(f<0||f>7)continue;
+    const fm=BigInt(P.file_bb[f]);let ahead,psq,dist;
+    if(isW){const bel=kr<7?((1n<<BigInt((kr+1)*8))-1n):HCE_MASK;
+      ahead=own&fm&~bel&HCE_MASK; if(!ahead)continue;
+      psq=HCE_LSB(ahead&-ahead); dist=(psq>>3)-kr;}
+    else{const abv=kr>0?(~((1n<<BigInt(kr*8))-1n)&HCE_MASK):HCE_MASK;
+      ahead=own&fm&~abv&HCE_MASK; if(!ahead)continue;
+      let x=ahead,n=0; while(x>1n){x>>=1n;n++;} psq=n; dist=kr-(psq>>3);}
+    if(dist===1)s+=sc; else if(dist===2)s+=sf;}
+  return s;}
+function hceKingSafety(B,phase){const P=HCE_P,pm=P.phase_max;
+  const wring=B.wk>=0?HCE_K_ATK[B.wk]:0n, bring=B.bk>=0?HCE_K_ATK[B.bk]:0n;
+  let wA=0,bA=0;
+  for(const kind of ["knight","bishop","rook","queen"]){
+    let t=B.K[kind][0]; while(t){const s=HCE_LSB(t);t&=t-1n;bA+=HCE_PC(hceAtk(kind,s,B.occ)&bring);}
+    t=B.K[kind][1]; while(t){const s=HCE_LSB(t);t&=t-1n;wA+=HCE_PC(hceAtk(kind,s,B.occ)&wring);}}
+  if(wring){let t=B.bp;while(t){const s=HCE_LSB(t);t&=t-1n;wA+=HCE_PC(HCE_PB[s]&wring);}
+    if(B.bk>=0)wA+=HCE_PC(HCE_K_ATK[B.bk]&wring);}
+  if(bring){let t=B.wp;while(t){const s=HCE_LSB(t);t&=t-1n;bA+=HCE_PC(HCE_PW[s]&bring);}
+    if(B.wk>=0)bA+=HCE_PC(HCE_K_ATK[B.wk]&bring);}
+  const bl=(mg,eg)=>Math.floor((mg*phase+eg*(pm-phase))/pm);
+  const shV=bl(P.king_shield_mg,P.king_shield_eg), rV=bl(P.king_ring_mg,P.king_ring_eg);
+  const oV=bl(P.king_open_mg,P.king_open_eg);
+  const sc=pm?Math.floor((P.shelter_close*phase)/pm):0;
+  const sf=pm?Math.floor((P.shelter_far*phase)/pm):0;
+  let s=0;
+  if(B.wk>=0){s+=P.use_king_shelter?hceShelter(B.wk,B.wp,true,sc,sf):HCE_PC(wring&B.occW)*shV;
+    s-=wA*rV; if(!(B.wp&BigInt(P.file_bb[B.wk&7])))s-=oV;}
+  if(B.bk>=0){s-=P.use_king_shelter?hceShelter(B.bk,B.bp,false,sc,sf):HCE_PC(bring&B.occB)*shV;
+    s+=bA*rV; if(!(B.bp&BigInt(P.file_bb[B.bk&7])))s+=oV;}
+  return s;}
+
+/* The engine's own dispatch: a lone king past MOPUP_MIN_ADV RETURNS strong
+   mop-up and skips every other positional term. Summing them unconditionally
+   over-counts in exactly those positions -- the whole-eval check caught that,
+   which per-term checks could not. */
+function hceFull(sqArr,whiteToMove){
+  const base=hceBase(sqArr,whiteToMove); if(!base)return null;
+  const B=hceBits(sqArr), ph=base.phase, P=HCE_P;
+  const IX={knight:2,bishop:3,rook:4,queen:5};
+  let nw=0,nb=0,anyW=false,anyB=false;
+  for(const k in IX){const cw=HCE_PC(B.K[k][0]),cb=HCE_PC(B.K[k][1]);
+    nw+=P.piece_values[IX[k]]*cw; nb+=P.piece_values[IX[k]]*cb;
+    if(cw)anyW=true; if(cb)anyB=true;}
+  const lone=anyW!==anyB;
+  if(lone&&Math.abs(nw-nb)>=P.mopup_min_adv){
+    const m=hceMopUp(B,true);
+    return {base,terms:{mating:m},total:base.score+m,mating:true};
+  }
+  const t={pawns:hcePawns(sqArr,ph).score, rookFiles:hceRookFiles(B),
+           bishopPair:hceBishopPair(B,ph), mobility:hceMobility(B),
+           kingSafety:hceKingSafety(B,ph), mopUp:hceMopUp(B,false)};
+  let sum=base.score; for(const k in t) sum+=t[k];
+  return {base,terms:t,total:sum,mating:false};
+}
+
 /* Per-square contribution BY REMOVAL, the way the Stockfish evaluation guide
    does it: take the piece off and re-evaluate. A PST lookup would be correct
    for this eval and meaningless for the net, so removal is the one mechanism
@@ -906,19 +1039,30 @@ function renderHce(){
   add("Phase",`${r.phase} / ${HCE_P.phase_max}`+
       (r.rawPhase>HCE_P.phase_max?` (raw ${r.rawPhase}, capped)`:""));
   add("Tempo",(r.tempo>0?"+":"")+r.tempo);
-  const pw=hcePawns(hceSquares(POS),r.phase);
-  if(pw){
-    const bits=[pw.dbl?`${pw.dbl>0?"+":""}${pw.dbl} doubled`:"",
-                pw.iso?`${pw.iso>0?"+":""}${pw.iso} isolated`:"",
-                pw.bwd?`${pw.bwd>0?"+":""}${pw.bwd} backward`:"",
-                pw.passers?`${pw.passers} passed`:""].filter(Boolean).join(", ");
-    add("Pawn structure",pawns(pw.score)+(bits?` <span class="mono" style="opacity:.6">${bits}</span>`:""));
+  const sqArr=hceSquares(POS), F=hceFull(sqArr,!!POS.stm);
+  add("Material + PST + tempo",pawns(r.score));
+  if(F&&F.mating){
+    /* One side is a lone king past MOPUP_MIN_ADV: the engine returns strong
+       mop-up ALONE here, so listing the other terms would be fiction. */
+    add("Mating mop-up (strong)",pawns(F.terms.mating));
+    add("<b>Total</b>","<b>"+pawns(F.total)+"</b>");
+    $("hcenote").innerHTML="Lone-king mating position: the engine skips every "+
+      "other positional term and scores this on the mop-up gradient alone.";
+  } else if(F){
+    const pw=hcePawns(sqArr,r.phase);
+    const bits=pw?[pw.dbl?`${pw.dbl>0?"+":""}${pw.dbl} doubled`:"",
+                   pw.iso?`${pw.iso>0?"+":""}${pw.iso} isolated`:"",
+                   pw.bwd?`${pw.bwd>0?"+":""}${pw.bwd} backward`:"",
+                   pw.passers?`${pw.passers} passed`:""].filter(Boolean).join(", "):"";
+    add("Pawn structure",pawns(F.terms.pawns)+
+        (bits?` <span class="mono" style="opacity:.6">${bits}</span>`:""));
+    add("Mobility + threats",pawns(F.terms.mobility));
+    add("King safety",pawns(F.terms.kingSafety));
+    add("Rook files",pawns(F.terms.rookFiles));
+    add("Bishop pair",pawns(F.terms.bishopPair));
+    add("Mop-up",pawns(F.terms.mopUp));
+    add("<b>Total</b>","<b>"+pawns(F.total)+"</b>");
   }
-  add("Base total, White&rsquo;s side",pawns(r.score));
-  /* Base + pawns is NOT the full hand-crafted eval: mobility, king safety,
-     rook files, bishop pair, threats and mop-up are not ported yet. Naming
-     the total honestly beats a "Total" row that is quietly short. */
-  if(pw) add("Base + pawns",pawns(r.score+pw.score));
   const nn=$("evalbig").textContent;
   if(nn&&nn!=="—")
     add("Net minus HCE",((parseFloat(nn)-r.score/100)>=0?"+":"")+
