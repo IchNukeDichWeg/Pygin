@@ -310,12 +310,16 @@ speed changes wall clock only, never label quality; split across
 servers with different --seed values and merge):
 
 ```
-python3 NNUE/gen_data.py NNUE/datasets/random750k.pygdata --games 750000 --nodes 5000 --workers 95 --seed 1
+python3 NNUE/gen_data.py NNUE/datasets/random750k.pygdata --games 750000 --nodes 5000 --workers 0 --seed 1
 ```
+
+`--workers 0` means every core the box has. Never write a count into this
+command: generation servers have been rented at 95, 111 and 18 cores, and a
+number copied from the last one either oversubscribes or leaves the box idle.
 
 Wall-clock: measured ~70 positions/s per worker locally (~1 s/game at
 5,000 nodes/move) -> est. **~4-6 h** for the full three-slice mix on one
-95-worker server (~2-3 h on two; generation games are ~70x shorter than
+95-core server (~2-3 h on two; generation games are ~70x shorter than
 50+0.2 match games). Supplementary
 source: existing A/B battle logs convert via `logs_to_pygdata.py` (deeper
 50+0.2 labels; version-gate the sides to pre-v49 engines per F49-30, then
