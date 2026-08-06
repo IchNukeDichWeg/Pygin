@@ -9,7 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { evalBase, squareValues } from "./hce_eval.js";
+import { evalBase, squareValues, pawnStructure } from "./hce_eval.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const P = JSON.parse(fs.readFileSync(path.join(HERE, "hce_params.json"), "utf8"));
@@ -60,6 +60,36 @@ for (const row of V.positions) {
 }
 console.log(`mirror symmetry: ${V.positions.length - asym}/${V.positions.length} exact`);
 
-const fail = bad || decomp || asym;
+/* Pawn structure against engine.py's _pawn_structure_bb. Only 75 of the 256
+   positions have a nonzero term, so a port that returned 0 everywhere would
+   still score 181/256 -- the nonzero count is reported to make that visible
+   rather than letting a high pass rate hide a dead function. */
+function sqArray(fen) {
+  const a = new Array(64).fill(null);
+  const map = { p: "pawn", n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" };
+  let r = 7, f = 0;
+  for (const ch of fen.split(/\s+/)[0]) {
+    if (ch === "/") { r--; f = 0; continue; }
+    if (ch >= "1" && ch <= "8") { f += +ch; continue; }
+    a[r * 8 + f] = { kind: map[ch.toLowerCase()], white: ch === ch.toUpperCase() };
+    f++;
+  }
+  return a;
+}
+let pbad = 0, pnz = 0, pnzOk = 0;
+for (const row of V.positions) {
+  if (row.pawns === undefined) continue;
+  const sq = sqArray(row.fen);
+  const got = pawnStructure(sq, evalBase(row.fen, P).phase, P).score;
+  if (row.pawns !== 0) pnz++;
+  if (got !== row.pawns) {
+    pbad++;
+    if (pbad <= 5) console.log(`  PAWN ${got} vs ${row.pawns}  ${row.fen}`);
+  } else if (row.pawns !== 0) pnzOk++;
+}
+console.log(`pawn structure: ${V.positions.length - pbad}/${V.positions.length} exact `
+  + `(${pnzOk}/${pnz} of the nonzero ones)`);
+
+const fail = bad || decomp || asym || pbad;
 console.log(fail ? "\nFAIL" : "\nall checks pass");
 process.exit(fail ? 1 : 0);

@@ -67,6 +67,66 @@ export function evalBase(fen, P) {
   return { score, mg, eg, phase, rawPhase: raw };
 }
 
+/* Pawn structure: doubled, isolated, backward, passed. Mirrors
+ * engine.py's _pawn_structure_bb.
+ *
+ * Two details that a port gets wrong silently. First, the three penalties are
+ * blended as POSITIVE scalars and only then multiplied by the signed count --
+ * blending a pre-summed negative total truncates in a different place. Second,
+ * the blend uses floor division on positive values, matching csearch.c's
+ * build_pawn_taper, while the material blend truncates toward zero; they are
+ * genuinely different operations and swapping them costs a few cp on some
+ * positions and nothing on most, which is the worst kind of bug.
+ */
+const bbOf = s => BigInt(s);
+
+export function pawnStructure(squares, phase, P) {
+  let wp = 0n, bp = 0n;
+  for (let s = 0; s < 64; s++) {
+    const p = squares[s];
+    if (p && p.kind === "pawn") { if (p.white) wp |= 1n << BigInt(s); else bp |= 1n << BigInt(s); }
+  }
+  const file = P.file_bb.map(bbOf), adj = P.adj_files_bb.map(bbOf);
+  const M = k => ({ white: P[k].white.map(bbOf), black: P[k].black.map(bbOf) });
+  const passed = M("passed_mask"), support = M("support_mask"), stop = M("stop_atk_mask");
+  const popcnt = b => { let n = 0; while (b) { b &= b - 1n; n++; } return n; };
+
+  let dbl = 0, iso = 0, bwd = 0;
+  const passers = [];
+  for (const [own, opp, sign, side] of [[wp, bp, 1, "white"], [bp, wp, -1, "black"]]) {
+    for (let f = 0; f < 8; f++) {
+      const c = popcnt(own & file[f]);
+      if (c > 1) dbl += sign * (c - 1);
+    }
+    let bb = own;
+    while (bb) {
+      const s = lsbIndex(bb); bb &= bb - 1n;
+      const f = s & 7;
+      if (!(own & adj[f])) iso += sign;
+      else if (!(own & support[side][s]) && (opp & stop[side][s])) bwd += sign;
+      if (!(opp & passed[side][s])) {
+        const r = s >> 3;
+        passers.push([sign, side === "white" ? r : 7 - r]);
+      }
+    }
+  }
+  const PM = P.phase_max > 0 ? P.phase_max : 1;
+  const ph = phase < 0 ? 0 : (phase > PM ? PM : phase);
+  const blend = (mg, eg) => Math.floor((mg * ph + eg * (PM - ph)) / PM);
+  let score = -(blend(P.doubled_mg, P.doubled_eg) * dbl
+              + blend(P.isolated_mg, P.isolated_eg) * iso
+              + blend(P.backward_mg, P.backward_eg) * bwd);
+  const taper = P.passed_taper[ph];
+  for (const [sign, rel] of passers) score += sign * taper[rel];
+  return { score, dbl, iso, bwd, passers: passers.length };
+}
+
+function lsbIndex(b) {
+  let n = 0, x = b & -b;
+  while (x > 1n) { x >>= 1n; n++; }
+  return n;
+}
+
 /* Per-square contribution, for the board overlay: what this piece is worth
  * at this phase, White-positive. Same taper as the total, so the squares sum
  * to the material+PST part of evalBase (everything except tempo). */
