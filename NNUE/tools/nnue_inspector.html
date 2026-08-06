@@ -237,6 +237,14 @@ summary{cursor:pointer;font-size:12.5px;color:var(--ink-2)}
     <div class="big" id="evalbig">&#8212;</div>
     <div class="rows" id="evalrows"></div>
     <p class="note" id="evalnote"></p>
+
+    <h2 style="margin-top:18px">Hand-crafted eval</h2>
+    <div class="big" id="hcebig">&#8212;</div>
+    <div class="rows" id="hcerows"></div>
+    <p class="note" id="hcenote">The eval the net replaced. Parameters are
+    exported from <span class="mono">engine.py</span> by
+    <span class="mono">export_hce_params.py</span>, so this cannot drift from
+    the engine; the score is verified against it on 256 positions.</p>
   </section>
   <section class="card">
     <h2>Threat vector (T16)</h2>
@@ -272,6 +280,75 @@ summary{cursor:pointer;font-size:12.5px;color:var(--ink-2)}
 "use strict";
 /* ---------- frozen architecture (config.py) ---------- */
 const A={IN:6144,H:256,D2:32,D3:32,T:16,KB:8,QA:127,QB:64,OUT_CP:400,ACT_MAX:8128,FS:1};
+
+/* ---------- hand-crafted eval ---------- *
+ * HCE_P is INJECTED by export_hce_params.py between the markers below. Never
+ * hand-edit it: engine.py is the eval's source of truth and a Texel retune
+ * moves 44 scalars at once, so a pasted table goes stale the same day. The
+ * logic here is the same code as NNUE/tools/hce_eval.js, which is gated
+ * against engine.py by check_hce_js.mjs (256/256 exact, mirror-symmetric).  */
+/*BEGIN_HCE_PARAMS*/
+const HCE_P={"_source":"engine.py via export_hce_params.py -- do not hand-edit","order":["pawn","knight","bishop","rook","queen","king"],"mg_tables":{"pawn":[0,0,0,0,0,0,0,0,123,109,86,120,93,101,9,-36,3,20,42,48,43,81,33,-5,-15,-4,6,27,41,37,0,-11,-15,-16,3,18,10,25,5,-10,-22,-17,-13,-7,-6,8,19,-5,-23,-26,-17,-31,-27,13,20,-22,0,0,0,0,0,0,0,0],"knight":[-173,-67,-9,-24,63,-73,10,-82,-48,-16,47,59,46,67,32,8,-22,35,53,59,97,105,48,20,16,20,40,56,22,56,25,45,-1,20,32,34,40,36,45,16,-31,-9,0,14,26,8,12,-3,-32,-28,-12,7,1,-4,-21,-5,-80,-42,-33,-20,-17,-17,-28,-48],"bishop":[-36,9,-57,-26,-29,-67,-18,2,-40,-9,7,12,5,34,-7,-22,6,21,18,33,44,75,57,23,4,22,14,43,32,37,20,-7,15,-9,14,38,28,4,12,20,-5,18,12,16,13,9,16,23,17,-6,30,-4,7,18,17,6,-32,22,-11,-12,-17,-23,-14,-26],"rook":[50,54,46,67,44,34,56,65,19,10,39,64,67,80,50,69,14,38,51,61,42,70,86,41,1,14,9,41,47,40,17,5,-31,-21,-16,6,8,-15,15,0,-38,-21,-16,-16,-9,-13,19,-8,-38,-28,-22,-14,-13,-9,5,-47,-19,-8,-4,-2,4,-8,-12,-14],"queen":[-3,-1,5,37,38,69,68,70,-8,-35,-5,2,1,36,7,69,1,-1,8,3,31,71,72,35,-2,-8,-9,-5,17,2,17,10,-14,-22,-4,3,1,-7,14,11,-16,-7,-1,-7,0,4,15,7,-10,-6,6,9,8,10,-7,-2,-8,-1,1,0,-1,-32,-44,-25],"king":[-40,48,41,10,-31,-9,27,-8,54,24,5,18,17,21,-13,-19,16,49,27,9,5,23,47,3,8,5,12,-26,-42,-2,11,-33,-24,24,-2,-14,-21,-19,-8,-51,-8,9,-7,-47,-19,-9,1,-29,9,-17,-5,-50,-37,-19,23,28,-40,24,-8,-79,-9,-52,40,28]},"eg_tables":{"pawn":[0,0,0,0,0,0,0,0,159,164,158,109,122,120,168,171,92,79,60,42,31,28,57,59,45,30,16,-11,-13,-6,9,13,24,23,1,-10,-12,-5,-4,-2,18,10,4,-3,-3,0,-15,-3,28,19,10,9,6,1,-9,0,0,0,0,0,0,0,0,0],"knight":[-33,-13,12,-3,-23,-2,-38,-74,0,17,0,6,6,0,-14,-27,1,4,13,17,-1,-2,4,-16,5,9,19,27,27,15,25,-3,-9,2,19,21,19,13,4,-5,-22,-7,-10,11,5,-16,-17,-32,-44,4,-16,-13,-10,-23,-7,-39,-34,-51,-26,-17,-14,-43,-38,-89],"bishop":[11,4,14,17,18,11,4,-18,15,21,23,13,20,5,14,-1,11,17,16,11,10,10,12,13,-3,18,12,15,9,8,6,6,-12,15,20,16,9,14,4,-22,0,5,16,10,19,6,-10,-13,-19,-10,-7,6,-3,-18,-16,-42,-1,-26,-28,-7,2,-7,-28,-17],"rook":[3,11,13,-2,10,24,24,10,11,15,7,-5,-8,-3,8,-3,31,22,17,5,18,21,11,16,29,28,30,9,1,12,24,22,23,24,23,5,-3,13,5,-1,5,0,3,-10,-15,-12,-23,-25,-6,-9,-8,-14,-21,-34,-36,-22,-11,-15,-13,-17,-27,-26,-14,-26],"queen":[16,28,36,27,40,27,35,16,8,45,57,66,83,50,55,25,5,31,34,73,72,59,44,34,2,34,47,59,50,65,73,55,7,41,23,38,30,41,21,33,-19,-11,4,4,4,1,-15,-20,-25,-44,-45,-39,-37,-48,-61,-57,-47,-53,-47,-64,-30,-57,-45,-16],"king":[-76,-10,7,7,14,40,29,-42,6,42,39,42,42,63,48,28,27,42,48,40,45,70,69,38,17,47,49,52,51,51,51,27,0,21,33,39,36,31,16,0,-16,0,18,27,22,11,-7,-17,-28,-6,-1,10,8,1,-23,-42,-47,-43,-21,-13,-48,-19,-49,-68]},"mg_values":{"pawn":89,"knight":306,"bishop":322,"rook":450,"queen":1076,"king":0},"eg_values":{"pawn":120,"knight":342,"bishop":356,"rook":626,"queen":1123,"king":0},"phase_weights":{"pawn":0,"knight":1,"bishop":1,"rook":2,"queen":4,"king":0},"tempo":8,"doubled_mg":23,"doubled_eg":23,"isolated_mg":14,"isolated_eg":14,"backward_mg":13,"backward_eg":13,"passed_mg":[0,1,1,1,27,41,41,0],"passed_eg":[0,2,2,24,43,43,43,0],"mopup_min_adv":400,"mopup_cmd_weight":32,"mopup_king_weight":16,"phase_max":24,"eval_fingerprint":"a919ef0f9d484fb7"};
+/*END_HCE_PARAMS*/
+
+const HCE_KIND=["pawn","knight","bishop","rook","queen","king"];
+
+/* Material + PST accumulator: White reads the table at sq^56, Black at sq,
+   mirroring engine.py's _compute_acc. Phase is RAW; the cap belongs to the
+   blend so that deltas stay reversible. */
+/* The page carries bitboards (occ[1]=white); the HCE code wants a flat array
+   so a square can be blanked for the removal pass without touching BigInts. */
+const HCE_BBKEY={p:"pawn",n:"knight",b:"bishop",r:"rook",q:"queen",k:"king"};
+function hceSquares(pos){
+  const a=new Array(64).fill(null);
+  for(const key in HCE_BBKEY){
+    let bb=pos.bb[key];
+    while(bb){
+      const s=lsb(bb); bb&=bb-1n;
+      a[s]={kind:HCE_BBKEY[key],white:!!(pos.occ[1]&bit(s))};
+    }
+  }
+  return a;
+}
+
+function hceAcc(sqArr){
+  let mg=0,eg=0,phase=0;
+  for(let s=0;s<64;s++){
+    const p=sqArr[s]; if(!p) continue;
+    const P=HCE_P, k=p.kind, i=p.white?(s^56):s;
+    if(p.white){mg+=P.mg_values[k]+P.mg_tables[k][i]; eg+=P.eg_values[k]+P.eg_tables[k][i];}
+    else       {mg-=P.mg_values[k]+P.mg_tables[k][i]; eg-=P.eg_values[k]+P.eg_tables[k][i];}
+    phase+=P.phase_weights[k];
+  }
+  return {mg,eg,phase};
+}
+
+/* _eval_base_white. The blend TRUNCATES TOWARD ZERO, which is what makes
+   eval(pos) === -eval(mirror) exact; Math.floor skews negatives and the
+   asymmetry only shows up where Black is better. */
+function hceBase(sqArr,whiteToMove){
+  if(!HCE_P) return null;
+  const {mg,eg,phase:raw}=hceAcc(sqArr);
+  const PM=HCE_P.phase_max, phase=Math.min(raw,PM);
+  const num=mg*phase+eg*(PM-phase);
+  const tempo=whiteToMove?HCE_P.tempo:-HCE_P.tempo;
+  return {score:Math.trunc(num/PM)+tempo,mg,eg,phase,rawPhase:raw,tempo};
+}
+
+/* Per-square contribution BY REMOVAL, the way the Stockfish evaluation guide
+   does it: take the piece off and re-evaluate. A PST lookup would be correct
+   for this eval and meaningless for the net, so removal is the one mechanism
+   that lets both overlays be read on the same scale. */
+function hceRemoval(sqArr,whiteToMove){
+  const full=hceBase(sqArr,whiteToMove); if(!full) return null;
+  const out=new Array(64).fill(null);
+  for(let s=0;s<64;s++){
+    const p=sqArr[s]; if(!p||p.kind==="king") continue;   // a kingless position has no eval
+    const cut=sqArr.slice(); cut[s]=null;
+    out[s]={kind:p.kind,white:p.white,delta:full.score-hceBase(cut,whiteToMove).score};
+  }
+  return {full,out};
+}
 const QK=[[0,1],[2,3],[4,5],[6,6],[7,7],[7,7],[7,7],[7,7]];
 const PT=["p","n","b","r","q","k"];              // _PT_BBS order
 const GLYPH={wp:"\u265f",wn:"\u265e",wb:"\u265d",wr:"\u265c",wq:"\u265b",wk:"\u265a",
@@ -730,12 +807,47 @@ function render(){
   renderReadouts(base);
 }
 
+/* The hand-crafted side, laid out like the Stockfish evaluation guide's
+   subterms: the two taper halves, the phase that blends them, and tempo.
+   Showing mg and eg separately is the point -- a position can be +0.8 in the
+   middlegame table and -0.2 in the endgame one, and the single blended number
+   hides which way the eval is leaning as material comes off. */
+function renderHce(){
+  const rows=$("hcerows"); if(!rows) return;
+  rows.innerHTML="";
+  const big=$("hcebig");
+  if(!HCE_P){
+    big.textContent="—";
+    $("hcenote").textContent="hce_params.json was not injected into this page "+
+      "-- run: python3 NNUE/tools/export_hce_params.py";
+    return;
+  }
+  if(!POS){ big.textContent="—"; return; }
+  const r=hceBase(hceSquares(POS),!!POS.stm);
+  big.textContent=(r.score>0?"+":"")+(r.score/100).toFixed(2);
+  big.style.color=r.score>0?"var(--warm)":r.score<0?"var(--cool)":"var(--ink)";
+  const add=(k,v)=>rows.insertAdjacentHTML("beforeend",
+    `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`);
+  const pawns=v=>(v>0?"+":"")+(v/100).toFixed(2);
+  add("Middle game evaluation",pawns(r.mg));
+  add("End game evaluation",pawns(r.eg));
+  add("Phase",`${r.phase} / ${HCE_P.phase_max}`+
+      (r.rawPhase>HCE_P.phase_max?` (raw ${r.rawPhase}, capped)`:""));
+  add("Tempo",(r.tempo>0?"+":"")+r.tempo);
+  add("Total, White&rsquo;s side",pawns(r.score));
+  const nn=$("evalbig").textContent;
+  if(nn&&nn!=="—")
+    add("Net minus HCE",((parseFloat(nn)-r.score/100)>=0?"+":"")+
+        (parseFloat(nn)-r.score/100).toFixed(2));
+}
+
 function renderReadouts(base){
   const rows=$("evalrows"), tb=$("threats").querySelector("tbody"), ft=$("ftinfo").querySelector("tbody");
   rows.innerHTML=""; tb.innerHTML=""; ft.innerHTML="";
   if(!NET||!base){
     $("evalbig").textContent="\u2014";
     $("evalnote").textContent="Load a .nnue net to evaluate this position.";
+    renderHce();          // the HCE needs no net, so it shows on its own
     return;
   }
   const w=base.whiteCp;
@@ -749,6 +861,7 @@ function renderReadouts(base){
   add("Men on board",popcount(POS.occ[0]|POS.occ[1]));
   $("evalnote").innerHTML="The engine uses this network in the main search only; "+
     "quiescence keeps the hand-written evaluation, so this number is not what a leaf node returns.";
+  renderHce();
 
   const meta=THREAT_META, tw=base.t[1], tbk=base.t[0];
   for(let i=0;i<8;i++){

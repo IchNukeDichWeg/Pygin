@@ -74,6 +74,30 @@ def main():
     print(f"wrote {os.path.relpath(path, _ROOT)}: {n} table entries, "
           f"{len(out)} fields, fingerprint {out['eval_fingerprint']}")
 
+    # Inject into the inspector too. The page is opened over file://, where a
+    # fetch of a sibling JSON is blocked by CORS, so the parameters have to be
+    # embedded. Between markers so this stays regenerable rather than becoming
+    # the hand-maintained copy the whole exporter exists to avoid.
+    inject(out)
+
+
+def inject(params):
+    page = os.path.join(_HERE, "nnue_inspector.html")
+    if not os.path.isfile(page):
+        return
+    src = open(page, encoding="utf-8").read()
+    a, b = "/*BEGIN_HCE_PARAMS*/", "/*END_HCE_PARAMS*/"
+    i, j = src.find(a), src.find(b)
+    if i < 0 or j < 0:
+        print("note: inspector has no HCE_PARAMS markers, not injected")
+        return
+    block = f"{a}\nconst HCE_P={json.dumps(params, separators=(',', ':'))};\n"
+    out = src[:i] + block + src[j:]
+    if out != src:
+        open(page, "w", encoding="utf-8").write(out)
+    print(f"injected into {os.path.relpath(page, _ROOT)} "
+          f"({len(block):,} bytes between the markers)")
+
 
 if __name__ == "__main__":
     main()
