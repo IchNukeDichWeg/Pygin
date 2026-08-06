@@ -180,9 +180,10 @@ summary{cursor:pointer;font-size:12.5px;color:var(--ink-2)}
     <span class="chip wait" id="netchip"><span class="dot"></span><span>no net loaded</span></span>
     <span class="chip wait" id="checkchip"><span class="dot"></span><span>reference check pending</span></span>
   </div>
-  <p class="note" id="netdetail">Expecting KA8T <span class="mono">6144&rarr;256&times;2</span> +
-  16 threats, tail <span class="mono">[512+16]&rarr;32&rarr;32&rarr;1</span>, QA&nbsp;127 / QB&nbsp;64.
-  A net with different architecture constants is rejected rather than silently mis-read.</p>
+  <p class="note" id="netdetail">Expecting a KA8T net: <span class="mono">6144</span> inputs,
+  8 king buckets, 16 threats, QA&nbsp;127 / QB&nbsp;64. The layer widths are read from the file,
+  so every shipped net loads whatever its tail is (v1 and v2 are 32 wide, v3 onward 16).
+  A net whose INPUT layout or quantisation differs is rejected rather than silently mis-read.</p>
   <div class="err" id="neterr"></div>
   <details>
     <summary>What the reference check proves</summary>
@@ -534,10 +535,17 @@ function loadNet(buf){
   const [ver,fs,inD,h,td,kb,d2,d3,qa,qb,ocp,crc]=
     [8,12,16,20,24,28,32,36,40,44,48,52].map(u);
   if(ver!==1) throw new Error(`.nnue version ${ver}, expected 1`);
-  const want={fs:A.FS,inD:A.IN,h:A.H,td:A.T,kb:A.KB,d2:A.D2,d3:A.D3,qa:A.QA,qb:A.QB,ocp:A.OUT_CP};
-  const got={fs,inD,h,td,kb,d2,d3,qa,qb,ocp};
+  /* Only the fields this page's own code depends on are fixed. The feature
+     encoder bakes in the input layout (feature set, 6144 inputs, 8 king
+     buckets, 16 threat scalars) and the forward pass bakes in the quant
+     scales, so those must match. The LAYER WIDTHS are read from the file:
+     the tail has been 32 and 16 wide across shipped nets, and pinning d2
+     here rejected every net from v3 onward with "architecture mismatch". */
+  const want={fs:A.FS,inD:A.IN,td:A.T,kb:A.KB,qa:A.QA,qb:A.QB,ocp:A.OUT_CP};
+  const got={fs,inD,td,kb,qa,qb,ocp};
   for(const k in want) if(want[k]!==got[k])
     throw new Error(`architecture mismatch: ${k} is ${got[k]}, this page expects ${want[k]}`);
+  if(h<8||d2<1||d3<1) throw new Error(`implausible widths h=${h} d2=${d2} d3=${d3}`);
   const psz=Number(dv.getBigUint64(56,true));
   if(buf.byteLength-64!==psz) throw new Error(`payload is ${buf.byteLength-64} bytes, header says ${psz}`);
   const crcGot=crc32(new Uint8Array(buf,64));
