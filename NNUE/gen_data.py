@@ -2,7 +2,7 @@
 """NNUE/gen_data.py -- FI-15 Phase 2: self-play training-data generation.
 
     python3 NNUE/gen_data.py out.pygdata --positions 100000 \
-        --nodes 5000 --workers 8 --seed 1
+        --nodes 5000 --workers 0 --seed 1
 
 Plays fixed-node self-play games with the LABELING engine config and writes
 quiet, shaping-free positions to the .pygdata format (data_format.py):

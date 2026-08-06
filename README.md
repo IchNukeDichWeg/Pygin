@@ -266,8 +266,8 @@ python3 selftest.py        # health check; exit 0 = OK, chainable
 per-game log and PGN.
 
 ```bash
-# C search core vs a saved snapshot: 100 games (×2 colours), 4 workers
-python3 match.py cengine.py "Old Engine/34/engine34.py" 100 0 --workers 4
+# C search core vs a saved snapshot: 100 positions (×2 colours), every core
+python3 match.py cengine.py "Old Engine/34/engine34.py" 100 0 --workers 0
 ```
 
 - Positional args are `engine1 engine2 NUM_POSITIONS OFFSET`. Each position is
@@ -285,11 +285,13 @@ python3 match.py engine.py stockfish_engine.py 100 0 --sf-elo 2000   # 0 = full 
 ```
 
 **Material / time odds** are configured in `odds.py`'s `CONFIG` block (the
-default is pawn odds, `f2`). Each worker runs two engines, so use
-`--workers ≤ cores/2` or a real clock TC gets starved by oversubscription:
+default is pawn odds, `f2`). Each worker runs two engines, so `--workers 0`
+here means cores/2, not cores−1 — a real clock TC gets starved by
+oversubscription, and a Stockfish opponent squeezed to 10k nps stops being the
+yardstick the run is quoting:
 
 ```bash
-python3 odds.py --positions 500 --workers 5
+python3 odds.py --positions 500 --workers 0
 ```
 
 ---
