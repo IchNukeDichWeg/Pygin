@@ -71,6 +71,9 @@ def main():
                                               ctx[5], ctx[6], ctx[7], False)),
                      "mopup_strong": int(e._mopup_bb(occ_w, occ_b, ctx[3], ctx[4],
                                                      ctx[5], ctx[6], ctx[7], True)),
+                     "mobility": int(e._mobility_bb(b, occ_w, occ_b, ctx[3],
+                                                    ctx[4], ctx[5], ctx[6],
+                                                    wp, bp)),
                      "full": int(e._evaluate_static(b))})
 
     for fen in EDGE:
