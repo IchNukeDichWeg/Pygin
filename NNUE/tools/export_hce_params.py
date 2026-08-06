@@ -56,6 +56,20 @@ def main():
         # phase taper
         "phase_max": getattr(e, "PHASE_MAX", None),
     }
+    # Pawn-structure masks, as decimal strings (they are 64-bit, and JSON
+    # numbers are doubles). Exported rather than re-derived in JS: the passed
+    # / support / stop-attack masks encode rules that are easy to get subtly
+    # wrong by hand, and a wrong mask produces a plausible score rather than
+    # an obvious failure. _passed_taper is already blended per phase.
+    hexes = lambda seq: [str(int(x)) for x in seq]
+    out["file_bb"] = hexes(e._file_bb)
+    out["adj_files_bb"] = hexes(e._adj_files_bb)
+    for name, attr in (("passed_mask", "_passed_mask"),
+                       ("support_mask", "_support_mask"),
+                       ("stop_atk_mask", "_stop_atk_mask")):
+        m = getattr(e, attr)
+        out[name] = {"white": hexes(m[chess.WHITE]), "black": hexes(m[chess.BLACK])}
+    out["passed_taper"] = [list(row) for row in e._passed_taper]
     # The eval fingerprint cengine already computes over this same payload.
     # Carrying it lets the page say WHICH eval it is reproducing, and lets a
     # future check assert the JSON was regenerated after a retune.

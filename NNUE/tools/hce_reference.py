@@ -45,8 +45,12 @@ def main():
 
     def add(fen):
         b = chess.Board(fen)
-        base, _ = e._eval_base_white(b)
+        base, ctx = e._eval_base_white(b)
+        # ctx = (occ_w, occ_b, pawns, knights, bishops, rooks, queens, kings,
+        #        white pawns, black pawns, phase) -- see _eval_base_white.
+        wp, bp, phase = ctx[8], ctx[9], ctx[10]
         rows.append({"fen": b.fen(), "base": int(base),
+                     "pawns": int(e._pawn_structure_bb(wp, bp, phase)),
                      "full": int(e._evaluate_static(b))})
 
     for fen in EDGE:
