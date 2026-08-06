@@ -62,6 +62,14 @@ def main():
         "rook_semi": e.ROOK_SEMIOPEN_FILE,
         "bishop_pair_mg": e.BISHOP_PAIR_MG,
         "bishop_pair_eg": e.BISHOP_PAIR_EG,
+        # mop-up: material advantage + king distances, no attack generation.
+        # PIECE_VALUES is the mop-up/simplify scale, NOT the tapered
+        # MG/EG_VALUES above -- they are different numbers and csearch.c keeps
+        # its own twin (PIECE_VAL), so all three retune in lockstep.
+        "piece_values": [int(v) for v in e.PIECE_VALUES],
+        "mopup_cmd_weight_normal": e.MOPUP_CMD_WEIGHT,
+        "mopup_king_weight_normal": e.MOPUP_KING_WEIGHT,
+        "center_manhattan": list(e._center_manhattan),
     }
     # Pawn-structure masks, as decimal strings (they are 64-bit, and JSON
     # numbers are doubles). Exported rather than re-derived in JS: the passed

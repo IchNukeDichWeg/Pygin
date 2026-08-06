@@ -34,6 +34,19 @@ EDGE = [
     "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
     "8/k7/3p4/p2P1p2/P2P1P2/8/8/K7 w - - 0 1",           # locked, zero mobility
     "8/8/1P6/8/8/8/6p1/K6k w - - 0 1",                   # promotion race
+    # Mop-up only fires when the material gap clears MOPUP_MIN_ADV, which no
+    # balanced opening does -- without these the term is exercised by ONE
+    # position in 256 and the gate proves nothing.
+    "8/8/8/3k4/8/8/8/R3K3 w Q - 0 1",                    # KRvK, kings apart
+    "8/8/8/8/3k4/8/3K4/7R w - - 0 1",                    # KRvK, kings close
+    "3k4/8/3K4/8/8/8/8/7Q w - - 0 1",                    # KQvK, loser centred
+    "7k/8/8/8/8/8/8/K6Q w - - 0 1",                      # KQvK, loser cornered
+    "8/8/8/8/8/2k5/8/K1R4R w - - 0 1",                   # KRRvK
+    "8/8/8/2k5/8/8/8/K1B1B3 w - - 0 1",                  # KBBvK
+    "k7/8/8/8/8/8/8/K1N1B3 w - - 0 1",                   # KBNvK, the hard mate
+    "8/8/4k3/8/8/4K3/8/4R3 b - - 0 1",                   # same, Black to move
+    "R7/8/8/8/8/8/4k3/4K3 b - - 0 1",                    # loser on the edge
+    "8/8/8/8/8/8/1k6/K5rr b - - 0 1",                    # mirrored: Black up
 ]
 
 
@@ -54,6 +67,10 @@ def main():
                      "pawns": int(e._pawn_structure_bb(wp, bp, phase)),
                      "rookfiles": int(e._rook_files_bb(ctx[5], occ_w, occ_b, wp, bp)),
                      "bishoppair": int(e._bishop_pair_bb(ctx[4], occ_w, occ_b, phase)),
+                     "mopup": int(e._mopup_bb(occ_w, occ_b, ctx[3], ctx[4],
+                                              ctx[5], ctx[6], ctx[7], False)),
+                     "mopup_strong": int(e._mopup_bb(occ_w, occ_b, ctx[3], ctx[4],
+                                                     ctx[5], ctx[6], ctx[7], True)),
                      "full": int(e._evaluate_static(b))})
 
     for fen in EDGE:
