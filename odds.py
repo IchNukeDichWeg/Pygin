@@ -514,9 +514,17 @@ def play_game(round_no, p_white, p_black, odds_giver, mate_score,
         print(f"  FEN: {start_fen}")
 
     while True:
-        outcome = board.outcome(claim_draw=True)
+        # claim_draw=False for the reason spelled out at match.py's copy of
+        # this loop: claim_draw=True fires on a repetition that is merely
+        # AVAILABLE, not one that happened, and auto-claims it for a player
+        # who is often winning. The odds ladder is the run this hurt most --
+        # Stockfish giving odds has to convert, and this handed it draws.
+        outcome = board.outcome()
         if outcome is not None:
             result, reason = outcome.result(), outcome.termination.name
+            break
+        if board.is_repetition(3) or board.halfmove_clock >= 100:
+            result, reason = "1/2-1/2", "REPETITION_OR_FIFTY_MOVE"
             break
         if board.ply() >= MAX_PLIES:
             result, reason = "1/2-1/2", "MAX_PLIES (adjudicated draw)"

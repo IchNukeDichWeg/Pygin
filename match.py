@@ -883,10 +883,24 @@ def play_game(round_no, fen, white, black, e1, mode_cfg):
     adj_draw = 0                     # consecutive near-zero plies (both sides)
 
     while True:
-        outcome = board.outcome(claim_draw=True)
+        # claim_draw=False on purpose. python-chess's claim_draw=True asks
+        # can_claim_threefold_repetition(), which is True as soon as the side
+        # to move HAS a legal move that would produce a third repetition --
+        # NOT when one has occurred. The harness was claiming that draw on
+        # behalf of a player who was frequently winning and would never claim
+        # it: 419 of 2,000 games in one A/B and 29 of 100 in a Stockfish run,
+        # with ZERO actual repetitions among them. can_claim_fifty_moves() has
+        # the identical phantom clause, so the halfmove clock is read directly.
+        # Between two Pygins this was near-symmetric and only cost sensitivity
+        # (draws inflated); against Stockfish it was one-directional, because
+        # SF is the side with won endgames to convert.
+        outcome = board.outcome()
         if outcome is not None:
             result = outcome.result()
             reason = outcome.termination.name
+            break
+        if board.is_repetition(3) or board.halfmove_clock >= 100:
+            result, reason = "1/2-1/2", "REPETITION_OR_FIFTY_MOVE"
             break
         if board.ply() >= MAX_PLIES:
             result, reason = "1/2-1/2", "MAX_PLIES (adjudicated draw)"
