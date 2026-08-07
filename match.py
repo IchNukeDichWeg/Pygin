@@ -118,7 +118,9 @@ other_elo = 2900
 # limiter is actually set to -- the 2026-07-16 run played at 2700 while
 # a stale hardcoded 2600 here went into every PGN header.
 import os                   # config-time env read; harmlessly re-imported below
-stockfish_elo = 2900        # --sf-elo N; <= 0 = full strength
+stockfish_elo = 3000        # --sf-elo N; <= 0 = full strength.
+                            # MUST match stockfish_engine.py's SF_ELO -- see
+                            # the reason for 3000 there.
 # FI-88: in CLOCK mode, an engine that manages its own clock (only Stockfish)
 # is handed `go wtime/btime/winc/binc` and budgets each move itself. Set True
 # (--sf-our-clock) for the pre-2026-07-24 behaviour, where Pygin's own
