@@ -176,6 +176,22 @@ def mopup_shaped(board, mopup_min):
     return abs(npm[chess.WHITE] - npm[chess.BLACK]) >= mopup_min
 
 
+def _terminal(board):
+    """Game genuinely over -- no phantom draw claims.
+
+    python-chess's claim_draw=True reports a draw when the side to move
+    merely HAS a legal move that would produce a third repetition (and the
+    fifty-move helper carries the identical clause), not when one has
+    actually occurred. In self-play that ended games early AND wrote a DRAW
+    into the WDL half of the label for a game still being won, so it fed
+    wrong targets to the net rather than just losing positions. Measured in
+    the match harness at 419 of 2,000 games with zero real repetitions --
+    see match.py's game loop.
+    """
+    return (board.is_game_over() or board.is_repetition(3)
+            or board.halfmove_clock >= 100)
+
+
 def play_game(eng, rng, nodes, contempt, mopup_min,
               book=None, book_size=0, endgame=False, eg_men=14):
     """One self-play game; returns a list of RECORD_DTYPE rows.
@@ -193,7 +209,7 @@ def play_game(eng, rng, nodes, contempt, mopup_min,
         for _ in range(10):                   # skip rare bad/terminal lines
             try:
                 b = chess.Board(random_book_fen(book, book_size, rng))
-                if b.is_valid() and not b.is_game_over(claim_draw=True):
+                if b.is_valid() and not _terminal(b):
                     board = b
                     break
             except ValueError:
@@ -208,7 +224,7 @@ def play_game(eng, rng, nodes, contempt, mopup_min,
             if not moves:
                 return []
             board.push(rng.choice(moves))
-    if board.is_game_over(claim_draw=True):
+    if _terminal(board):
         return []
 
     lib = eng._lib
@@ -218,7 +234,7 @@ def play_game(eng, rng, nodes, contempt, mopup_min,
     streak = 0
     adjudicated = None
     score_w = 0                    # defined even if the first move errors out
-    while (not board.is_game_over(claim_draw=True)
+    while (not _terminal(board)
            and len(board.move_stack) < LABEL_MAX_PLIES):
         lib.cs_tt_reset()              # cold TT: (near-)reproducible labels
         eng.node_limit = nodes
@@ -273,10 +289,12 @@ def play_game(eng, rng, nodes, contempt, mopup_min,
     if adjudicated is not None:
         result = adjudicated
     else:
-        out = board.outcome(claim_draw=True)
+        out = board.outcome()
         if out is not None:
             result = (0 if out.winner is None
                       else (1 if out.winner == chess.WHITE else -1))
+        elif board.is_repetition(3) or board.halfmove_clock >= 100:
+            result = 0                          # a REAL repetition / 50-move
         elif endgame and abs(score_w) >= LABEL_ADJ_CP:
             result = 1 if score_w > 0 else -1   # ply-cap hit while clearly
                                                 # won: don't mislabel the

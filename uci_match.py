@@ -187,7 +187,15 @@ def play_game(engines, sides, names, fen, round_no, game_id):
     clocks = {c: sides[c].base for c in (chess.WHITE, chess.BLACK)}
     engine_log = []
     result, reason, error = None, None, None
-    while not board.is_game_over(claim_draw=True) and len(board.move_stack) < MAX_PLIES:
+    # claim_draw=False on purpose -- see match.py's copy of this loop.
+    # claim_draw=True fires when the side to move merely HAS a move producing
+    # a third repetition, and claims the draw for a player who is often
+    # winning and would never claim it.
+    def _over(b):
+        return (b.is_game_over() or b.is_repetition(3)
+                or b.halfmove_clock >= 100)
+
+    while not _over(board) and len(board.move_stack) < MAX_PLIES:
         side = board.turn
         s = sides[side]
         limit = s.fixed or chess.engine.Limit(
@@ -221,12 +229,13 @@ def play_game(engines, sides, names, fen, round_no, game_id):
             engine_log.append("    PV: " + " ".join(mv.uci() for mv in pv))
         board.push(res.move)
     if result is None:
-        outcome = board.outcome(claim_draw=True)
-        if outcome is None:                  # MAX_PLIES tripped
+        outcome = board.outcome()
+        if outcome is not None:
+            result, reason = outcome.result(), outcome.termination.name
+        elif board.is_repetition(3) or board.halfmove_clock >= 100:
+            result, reason = "1/2-1/2", "REPETITION_OR_FIFTY_MOVE"
+        else:                                # MAX_PLIES tripped
             result, reason = "1/2-1/2", "MAX_PLIES (adjudicated draw)"
-        else:
-            result = board.result(claim_draw=True)
-            reason = outcome.termination.name
     return {"round": round_no, "fen": fen, "result": result, "reason": reason,
             "error": error, "board": board, "log": engine_log}
 

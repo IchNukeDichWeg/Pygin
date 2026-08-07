@@ -62,7 +62,11 @@ def main():
             mv = list(board.legal_moves)
             if mv:
                 board.push(rng.choice(mv))
-        while (not board.is_game_over(claim_draw=True)
+        # claim_draw=False -- see match.py's game loop. claim_draw=True
+        # ends on a repetition that is merely AVAILABLE, not one that
+        # happened, which shortens every game and mislabels the winner.
+        while (not (board.is_game_over() or board.is_repetition(3)
+                    or board.halfmove_clock >= 100)
                and len(board.move_stack) < 250):
             eng.node_limit = args.nodes
             mv = eng.get_best_move(board, 24)
@@ -73,7 +77,7 @@ def main():
                 f"insane score {s} in {board.fen()}"
             board.push(mv)
             plies += 1
-        out = board.outcome(claim_draw=True)
+        out = board.outcome()
         r = (0 if out is None or out.winner is None
              else (1 if out.winner == chess.WHITE else -1))
         results[r] += 1
