@@ -32,7 +32,15 @@ _SF_PATHS = [
 # Plain defaults -- no environment reads. Hosts that need a different value
 # set the module global before constructing (match.py --sf-elo does exactly
 # that, in the engine child, before _load_engine runs).
-SF_ELO = 2900          # UCI_Elo cap; <= 0 means full strength
+SF_ELO = 3000          # UCI_Elo cap; <= 0 means full strength.
+                       # 3000, not the old 2900: v58 scored 65.47% over 333
+                       # games at 50+0.50 against the 2900 cap, which puts the
+                       # engine ~111 points above it. A cap that far below the
+                       # engine spends most of its games already decided, so
+                       # the score saturates and stops resolving changes.
+                       # ~3000 is near parity at v58 and is where a fixed-cap
+                       # yardstick has the most resolution. Raise it again once
+                       # the score against this cap clears ~65%.
 SF_SKILL = None        # if set, used instead of Elo
 SF_THREADS = 1
 SF_HASH = 64

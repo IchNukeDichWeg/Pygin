@@ -52,8 +52,12 @@ N_WORKERS = 10        # parallel games (worker processes); 1 = sequential,
                       # Keep N_WORKERS * ENGINE_SMP <= CPU cores.
 
 # --- Opponent strength / engine threading (was env vars) --------------- #
-STOCKFISH_ELO = 2900  # stockfish_engine.py strength: <= 0 = FULL strength,
-                      # otherwise a UCI_Elo cap (clamped to 1320..3190)
+STOCKFISH_ELO = 3000  # stockfish_engine.py strength: <= 0 = FULL strength,
+                      # otherwise a UCI_Elo cap (clamped to 1320..3190).
+                      # Tracks stockfish_engine.py's SF_ELO -- see the reason
+                      # for 3000 there. The odds LADDER runs at <= 0 (full
+                      # strength) regardless; this default only applies to a
+                      # capped odds run.
 ENGINE_SMP = 1        # engine.py SMP workers per game (1 = single-thread)
 
 # --- Material odds ---------------------------------------------------- #
