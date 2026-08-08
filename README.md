@@ -10,7 +10,7 @@ no borrowed data and no borrowed weights.<br/>
 [`python-chess`](https://pypi.org/project/chess/) is used *only* for board
 representation, move generation and legality.
 
-![Strength](https://img.shields.io/badge/strength-~3010_Elo-3fb950)
+![Strength](https://img.shields.io/badge/strength-~2868_Elo-3fb950)
 ![Speed](https://img.shields.io/badge/speed-3.3M_nps-58a6ff)
 ![Versions](https://img.shields.io/badge/versions-58-8b949e)
 ![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B324_Elo-f0883e)
@@ -23,7 +23,7 @@ representation, move generation and legality.
 
 | | | | |
 |---|---|---|---|
-| **~3010 Elo** | SF-18 UCI_Elo scale | **3.3M nps** | the net costs ~30% of it |
+| **~2868 Elo** | SF-18 UCI_Elo scale | **3.3M nps** | the net costs ~30% of it |
 | **+324 Elo** | A/B-confirmed, v31→v58 | **~18 ply** | from startpos in 5 s |
 | **+19.11 Elo** | v58 NNUE, TIMED | **1.43x** | single-thread vs v31 |
 | **v53+v54** eval lane | +37.52 & +31.20, the two biggest | **1 dependency** | `python-chess` only |
@@ -33,22 +33,18 @@ representation, move generation and legality.
 <td><img src="docs/elo_progression.svg" width="100%" alt="Cumulative A/B Elo across the C era, v31=0 climbing to +324"/></td>
 <td><img src="docs/speed_progression.svg" width="100%" alt="Single-thread speed as a multiple of v31, peaking at 1.79x and ending at 1.43x once the net is armed"/></td>
 </tr>
-<tr>
-<td><img src="docs/odds_knight.svg" width="100%" alt="Odds win rate vs full-strength Stockfish 18: knight 76.75 percent at v31 rising to 100 percent at v54, pawn at 90.3 percent at v58"/></td>
-<td><img src="docs/odds_ladder.svg" width="100%" alt="Odds it can spot full-strength Stockfish 18 and still win: queen 100, rook 100, knight 100, pawn 90.3 percent"/></td>
-</tr>
 </table>
 
-Top row is self-play. Every C-era version (v31 and up) is A/B-tested against
+Both charts are self-play. Every C-era version (v31 and up) is A/B-tested against
 the one before it, and the gains stack to +324 Elo. Single-thread speed peaked
 at 1.79× and sits at 1.43× today: v58 hands about 30% of it to the net and still
-comes out +19.11 ahead. The v30→v31 C rewrite (~34× faster, +215 odds-derived)
-is off the left edge, so v31 is the honest zero.
+comes out +19.11 ahead. The v30→v31 C rewrite (~34× faster) is off the left
+edge, so v31 is the honest zero.
 
-Bottom row is against Stockfish 18 at full strength. Knight odds climbed from
-76.75% to 100% between v31 and v54, and closed. Pygin now spots SF a queen, a
-rook or a knight and wins every time, or spots a pawn and wins 90.3%. Pawn odds
-is the only rung with headroom left, so that is the yardstick now.
+The odds ladder against full-strength Stockfish is currently **unmeasured**.
+Every rung on it was measured on a harness that erased Stockfish's won
+endgames, so those figures have been withdrawn rather than footnoted; see
+[Measured strength](#measured-strength).
 
 ### Two engines, one eval
 
@@ -60,7 +56,7 @@ which means iterative deepening, time management and the book. That is about
 
 The eval is a hybrid. The net scores positions inside negamax, while qsearch
 stand-pat stays on the hand-crafted eval. The split is deliberate: an earlier
-all-NN attempt measured −203 to −273 Elo. `NNUE_REQUIRE_SIMD` keeps the net off
+all-NN attempt measured -203 to -273 Elo. `NNUE_REQUIRE_SIMD` keeps the net off
 CPUs with neither NEON nor AVX2, where the scalar tail costs more than the eval
 is worth.
 
@@ -71,56 +67,35 @@ startup. The net's weights live in `NNUE/nets/` instead.
 ### Measured strength
 
 **~2868 Elo** on the SF-18 UCI_Elo scale, measured at v58 on 2026-08-08.
-Pygin scored **45.45% over 1,000 games** against Stockfish capped at 2900, at
-50+0.50, which puts it **31.7 +/- 21.7 points below** that cap.
 
-**This corrects a published ~3010.** That figure came from a 333-game run that
-scored 65.47%, and it was measured on a harness that was throwing Stockfish's
-wins away: the game loop accepted a threefold repetition that was merely
-*available* rather than one that had occurred, and claimed the draw on behalf
-of whichever side was about to convert. Against Stockfish that bias runs one
-way only, because Stockfish is the side with won endgames to grind. Fixed in
-`fc82cb7`; re-adjudicating the old games by evaluation predicted 46.0% and the
-re-run measured 45.45%.
+```
+Score | 45.45% (454.5/1000)  ->  -31.70 +/- 21.7 vs the cap
+Games | N: 1000  W: 235  L: 326  D: 439
+Penta | [30, 153, 212, 88, 17]   500 pairs
+Conf  | Stockfish 18 @ UCI_Elo 2900, 50+0.50, Threads=1, 4 workers
+```
 
-The older v51 figure of ~2885 came from bracketing between the 2850 and 2900
-caps (62.5% over one, 46.4% under the other, 2,000 games each) and was measured
-on the same broken harness, so it is not a usable comparison either. Treat
-every strength number published before 2026-08-08 as unmeasured.
+Caveats: this extrapolates from a single cap rather than a two-cap bracket,
+and UCI_Elo is Stockfish's own limiter, not an external rating.
 
-Two standing caveats. This is an extrapolation from a single cap rather than a
-two-cap bracket, and UCI_Elo is Stockfish's own limiter, not an external
-rating.
+**This is the only strength figure on this page.** Everything previously
+published here -- ~3010 at v58, ~2885 at v51, the whole odds ladder -- was
+measured on a harness that accepted a threefold repetition that was merely
+*available* rather than one that had occurred, and claimed the draw for
+whichever side was about to convert. Against Stockfish that bias runs one way,
+because Stockfish is the side with won endgames to grind. Fixed in `fc82cb7`.
+Re-adjudicating the old games by evaluation predicted 46.0%; the re-run
+measured 45.45%.
 
-**Every odds figure below is also pre-`fc82cb7` and awaiting a re-run.** The
-same bias applies and in the same direction: at odds, Stockfish is the side
-that has to convert, so its wins are the ones the old harness erased. Read
-these as an upper bound on Pygin, not a measurement, until the ladder is
-re-run.
+Those numbers have been removed rather than annotated. A retracted measurement
+kept on the page with a footnote still gets quoted.
 
-Odds against full-strength SF-18 is the external yardstick. Knight odds ran
-76.75% → 79.05% → 81.65% → 100% across v31, v49, v52 and v54, and is now
-saturated: the PST candidate that shipped as v54 played 197 games without
-conceding a win or a draw. Queen and rook went the same way. Rook was
-re-measured at v54 over 106 games, again conceding neither, which retired a
-stale 95.5% from v49.
+**Unmeasured, re-run pending:** the odds ladder (pawn, knight, rook, queen)
+against full-strength SF-18, and the head-to-head against the Python engine.
 
-Pawn odds (f2) is the only rung left, and the one handicap Stockfish still
-scores against. v58 took 90.30% over 500 games (420W/63D/17L, +387.57 ±93.0),
-up from 87.66% over 1,900 games at v54. Those two are not a clean delta: the TC
-era moved from 45+0.15 to 50+0.50 between them, and the worker count halved to
-cores/2 so Stockfish gets a full core and is never starved. Both measure the
-same rung, but the step between them crosses an era change.
-
-v57 was measured alongside v58 on the 2900 cap and scored 65.81%, +113.78 ±41.8
-over 332 games, against v58's 65.47%. At this sample size the two are
-indistinguishable, which says more about the sample than about the net: v58's
-confirmed +19.11 sits well inside a ±41 bar, and separating them would take
-roughly ten times the games.
-
-Against its own Python engine the record is 1,815–0–40. No rating is quoted
-there; the gap is past what Elo can express. The Python engine on its own is
-~2440–2450, level with SF-18 at UCI_Elo 2450.
+The internal A/B ledger is not affected in the same way. Between two Pygins the
+bug is near-symmetric, so it inflated draws and compressed effect sizes toward
+zero: those numbers read low, not high.
 
 ---
 
@@ -154,7 +129,7 @@ above summarise it. Regenerate both with `bench/bench_progress.py` and
 - **v44** -- TT prefetch (node-identical, +5–6 % NPS) *(+13.31 ±6.8)*
 - **v43** -- verified-null REMOVED (the insurance cost ~1 ply; isolation A/B) *(+5.18 ±6.8)*
 - **v42** -- cannot-win eval clamp (correctness) *(+3.27 ±6.8)*
-- **v41** -- verified null + 50-move + TT-store policy (correctness) *(−2.88 ±6.8)*
+- **v41** -- verified null + 50-move + TT-store policy (correctness) *(-2.88 ±6.8)*
 - **v40** -- FIDE-exact en-passant hashing (correctness) *(+4.31 ±6.8)*
 - **v39** -- incremental Zobrist + eval-in-TT + NPS batch *(+8.86 ±6.8)*
 - **v38** -- score-hygiene batch (correctness) *(+1.36 ±6.8)*
@@ -164,7 +139,7 @@ above summarise it. Regenerate both with `bench/bench_progress.py` and
 - **v34** -- check extensions *(+6.81 ±6.8)*
 - **v33** -- transposition table kept warm across moves *(+23.52 ±6.8)*
 - **v32** -- internal iterative reduction *(+7.30 ±6.8)*
-- **v31** -- **C search core** (whole per-node loop in C) *(≈ +215 ¹)*
+- **v31** -- **C search core** (whole per-node loop in C) *(29W/1D/0L gate ¹)*
 - **v30** -- stability-scaled time (U-06); last Python *(+10.91 ±6.8)*
 - **v29** -- soft-stop time management (P-35) *(+38.34 ±6.9)*
 - **v28** -- node-identical speed batch (+4 %) *(+13.13 ±6.0)*
@@ -206,8 +181,10 @@ above summarise it. Regenerate both with `bench/bench_progress.py` and
   assorted ⁴, v32–36 at 45+0.10, v37–47 at 50+0.20, v48+ on `--nodes`).
 - **`est` ⁵** is a feature-based estimate, not an A/B. The real anchor is ≈2442
   by v25.
-- **Bundled A/Bs:** v16+v17 vs v15 = +69 ±16 ³; v22–24 vs v21 = +11.75 ±6.8 ²;
-  v31's ≈+215 ¹ is odds-derived.
+- **Bundled A/Bs:** v16+v17 vs v15 = +69 ±16 ³; v22–24 vs v21 = +11.75 ±6.8 ².
+  v31's ≈+215 ¹ was odds-derived and is **withdrawn** -- the odds ladder it came
+  from was measured on the pre-`fc82cb7` harness. The v30→v31 gate (29W/1D/0L
+  over 30 games) stands on its own: the jump was past what Elo could express.
 - **NPS 4T** is "--" for v1–24 (no reliable SMP). v25–30 were multi-process,
   v31+ pthread Lazy-SMP, so the v30→v31 jump is partly methodology.
 
@@ -224,7 +201,7 @@ above summarise it. Regenerate both with `bench/bench_progress.py` and
 | **v43→v44** | 3.23M → 3.67M | TT prefetch: +13.31 Elo, ~2.7 Elo per 1% NPS |
 | **v53** | -- | Texel eval retune: +37.52 Elo, biggest single release |
 | **v54→v55** | 3.69× → **4.19×** | pin-aware legality + eval accumulator: +9.66 Elo, ~1.16 Elo per 1% NPS |
-| **v55→v56** | **4.19×** | ProbCut: **+11.44 timed** (+4.11 on `--nodes`) at −21.6% nodes; S-06 pool +9.83% at 4 threads |
+| **v55→v56** | **4.19×** | ProbCut: **+11.44 timed** (+4.11 on `--nodes`) at -21.6% nodes; S-06 pool +9.83% at 4 threads |
 | **v56→v57** | **4.19×** | host layer only, node-identical: ponderhit soft-stop + the time-policy knobs over UCI. **Last pure-HCE release** |
 | **v57→v58** | **~2.9×** | NNUE armed: **+19.11 timed** while GIVING BACK ~30% NPS to the net. First hybrid; the gain is the training schedule, not the architecture |
 
@@ -289,7 +266,7 @@ python3 match.py cengine.py "Old Engine/34/engine34.py" 100 0 --workers 0
 
 - Positional args are `engine1 engine2 NUM_POSITIONS OFFSET`. Each position is
   played both colours, so games = `NUM_POSITIONS × 2`.
-- Flags: `--workers 0` = cores−1, `--adj on|off` adjudication, `--sf-elo N`,
+- Flags: `--workers 0` = cores-1, `--adj on|off` adjudication, `--sf-elo N`,
   `--smp N`, `--book1/--book2 PATH`, `--start-pos True`.
 - Openings default to the bundled `UHO_4060_v4.epd`. Larger sets are in the
   [Stockfish books repo](https://github.com/official-stockfish/books); point
@@ -302,10 +279,10 @@ python3 match.py engine.py stockfish_engine.py 100 0 --sf-elo 2000   # 0 = full 
 ```
 
 **Material / time odds** are configured in `odds.py`'s `CONFIG` block (the
-default is pawn odds, `f2`). The opponent is **full-strength SF-18** — that is
+default is pawn odds, `f2`). The opponent is **full-strength SF-18** -- that is
 what the ladder means, and a capped opponent measures something else that no
 recorded rung can be compared to. Each worker runs two engines, so `--workers 0`
-here means cores/2, not cores−1 — a real clock TC gets starved by
+here means cores/2, not cores-1 -- a real clock TC gets starved by
 oversubscription, and a Stockfish opponent squeezed to 10k nps stops being the
 yardstick the run is quoting:
 
@@ -332,7 +309,7 @@ GUI options:
 | `Premove` | check | false | -- | Emit certified instant-reply premoves (opt-in) |
 | `UCI_ShowWDL` | check | true | -- | Emit `wdl` on info lines (opt-out for strict arenas) |
 | `Clear Hash` | button | -- | -- | Wipe the transposition table without `ucinewgame` |
-| `Contempt` | spin | 50 | −100–100 | Draw score bias (cp) when ahead/behind |
+| `Contempt` | spin | 50 | -100–100 | Draw score bias (cp) when ahead/behind |
 
 ---
 
