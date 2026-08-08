@@ -285,7 +285,9 @@ python3 match.py engine.py stockfish_engine.py 100 0 --sf-elo 2000   # 0 = full 
 ```
 
 **Material / time odds** are configured in `odds.py`'s `CONFIG` block (the
-default is pawn odds, `f2`). Each worker runs two engines, so `--workers 0`
+default is pawn odds, `f2`). The opponent is **full-strength SF-18** — that is
+what the ladder means, and a capped opponent measures something else that no
+recorded rung can be compared to. Each worker runs two engines, so `--workers 0`
 here means cores/2, not cores−1 — a real clock TC gets starved by
 oversubscription, and a Stockfish opponent squeezed to 10k nps stops being the
 yardstick the run is quoting:
