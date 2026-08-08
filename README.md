@@ -70,16 +70,33 @@ startup. The net's weights live in `NNUE/nets/` instead.
 
 ### Measured strength
 
-**~3010 Elo** on the SF-18 UCI_Elo scale, measured at v58 on 2026-08-05.
-Pygin scored 65.47% against Stockfish capped at 2900, over 333 games at
-50+0.50, which puts it 111 points above that cap.
+**~2868 Elo** on the SF-18 UCI_Elo scale, measured at v58 on 2026-08-08.
+Pygin scored **45.45% over 1,000 games** against Stockfish capped at 2900, at
+50+0.50, which puts it **31.7 +/- 21.7 points below** that cap.
 
-That replaces the v51 figure of ~2885, which came from bracketing between the
-2850 and 2900 caps (62.5% over one, 46.4% under the other, 2,000 games each).
-Two caveats. It is an extrapolation from a single cap rather than a two-cap
-bracket, and UCI_Elo is Stockfish's own limiter, not an external rating. Both
-figures use that same limiter, so the movement between them is real even where
-the absolute number is not.
+**This corrects a published ~3010.** That figure came from a 333-game run that
+scored 65.47%, and it was measured on a harness that was throwing Stockfish's
+wins away: the game loop accepted a threefold repetition that was merely
+*available* rather than one that had occurred, and claimed the draw on behalf
+of whichever side was about to convert. Against Stockfish that bias runs one
+way only, because Stockfish is the side with won endgames to grind. Fixed in
+`fc82cb7`; re-adjudicating the old games by evaluation predicted 46.0% and the
+re-run measured 45.45%.
+
+The older v51 figure of ~2885 came from bracketing between the 2850 and 2900
+caps (62.5% over one, 46.4% under the other, 2,000 games each) and was measured
+on the same broken harness, so it is not a usable comparison either. Treat
+every strength number published before 2026-08-08 as unmeasured.
+
+Two standing caveats. This is an extrapolation from a single cap rather than a
+two-cap bracket, and UCI_Elo is Stockfish's own limiter, not an external
+rating.
+
+**Every odds figure below is also pre-`fc82cb7` and awaiting a re-run.** The
+same bias applies and in the same direction: at odds, Stockfish is the side
+that has to convert, so its wins are the ones the old harness erased. Read
+these as an upper bound on Pygin, not a measurement, until the ladder is
+re-run.
 
 Odds against full-strength SF-18 is the external yardstick. Knight odds ran
 76.75% → 79.05% → 81.65% → 100% across v31, v49, v52 and v54, and is now
