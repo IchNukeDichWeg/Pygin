@@ -52,12 +52,18 @@ N_WORKERS = 10        # parallel games (worker processes); 1 = sequential,
                       # Keep N_WORKERS * ENGINE_SMP <= CPU cores.
 
 # --- Opponent strength / engine threading (was env vars) --------------- #
-STOCKFISH_ELO = 3000  # stockfish_engine.py strength: <= 0 = FULL strength,
+STOCKFISH_ELO = 0     # stockfish_engine.py strength: <= 0 = FULL strength,
                       # otherwise a UCI_Elo cap (clamped to 1320..3190).
-                      # Tracks stockfish_engine.py's SF_ELO -- see the reason
-                      # for 3000 there. The odds LADDER runs at <= 0 (full
-                      # strength) regardless; this default only applies to a
-                      # capped odds run.
+                      # 0, NOT stockfish_engine.py's SF_ELO. The odds ladder
+                      # is defined as "handicap vs FULL-STRENGTH SF-18" -- a
+                      # capped opponent measures a different thing entirely
+                      # and cannot be compared to any recorded rung. Every
+                      # real odds run passed --stockfish-elo 0 by hand while
+                      # this default sat at 2900/3000 and the README's
+                      # documented command omitted the flag, so the copy-
+                      # pasteable command silently measured the wrong
+                      # opponent. The default now matches what the ladder
+                      # actually is; pass --stockfish-elo N for a capped run.
 ENGINE_SMP = 1        # engine.py SMP workers per game (1 = single-thread)
 
 # --- Material odds ---------------------------------------------------- #
