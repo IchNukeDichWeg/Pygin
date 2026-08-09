@@ -242,6 +242,16 @@ def main():
                     help="records per held-out block (default %d). Blocks, "
                          "not strided records, so the holdout is GAME-"
                          "granular -- see val_block_mask()." % VAL_BLOCK)
+    ap.add_argument("--resume", action="store_true",
+                    help="continue an interrupted run instead of starting "
+                         "over. Reads how many epochs finished from "
+                         "loss_curve.csv, restores the weights, and re-enters "
+                         "the cosine schedule at that epoch -- restarting "
+                         "plain would reset the LR to its peak and undo the "
+                         "annealing. Exact when last.pt is present (Adam "
+                         "moments included); weights-only from best.pt when "
+                         "it is not, which costs a few hundred steps of "
+                         "re-warming and nothing else.")
     ap.add_argument("--checkpoint-dir", default=CHECKPOINTS_DIR,
                     help="where best.pt / loss_curve.csv go (default %s). "
                          "Point a concurrent or throwaway run somewhere else "
@@ -316,6 +326,40 @@ def main():
     ckpt_path = os.path.join(args.checkpoint_dir, "best.pt")
     curve_path = os.path.join(args.checkpoint_dir, "loss_curve.csv")
     best_val, best_epoch = float("inf"), -1
+    last_path = os.path.join(args.checkpoint_dir, "last.pt")
+    start_ep = 0
+
+    if args.resume:
+        # How far the interrupted run got is read from the CURVE, not from a
+        # counter inside a checkpoint: the curve is flushed every epoch, so it
+        # is the one artifact that survives a SIGHUP mid-epoch.
+        done = []
+        if os.path.isfile(curve_path):
+            with open(curve_path, newline="") as cf:
+                for row in csv.DictReader(cf):
+                    done.append((int(row["epoch"]), float(row["val_mse"])))
+        if not done:
+            sys.exit(f"train --resume: {curve_path} has no completed epochs; "
+                     f"drop --resume and start the run")
+        start_ep = done[-1][0] + 1
+        best_epoch, best_val = min(done, key=lambda r: r[1])
+        if start_ep >= args.epochs:
+            sys.exit(f"train --resume: {start_ep} epochs already finished and "
+                     f"--epochs is {args.epochs}; use --export-only to write "
+                     f"the net from best.pt")
+        if os.path.isfile(last_path):
+            ck = torch.load(last_path, weights_only=True)
+            model.load_state_dict(ck["model"])
+            opt.load_state_dict(ck["opt"])
+            how = "exact (weights + Adam state)"
+        elif os.path.isfile(ckpt_path):
+            model.load_state_dict(torch.load(ckpt_path, weights_only=True))
+            how = "weights-only from best.pt (Adam moments re-warm)"
+        else:
+            sys.exit(f"train --resume: neither {last_path} nor {ckpt_path} "
+                     f"exists; nothing to resume from")
+        print(f"resuming at epoch {start_ep}/{args.epochs}: {how}; "
+              f"best so far epoch {best_epoch} val {best_val:.6f}", flush=True)
 
     def train_one_epoch(ep):
         model.train()
@@ -366,12 +410,13 @@ def main():
     # Nothing about the export needs the file to still be there.
     best_state = None
     stopped = False
-    with open(curve_path, "w", newline="") as cf:
+    with open(curve_path, "a" if start_ep else "w", newline="") as cf:
         cw = csv.writer(cf)
-        cw.writerow(["epoch", "train_mse", "val_mse"])
+        if not start_ep:                  # resuming must not re-header or
+            cw.writerow(["epoch", "train_mse", "val_mse"])   # truncate
         try:
             bad = 0
-            for ep in range(args.epochs):
+            for ep in range(start_ep, args.epochs):
                 t0 = time.time()
                 cur_lr = lr_at(args, ep)
                 for g in opt.param_groups:
@@ -389,6 +434,14 @@ def main():
                 print(f"epoch {ep:3d}  train {tr:.6f}  val {va:.6f}  "
                       f"lr {cur_lr:.2e}  ({time.time()-t0:.1f}s){marker}",
                       flush=True)
+                # Every epoch, not just on improvement: best.pt alone
+                # cannot resume, because the Adam moments and the epoch
+                # counter live nowhere else. Written after the curve flush so
+                # a kill between the two loses the checkpoint, never the
+                # record of what was done.
+                torch.save({"model": model.state_dict(),
+                            "opt": opt.state_dict(),
+                            "epoch": ep}, last_path)
                 bad = 0 if marker else bad + 1
                 if args.patience and bad >= args.patience:
                     print(f"early stop: {bad} epochs without a val "
