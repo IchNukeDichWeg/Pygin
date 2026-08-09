@@ -203,6 +203,26 @@ on this dataset are dead money. Labels are still 5,000-node searches while
 the engine plays at 1.75M (FI-98 priced that at -0.580%), which is the
 standing ceiling and the reason label DEPTH, not volume, is the next lever.
 
+TWO CORRECTIONS TO THIS ENTRY, both found 2026-08-09.
+
+(1) The +19.11 was NOT measured on this configuration. The candidate was
+engine_nnue_v4.py, which sets LAZY_NNUE = True; this release ships
+LAZY_NNUE = False. The number therefore prices NNUE WITH lazy evaluation
+while the binary runs NNUE WITHOUT it. The gap is unmeasured: FI-106 has
+never been isolated on either architecture, since its recorded +19.30 /
++5.91 come from engine_nnue_lazy.py against pre-NNUE HCE baselines and so
+price the whole package. Re-measuring cengine.py (lazy off, as shipped)
+against Old Engine/57 is the missing experiment.
+
+(2) "val plateaued at epoch 4 ... the net is DATA-limited, not
+epoch-limited" is wrong. The epoch sweep closed the other way: 8 is the
+minimum, not a plateau at 4 (6 = 0.063989, 8 = 0.063676, 12 = 0.063858,
+16 = 0.064264, 40 = 0.066663), so this net was trained for five times
+longer than it should have been. The v5 net then took val down a further
+4.5% and measured null, which is where "val is a weak predictor near the
+floor" comes from. The label-DEPTH conclusion survives; the reasoning
+that reached it did not.
+
 OWED: an arm64 confirmation. v3 measured +5.70 +/- 4.6 on arm64 against
 +0.52 on x86, so the architecture spread is real and v4 has only been
 measured on x86. Shipped armed anyway because the risk direction is
