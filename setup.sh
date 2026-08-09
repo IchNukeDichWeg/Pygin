@@ -215,6 +215,15 @@ fi
 # --- 4. python deps --------------------------------------------------- #
 have pip3 || ensure pip3 python3-pip
 export PIP_BREAK_SYSTEM_PACKAGES=1   # Debian/Ubuntu PEP 668 guard -- this box is dedicated to the engine
+# apt fallback: some provider mirrors serve a stale index whose python3-pip pulls a
+# python3.x-dev version their pool 404s on, so the apt install above fails. Bootstrap
+# pip straight from upstream instead -- the engine's .so files load via ctypes, so the
+# -dev headers apt was chasing are not needed at all.
+python3 -m pip --version >/dev/null 2>&1 || {
+    echo "-> pip still missing after apt, bootstrapping from bootstrap.pypa.io ..."
+    curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages \
+      || echo "   (bootstrap failed -- install pip manually)"
+}
 echo "-> installing Python dependencies (python-chess, numpy, scipy) ..."
 python3 -m pip install --upgrade pip >/dev/null 2>&1 || true
 python3 -m pip install -r requirements.txt
