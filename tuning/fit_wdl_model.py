@@ -227,7 +227,23 @@ _MIN_C_ERA_SNAPSHOT = 53
 # NNUE_DEFAULT_SINCE to that ship date then; nothing else needs to change.
 _NNUE_RE = re.compile(r"(?:^|_)nnue(?:_|$)")
 NNUE_MIN_DATE = "2026-07-28"     # nnue_v3_d16_2880b51afe28 (FI-15)
-NNUE_DEFAULT_SINCE = None        # ship date of a USE_NNUE-by-default build
+NNUE_DEFAULT_SINCE = "2026-08-03"  # v58 shipped USE_NNUE=True: from this date
+                                 # the un-suffixed dev names (cengine) report
+                                 # NNUE cp. Was left None until 2026-08-10, so
+                                 # every post-v58 cengine/engine58 side was
+                                 # classified HCE and polluted that corpus
+                                 # with net-scale cp.
+NNUE_DEFAULT_VERSION = 58        # numbered snapshots switch family by NUMBER,
+                                 # not by log date: engine58+ is NNUE in any
+                                 # log, engine57- is HCE forever. The date
+                                 # gate alone would have reclassified an
+                                 # engine57 side in a post-cutoff log.
+GLOBAL_SINCE = None              # --since: refuse EVERY log dated before this,
+                                 # snapshots included. Exists for instrument
+                                 # breaks: the 2026-08-07 phantom-repetition
+                                 # fix (fc82cb7) changed game RESULTS, so all
+                                 # earlier logs carry draw-biased outcomes and
+                                 # a fit over them learns the bug.
 EVAL_FAMILY = "hce"              # "hce" | "nnue" | None = don't filter,
                                  #   for scale-free consumers only (texel.py)
 
@@ -257,7 +273,10 @@ def eval_family(base, path=None):
     None for a base this script does not recognise as an engine arm."""
     if _NNUE_RE.search(base):
         return "nnue"
-    if base in NEAR_EQUAL_EXTRA or _base_num(base) is not None:
+    n = _base_num(base)
+    if n is not None:                     # numbered snapshot: family by number
+        return "nnue" if n >= NNUE_DEFAULT_VERSION else "hce"
+    if base in NEAR_EQUAL_EXTRA:          # dev build: family by log date
         if NNUE_DEFAULT_SINCE and _date_ok(path, NNUE_DEFAULT_SINCE):
             return "nnue"
         return "hce"
@@ -469,7 +488,11 @@ def extract_all(log_dirs):
           f"{[os.path.relpath(d, _REPO) for d in log_dirs]} ...")
 
     files_used = 0
+    dropped_old = 0
     for path in all_files:
+        if not _date_ok(path, GLOBAL_SINCE):
+            dropped_old += 1        # counted, reported after the loop: a
+            continue                # silently shrunken corpus reads as bug
         if not classify_file(path):
             continue
         files_used += 1
@@ -485,6 +508,9 @@ def extract_all(log_dirs):
             print(f"  ...{files_used} usable files processed, "
                   f"{len(samples):,} samples so far")
 
+    if dropped_old:
+        print(f"  --since {GLOBAL_SINCE}: {dropped_old} log files refused as "
+              f"pre-cutoff (phantom-draw era or undated)")
     print(f"\nDone. {len(all_files)} files scanned, {files_used} usable, "
           f"{stats['games_used']:,} games parsed, "
           f"{len(samples):,} (cp, phase, result) samples extracted.")
@@ -732,7 +758,7 @@ def wdl(cp, phase):
 #  Main
 # ====================================================================== #
 def main():
-    global _MIN_C_ERA_SNAPSHOT, CENGINE_MIN_DATE, EVAL_FAMILY
+    global _MIN_C_ERA_SNAPSHOT, CENGINE_MIN_DATE, EVAL_FAMILY, GLOBAL_SINCE
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--eval-family", choices=("hce", "nnue"), default=EVAL_FAMILY,
@@ -754,6 +780,13 @@ def main():
                     help="also require dev-build ('cengine') logs to be dated "
                          "on/after this, since the name alone cannot tell "
                          "one eval era from another (default: no date gate)")
+    ap.add_argument("--since", default=None, metavar="YYYY-MM-DD",
+                    help="refuse EVERY log dated before this, snapshot logs "
+                         "included (undated names are refused too: an "
+                         "unknown era is not a safe one). Use after an "
+                         "instrument break -- e.g. 2026-08-08 excludes "
+                         "everything measured before the phantom-repetition "
+                         "fix, whose results are draw-biased")
     ap.add_argument("--sync-only", action="store_true",
                     help="do not fit: just write the coefficients already in "
                          "data/wdl_model*.json into cuci.py, then exit")
@@ -773,6 +806,8 @@ def main():
     args = ap.parse_args()
     if args.min_era is not None:
         _MIN_C_ERA_SNAPSHOT = args.min_era
+    if args.since:
+        GLOBAL_SINCE = args.since
     if args.cengine_since is not None:
         CENGINE_MIN_DATE = args.cengine_since or None
     if args.nnue and args.eval_family != "nnue":
