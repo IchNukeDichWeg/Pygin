@@ -529,8 +529,11 @@ def play_game(round_no, p_white, p_black, odds_giver, mate_score,
         if outcome is not None:
             result, reason = outcome.result(), outcome.termination.name
             break
-        if board.is_repetition(3) or board.halfmove_clock >= 100:
-            result, reason = "1/2-1/2", "REPETITION_OR_FIFTY_MOVE"
+        if board.is_repetition(3):
+            result, reason = "1/2-1/2", "THREEFOLD_REPETITION"
+            break
+        if board.halfmove_clock >= 100:
+            result, reason = "1/2-1/2", "FIFTY_MOVES"
             break
         if board.ply() >= MAX_PLIES:
             result, reason = "1/2-1/2", "MAX_PLIES (adjudicated draw)"

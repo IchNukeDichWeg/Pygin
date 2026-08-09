@@ -232,8 +232,10 @@ def play_game(engines, sides, names, fen, round_no, game_id):
         outcome = board.outcome()
         if outcome is not None:
             result, reason = outcome.result(), outcome.termination.name
-        elif board.is_repetition(3) or board.halfmove_clock >= 100:
-            result, reason = "1/2-1/2", "REPETITION_OR_FIFTY_MOVE"
+        elif board.is_repetition(3):
+            result, reason = "1/2-1/2", "THREEFOLD_REPETITION"
+        elif board.halfmove_clock >= 100:
+            result, reason = "1/2-1/2", "FIFTY_MOVES"
         else:                                # MAX_PLIES tripped
             result, reason = "1/2-1/2", "MAX_PLIES (adjudicated draw)"
     return {"round": round_no, "fen": fen, "result": result, "reason": reason,
