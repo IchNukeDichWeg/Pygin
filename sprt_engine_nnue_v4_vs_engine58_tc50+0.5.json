@@ -1,0 +1,39 @@
+{
+ "decision": "H1",
+ "llr": 2.9498905804036366,
+ "next_offset": 2294,
+ "pairs": 2264,
+ "penta": [
+  69,
+  509,
+  975,
+  595,
+  116
+ ],
+ "runs": [
+  {
+   "engine1": "engine_nnue_v4",
+   "engine2": "engine58",
+   "fen_file": "UHO_4060_v4.epd",
+   "mode": "clock 50.00+0.50",
+   "offset": 0,
+   "positions": 5000,
+   "positions_played": 1361,
+   "seed": 58,
+   "smp": 1,
+   "started": "2026-08-09 20:03:07"
+  },
+  {
+   "engine1": "engine_nnue_v4",
+   "engine2": "engine58",
+   "fen_file": "UHO_4060_v4.epd",
+   "mode": "clock 50.00+0.50",
+   "offset": 1361,
+   "positions": 3639,
+   "positions_played": 933,
+   "seed": 58,
+   "smp": 1,
+   "started": "2026-08-09 22:13:09"
+  }
+ ]
+}
