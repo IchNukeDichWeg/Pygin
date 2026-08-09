@@ -12,8 +12,8 @@ representation, move generation and legality.
 
 ![Strength](https://img.shields.io/badge/strength-~2868_Elo-3fb950)
 ![Speed](https://img.shields.io/badge/speed-3.3M_nps-58a6ff)
-![Versions](https://img.shields.io/badge/versions-58-8b949e)
-![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B324_Elo-f0883e)
+![Versions](https://img.shields.io/badge/versions-59-8b949e)
+![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B338_Elo-f0883e)
 ![Source](https://img.shields.io/badge/source-MIT-green)
 &nbsp;·&nbsp; Built with **[Claude Code](https://claude.com/claude-code)**
 
@@ -24,7 +24,7 @@ representation, move generation and legality.
 | | | | |
 |---|---|---|---|
 | **~2868 Elo** | SF-18 UCI_Elo scale | **3.3M nps** | the net costs ~30% of it |
-| **+324 Elo** | A/B-confirmed, v31→v58 | **~18 ply** | from startpos in 5 s |
+| **~+338 Elo** | A/B-confirmed, v31→v59 | **~18 ply** | from startpos in 5 s |
 | **+19.11 Elo** | v58 NNUE, TIMED | **1.43x** | single-thread vs v31 |
 | **v53+v54** eval lane | +37.52 & +31.20, the two biggest | **1 dependency** | `python-chess` only |
 
@@ -36,7 +36,7 @@ representation, move generation and legality.
 </table>
 
 Both charts are self-play. Every C-era version (v31 and up) is A/B-tested against
-the one before it, and the gains stack to +324 Elo. Single-thread speed peaked
+the one before it, and the gains stack to about +338 Elo. Single-thread speed peaked
 at 1.79× and sits at 1.43× today: v58 hands about 30% of it to the net and still
 comes out +19.11 ahead. The v30→v31 C rewrite (~34× faster) is off the left
 edge, so v31 is the honest zero.
@@ -103,7 +103,7 @@ zero: those numbers read low, not high.
 
 58 versions, each A/B-tested against the one before it. Speed is nodes/s,
 depth is from startpos in 5 s (book off, best-of-N), and `Elo Δ` is the A/B
-result against the previous version. Cumulatively that is ≈ +324 over v31.
+result against the previous version. Cumulatively that is ≈ +338 over v31.
 
 The list below has the full per-version speed, depth and Elo, and the charts
 above summarise it. Regenerate both with `bench/bench_progress.py` and
@@ -112,6 +112,7 @@ above summarise it. Regenerate both with `bench/bench_progress.py` and
 <details>
 <summary><b>Every version in full</b> -- complete milestone + Elo list</summary>
 
+- **v59** -- **lazy NNUE evaluation, and the first release measured as exactly the config that ships.** `LAZY_NNUE` is armed: the engine skips the net's forward pass wherever a cheap bound already decides the node, spending the saved time on more nodes (bench 1,074,820 -> **1,214,534**). The toggle was isolated for the first time -- same v4 net on both sides, nothing else different -- against `Old Engine/58` on the corrected harness. *(GSPRT[0,4] LLR **+2.950 ACCEPT** at 2,264 pooled pairs, TIMED 50+0.5 on x86, ptnml 69/509/975/595/116, pooled 51.99% -> **+13.84 ±6.4**, stopped early so the magnitude is bound-biased -- the verdict is the result. Historical note: v58's own +19.11 turned out to have been measured with this toggle ON while the release ran it OFF; v59 closes that gap by shipping what was measured.)*
 - **v58** -- **the first HCE/NNUE hybrid, and the first net that pays.** `USE_NNUE` is armed on `nnue_v4_6f910e35bb1e.nnue`: the net replaces the hand-crafted eval inside negamax, while qsearch stand-pat stays HCE. Bench signature 1,145,629 -> **1,074,820**, and single-thread NPS drops roughly 30% to the SIMD tail, so the Elo below is measured *net* of that cost. The interesting part is what changed from v3, which read **+0.52 ±6.8** on this same instrument, i.e. nothing at all: not the dataset, not one dimension of the architecture, only the **learning-rate schedule**. Cosine in place of flat took held-out val 0.074417 -> 0.066663, and that is the whole gain; identical dimensions mean identical speed, so none of it is bought with nodes. `NNUE_REQUIRE_SIMD` keeps the net off scalar builds, where the ~3x slower tail would make the engine *worse*. *(**+19.11 ±7.8** over 3,404 games TIMED 50+0.20 on x86, GSPRT[0,4] LLR **+2.950 ACCEPT** at 1,702 pairs, ptnml 71/358/691/477/105 -- sixth SPRT accept, and the second-largest release after the v53 Texel retune. An arm64 confirmation is owed: v3 read +5.70 ±4.6 there against +0.52 here, so the architecture spread is real and only x86 has been measured for v4)*
 - **v57** -- **the last pure-HCE release**; from here Pygin is an HCE/NNUE hybrid. Host layer only and **node-identical** to v56 (bench signature 1,145,629 unchanged, ladder node-exact), so no A/B slot was spent and the ledger is untouched. **Ponderhit now honours the soft-stop** -- a prediction hit used to spend the full fresh budget re-confirming an already-settled move; it now applies the same P-35/U-06 fractions the main search uses (1.666 s → 0.686 s, a ratio of 0.412 against the designed 0.40). The soft-stop neighbourhood is exposed over UCI (`SoftStop`, `SoftStopStable`, `SoftStopUnstable`, `SoftStopStableIters`) so it can be swept without a rebuild. And a latent bug is fixed: `cuci.py` restored a *hardcoded* 0.55 soft-stop fraction over whatever the engine set, which meant any future tuning would have worked in testing and been silently discarded in every real game.
 - **v56** -- **ProbCut**: the fail-high half of forward pruning, which Pygin had no equivalent of. At a shallow non-PV node a qsearch filters each capture at `beta + 200` and a real reduced-depth search confirms before anything is cut, so nothing is ever pruned on a static score. Cuts **21.6% of nodes** at fixed depth (bench 1,461,732 → 1,145,629). *(**+11.44 ±6.9** over 5,924 games TIMED 50+0.20, GSPRT[0,4] LLR **+2.953 ACCEPT** -- the ledger's own instrument; the `--nodes` campaign that shipped it read **+4.11 ±4.2** over 21,806 games (LLR +2.971), so the fixed-node instrument reads CONSERVATIVE. Fifth SPRT accept, and the first pruning MECHANISM to pay since the search lane was declared exhausted: what was exhausted was the parameter space, not the mechanism space)*

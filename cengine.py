@@ -229,6 +229,20 @@ measured on x86. Shipped armed anyway because the risk direction is
 favourable (arm64 read HIGHER for v3) and NNUE_REQUIRE_SIMD already refuses
 to arm the net on a scalar build, where it would make the engine worse.
 
+v59 = v58 + **FI-106 lazy NNUE eval armed** (LAZY_NNUE True): skip the net
+where a cheap bound already decides the node. The FIRST release measured as
+exactly the config that ships -- the candidate (engine_nnue_v4.py) was
+byte-equivalent to this file plus the flip, vs Old Engine/58 on the
+corrected (post-fc82cb7) harness: GSPRT[0,4] **ACCEPT** at 2,264 pooled
+pairs, LLR +2.950, TIMED 50+0.5 x86, ptnml 69/509/975/595/116, pooled
+51.99% -> **+13.84 +/- 6.4** (stopped early: magnitude bound-biased; the
+verdict is the result). W/D/L 1,292/2,138/1,107 over 4,537 games. Ledger
++324 -> ~+338. Bench signature 1,074,820 -> **1,214,534** (+13% nodes for
++2.2% NPS on the d11 bench; on the clock the trade pays -- fewer net calls
+per node buys more nodes than the extra tree costs). The v58-era package
+readings (+19.30 arm64 / +5.91 x86, NNUE+lazy vs HCE) are superseded by
+this isolated number.
+
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
   * v30's P-35/U-06 soft-stop time management (stability-scaled),
@@ -1341,7 +1355,13 @@ class Engine:
     # stopping rule. x86 is weaker (+5.91 vs v55, 4,000 games), but ~2/3 of
     # that gap is the AVX2 tail running 27% off its own machine's pace, which
     # is fixable code rather than an architectural fact -- see NNUE/README.md.)
-    LAZY_NNUE = False
+    # v59 (2026-08-10): ISOLATED and CONFIRMED -- same v4 net both sides,
+    # this toggle the only difference, vs Old Engine/58: GSPRT[0,4] LLR
+    # +2.950 ACCEPT at 2,264 pairs (ptnml 69/509/975/595/116, pooled score
+    # 51.99% -> +13.84 +/- 6.4, stopped early so the magnitude is
+    # bound-biased). The package numbers above priced NNUE+lazy together;
+    # this is the toggle alone, and it pays. Flipped True as v59.
+    LAZY_NNUE = True
     LAZY_NNUE_MARGIN = 200
 
     # FI-105. Which shared object to load. Only an instrumented build has any
