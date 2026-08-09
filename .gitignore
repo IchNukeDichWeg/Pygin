@@ -266,3 +266,4 @@ sprt_*_d[0-9].json
 sprt_*_d1[0-9].json
 sprt_*_mt[0-9]*.json
 sprt_*numbfish*.json
+old_json/
