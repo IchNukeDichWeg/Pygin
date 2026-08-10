@@ -43,7 +43,7 @@ worker -> parent:
     ("ok", result_dict)         a move was found
     ("error", traceback_str)    the engine raised while searching
 
-result_dict keys: uci, depth, nodes, time_ms, nps, score_cp (side-to-move POV,
+result_dict keys: uci, depth, nodes, time_ms, nps, wdl, score_cp (side-to-move POV,
 or None for a mate score), mate (signed full-moves, or None), info (a
 synthesized UCI-style "info ..." string for the battle log).
 """
@@ -393,6 +393,10 @@ def engine_worker(conn, engine_path, use_book, pv_uci=False, book_path=None,
                 "nps": nps,
                 "score_cp": score_cp,
                 "mate": mate,
+                # SF's native WDL (permille, stm POV like score_cp), None for
+                # engines that don't publish one -- match.py's adjudication
+                # prefers it to any fitted curve when present.
+                "wdl": getattr(engine, "last_wdl", None),
                 "pv": pv,
                 "info": _format_info(depth, score_cp, mate, nodes, nps, time_ms),
             })

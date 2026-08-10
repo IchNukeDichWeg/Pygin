@@ -66,6 +66,9 @@ class Engine:
         self.pv_uci = True
         self.nodes_searched = 0
         self.last_score = 0          # WHITE's-perspective centipawns
+        self.last_wdl = None         # (w, d, l) permille, SIDE-TO-MOVE POV as
+                                     # SF prints it -- battle_worker forwards
+                                     # it raw, matching score_cp's stm POV
         self.last_depth = 0
         self.last_pv = ""
 
@@ -91,7 +94,15 @@ class Engine:
 
     def _uci_handshake(self):
         self._send("uci")
-        self._read_until("uciok")
+        opts = self._read_until("uciok")
+        # SF >= 12 publishes its own WDL model over UCI. When advertised,
+        # every info line carries "wdl W D L" (permille, side-to-move POV)
+        # -- SF's own calibration, which match.py's adjudication prefers to
+        # any curve fitted here. Guarded on the option list: sending an
+        # unknown setoption makes some engines print noise.
+        self._has_wdl = any("UCI_ShowWDL" in ln for ln in opts)
+        if self._has_wdl:
+            self._send("setoption name UCI_ShowWDL value true")
         self._send(f"setoption name Threads value {SF_THREADS}")
         self._send(f"setoption name Hash value {SF_HASH}")
         if SF_SKILL is not None:
@@ -160,6 +171,9 @@ class Engine:
         self.last_depth = 0
         self.last_pv = ""
         self.last_score = 0
+        self.last_wdl = None         # reset BEFORE the early return: a move
+                                     # with no info line must not inherit the
+                                     # previous move's wdl
         if not info:
             return
         toks = info.split()
@@ -175,6 +189,12 @@ class Engine:
                 else:                                   # mate in `val`
                     stm = (self.MATE_SCORE - abs(val)) * (1 if val > 0 else -1)
                 self.last_score = stm if white_to_move else -stm   # -> WHITE POV
+            elif t == "wdl":
+                try:
+                    self.last_wdl = (int(toks[i + 1]), int(toks[i + 2]),
+                                     int(toks[i + 3]))
+                except (IndexError, ValueError):
+                    self.last_wdl = None
             elif t == "pv":
                 self.last_pv = " ".join(toks[i + 1:])
                 break
