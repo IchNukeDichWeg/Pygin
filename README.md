@@ -90,8 +90,17 @@ measured 45.45%.
 Those numbers have been removed rather than annotated. A retracted measurement
 kept on the page with a footnote still gets quoted.
 
-**Unmeasured, re-run pending:** the odds ladder (pawn, knight, rook, queen)
-against full-strength SF-18, and the head-to-head against the Python engine.
+**Withdrawn pending re-run:** pawn odds (its 90.30% run contained 63 draws,
+so the buggy termination fired throughout) and the head-to-head against the
+Python engine (40 draws, same reason).
+
+**Standing, with their vintage:** knight, rook and queen odds vs full-strength
+SF-18 are all saturated at 100%, measured at v53/v54 under 45+0.15. Those runs
+contained **zero draws**, and the bug could only act by producing a draw, so
+the broken code path never executed in them -- the measurements are untouched
+by the fix. They have not been re-measured at the current era; the engine has
+only gotten stronger since, so saturation is asserted a fortiori, not
+re-measured.
 
 The internal A/B ledger is not affected in the same way. Between two Pygins the
 bug is near-symmetric, so it inflated draws and compressed effect sizes toward
