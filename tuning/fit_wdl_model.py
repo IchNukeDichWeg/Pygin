@@ -273,6 +273,10 @@ def eval_family(base, path=None):
     None for a base this script does not recognise as an engine arm."""
     if _NNUE_RE.search(base):
         return "nnue"
+    if base == "stockfish_engine":
+        return "sf"                       # SF's own cp scale -- third family;
+                                          # extractable only from logs listed
+                                          # in NEAR_EQUAL_STOCKFISH_LOGS
     n = _base_num(base)
     if n is not None:                     # numbered snapshot: family by number
         return "nnue" if n >= NNUE_DEFAULT_VERSION else "hce"
@@ -288,6 +292,9 @@ def _side_in_era(base, path=None):
     about WHICH eval family it is -- that is _side_usable's half."""
     if eval_family(base, path) is None:
         return False
+    if base == "stockfish_engine":
+        return (os.path.splitext(os.path.basename(path or ""))[0]
+                in NEAR_EQUAL_STOCKFISH_LOGS)
     if _NNUE_RE.search(base):
         return _date_ok(path, NNUE_MIN_DATE)
     if base in NEAR_EQUAL_EXTRA:
@@ -326,6 +333,14 @@ def near_equal_pair(wb, bb, path=None):
 # (limited-SF is retired as an instrument anyway).
 NEAR_EQUAL_STOCKFISH_LOGS = {
     # "engine_vs_stockfish_engine_2026-07-04_02-26-12_31615",  # v25 era
+    # v58 vs SF-18 @ UCI_Elo 2900, 45.45% over 1,000 games on the corrected
+    # harness -- near-equal by measurement. LOST 2026-08-10: the log file was
+    # deleted from the repo root before the sf fit ran, so the sf corpus is
+    # EMPTY until the next near-equal SF yardstick run. Add that run's
+    # basename here (this list is a deliberate allowlist -- a strength-matched
+    # SF pairing is a measurement decision, not something to autodetect),
+    # then: python3 tuning/fit_wdl_model.py --eval-family sf --since <date>.
+    # "cengine_vs_stockfish_engine_2026-08-08_00-45-12_70335",
 }
 
 
@@ -761,7 +776,8 @@ def main():
     global _MIN_C_ERA_SNAPSHOT, CENGINE_MIN_DATE, EVAL_FAMILY, GLOBAL_SINCE
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--eval-family", choices=("hce", "nnue"), default=EVAL_FAMILY,
+    ap.add_argument("--eval-family", choices=("hce", "nnue", "sf"),
+                    default=EVAL_FAMILY,
                     help="which eval scale to fit (default: %(default)s). The "
                          "two are never pooled; 'nnue' writes its own "
                          "wdl_model_nnue.json instead of overwriting the "
@@ -887,7 +903,11 @@ def main():
     # The step that kept being forgotten. cuci hardcodes the model (the
     # PyInstaller binary ships without data/), so a refit that does not reach
     # cuci.py leaves the shipped engine on the old curve.
-    sync_cuci(families=(EVAL_FAMILY,))
+    if EVAL_FAMILY != "sf":
+        # cuci never reports WDL on Stockfish's scale -- the sf model exists
+        # only for match.py's per-side adjudication threshold. No constants
+        # to sync, and trying would KeyError on purpose rather than invent.
+        sync_cuci(families=(EVAL_FAMILY,))
 
 
 if __name__ == "__main__":
