@@ -784,11 +784,19 @@ def _eval_family(engine):
     the case is a non-SIMD host, which is not one anybody runs A/Bs on."""
     path = getattr(engine, "path", None)
     if path not in _WDL_FAMILY:
-        try:
-            _WDL_FAMILY[path] = ("nnue" if describe_nnue_source(path)["on"]
-                                 else "hce")
-        except Exception:
-            _WDL_FAMILY[path] = "hce"
+        base = os.path.splitext(os.path.basename(path or ""))[0]
+        if base.startswith("stockfish_engine"):
+            # Stockfish reports on its own cp scale -- a third family. Its
+            # model (data/wdl_model_sf.json) is fitted from the SF sides of
+            # strength-matched yardstick runs; see fit_wdl_model.py
+            # --eval-family sf and NEAR_EQUAL_STOCKFISH_LOGS.
+            _WDL_FAMILY[path] = "sf"
+        else:
+            try:
+                _WDL_FAMILY[path] = ("nnue" if describe_nnue_source(path)["on"]
+                                     else "hce")
+            except Exception:
+                _WDL_FAMILY[path] = "hce"
     return _WDL_FAMILY[path]
 
 
@@ -810,16 +818,17 @@ def _wdl_win_threshold(phase, family="hce"):
         try:
             import json
             path = _data_path("wdl_model.json")
-            if family == "nnue":
-                nnue_path = _data_path("wdl_model_nnue.json")
-                if os.path.exists(nnue_path):
-                    path = nnue_path
+            if family in ("nnue", "sf"):
+                fam_path = _data_path(f"wdl_model_{family}.json")
+                if os.path.exists(fam_path):
+                    path = fam_path
                 else:
-                    print("[match] NOTE: no data/wdl_model_nnue.json -- the "
-                          "NNUE side is being adjudicated on the "
+                    print(f"[match] NOTE: no data/wdl_model_{family}.json -- "
+                          f"the {family} side is being adjudicated on the "
                           "hand-crafted-eval model. Same behaviour as before "
                           "per-family models existed; refit with "
-                          "tuning/fit_wdl_model.py --nnue to fix the scale.",
+                          f"tuning/fit_wdl_model.py --eval-family {family} "
+                          "to fix the scale.",
                           file=sys.stderr, flush=True)
             with open(path, encoding="utf-8") as f:
                 mod = json.load(f)
