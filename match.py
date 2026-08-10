@@ -1001,16 +1001,39 @@ def play_game(round_no, fen, white, black, e1, mode_cfg):
 
         # --- WDL adjudication: end games both engines agree are decided --- #
         if mode_cfg.get("adjudicate", ADJUDICATE):
-            thr = _wdl_win_threshold(_phase24(board),
-                                     _eval_family(mover))
-            if thr is not None:
+            # Native WDL first: a side that publishes its own W/D/L (SF's
+            # UCI_ShowWDL) never consults the fitted curves at all, so the
+            # no-model NOTE cannot fire misleadingly for it. The threshold
+            # is only looked up for sides without one.
+            wdl = res.get("wdl")
+            thr = (None if wdl is not None
+                   else _wdl_win_threshold(_phase24(board),
+                                           _eval_family(mover)))
+            if thr is not None or wdl is not None:
                 mate = res.get("mate")
                 cp = res.get("score_cp")
                 eff = (10_000 if (mate is not None and mate > 0) else
                        -10_000 if mate is not None else cp)
-                if eff is None:
+                if eff is None and wdl is None:
                     adj_win[mover_is_white] = adj_lose[mover_is_white] = 0
                     adj_draw = 0
+                elif wdl is not None:
+                    # The engine publishes its OWN win/draw/loss (SF's
+                    # UCI_ShowWDL: permille, stm POV) -- its own calibration
+                    # beats any curve fitted here, so gate the counters on
+                    # the probability directly. The draw counter stays on cp
+                    # (same |eff| <= ADJ_DRAW_CP rule as every other side),
+                    # so mixed-family games share one draw criterion.
+                    w_p, _, l_p = (x / (sum(wdl) or 1) for x in wdl)
+                    winning = (mate is not None and mate > 0) or w_p >= ADJ_WIN_P
+                    losing = (mate is not None and mate < 0) or l_p >= ADJ_WIN_P
+                    adj_win[mover_is_white] = (adj_win[mover_is_white] + 1
+                                               if winning else 0)
+                    adj_lose[mover_is_white] = (adj_lose[mover_is_white] + 1
+                                                if losing else 0)
+                    adj_draw = (adj_draw + 1
+                                if mate is None and eff is not None
+                                and abs(eff) <= ADJ_DRAW_CP else 0)
                 else:
                     adj_win[mover_is_white] = (adj_win[mover_is_white] + 1
                                                if eff >= thr else 0)
