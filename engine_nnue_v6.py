@@ -9,7 +9,7 @@ weights. The baseline is engine_nnue_v4.py, which is byte-equivalent to
 shipped cengine plus the lazy flip, i.e. the v59 config:
 
     python3 match.py engine_nnue_v6.py engine_nnue_v4.py 5000 0 \
-        --workers 48 --tc 50+0.5 --seed 58 --sprt
+        --workers 48 --tc 50+0.5 --seed 59 --sprt
 
 v6 = the first net trained after the phantom-repetition fix (fc82cb7 /
 550a9e0), on gen10k: 800,000 self-play games relabelled at 10,000 nodes
@@ -20,7 +20,7 @@ and a timed run is fair. Held-out val 0.064895 -- NOT comparable to v4's
 distribution; only the A/B decides.
 
     python3 match.py engine_nnue_v6.py "Old Engine/58/engine58.py" 5000 0 \
-        --workers 48 --tc 50+0.5 --seed 58 --sprt
+        --workers 48 --tc 50+0.5 --seed 59 --sprt
 
 Its own file rather than an edit of an older shim on purpose: the SPRT
 state file is auto-named from the engine names, so a shared name would let
