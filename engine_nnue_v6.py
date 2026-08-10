@@ -5,10 +5,12 @@ isolated and ACCEPTED on 2026-08-09 (engine_nnue_v4 vs Old Engine/58, LLR
 +2.950 at 2,264 pairs), so the engine's future config runs LAZY_NNUE = True
 -- measuring v6 with lazy OFF would price a config that will never ship.
 Both sides of this A/B therefore run lazy, and the only difference is the
-weights. The baseline is engine_nnue_v4.py, which is byte-equivalent to
-shipped cengine plus the lazy flip, i.e. the v59 config:
+weights. The baseline is the FROZEN v59 snapshot -- not engine_nnue_v4.py,
+although the two are byte-equivalent today: the shim subclasses live
+cengine.py and would silently drift with any future edit to it, while
+Old Engine/59 cannot move.
 
-    python3 match.py engine_nnue_v6.py engine_nnue_v4.py 5000 0 \
+    python3 match.py engine_nnue_v6.py "Old Engine/59/engine59.py" 5000 0 \
         --workers 48 --tc 50+0.5 --seed 59 --sprt
 
 v6 = the first net trained after the phantom-repetition fix (fc82cb7 /
@@ -18,9 +20,6 @@ v6 = the first net trained after the phantom-repetition fix (fc82cb7 /
 and a timed run is fair. Held-out val 0.064895 -- NOT comparable to v4's
 0.066663 or v5's 0.063676, because deeper labels are a different target
 distribution; only the A/B decides.
-
-    python3 match.py engine_nnue_v6.py "Old Engine/58/engine58.py" 5000 0 \
-        --workers 48 --tc 50+0.5 --seed 59 --sprt
 
 Its own file rather than an edit of an older shim on purpose: the SPRT
 state file is auto-named from the engine names, so a shared name would let
