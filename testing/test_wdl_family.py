@@ -26,8 +26,18 @@ assert F.eval_family("engine_nnue") == "nnue"
 assert F.eval_family("engine_nnue_lazy") == "nnue"
 assert F.eval_family("engine55") == "hce"
 assert F.eval_family("cengine") == "hce"
-assert F.eval_family("stockfish_engine") is None
+# Contract changed 2026-08-10 (was: None). Stockfish is the third family:
+# its cp scale gets its own model for match.py's per-side adjudication. It
+# is extractable ONLY from allowlisted strength-matched logs -- in-era
+# nowhere else, so a casual SF log still contributes nothing.
+assert F.eval_family("stockfish_engine") == "sf"
+assert not F._side_in_era("stockfish_engine", "cengine_vs_stockfish_engine_2026-08-08_00-00-00_1.txt")
+_sf_listed = next(iter(F.NEAR_EQUAL_STOCKFISH_LOGS), None)
+if _sf_listed:                      # allowlist may be empty (it is, 2026-08-10)
+    assert F._side_in_era("stockfish_engine", _sf_listed + ".txt")
 assert F.eval_family("engine_phalanx") is None      # Python-era arm
+assert F.eval_family("engine58") == "nnue"          # snapshots by NUMBER
+assert F.eval_family("engine57") == "hce"           # ...engine57 is hce forever
 
 # --- the pairing is near-equal in STRENGTH regardless of family ------- #
 assert F.near_equal_pair("engine_nnue", "engine55", NNUE_LOG)
