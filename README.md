@@ -90,9 +90,13 @@ measured 45.45%.
 Those numbers have been removed rather than annotated. A retracted measurement
 kept on the page with a footnote still gets quoted.
 
-**Withdrawn pending re-run:** pawn odds (its 90.30% run contained 63 draws,
-so the buggy termination fired throughout) and the head-to-head against the
-Python engine (40 draws, same reason).
+**Withdrawn pending re-run:** pawn odds -- its 90.30% run contained 63 draws,
+so the buggy termination fired throughout.
+
+Against its own Python engine (v30, ~2440-2450), v59 scored **195W / 5D / 0L
+over 200 games** (98.75%) at 50+0.50 on the corrected harness, 2026-08-12. No
+rating is quoted; the gap is past what Elo can express. This replaces the
+withdrawn 1,815-0-40, which was measured through the buggy termination.
 
 **Standing, with their vintage:** knight, rook and queen odds vs full-strength
 SF-18 are all saturated at 100%, measured at v53/v54 under 45+0.15. Those runs
