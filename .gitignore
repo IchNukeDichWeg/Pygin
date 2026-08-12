@@ -267,3 +267,9 @@ sprt_*_d1[0-9].json
 sprt_*_mt[0-9]*.json
 sprt_*numbfish*.json
 old_json/
+
+# bmm-chess comparison workspace (clone + compare.py + report). Local-only and
+# now standing, so it is named here instead of living in .git/info/exclude,
+# which only exists on this machine. The `/*/` rule above already ignores it;
+# this entry is the documentation.
+bench_bmm/
