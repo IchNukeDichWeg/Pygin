@@ -77,14 +77,14 @@ import math
 # Keep these in step with
 # data/wdl_model.json -- they drifted apart once already, and the file said it
 # took its numbers from there the whole time. match.py reads the json directly.
-_WDL_AS = [126.63368176585391, -111.73405887543971, -125.58159094450833, 228.58196325755645]
-_WDL_BS = [207.81332379912743, -273.838615511875, 80.4700362124112, 71.9181906747489]
+_WDL_AS = [-149.64916927492763, 455.96521022945683, -478.9409658684033, 276.49690384866153]
+_WDL_BS = [83.9952667919631, 0.571979115933054, -95.9143821000079, 106.51542351556262]
 # NNUE-family WDL model, fitted by fit_wdl_model.py alongside the hce one and
 # kept in step by it. LIVE since v58: the runtime reports WDL on the eval it
 # actually plays, so arming USE_NNUE has to move this too or every `wdl` line
 # is calibrated to an eval the engine is no longer using.
-_WDL_AS_NNUE = [-467.71492964210836, 1120.898375300396, -908.3996188960094, 351.86244057959533]
-_WDL_BS_NNUE = [43.726666050711316, 106.753612490886, -179.64477944908862, 117.25779903299099]
+_WDL_AS_NNUE = [-42.4794557137675, 283.9660641459952, -398.6448482585931, 257.6203371829198]
+_WDL_BS_NNUE = [163.48997419569673, -126.20854083111506, -36.53128833766639, 94.56265702564619]
 
 # Which family we report WDL on. Bound ONCE, by _bind_wdl_family() right after
 # the engine is constructed -- deliberately not from cengine.Engine.USE_NNUE at
