@@ -242,6 +242,16 @@ def main():
                     help="records per held-out block (default %d). Blocks, "
                          "not strided records, so the holdout is GAME-"
                          "granular -- see val_block_mask()." % VAL_BLOCK)
+    ap.add_argument("--cache-chunks", action="store_true",
+                    help="in --chunk mode, keep each chunk's PREPARED tensors "
+                         "in RAM after their first use, so epochs 2..N skip "
+                         "the re-prepare entirely. Identical math -- prepare "
+                         "is deterministic per chunk and only the batch "
+                         "shuffle differs per epoch; measured 47%% of epoch "
+                         "time on an M2. Costs roughly the prepared-tensor "
+                         "footprint of the WHOLE train split in RAM (~250-300 "
+                         "bytes/record, so ~18 GB at 64M records) -- for the "
+                         "96-core boxes, not the 16 GB Mac.")
     ap.add_argument("--resume", action="store_true",
                     help="continue an interrupted run instead of starting "
                          "over. Reads how many epochs finished from "
@@ -326,6 +336,7 @@ def main():
     ckpt_path = os.path.join(args.checkpoint_dir, "best.pt")
     curve_path = os.path.join(args.checkpoint_dir, "loss_curve.csv")
     best_val, best_epoch = float("inf"), -1
+    chunk_cache = {} if getattr(args, "cache_chunks", False) else None
     last_path = os.path.join(args.checkpoint_dir, "last.pt")
     start_ep = 0
 
@@ -370,10 +381,15 @@ def main():
             erng.shuffle(starts)
 
             def _chunk(st):
+                if chunk_cache is not None and st in chunk_cache:
+                    return chunk_cache[st]
                 sub = np.asarray(train_view[st:st + args.chunk])
                 keep = ~val_block_mask(np.arange(st, st + len(sub)),
                                        val_stride, args.val_block)
-                return prepare(sub[keep], log=lambda *a: None)
+                out = prepare(sub[keep], log=lambda *a: None)
+                if chunk_cache is not None:
+                    chunk_cache[st] = out
+                return out
 
             sources = ((_chunk(st), int(erng.integers(1 << 30)))
                        for st in starts)
