@@ -72,10 +72,29 @@ class Engine:
         self.last_depth = 0
         self.last_pv = ""
 
+        self._spawn()
+
+    def _spawn(self):
         self._proc = subprocess.Popen(
             [_find_sf()], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL, text=True, bufsize=1)
         self._uci_handshake()
+
+    def _ensure_alive(self):
+        """Respawn a dead Stockfish rather than poisoning the whole run.
+
+        SF-18 has segfaulted inside its own NNUE eval on this Mac (identical
+        crash signature on 2026-08-06 and 2026-08-12, macOS DiagnosticReports,
+        long before any harness change) -- rare, upstream, not ours to fix.
+        What IS ours: odds.py reuses one SF process per worker for the whole
+        campaign, so without this a single segfault turned every remaining
+        game in that worker into an instant error -- 950 of 1,000 games died
+        that way on 2026-08-12. A respawn costs the crashed game only. The
+        wrapper is stateless per move (full FEN each `go`), so a fresh
+        process with a fresh handshake is a correct continuation; only SF's
+        hash is lost."""
+        if self._proc.poll() is not None:
+            self._spawn()
 
     # -- UCI plumbing ------------------------------------------------- #
     def _send(self, cmd):
@@ -146,7 +165,13 @@ class Engine:
 
     def _go(self, board, limit):
         white_to_move = board.turn == chess.WHITE
-        self._send(f"position fen {board.fen()}")
+        self._ensure_alive()
+        try:
+            self._send(f"position fen {board.fen()}")
+        except BrokenPipeError:
+            # Died between poll() and the write: respawn once and retry.
+            self._spawn()
+            self._send(f"position fen {board.fen()}")
         self._send(f"go {limit}")
         last_info = None
         bestmove = None
