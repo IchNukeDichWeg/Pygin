@@ -273,3 +273,11 @@ old_json/
 # which only exists on this machine. The `/*/` rule above already ignores it;
 # this entry is the documentation.
 bench_bmm/
+
+# export.sh tarballs pulled off a rented A/B box: datasets, checkpoints and a
+# copy of the campaign state, ~274MB each. Disposable by construction -- the
+# state files inside are the ones already committed at the turn the run ended
+# (verified byte-identical for the v6/v7 campaigns), so the tarball is a
+# transport format, never a source of truth. Named so a forgotten one cannot be
+# staged by a wildcard `git add`.
+pygin_export_*.tar.gz
