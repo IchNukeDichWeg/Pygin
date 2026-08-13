@@ -80,13 +80,21 @@ def prepare(recs, log=print):
             torch.from_numpy(np.ascontiguousarray(target)))
 
 
+DEVICE = torch.device("cpu")    # set once in main() from --device; the
+                                # tensors prepare() builds stay on the CPU
+                                # (they are the whole train split -- far too
+                                # big for GPU memory) and each BATCH is moved
+                                # as it is drawn, which is the standard
+                                # host-side-dataset pattern.
+
+
 def batches(tensors, bs, shuffle=True, seed=0):
     n = len(tensors[-1])
     order = np.random.default_rng(seed).permutation(n) if shuffle \
         else np.arange(n)
     for i in range(0, n, bs):
         sel = torch.from_numpy(order[i:i + bs])
-        yield tuple(t[sel] for t in tensors)
+        yield tuple(t[sel].to(DEVICE, non_blocking=True) for t in tensors)
 
 
 def evaluate(model, tensors, bs):
@@ -242,6 +250,16 @@ def main():
                     help="records per held-out block (default %d). Blocks, "
                          "not strided records, so the holdout is GAME-"
                          "granular -- see val_block_mask()." % VAL_BLOCK)
+    ap.add_argument("--device", default="cpu",
+                    choices=("cpu", "cuda", "mps"),
+                    help="where the training math runs. 'cuda' for a rented "
+                         "GPU box, 'mps' for Apple-silicon Macs, default "
+                         "cpu. Changes RUN-TO-RUN DETERMINISM: GPU reductions "
+                         "are not bit-reproducible, so two identical GPU runs "
+                         "differ in the last digits -- fine, the A/B judges "
+                         "nets, but do not expect byte-identical loss curves. "
+                         "The recipe (data, dims, schedule, epochs) is "
+                         "unchanged.")
     ap.add_argument("--cache-chunks", action="store_true",
                     help="in --chunk mode, keep each chunk's PREPARED tensors "
                          "in RAM after their first use, so epochs 2..N skip "
@@ -328,8 +346,12 @@ def main():
         train_t = prepare(train)
     val_t = prepare(val)
 
-    model = NNUEModel(d2=args.d2 or D2)
+    global DEVICE
+    DEVICE = torch.device(args.device)
+    model = NNUEModel(d2=args.d2 or D2).to(DEVICE)
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
+    if args.device != "cpu":
+        print(f"training on {args.device}", flush=True)
     os.makedirs(CHECKPOINTS_DIR, exist_ok=True)
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     os.makedirs(args.checkpoint_dir, exist_ok=True)
@@ -444,7 +466,8 @@ def main():
                 marker = ""
                 if va < best_val:
                     best_val, best_epoch = va, ep
-                    best_state = copy.deepcopy(model.state_dict())
+                    best_state = {k: v.detach().cpu().clone()
+                                  for k, v in model.state_dict().items()}
                     torch.save(best_state, ckpt_path)
                     marker = "  *best"
                 print(f"epoch {ep:3d}  train {tr:.6f}  val {va:.6f}  "
@@ -455,7 +478,8 @@ def main():
                 # counter live nowhere else. Written after the curve flush so
                 # a kill between the two loses the checkpoint, never the
                 # record of what was done.
-                torch.save({"model": model.state_dict(),
+                torch.save({"model": {k: v.detach().cpu().clone()
+                                      for k, v in model.state_dict().items()},
                             "opt": opt.state_dict(),
                             "epoch": ep}, last_path)
                 bad = 0 if marker else bad + 1
@@ -480,6 +504,7 @@ def main():
         sys.exit(f"train: interrupted before the first epoch finished; no net "
                  f"written ({ckpt_path} is from an earlier run and is NOT "
                  f"this dataset's -- exporting it would be a silent lie)")
+    model = model.cpu()                        # export + quant check on CPU
     if best_state is not None:                 # in-memory: cannot be deleted
         model.load_state_dict(best_state)
     else:                                      # --export-only path
