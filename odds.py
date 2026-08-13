@@ -104,7 +104,16 @@ ODDS_GIVEN_BY = "engine_2"
                                         # the ceiling -- rook odds went the same way.
 ODDS_SQUARES = ["f2"]                   # PAWN odds (f-pawn) -- the ACTIVE
                                         # yardstick, the rung with headroom.
-                                        # 2026-08-05 @v58 (first hybrid):
+                                        # 2026-08-13 @v59, CORRECTED harness
+                                        # (fc82cb7) + SF respawn + native WDL:
+                                        #   81.00% (1000g, +251.89 +/-35.2)
+                                        #   704W / 212D / 84L, 50+0.50, FULL
+                                        #   strength. The pre-fix 90.30% below
+                                        #   is NOT comparable: ~9 points of it
+                                        #   were phantom draws erasing SF's
+                                        #   conversions.
+                                        # 2026-08-05 @v58 (first hybrid,
+                                        # PRE-FIX harness -- do not compare):
                                         #   90.30% (500g, +387.57 +/-93.0)
                                         #   420W / 63D / 17L, 50+0.50
                                         #   NOT a clean delta on v54: the TC

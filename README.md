@@ -90,8 +90,11 @@ measured 45.45%.
 Those numbers have been removed rather than annotated. A retracted measurement
 kept on the page with a footnote still gets quoted.
 
-**Withdrawn pending re-run:** pawn odds -- its 90.30% run contained 63 draws,
-so the buggy termination fired throughout.
+**Pawn odds (f2)** -- the active rung, and the one handicap Stockfish still
+scores against: **81.00% over 1,000 games** (704W / 212D / 84L, +251.89
++/-35.2) at v59, 50+0.50, full-strength SF-18, corrected harness, 2026-08-13.
+The withdrawn pre-fix figure was 90.30%; about nine points of it were the
+buggy termination erasing Stockfish's conversions, not engine strength.
 
 Against its own Python engine (v30, ~2440-2450), v59 scored **195W / 5D / 0L
 over 200 games** (98.75%) at 50+0.50 on the corrected harness, 2026-08-12. No
