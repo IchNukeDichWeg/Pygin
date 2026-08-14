@@ -296,70 +296,94 @@ def run_bench(engine, depth=11):
                                      _py.DRAW_AVOID_MARGIN)  # host's value
 
 
-def _emit_multipv(engine, board, best_mv, k, budget, white_to_move,
-                  stop_evt, fixed_depth=None):
-    """MultiPV k>1 (analysis feature, never active in match play): line 1 is
-    the just-finished main search; lines 2..k re-search with the better
-    lines' first moves EXCLUDED at the C root (root_exclude_*, abi 10) --
-    the warm TT makes those re-searches cheap. Emits one
-    `info ... multipv i ...` line per line, best first, BEFORE bestmove.
-    The engine's last_* snapshot is restored afterwards so PM-01's premove
-    certification (and the GUI-facing state) still see line 1."""
+def _search_multipv(engine, board, k, budget, max_depth, white_to_move,
+                    stop_evt, fixed_depth=None):
+    """Stockfish-style PROGRESSIVE MultiPV: at EVERY iterative-deepening
+    depth, search all k lines and emit all k, so a GUI shows k lines from
+    the first depth and watches them refine together.
+
+    Replaces the old emit-at-the-end design (2026-08-14), which ran the
+    main search to completion and only THEN re-searched k-1 extra lines,
+    printing everything in one burst at the very end. Two faults, both
+    measured on `setoption MultiPV 5` + `go movetime 3000`: nothing
+    appeared for 6.19s and then all five lines landed at once, and the
+    search overran its own budget by 2x because each extra line was given
+    a fresh time slice on top of the main search.
+
+    Lines 2..k are searched with the better lines' first moves EXCLUDED at
+    the C root (root_exclude_*, abi 10); the warm TT makes those cheap.
+    Returns line 1's move -- the caller's bestmove -- with the engine's
+    last_* snapshot left describing line 1, which is what PM-01's premove
+    certification and the GUI-facing state read.
+
+    MultiPV > 1 is an ANALYSIS feature and never active in match play, so
+    the extra node cost is deliberate: it buys the display GUIs expect.
+    """
     import time as _t
     lib = engine._lib
-    depth = engine.last_depth or 1
-    # FB-38: line 1's dt was hardcoded 0.0 -> time_ms clamped to 1 ->
-    # info_line printed nps = nodes*1000 (billions). The main search's
-    # real elapsed is the final search_log record (int ms -> seconds).
-    main_ms = (engine.search_log[-1].get("time_ms", 0)
-               if engine.search_log else 0)
-    lines = [(engine.last_score, engine.last_pv, depth,
-              engine.nodes_searched, max(main_ms, 1) / 1000.0)]
-    excl = [best_mv]
-    sv = (engine.last_score, engine.last_pv, engine.last_depth,
-          engine.nodes_searched, engine.use_book, engine.on_depth,
-          engine.on_final)
-    engine.use_book = False              # book replies would shadow line 2+
-    engine.on_depth = engine.on_final = None   # no per-depth spam for extras
-    # `go depth N` asks for depth N on EVERY line, not just line 1. The extras
-    # used to be time-sliced regardless -- (budget or 1.0)*0.25, i.e. 0.25s for
-    # a depth-limited go -- so `go depth 20` reported depth 20 for multipv 1 and
-    # depth 13 for 2..5, which is simply not what was asked for. `go depth 10`
-    # hid it: depth 10 fits inside the slice.
-    #
-    # It cannot key on `budget is None`: that is also true of `go infinite` and
-    # bare `go`, where max_depth is the 60 cap and depth-limiting the extras
-    # would search each to depth 60 and print nothing for minutes. So the go
-    # handler passes fixed_depth ONLY when the user named a depth.
-    per = max(0.05, min(1.0, (budget or 1.0) * 0.25))  # per extra line
+    t0 = _t.perf_counter()
+    deadline = (t0 + budget) if budget is not None else None
+    top = fixed_depth if fixed_depth is not None else max_depth
+    sv = (engine.use_book, engine.on_depth, engine.on_final)
+    engine.use_book = False          # a book reply has no PV to show
+    engine.on_depth = engine.on_final = None   # we emit; no per-depth spam
+    best_first, best_state, total_nodes = None, None, 0
     try:
-        for _ in range(k - 1):
+        for d in range(1, max(1, top) + 1):
             if stop_evt.is_set() or engine._abort:
                 break
-            lib.root_exclude_clear()
-            for m in excl:               # 15-bit key: from|to<<6|promo<<12
-                lib.root_exclude_add(m.from_square | (m.to_square << 6)
-                                     | ((m.promotion or 0) << 12))
-            t0 = _t.perf_counter()
-            if fixed_depth is not None:
-                mv = engine.get_best_move(board, fixed_depth)
-            else:
-                mv = engine.get_best_move_timed(board, per, depth)
-            dt = _t.perf_counter() - t0
-            if mv is None:               # fewer legal moves than k
+            # Do not START a depth that cannot finish: past ~45% of the
+            # budget the next depth reliably costs more than what is left,
+            # and overrunning `movetime` is a protocol violation.
+            if deadline is not None and _t.perf_counter() - t0 > 0.45 * budget:
                 break
-            lines.append((engine.last_score, engine.last_pv,
-                          engine.last_depth, engine.nodes_searched, dt))
-            excl.append(mv)
+            lines, excl, depth_state = [], [], None
+            for i in range(k):
+                if stop_evt.is_set() or engine._abort:
+                    break
+                if deadline is not None and _t.perf_counter() >= deadline:
+                    break
+                lib.root_exclude_clear()
+                for m in excl:       # 15-bit key: from|to<<6|promo<<12
+                    lib.root_exclude_add(m.from_square | (m.to_square << 6)
+                                         | ((m.promotion or 0) << 12))
+                mv = engine.get_best_move(board, d)
+                # Two ways to run out of lines. None is the clean one; the
+                # other is the C root ignoring a fully-exhausted exclusion
+                # list and handing back an already-listed move, which used
+                # to print k copies of the same PV on a position with one
+                # legal reply. Either way we are done: k is capped by the
+                # legal move count, as in every other engine.
+                if mv is None or mv in excl:
+                    break
+                total_nodes += engine.nodes_searched
+                lines.append((engine.last_score, engine.last_pv,
+                              engine.last_depth or d))
+                excl.append(mv)
+                if i == 0:
+                    best_first = mv
+                    depth_state = (engine.last_score, engine.last_pv,
+                                   engine.last_depth, engine.nodes_searched)
+            lib.root_exclude_clear()
+            if not lines:
+                break
+            # A depth is emitted only when it COMPLETED: a partial set would
+            # make a GUI drop lines mid-search, which looks like a crash.
+            if len(lines) == min(k, len(lines)) and depth_state is not None:
+                best_state = depth_state
+                el = max(1, int((_t.perf_counter() - t0) * 1000))
+                for i, (score, pv, dd) in enumerate(lines, 1):
+                    out(info_line({"depth": dd, "score": score, "pv": pv,
+                                   "nodes": total_nodes, "time_ms": el},
+                                  white_to_move, engine, multipv=i,
+                                  board=board))
     finally:
-        lib.root_exclude_clear()         # NEVER leak exclusions into play
-        (engine.last_score, engine.last_pv, engine.last_depth,
-         engine.nodes_searched, engine.use_book, engine.on_depth,
-         engine.on_final) = sv
-    for i, (score, pv, d, nodes, dt) in enumerate(lines, 1):
-        rec = {"depth": d, "score": score, "pv": pv, "nodes": nodes,
-               "time_ms": max(1, int(dt * 1000))}
-        out(info_line(rec, white_to_move, engine, multipv=i, board=board))
+        lib.root_exclude_clear()     # NEVER leak exclusions into play
+        engine.use_book, engine.on_depth, engine.on_final = sv
+        if best_state is not None:   # leave line 1 as the visible state
+            (engine.last_score, engine.last_pv, engine.last_depth,
+             engine.nodes_searched) = best_state
+    return best_first
 
 
 # --------------------------------------------------------------------------- #
@@ -753,22 +777,21 @@ def main():
                 # book path byte-identical (match play never sets MultiPV).
                 if getattr(engine, "multipv", 1) > 1 and engine.use_book:
                     mpv_book, engine.use_book = engine.use_book, False
-                if budget is None:
+                # MultiPV > 1 (analysis, never match play) replaces the
+                # single search entirely: _search_multipv runs its own
+                # deepening loop so all k lines appear from depth 1 and
+                # refine together, Stockfish-style. =1 and searchmoves keep
+                # the original path byte-identical.
+                if getattr(engine, "multipv", 1) > 1 and not sm_active:
+                    mv = _search_multipv(
+                        engine, search_board, engine.multipv, budget,
+                        max_depth, white_to_move, stop_evt,
+                        fixed_depth=(max_depth if "depth" in params else None))
+                elif budget is None:
                     mv = engine.get_best_move(search_board, max_depth)
                 else:
                     mv = engine.get_best_move_timed(search_board, budget,
                                                     max_depth)
-                # MultiPV: extra lines only when the option is >1 AND a real
-                # search ran (book/tb hits and stopped searches are skipped);
-                # =1 is byte-identical to the pre-MultiPV path.
-                if (getattr(engine, "multipv", 1) > 1 and mv is not None
-                        and not sm_active
-                        and engine.last_pv and not stop_evt.is_set()
-                        and not engine._abort):
-                    _emit_multipv(engine, search_board, mv, engine.multipv,
-                                  budget, white_to_move, stop_evt,
-                                  fixed_depth=(max_depth if "depth" in params
-                                               else None))
             except Exception as ex:
                 print(f"cuci: search error: {ex!r}", file=sys.stderr)
             finally:
