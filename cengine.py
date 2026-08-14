@@ -223,11 +223,11 @@ longer than it should have been. The v5 net then took val down a further
 floor" comes from. The label-DEPTH conclusion survives; the reasoning
 that reached it did not.
 
-OWED: an arm64 confirmation. v3 measured +5.70 +/- 4.6 on arm64 against
-+0.52 on x86, so the architecture spread is real and v4 has only been
-measured on x86. Shipped armed anyway because the risk direction is
-favourable (arm64 read HIGHER for v3) and NNUE_REQUIRE_SIMD already refuses
-to arm the net on a scalar build, where it would make the engine worse.
+PAID 2026-08-14: the arm64 confirmation. v59 as shipped vs Old Engine/57
+on the Mac: GSPRT[0,4] LLR +2.955 ACCEPT at 671 pooled pairs, ~+46 pooled
+(bound-stopped, biased), ptnml 11/97/306/219/38. The v3-era pattern held:
+arm64 reads far above x86 for this net family (x86 read +26 bound-stopped
+for the same comparison). Two instruments, never pooled, same verdict.
 
 v59 = v58 + **FI-106 lazy NNUE eval armed** (LAZY_NNUE True): skip the net
 where a cheap bound already decides the node. The FIRST release measured as
