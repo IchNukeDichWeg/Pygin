@@ -281,3 +281,6 @@ bench_bmm/
 # transport format, never a source of truth. Named so a forgotten one cannot be
 # staged by a wildcard `git add`.
 pygin_export_*.tar.gz
+puzzles_tactics.json
+puzzles_tactics_by_fen.csv
+*.tmp
