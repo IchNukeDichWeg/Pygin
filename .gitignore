@@ -284,3 +284,4 @@ pygin_export_*.tar.gz
 puzzles_tactics.json
 puzzles_tactics_by_fen.csv
 *.tmp
+PUZZLES_README.md
