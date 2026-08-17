@@ -40,6 +40,7 @@ Elo2400.bin
 
 # --- NEVER publish: private / credential-bearing helper (chess.com cookies) ---
 chesscom_analysis.py
+chesscom_review_test.py
 *secret*
 *token*
 *.key
