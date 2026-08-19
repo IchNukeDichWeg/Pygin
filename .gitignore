@@ -286,3 +286,5 @@ puzzles_tactics.json
 puzzles_tactics_by_fen.csv
 *.tmp
 PUZZLES_README.md
+puzzles-json.zip
+puzzles-csv.zip
