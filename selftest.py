@@ -23,6 +23,7 @@ update it together with any confirmed search-behaviour change (the engine.py
 docstring's version history records the current reference).
 """
 
+import glob
 import importlib.util
 import os
 import random
@@ -1055,6 +1056,23 @@ try:
           detail=", ".join(_hits[:4]) if _hits else "")
 except Exception as _e:                                   # no git, or not a checkout
     print(f"  note  could not run the path scan ({_e})")
+
+# The NNUE trainer and its helpers are never imported by the engine, so
+# nothing above would notice a syntax error in them -- and the place that
+# finds out is a rented GPU box, hours into a queue, after the box has
+# already been paid for. compile() rather than import: it catches the
+# compile-time errors (a `global` declared after the name is read, say)
+# without needing torch installed on the machine running the ladder.
+print("\n--- NNUE tooling compiles ---")
+_nnue_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "NNUE")
+_bad = []
+for _f in sorted(glob.glob(os.path.join(_nnue_dir, "*.py"))):
+    try:
+        compile(open(_f, encoding="utf-8").read(), _f, "exec")
+    except SyntaxError as _e:
+        _bad.append(f"{os.path.basename(_f)}:{_e.lineno} {_e.msg}")
+check(f"{len(glob.glob(os.path.join(_nnue_dir, '*.py')))} NNUE/*.py compile",
+      not _bad, detail="; ".join(_bad[:3]))
 
 # --- verdict ------------------------------------------------------------- #
 if _failed:
