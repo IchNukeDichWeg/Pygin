@@ -261,6 +261,10 @@ def export_nnue(model, path):
 
 
 def main():
+    global LAMBDA              # --lambda rebinds it; prepare() reads it.
+                               # Must be declared before the first read of
+                               # LAMBDA below (argparse's default=), or
+                               # Python rejects the function at compile time.
     ap = argparse.ArgumentParser()
     ap.add_argument("dataset")
     ap.add_argument("--out", default=TOY_NET)
@@ -271,6 +275,17 @@ def main():
                          "thing that survives).")
     ap.add_argument("--epochs", type=int, default=40)
     ap.add_argument("--batch", type=int, default=8192)
+    ap.add_argument("--lambda", dest="lam", type=float, default=LAMBDA,
+                    metavar="L",
+                    help="search-score vs game-result blend for the label: "
+                         "L*cp + (1-L)*result. Default %(default)s. Use "
+                         "L=1.0 to train on search scores ALONE, which is "
+                         "the only correct setting for a corpus whose game "
+                         "results are untrustworthy -- ab_logs carries "
+                         "pre-fix phantom-repetition draws (measured W/D/L "
+                         "39.0/41.9/19.1 against a clean corpus's "
+                         "41.7/18.6/39.7), so its cp labels are sound while "
+                         "its result column is both inflated and skewed")
     ap.add_argument("--d2", type=int, default=None,
                     help="width of the FIRST tail layer (default 32). This is "
                          "94%% of the tail's MACs and the tail is ~96%% of an "
@@ -349,6 +364,8 @@ def main():
                          "(0 = all in memory; use ~2000000 for 50M-scale)")
     args = ap.parse_args()
 
+    LAMBDA = args.lam          # prepare() reads the module global
+
     torch.manual_seed(args.seed)
     if args.export_only:
         # Recovery path. best.pt is written every time val improves, but only
@@ -392,6 +409,11 @@ def main():
                                args.val_block)
         train = np.asarray(recs[keep])
     print(f"dataset {args.dataset}: {val_mask_note}")
+    if LAMBDA >= 1.0:
+        _lab = "search score ONLY, game result unused"
+    else:
+        _lab = f"{LAMBDA:g}*cp + {1 - LAMBDA:g}*result"
+    print(f"label: lambda {LAMBDA:g} ({_lab})", flush=True)
     if not args.chunk:
         train_t = prepare(train)
     val_t = prepare(val)
