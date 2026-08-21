@@ -16,13 +16,28 @@ weaknesses than Stockfish does.
 
 --depth2 1 is what takes the searchless side OFF the clock, and it is not
 optional. The net ignores every go limit by construction, but a forward
-pass still costs real time: measured on this Mac's CPU over 10 moves from
-one 30-legal-move position, 9M has a median move of 1.37s (0.71-2.00) after
-a 3.2s build. Cost scales with the legal move count, because action-value
-batches one sequence per legal move, and with model size. Under a shared
-10+0.1 clock the 9M flags around move 14 and every game ends TIME_FORFEIT
-instead of on the board. A fixed limit makes uci_match.py skip clock
-accounting for that side; --tc1 then sets Pygin's strength alone.
+pass costs real time. Under a shared 10+0.1 clock the 9M flags around move
+14 and every game ends TIME_FORFEIT instead of on the board. A fixed limit
+makes uci_match.py skip clock accounting for that side; --tc1 then sets
+Pygin's strength alone.
+
+COST, measured on this Mac (M2, 10 cores, 16 GB), 10 moves from one
+30-legal-move position. This decides how many games are affordable, so it
+is recorded rather than estimated:
+
+    model  build   median move   range          ~min/game at 100 plies
+    9M      3.2s      1.37s      0.71 - 2.00       1.1
+    136M    4.3s      9.85s      9.34 - 12.40      8.2
+    270M    5.7s     34.56s     28.68 - 51.44     28.8
+
+Two multipliers on that. Cost scales with the LEGAL MOVE COUNT, because
+action-value pushes one sequence per legal move through the net, so sharp
+positions cost more than quiet ones. And --workers buys much less than the
+core count suggests: a single 270M forward pass already draws a median 360%
+CPU (peak 668%) of 1000% available, so jax is using 4-7 cores for one move
+and parallel workers contend rather than stack. Two workers is plausible,
+eight is not. Memory caps it too -- 270M is ~1.1 GB of float32 params per
+process before activations.
 
 MODELS. `setoption name Model value X` picks the checkpoint, so one command
 per model with no file edits (uci_match.py spells it --option2 Model=X).
