@@ -35,6 +35,7 @@ import copy
 import math
 import csv
 import os
+import shutil
 import sys
 import time
 
@@ -513,6 +514,20 @@ def main():
     args.out = stamp_net_hash(args.out)     # -> nnue_v1_<12 hex>.nnue
     print(f"exported best (epoch {best_epoch}, val {best_val:.6f}"
           f"{', STOPPED EARLY' if stopped else ''}) -> {args.out}")
+
+    # Pair the artifacts to the NET by its own sha, so a later run in the
+    # same checkpoint dir cannot orphan them. best.pt / loss_curve.csv are
+    # fixed names: two trainings sharing a directory silently left the
+    # second run's curve sitting next to the first run's net, with nothing
+    # on disk saying they did not belong together. The stamped copies are
+    # self-identifying; the plain names stay for --resume, which needs
+    # them where it left them.
+    stem = os.path.splitext(os.path.basename(args.out))[0]
+    for src, suffix in ((ckpt_path, "_best.pt"), (curve_path, "_loss_curve.csv")):
+        if os.path.isfile(src):
+            dst = os.path.join(args.checkpoint_dir, stem + suffix)
+            shutil.copy2(src, dst)
+            print(f"  paired artifact -> {os.path.basename(dst)}")
 
     # quantization sanity: float vs quantized-reference on a sample (cp MAE)
     model.eval()
