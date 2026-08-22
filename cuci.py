@@ -338,10 +338,13 @@ def _search_multipv(engine, board, k, budget, max_depth, white_to_move,
             if deadline is not None and _t.perf_counter() - t0 > 0.45 * budget:
                 break
             lines, excl, depth_state = [], [], None
+            cut = False          # depth abandoned mid-way, vs finished
             for i in range(k):
                 if stop_evt.is_set() or engine._abort:
+                    cut = True
                     break
                 if deadline is not None and _t.perf_counter() >= deadline:
+                    cut = True
                     break
                 lib.root_exclude_clear()
                 for m in excl:       # 15-bit key: from|to<<6|promo<<12
@@ -367,9 +370,17 @@ def _search_multipv(engine, board, k, budget, max_depth, white_to_move,
             lib.root_exclude_clear()
             if not lines:
                 break
-            # A depth is emitted only when it COMPLETED: a partial set would
-            # make a GUI drop lines mid-search, which looks like a crash.
-            if len(lines) == min(k, len(lines)) and depth_state is not None:
+            # A depth is emitted only when it COMPLETED: a partial set
+            # would make a GUI drop lines mid-search, which looks like a
+            # crash. "Complete" means the k-loop ended on its own -- either
+            # it produced all k lines or it ran out of legal moves, which is
+            # why this tests `cut` and NOT `len(lines) == k`: k is passed
+            # through uncapped, so on a position with fewer legal replies
+            # than k a length test would suppress every depth forever.
+            # (Until 2026-08-22 this read `len(lines) == min(k, len(lines))`,
+            # which is true for every reachable value and so guarded
+            # nothing; a timed search leaked its final part-depth to the GUI.)
+            if not cut and depth_state is not None:
                 best_state = depth_state
                 el = max(1, int((_t.perf_counter() - t0) * 1000))
                 for i, (score, pv, dd) in enumerate(lines, 1):
