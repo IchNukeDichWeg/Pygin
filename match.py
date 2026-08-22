@@ -1871,11 +1871,34 @@ def main():
         # engine.
         #
         # DELIBERATELY NOT the invariant at line 120 (SMP*N*2 <= cores): at
-        # smp=1 that would mean cores/2 workers, but every campaign in the
-        # ledger ran at cores-1 (the v55 A/B: 108 workers on 112 threads,
-        # ~1.9x oversubscribed). Enforcing the invariant would change the
-        # DEFAULT density and break comparability with every banked result.
-        # Dividing by ENGINE_SMP holds that density CONSTANT across thread
+        # smp=1 that would mean cores/2 workers. Changing this default would
+        # silently alter the density of every future run, so it stays put --
+        # but DO NOT read that as "cores-1 is the house instrument". It is
+        # not, and has not been since July 2026.
+        #
+        # WHAT THE DEFAULT COSTS, measured over the medians of ~4,000 logged
+        # moves per run on this project's own campaign logs:
+        #
+        #     workers 48  (cores/2-1)   2,283,952 nps    85% of the Mac
+        #     workers 95                1,280,358 nps    48%
+        #     workers 111 (--workers 0) 1,019,420 nps    38%
+        #
+        # `--workers 0` therefore plays every timed game at UNDER HALF the
+        # engine's real speed. That is symmetric, so an A/B's sign survives
+        # it, but the operating point is not the one the engine ships at and
+        # a change whose value grows with depth is measured where it has the
+        # least room to show.
+        #
+        # So TIMED campaigns pass --workers explicitly at cores/2-1, one
+        # engine per hardware thread. Every net A/B since 2026-08-09 ran that
+        # way at Workers: 48 -- engine_nnue_v4_vs_engine58 (the lazy-NNUE
+        # ACCEPT), engine_nnue_v6_vs_engine59 (the -10.51 rejection) and
+        # engine_nnue_v7_vs_engine59 -- and a new net A/B must match it or it
+        # is not comparable to the verdicts it follows up. The older cores-1
+        # numbers (the v55 A/B at 108 workers on 112 threads) are a SEPARATE
+        # instrument and do not pool with these.
+        #
+        # Dividing by ENGINE_SMP holds the density CONSTANT across thread
         # counts, which is what makes an SMP A/B comparable to a 1-thread one.
         cores = mp.cpu_count()
         smp = max(1, int(ENGINE_SMP))
