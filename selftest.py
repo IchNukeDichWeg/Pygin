@@ -1074,6 +1074,59 @@ for _f in sorted(glob.glob(os.path.join(_nnue_dir, "*.py"))):
 check(f"{len(glob.glob(os.path.join(_nnue_dir, '*.py')))} NNUE/*.py compile",
       not _bad, detail="; ".join(_bad[:3]))
 
+# config.cgroup_cores() decides torch's thread-pool size, and it runs at
+# train.py IMPORT time -- so anything it raises kills a training run before
+# it starts, on a rented box, after the dataset download. It is only ever a
+# speed optimisation, so every malformed /sys state must yield None (leave
+# torch alone), never an exception. Five of these crashed the first version.
+print("\n--- cgroup quota probe ---")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "NNUE"))
+try:
+    import io as _io
+    import builtins as _bi
+    from config import cgroup_cores as _cg
+    _real = _bi.open
+
+    def _fake(files):
+        def _o(path, *a, **k):
+            if str(path).startswith("/sys/fs/cgroup"):
+                if path in files:
+                    return _io.StringIO(files[path])
+                raise FileNotFoundError(path)
+            return _real(path, *a, **k)
+        return _o
+
+    V2, Q1 = "/sys/fs/cgroup/cpu.max", "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
+    P1 = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
+    _cases = [
+        ("v1 period missing",  {Q1: "150000"},                     None),
+        ("v2 empty",           {V2: ""},                           None),
+        ("v2 garbage",         {V2: "notanumber 100000"},          None),
+        ("v1 garbage",         {Q1: "abc"},                        None),
+        ("v1 zero period",     {Q1: "150000", P1: "0"},            None),
+        ("bare metal",         {},                                 None),
+        ("v2 unlimited",       {V2: "max 100000"},                 None),
+        ("v2 sub-core",        {V2: "50000 100000"},               None),
+        ("v2 real (15.36)",    {V2: "1536000 100000"},             15.36),
+        ("v1 valid 8",         {Q1: "800000", P1: "100000"},       8.0),
+        ("v2 bad -> v1 good",  {V2: "garbage", Q1: "400000", P1: "100000"}, 4.0),
+    ]
+    _bad = []
+    for _name, _files, _want in _cases:
+        _bi.open = _fake(_files)
+        try:
+            _got = _cg()
+        except Exception as _e:
+            _got = f"RAISED {type(_e).__name__}"
+        finally:
+            _bi.open = _real
+        if _got != _want:
+            _bad.append(f"{_name}: {_got} != {_want}")
+    check(f"cgroup_cores over {len(_cases)} /sys states", not _bad,
+          detail="; ".join(_bad[:3]))
+except Exception as _e:
+    print(f"  note  could not run the cgroup probe ({_e})")
+
 # --- verdict ------------------------------------------------------------- #
 if _failed:
     print(f"\n== FAILED: {len(_failed)} check(s): {', '.join(_failed)} ==")

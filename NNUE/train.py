@@ -46,45 +46,13 @@ sys.path.insert(0, NNUE_DIR)
 
 import torch
 
+from config import (OUT_CP, THREAT_DIM, QA, CHECKPOINTS_DIR, TOY_NET, D2,
+                    LABEL_MAX_ABS_CP, stamp_net_hash, cgroup_cores)
 
-def _cgroup_cores():
-    """Cores this process may actually use, not what ``nproc`` reports.
-
-    Inside a container ``nproc`` shows the HOST's core count while the
-    cgroup enforces a much smaller quota. torch sizes its thread pool from
-    the former, so every parallel region oversubscribes, blows the quota
-    inside its 100ms period, and the kernel freezes the whole cgroup until
-    the period rolls over. MEASURED on the rented Blackwell box
-    2026-08-21: quota 15.36 cores while nproc reported 128, torch
-    defaulting to 64 threads, and 108 SECONDS of aggregate throttled
-    thread-time per 20s of wall clock. Also measured, on that same box:
-    8.2 min/chunk for one net against 1.9 min/chunk for an earlier one.
-    That the throttling explains the whole gap is INFERRED, not measured
-    -- the earlier run's own throttle rate was never sampled. Either way
-    correctness is untouched; oversubscription costs wall clock only.
-
-    Returns None when there is no quota (bare metal), leaving torch alone."""
-    for path, parse in (("/sys/fs/cgroup/cpu.max",            # cgroup v2
-                         lambda t: None if t.split()[0] == "max"
-                         else float(t.split()[0]) / float(t.split()[1])),
-                        ("/sys/fs/cgroup/cpu/cpu.cfs_quota_us",   # v1
-                         None)):
-        try:
-            with open(path) as f:
-                txt = f.read().strip()
-        except OSError:
-            continue
-        if parse is not None:
-            return parse(txt)
-        quota = float(txt)
-        if quota <= 0:
-            return None
-        with open("/sys/fs/cgroup/cpu/cpu.cfs_period_us") as f:
-            return quota / float(f.read().strip())
-    return None
-
-
-_quota = _cgroup_cores()
+# Size torch's pool BEFORE any tensor work: on a container it otherwise
+# builds a pool from the HOST's core count and throttles against the
+# cgroup quota. See config.cgroup_cores for the measurement.
+_quota = cgroup_cores()
 if _quota is not None:
     # Leave a core of headroom: the dataloader/main thread and CUDA's own
     # helpers also draw on the same quota.
@@ -94,9 +62,6 @@ if _quota is not None:
         torch.set_num_threads(_n)
         print(f"cgroup quota {_quota:.2f} cores -> torch threads {_n} "
               f"(default was {_was})", flush=True)
-
-from config import (OUT_CP, THREAT_DIM, QA, CHECKPOINTS_DIR, TOY_NET, D2,
-                    LABEL_MAX_ABS_CP, stamp_net_hash)
 from data_format import read_pygdata
 from model import NNUEModel
 from nnue_ref import extract_features, QuantNet
