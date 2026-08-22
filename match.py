@@ -2559,6 +2559,23 @@ def main():
               f"stopping; the games played are a complete result]")
     except _SPRTStop:
         stopped = True
+        # MUST also set `interrupted`, which is what picks the shutdown path
+        # (graceful=not interrupted at the bottom of this function).
+        # _shutdown_workers' own docstring already lists SPRT among the cases
+        # that need the TERMINATE path: the graceful path posts one sentinel
+        # per worker with in_q.put(None), and on an early stop the queue still
+        # holds every unplayed job -- thousands of them, far past the ~64KB
+        # pipe buffer -- so that put() blocks forever. The summary, log, PGN
+        # and SPRT state are all written by then, so nothing looks wrong; the
+        # process simply never exits and anything reading its stdout (a `|
+        # tee`, a queue script) hangs with it. Measured 2026-08-22: v11
+        # decided at 04:24, wrote everything, and was still parked in
+        # futex_do_wait an hour later with the next A/B unable to start.
+        # It also tells calibration_drift the truth -- the end-of-run bench
+        # runs BEFORE _shutdown_workers, so on an SPRT stop it really did
+        # contend with a live worker pool, and must not be reported as host
+        # drift.
+        interrupted = True
         _clear_status()
         dec = sprt_state["decided"]
         verdict = ("ACCEPT H1 -- change is good (ship)" if dec == "H1"
