@@ -132,3 +132,53 @@ def stamp_net_hash(path):
     new = os.path.join(os.path.dirname(path), f"{stem}_{h}.nnue")
     os.replace(path, new)
     return new
+
+
+def cgroup_cores():
+    """Cores this process may actually use, not what ``nproc`` reports.
+
+    Inside a container ``nproc`` shows the HOST's core count while the
+    cgroup enforces a much smaller quota. torch sizes its thread pool from
+    the former, so every parallel region oversubscribes, blows the quota
+    inside its 100ms period, and the kernel freezes the whole cgroup until
+    the period rolls over. MEASURED on the rented Blackwell box
+    2026-08-21: quota 15.36 cores while nproc reported 128, torch
+    defaulting to 64 threads, and 108 SECONDS of aggregate throttled
+    thread-time per 20s of wall clock. Also measured, on that same box:
+    8.2 min/chunk for one net against 1.9 min/chunk for an earlier one.
+    That the throttling explains the whole gap is INFERRED, not measured
+    -- the earlier run's own throttle rate was never sampled. Either way
+    correctness is untouched; oversubscription costs wall clock only.
+
+    Returns None whenever the answer is not certain -- no quota (bare
+    metal), an unreadable file, a malformed value, a nonsense result --
+    which leaves torch's own default untouched. The broad excepts are
+    deliberate: this runs at IMPORT time and is only ever a speed
+    optimisation, so there is no failure of it that should be allowed to
+    stop a training run. An earlier version let five different malformed
+    /sys states (missing cfs_period_us, empty cpu.max, non-numeric quota,
+    zero period) raise straight out of module import -- which on a rented
+    box means dying after the dataset download, hours into a queue."""
+    def _v2():
+        with open("/sys/fs/cgroup/cpu.max") as f:
+            quota, period = f.read().split()[:2]
+        return None if quota == "max" else float(quota) / float(period)
+
+    def _v1():
+        with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us") as f:
+            quota = float(f.read().strip())
+        if quota <= 0:                      # -1 = unlimited
+            return None
+        with open("/sys/fs/cgroup/cpu/cpu.cfs_period_us") as f:
+            return quota / float(f.read().strip())
+
+    for probe in (_v2, _v1):
+        try:
+            n = probe()
+        except Exception:
+            continue
+        # A quota under one core tells us nothing useful and would cap
+        # torch to a single thread on a misread; prefer torch's default.
+        if n is not None and n >= 1.0:
+            return n
+    return None
