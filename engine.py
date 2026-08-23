@@ -2076,6 +2076,10 @@ class Engine:
         # ``use_tb = False`` for fully offline play / reproducible benchmarks.
         self.use_tb = False
         self.tb_max_pieces = 7              # Lichess hosts 7-man Syzygy
+        self.syzygy_path = None             # local .rtbw/.rtbz dir (UCI
+                                            # SyzygyPath); None = online only
+        self.TB_LOCAL_MAX_PIECES = 5        # what the shipped tables cover
+        self._syzygy = None                 # lazy handle; False = unavailable
         self.tb_timeout = 1.0               # max seconds to wait on the network
         self.tb_url = "https://tablebase.lichess.ovh/standard?fen="
         self._tb_cache = {}                 # fen -> (wdl, Move) | None
@@ -2383,6 +2387,63 @@ class Engine:
     # ================================================================== #
     # #4 Endgame tablebase (Lichess Syzygy API)
     # ================================================================== #
+    def _tb_probe_local(self, board):
+        """Probe LOCAL Syzygy files for the optimal move -- same (wdl, move)
+        contract as _tb_probe, and the same never-raises rule.
+
+        Used for <=5 pieces, where the shipped .rtbw set is authoritative and a
+        network round-trip is pure latency. 6-7 men still go to Lichess, which
+        hosts tables we do not carry.
+
+        MOVE SELECTION uses DTZ, not WDL alone. WDL can only say "this move
+        keeps the win", and a mover that optimises WDL alone will happily
+        shuffle inside a won position forever and draw by the 50-move rule.
+        DTZ (distance to zeroing) is what actually makes progress, so the best
+        move is the one that keeps the best WDL and minimises DTZ among those.
+        If the DTZ tables are absent the probe returns None rather than playing
+        a WDL-only move it cannot convert.
+
+        Opened lazily and cached: the handle costs a few file descriptors and
+        the caller may never use it."""
+        if self._syzygy is False:
+            return None
+        if self._syzygy is None:
+            path = getattr(self, "syzygy_path", None)
+            if not path or not os.path.isdir(path):
+                self._syzygy = False
+                return None
+            try:
+                import chess.syzygy
+                self._syzygy = chess.syzygy.open_tablebase(path)
+            except Exception:
+                self._syzygy = False
+                return None
+        if board.occupied.bit_count() > self.TB_LOCAL_MAX_PIECES:
+            return None
+        try:
+            best = None
+            for mv in board.legal_moves:
+                board.push(mv)
+                try:
+                    # both are from the CHILD's mover POV; negate for us
+                    wdl = -self._syzygy.probe_wdl(board)
+                    dtz = -self._syzygy.probe_dtz(board)
+                except Exception:
+                    board.pop()
+                    return None
+                board.pop()
+                # maximise wdl; among equals prefer the FASTEST conversion
+                # when winning (small positive dtz) and the SLOWEST loss
+                # otherwise, which is what a tablebase mover should do
+                key = (wdl, -abs(dtz) if wdl > 0 else abs(dtz))
+                if best is None or key > best[0]:
+                    best = (key, wdl, mv)
+            if best is None:
+                return None
+            return best[1], best[2]
+        except Exception:
+            return None
+
     def _tb_probe(self, board, timeout):
         """Probe the Lichess Syzygy tablebase for the optimal move in ``board``.
 

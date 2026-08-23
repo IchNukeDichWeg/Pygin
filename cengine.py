@@ -1739,6 +1739,10 @@ class Engine:
         # already decisive (see TB_DIFFICULT_CP).
         self.use_tb = False
         self.TB_DIFFICULT_CP = 500           # |last score| >= this: skip probe
+                                             # (ONLINE probe only -- a local
+                                             # file probe is never gated)
+        self.syzygy_path = None              # UCI SyzygyPath; forwarded to
+                                             # the embedded engine on set
         self.pv_uci = True
         # Lazy SMP: helper search threads inside csearch.so (shared lockless
         # TT, per-thread everything else). Default 1 -- the SMP Elo gain is
@@ -1973,27 +1977,42 @@ class Engine:
         # pieces). cengine adds the DIFFICULTY gate: if the previous move's
         # search verdict was already decisive, the search converts on its
         # own faster than the network round-trip -- skip the probe.
-        if self.use_tb and abs(prev_verdict) < self.TB_DIFFICULT_CP:
+        # LOCAL first, and UNGATED. The difficulty gate below exists to avoid
+        # paying a network round-trip for a position the search already wins
+        # on its own -- a local file probe costs microseconds, so that trade
+        # does not apply and skipping it would only lose exact play. <=5 men
+        # is what the shipped .rtbw/.rtbz set covers; 6-7 still go to Lichess,
+        # which hosts tables we do not carry, and keep the gate.
+        tb = None
+        if self.use_tb and board.occupied.bit_count() <= self._py.TB_LOCAL_MAX_PIECES:
+            tb = self._py._tb_probe_local(board)
+        if tb is None and self.use_tb and abs(prev_verdict) < self.TB_DIFFICULT_CP:
             self._py.use_tb = True
             tb_to = self._py.tb_timeout
             if time_limit is not None:
                 tb_to = min(tb_to, max(0.0, time_limit * 0.5))
             tb = self._py._tb_probe(board, tb_to)
-            if (tb is not None and self.search_moves is not None
-                    and tb[1] not in self.search_moves):
-                tb = None            # FB-53: same rule as the book above
-            if tb is not None:
-                wdl, tb_move = tb            # move already verified legal
-                score_white = ((wdl if board.turn == chess.WHITE else -wdl)
-                               * self._py.TB_SCORE_UNIT)
-                self.last_score = score_white
-                self.last_pv = tb_move.uci()
-                record = {"depth": 0, "move": tb_move.uci(),
-                          "score": score_white, "nodes": 0, "time_ms": 0,
-                          "tb": True, "wdl": wdl, "pv": tb_move.uci()}
-                self._emit(record)
-                self._emit(dict(record, final=True), final=True)
-                return tb_move
+
+        # De-nested on purpose: this consumes whichever probe produced `tb`.
+        # It used to sit INSIDE the online branch, so once the local probe
+        # started answering first, the verdict was computed and then thrown
+        # away -- the engine played its own search move and reported +448 in a
+        # position the tablebase had just called drawn.
+        if (tb is not None and self.search_moves is not None
+                and tb[1] not in self.search_moves):
+            tb = None                # FB-53: same rule as the book above
+        if tb is not None:
+            wdl, tb_move = tb                # move already verified legal
+            score_white = ((wdl if board.turn == chess.WHITE else -wdl)
+                           * self._py.TB_SCORE_UNIT)
+            self.last_score = score_white
+            self.last_pv = tb_move.uci()
+            record = {"depth": 0, "move": tb_move.uci(),
+                      "score": score_white, "nodes": 0, "time_ms": 0,
+                      "tb": True, "wdl": wdl, "pv": tb_move.uci()}
+            self._emit(record)
+            self._emit(dict(record, final=True), final=True)
+            return tb_move
 
         # TT retention: v30's rule wiped on every irreversible root move
         # (halfmove_clock == 0); P-14 keeps the table warm instead (see the
