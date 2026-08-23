@@ -305,6 +305,28 @@ def histogram(vals, width=46, bins=17, lo=-400, hi=400):
     return "\n".join(out)
 
 
+def _test_chunk(job):
+    """(indices, fens, engine_path, depth) -> [(index, cp), ...].
+
+    Indices travel WITH the work: imap_unordered returns chunks in whatever
+    order they finish, so results have to carry their own position or they
+    get silently paired with the wrong reference row.
+    """
+    idxs, fens, engine_path, depth = job
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("cand", engine_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    eng = mod.Engine()
+    eng.use_book = False
+    out = []
+    for i, fen in zip(idxs, fens):
+        b = chess.Board(fen)
+        eng.get_best_move(b, depth)
+        out.append((i, float(eng.last_score)))
+    return out
+
+
 def cmd_test(args):
     with open(args.ref) as fh:
         ref = json.load(fh)
@@ -315,23 +337,37 @@ def cmd_test(args):
     print(f"reference: {ref['n']:,} positions @ SF depth {ref['sf_depth']} "
           f"(built {ref['built']}); sampling {len(rows):,}")
 
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("cand", args.engine)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    eng = mod.Engine()
-    eng.use_book = False
+    import multiprocessing as mp
+    # 0 = all cores, matching --workers 0 everywhere else in this repo
+    # (match.py, gen_data.py). Treating 0 as "zero workers" silently ran
+    # serial and looked like the parallel path simply did not help.
+    n_workers = args.workers or max(1, mp.cpu_count() - 1)
+    n_workers = max(1, min(n_workers, len(rows)))
 
-    ours, theirs, phases = [], [], []
+    scored = [0.0] * len(rows)
     bar = Progress(len(rows), label=f"depth {args.depth}  ")
-    for r in rows:
-        b = chess.Board(r["fen"])
-        eng.get_best_move(b, args.depth)
-        ours.append(float(eng.last_score))
-        theirs.append(float(r["cp"]))
-        phases.append(r["phase"])
-        bar.step()
+    if n_workers == 1:
+        for i, (idx, cp) in enumerate(
+                _test_chunk((list(range(len(rows))),
+                             [r["fen"] for r in rows], args.engine, args.depth))):
+            scored[idx] = cp
+            bar.step()
+    else:
+        per = max(1, min(25, len(rows) // (n_workers * 8) or 1))
+        jobs = [(list(range(i, min(i + per, len(rows)))),
+                 [r["fen"] for r in rows[i:i + per]], args.engine, args.depth)
+                for i in range(0, len(rows), per)]
+        print(f"  scoring on {n_workers} workers")
+        with mp.Pool(n_workers) as pool:
+            for part in pool.imap_unordered(_test_chunk, jobs):
+                for idx, cp in part:
+                    scored[idx] = cp
+                bar.step(len(part))
     bar.done()
+
+    ours = scored
+    theirs = [float(r["cp"]) for r in rows]
+    phases = [r["phase"] for r in rows]
     print()
 
     # Mate scores are not evaluations -- split them out before any cp maths.
@@ -475,6 +511,9 @@ def main():
     t.add_argument("--depth", type=int, default=10)
     t.add_argument("--seed", type=int, default=59)
     t.add_argument("--ref", default=DEFAULT_REF)
+    t.add_argument("--workers", type=int, default=None,
+                   help="parallel scoring processes; 0 or omitted = all "
+                        "cores (repo convention), 1 = serial")
     t.add_argument("--worst", type=int, default=None,
                    help="how many of the largest disagreements to list "
                         "(default: the top 1%%, minimum 5)")
