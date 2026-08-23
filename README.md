@@ -12,7 +12,7 @@ representation, move generation and legality.
 
 ![Strength](https://img.shields.io/badge/strength-~2868_Elo-3fb950)
 ![Speed](https://img.shields.io/badge/speed-3.3M_nps-58a6ff)
-![Versions](https://img.shields.io/badge/versions-59-8b949e)
+![Versions](https://img.shields.io/badge/versions-60-8b949e)
 ![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B338_Elo-f0883e)
 ![Source](https://img.shields.io/badge/source-MIT-green)
 &nbsp;·&nbsp; Built with **[Claude Code](https://claude.com/claude-code)**
@@ -117,7 +117,7 @@ zero: those numbers read low, not high.
 
 ## Version progression
 
-59 versions, each A/B-tested against the one before it. Speed is nodes/s,
+60 versions, each A/B-tested against the one before it. Speed is nodes/s,
 depth is from startpos in 5 s (book off, best-of-N), and `Elo Δ` is the A/B
 result against the previous version. Cumulatively that is ≈ +338 over v31.
 
