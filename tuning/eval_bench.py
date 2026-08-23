@@ -191,8 +191,15 @@ def _score_chunk(args):
     for fen in fens:
         b = chess.Board(fen)
         eng.get_best_move(b, depth)
-        rows.append({"fen": fen, "cp": int(eng.last_score),
-                     "depth": int(eng.last_depth), "phase": phase_of(b)})
+        row = {"fen": fen, "cp": int(eng.last_score),
+               "depth": int(eng.last_depth), "phase": phase_of(b)}
+        # SF prints wdl SIDE-TO-MOVE POV while last_score is already converted
+        # to WHITE POV. Store both in White POV or the two disagree on sign for
+        # every black-to-move position -- half the set, silently.
+        if eng.last_wdl:
+            w, d, l = eng.last_wdl
+            row["wdl"] = [w, d, l] if b.turn == chess.WHITE else [l, d, w]
+        rows.append(row)
     return rows
 
 
@@ -399,15 +406,24 @@ def cmd_test(args):
         wm = None
         print(f"\n  !! WDL model unavailable ({ex}) -- skipping win-probability "
               f"comparison. It is NOT zero disagreement, it is no measurement.")
+    native = sum(1 for r in kept if r.get("wdl"))
     if wm is not None:
         for i in range(n):
             ph = phases[i]
-            dw.append(abs(p_win(ours[i], ph, wm)
-                          - p_win(slope * theirs[i], ph, wm)) * 100.0)
+            ours_p = p_win(ours[i], ph, wm) * 100.0
+            ref = kept[i].get("wdl")
+            if ref:                       # SF's OWN calibration, White POV
+                sf_p = ref[0] / 10.0
+            else:                         # fall back to our model on its cp
+                sf_p = p_win(slope * theirs[i], ph, wm) * 100.0
+            dw.append(abs(ours_p - sf_p))
+        src = ("Stockfish's own UCI_ShowWDL" if native == n else
+               f"SF native for {native}/{n}, our model for the rest"
+               if native else "our model applied to both (reference has no wdl)")
+        print(f"\n  WDL win-probability gap (percentage points) -- vs {src}")
         sw = sorted(dw)
         def wp(q):
             return sw[min(len(sw) - 1, int(q * len(sw)))]
-        print(f"\n  WDL win-probability gap (percentage points)")
         print(f"  mean {sum(dw)/len(dw):5.1f}pp   median {wp(0.50):5.1f}   "
               f"p90 {wp(0.90):5.1f}   p99 {wp(0.99):5.1f}   max {sw[-1]:5.1f}")
         for thr in (5, 10, 25):
