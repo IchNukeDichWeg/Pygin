@@ -319,6 +319,7 @@ def cmd_test(args):
                    and (ours[i] > 0) == (theirs[i] > 0))
         print(f"  mate positions   {n_mate} of {len(ours)} excluded from cp stats "
               f"-- both saw a mate in {both}, same side in {same}")
+    kept = [rows[i] for i in keep]
     ours = [ours[i] for i in keep]
     theirs = [theirs[i] for i in keep]
     phases = [phases[i] for i in keep]
@@ -365,6 +366,20 @@ def cmd_test(args):
           f"   |diff| p50 {apct(0.50):.0f}  p90 {apct(0.90):.0f}  p99 {apct(0.99):.0f}")
     print(histogram(resid_c))
 
+    # The worst disagreements, named so they can actually be looked at.
+    # A distribution says HOW MUCH the two evals differ; only the positions
+    # themselves say WHY, and the tail is where a real fault would sit.
+    centre = sum(resid) / n
+    ranked = sorted(range(n), key=lambda i: -abs(resid[i] - centre))
+    k = args.worst if args.worst is not None else max(5, round(n * 0.01))
+    k = min(k, n)
+    print(f"\n  worst {k} disagreements ({k/n*100:.1f}% of {n:,}) "
+          f"-- paste a FEN into a board to see what the net is missing")
+    print(f"  {'diff':>7} {'SF':>7} {'ours':>7} {'ph':>3}  fen")
+    for i in ranked[:k]:
+        d = resid[i] - centre
+        print(f"  {d:+7.0f} {theirs[i]:+7.0f} {ours[i]:+7.0f} {phases[i]:>3}  {kept[i]['fen']}")
+
     print("\n  Regression instrument only -- NOT calibrated against Elo. "
           "A big move means look; a small one means nothing.")
     return 0
@@ -391,6 +406,9 @@ def main():
     t.add_argument("--depth", type=int, default=10)
     t.add_argument("--seed", type=int, default=59)
     t.add_argument("--ref", default=DEFAULT_REF)
+    t.add_argument("--worst", type=int, default=None,
+                   help="how many of the largest disagreements to list "
+                        "(default: the top 1%%, minimum 5)")
     t.set_defaults(func=cmd_test)
 
     args = ap.parse_args()
