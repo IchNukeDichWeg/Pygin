@@ -42,6 +42,7 @@ dominated by the tactic, not the net) and each FEN appears once.
 
 import argparse
 import json
+import math
 import os
 import random
 import sys
@@ -52,6 +53,26 @@ sys.path.insert(0, REPO)
 
 import chess
 import chess.pgn
+
+# The project's fitted WDL model, read straight from data/. NOT via
+# lib/wdl.py: that module resolves the model relative to lib/ itself
+# (lib/data/wdl_model.json), which has not existed since the 2026-07-24
+# reshuffle moved the models to data/ -- it has no callers left and silently
+# returns None. These nets are the NNUE family, so the _nnue fit is the
+# right one; the hce model is the no-SIMD fallback and a different cp scale.
+_WDL_PATH = os.path.join(REPO, "data", "wdl_model_nnue.json")
+
+
+def load_wdl_model():
+    with open(_WDL_PATH, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def p_win(cp, phase, m):
+    x = max(m["phase_clamp_min"], min(m["phase_max"], phase)) / m["phase_max"]
+    a = sum(c * x ** i for i, c in enumerate(m["as"]))
+    b = sum(c * x ** i for i, c in enumerate(m["bs"]))
+    return 1.0 / (1.0 + math.exp((a - cp) / b))
 
 
 def _fmt(sec):
@@ -366,19 +387,51 @@ def cmd_test(args):
           f"   |diff| p50 {apct(0.50):.0f}  p90 {apct(0.90):.0f}  p99 {apct(0.99):.0f}")
     print(histogram(resid_c))
 
+    # --- WDL space: does the cp gap actually MATTER? ----------------------
+    # A 1000cp disagreement at +1500 is worth ~0 win probability; a 700cp one
+    # at +50 decides the game. SF's cp is put into OUR units with the fitted
+    # scale first, then both go through the project's own WDL model, so the
+    # comparison is like-for-like.
+    dw = []
+    try:
+        wm = load_wdl_model()
+    except Exception as ex:
+        wm = None
+        print(f"\n  !! WDL model unavailable ({ex}) -- skipping win-probability "
+              f"comparison. It is NOT zero disagreement, it is no measurement.")
+    if wm is not None:
+        for i in range(n):
+            ph = phases[i]
+            dw.append(abs(p_win(ours[i], ph, wm)
+                          - p_win(slope * theirs[i], ph, wm)) * 100.0)
+        sw = sorted(dw)
+        def wp(q):
+            return sw[min(len(sw) - 1, int(q * len(sw)))]
+        print(f"\n  WDL win-probability gap (percentage points)")
+        print(f"  mean {sum(dw)/len(dw):5.1f}pp   median {wp(0.50):5.1f}   "
+              f"p90 {wp(0.90):5.1f}   p99 {wp(0.99):5.1f}   max {sw[-1]:5.1f}")
+        for thr in (5, 10, 25):
+            k2 = sum(1 for x in dw if x > thr)
+            print(f"    > {thr:>2}pp apart: {k2:>4} of {n:,} ({k2/n*100:4.1f}%)")
+
     # The worst disagreements, named so they can actually be looked at.
     # A distribution says HOW MUCH the two evals differ; only the positions
     # themselves say WHY, and the tail is where a real fault would sit.
     centre = sum(resid) / n
-    ranked = sorted(range(n), key=lambda i: -abs(resid[i] - centre))
+    by_wdl = bool(dw)
+    ranked = (sorted(range(n), key=lambda i: -dw[i]) if by_wdl
+              else sorted(range(n), key=lambda i: -abs(resid[i] - centre)))
     k = args.worst if args.worst is not None else max(5, round(n * 0.01))
     k = min(k, n)
-    print(f"\n  worst {k} disagreements ({k/n*100:.1f}% of {n:,}) "
+    how = "by WDL impact" if by_wdl else "by cp"
+    print(f"\n  worst {k} disagreements {how} ({k/n*100:.1f}% of {n:,}) "
           f"-- paste a FEN into a board to see what the net is missing")
-    print(f"  {'diff':>7} {'SF':>7} {'ours':>7} {'ph':>3}  fen")
+    print(f"  {'dWDL':>6} {'diff':>7} {'SF':>7} {'ours':>7} {'ph':>3}  fen")
     for i in ranked[:k]:
         d = resid[i] - centre
-        print(f"  {d:+7.0f} {theirs[i]:+7.0f} {ours[i]:+7.0f} {phases[i]:>3}  {kept[i]['fen']}")
+        w = f"{dw[i]:5.1f}pp" if by_wdl else "     -"
+        print(f"  {w:>6} {d:+7.0f} {theirs[i]:+7.0f} {ours[i]:+7.0f} "
+              f"{phases[i]:>3}  {kept[i]['fen']}")
 
     print("\n  Regression instrument only -- NOT calibrated against Elo. "
           "A big move means look; a small one means nothing.")
