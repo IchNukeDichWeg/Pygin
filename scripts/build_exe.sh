@@ -30,6 +30,15 @@ D="$(pwd)"
 # PyInstaller's static analysis cannot follow. Without this the binary builds
 # clean and dies on the first line ("No module named 'time_manager'") -- which
 # is exactly how the v55 release shipped broken.
+# The bundled net is READ FROM cengine.py, never hardcoded here. It used to
+# be a literal filename, which silently went stale the moment cengine armed a
+# different net: v60's first build bundled v4's net, and the binary died on
+# startup with nnue_load(...) failed -- USE_NNUE has no HCE fallback. Deriving
+# it means the bundle cannot disagree with the engine it ships.
+NET="$(cd "$D" && python3 -c 'import cengine; print(cengine.Engine.NNUE_FILE)')"
+[ -f "$D/$NET" ] || { echo "!! cengine.py arms $NET but that file does not exist"; exit 1; }
+echo "-> bundling the armed net: $NET"
+
 python3 -m PyInstaller --onefile --name pygin cuci.py \
     --paths "$D/lib" \
     --hidden-import time_manager \
@@ -37,7 +46,7 @@ python3 -m PyInstaller --onefile --name pygin cuci.py \
     --add-binary "$D/eval_c.so:." \
     --add-binary "$D/movegen.so:." \
     --add-data   "$D/data/Perfect2023.bin:." \
-    --add-data   "$D/NNUE/nets/nnue_v4_6f910e35bb1e.nnue:NNUE/nets" \
+    --add-data   "$D/$NET:NNUE/nets" \
     --hidden-import engine --hidden-import chess.polyglot \
     --exclude-module pygame --exclude-module tkinter --exclude-module numpy \
     --exclude-module PySide6 --exclude-module matplotlib --exclude-module flask \
