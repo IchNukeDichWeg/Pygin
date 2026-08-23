@@ -208,7 +208,7 @@ BOOK_ENGINE2 = None
 # random move choice -- two bookless deterministic engines from startpos
 # would repeat the same game, so leave this False for normal A/Bs.
 START_POS = False
-SUBSET_SEED = 59            # FIXED so parallel windows shuffle identically.
+SUBSET_SEED = 60            # FIXED so parallel windows shuffle identically.
                             # ROTATION POLICY (2026-07-18): bump to the new
                             # version number at every vN snapshot -- within an
                             # era every campaign (and its extension tranches,
@@ -216,7 +216,9 @@ SUBSET_SEED = 59            # FIXED so parallel windows shuffle identically.
                             # shards) shares one 5000-of-241k opening sample;
                             # across eras the book is resampled so the ledger
                             # can't slowly overfit one fixed 2% subset. 42 was
-                            # the v31-v49 era seed (campaigns 1-24).
+                            # the v31-v49 era seed (campaigns 1-24), 59
+                            # the v59 era; rotated to 60 at the v60
+                            # snapshot (2026-08-23).
 MAX_PLIES = 200             # games longer than this are adjudicated a draw
 VERBOSE_MOVES = False       # also print every move to the terminal
                             #   (per-move info is ALWAYS written to the log file)
