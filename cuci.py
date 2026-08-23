@@ -889,6 +889,7 @@ def main():
                 out("option name OwnBook type check default true")
                 out("option name BookFile type string default <empty>")
                 out("option name UseTB type check default false")
+                out("option name SyzygyPath type string default <empty>")
                 # P-26 tuning knobs are NOT advertised (2026-07-24): they are
                 # search internals with no user-facing meaning, and eleven
                 # extra spins in every GUI's option dialog is noise. The
@@ -1008,7 +1009,23 @@ def main():
                     # the auto-discovered bundled book (Perfect2023.bin ...).
                     engine.book_path = None if value in ("", "<empty>") else value
                 elif name == "usetb":
-                    engine.use_tb = value.lower() == "true"   # online Lichess
+                    engine.use_tb = value.lower() == "true"   # local <=5, else Lichess
+                elif name == "syzygypath":
+                    # <=5 men are answered from these files; 6-7 still go to
+                    # Lichess. Forwarded to the embedded engine because that is
+                    # where both probes live. "<empty>" is the UCI idiom for
+                    # unset and must not become a literal directory name.
+                    p = "" if value.strip() in ("", "<empty>") else value.strip()
+                    engine.syzygy_path = p or None
+                    if getattr(engine, "_py", None) is not None:
+                        engine._py.syzygy_path = p or None
+                        engine._py._syzygy = None          # drop a cached handle
+                    if p and not os.path.isdir(p):
+                        out(f"info string SyzygyPath {p!r} is not a directory "
+                            f"-- local probing stays OFF")
+                    elif p:
+                        n = len([f for f in os.listdir(p) if f.endswith(".rtbw")])
+                        out(f"info string SyzygyPath {p} ({n} WDL tables)")
                                                               # Syzygy; no path
                 # P-26 tuning knobs. C-side setters take effect on the next
                 # search; Python-side ones are plain instance attributes.
