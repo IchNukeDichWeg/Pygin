@@ -11,7 +11,7 @@ same 8-epoch cosine recipe, trained uninterrupted -- so vs v4 this varies
 composition alone. Held-out val 0.065110: fourth distribution, fourth
 incomparable number; only the A/B judges.
 
-    python3 match.py engine_nnue_v7.py "Old Engine/59/engine59.py" 5000 0 \
+    python3 match.py NNUE/shims/engine_nnue_v7.py "Old Engine/59/engine59.py" 5000 0 \
         --workers 48 --tc 50+0.5 --seed 59 --sprt
 
 Reads: ACCEPT -> composition was the poison, deeper labels survive, v7 is

@@ -7,7 +7,7 @@ campaigns plus 238,786 from two 2026-08-09 fixed-node screens. Its labels
 come from actual search at depth 12-16, against the 5,000-node (v9/v10)
 and 10,000-node (v11) labels everything else on this ladder used.
 
-    python3 match.py engine_nnue_v12.py "Old Engine/59/engine59.py" 5000 0 \
+    python3 match.py NNUE/shims/engine_nnue_v12.py "Old Engine/59/engine59.py" 5000 0 \
         --workers 0 --tc 50+0.5 --seed 59 --sprt
 
 TRAINED AT LAMBDA 1.0 -- search scores alone, game result unused -- and

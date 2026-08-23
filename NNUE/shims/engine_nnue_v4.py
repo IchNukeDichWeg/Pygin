@@ -13,7 +13,7 @@ lazy evaluation, while the shipped engine runs NNUE WITHOUT it, and the gap
 between them is unmeasured -- FI-106 has never been isolated. See cengine.py's
 v58 entry.
 
-    python3 match.py engine_nnue_v4.py "Old Engine/57/engine57.py" 1000 \
+    python3 match.py NNUE/shims/engine_nnue_v4.py "Old Engine/57/engine57.py" 1000 \
         --workers 0 --tc 50+0.2 --sprt
 
 Its own file rather than a one-line edit of engine_nnue_lazy.py on purpose:

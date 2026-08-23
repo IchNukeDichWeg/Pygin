@@ -8,7 +8,7 @@ seeds 4/5/6), so vs v7 it varies label depth alone and vs v4 it varies
 dims (6144-256-16-32, d2 16), same 8-epoch cosine recipe, trained
 uninterrupted with --cache-chunks (identical math, cached prepares).
 
-    python3 match.py engine_nnue_v8.py "Old Engine/59/engine59.py" 5000 0 \
+    python3 match.py NNUE/shims/engine_nnue_v8.py "Old Engine/59/engine59.py" 5000 0 \
         --workers 64 --tc 50+0.5 --seed 59 --sprt
 
 Reads: ACCEPT or NULL -> the 10k label depth was the poison (v6/v7's only
