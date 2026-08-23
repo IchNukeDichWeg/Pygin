@@ -239,6 +239,44 @@ def spearman(a, b):
     return num / (da * db) if da and db else float("nan")
 
 
+
+def histogram(vals, width=46, bins=17, lo=-400, hi=400):
+    """Horizontal ASCII histogram of the signed residuals.
+
+    Signed, not absolute: the shape is the point. A symmetric pile centred on
+    zero means the net simply disagrees noisily; a pile that sits off-centre
+    means it is systematically optimistic or pessimistic against Stockfish,
+    which is a different (and more actionable) fault. Outer bins are
+    open-ended so the tails cannot be hidden by the axis range.
+    """
+    step = (hi - lo) / (bins - 2)
+    counts = [0] * bins
+    for v in vals:
+        if v < lo:
+            counts[0] += 1
+        elif v >= hi:
+            counts[-1] += 1
+        else:
+            counts[1 + int((v - lo) / step)] += 1
+    peak = max(counts) or 1
+    n = len(vals)
+    out = []
+    for i, c in enumerate(counts):
+        if i == 0:
+            lab = f"< {lo:+.0f}"
+        elif i == bins - 1:
+            lab = f">= {hi:+.0f}"
+        else:
+            a = lo + (i - 1) * step
+            lab = f"{a:+.0f}..{a+step:+.0f}"
+        lab = f"{lab:>15}"          # one width for every row, overflow included
+        bar = "#" * int(round(width * c / peak))
+        pct = c / n * 100 if n else 0
+        mid = (i == bins // 2)
+        out.append(f"  {lab} {'|' if not mid else '+'}{bar:<{width}} {c:>5} ({pct:4.1f}%)")
+    return "\n".join(out)
+
+
 def cmd_test(args):
     with open(args.ref) as fh:
         ref = json.load(fh)
@@ -315,6 +353,18 @@ def cmd_test(args):
         rr = [o[k] - slope * t[k] for k in range(len(idx))]
         m = sum(abs(x - sum(rr) / len(rr)) for x in rr) / len(rr)
         print(f"  {name:>10}  {len(idx):>6}  {spearman(o, t):+7.4f}  {m:7.1f}")
+    # distribution of the disagreement itself
+    resid_c = sorted(x - sum(resid) / n for x in resid)
+    def pct(q):
+        return resid_c[min(len(resid_c) - 1, int(q * len(resid_c)))]
+    absr = sorted(abs(x) for x in resid_c)
+    def apct(q):
+        return absr[min(len(absr) - 1, int(q * len(absr)))]
+    print(f"\n  cp difference (ours - {slope:.3f} x SF), {n:,} positions")
+    print(f"  median {pct(0.50):+.0f}   p10 {pct(0.10):+.0f}   p90 {pct(0.90):+.0f}"
+          f"   |diff| p50 {apct(0.50):.0f}  p90 {apct(0.90):.0f}  p99 {apct(0.99):.0f}")
+    print(histogram(resid_c))
+
     print("\n  Regression instrument only -- NOT calibrated against Elo. "
           "A big move means look; a small one means nothing.")
     return 0
