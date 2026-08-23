@@ -23,7 +23,7 @@ predictor near the floor" lesson holds -- the package with the better val
 number still failed to beat v58. What does not survive is reading +3.09 as
 "the v5 weights are worth nothing".
 
-    python3 match.py engine_nnue_v5.py "Old Engine/58/engine58.py" 1000 \
+    python3 match.py NNUE/shims/engine_nnue_v5.py "Old Engine/58/engine58.py" 1000 \
         --workers 0 --sprt
 
 The epoch sweep behind it is CLOSED, 8 is the minimum (all full data, same

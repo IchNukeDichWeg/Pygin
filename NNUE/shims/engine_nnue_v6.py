@@ -10,7 +10,7 @@ although the two are byte-equivalent today: the shim subclasses live
 cengine.py and would silently drift with any future edit to it, while
 Old Engine/59 cannot move.
 
-    python3 match.py engine_nnue_v6.py "Old Engine/59/engine59.py" 5000 0 \
+    python3 match.py NNUE/shims/engine_nnue_v6.py "Old Engine/59/engine59.py" 5000 0 \
         --workers 48 --tc 50+0.5 --seed 59 --sprt
 
 v6 = the first net trained after the phantom-repetition fix (fc82cb7 /

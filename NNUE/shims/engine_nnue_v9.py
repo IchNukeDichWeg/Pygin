@@ -8,7 +8,7 @@ is the schedule: a 40-epoch cosine instead of an 8-epoch one. So vs v8 this
 varies the training recipe alone, and vs v4 it varies {WDL fix, labeler
 era, fresh games} with depth, composition AND recipe now all held.
 
-    python3 match.py engine_nnue_v9.py "Old Engine/59/engine59.py" 5000 0 \
+    python3 match.py NNUE/shims/engine_nnue_v9.py "Old Engine/59/engine59.py" 5000 0 \
         --workers 64 --tc 50+0.5 --seed 59 --sprt
 
 The hypothesis under test: v4 was never the product of the 8-epoch recipe

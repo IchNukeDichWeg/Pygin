@@ -10,7 +10,7 @@ reproducible and the pipeline really is the variable. If it lands short,
 v4 was a lucky draw and every single-net verdict on this ladder is
 shakier than it looks.
 
-    python3 match.py engine_nnue_v10.py "Old Engine/59/engine59.py" 5000 0 \
+    python3 match.py NNUE/shims/engine_nnue_v10.py "Old Engine/59/engine59.py" 5000 0 \
         --workers 0 --tc 50+0.5 --seed 59 --sprt
 
 Held-out val 0.066733 (epoch 21 of 40) against v4's 0.066663 -- a delta of

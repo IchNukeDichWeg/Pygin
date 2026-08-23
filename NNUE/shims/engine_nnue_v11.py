@@ -8,7 +8,7 @@ trained was 40-epoch, so v6's rejection never separated "deep labels are
 wrong" from "the recipe was wrong". v11 is v6's exact dataset and dims on
 the 40-epoch schedule, so against v6 it varies the recipe alone.
 
-    python3 match.py engine_nnue_v11.py "Old Engine/59/engine59.py" 5000 0 \
+    python3 match.py NNUE/shims/engine_nnue_v11.py "Old Engine/59/engine59.py" 5000 0 \
         --workers 0 --tc 50+0.5 --seed 59 --sprt
 
 Held-out val 0.067995 (epoch 9 of 40) against v6's 0.064895 on the same

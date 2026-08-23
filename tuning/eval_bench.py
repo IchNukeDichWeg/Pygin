@@ -9,7 +9,7 @@ checked against it in minutes instead of a 6-hour A/B.
     python3 tuning/eval_bench.py build --positions 10000 --depth 14 --workers 0
 
     # per net: score a random sample against it (fast)
-    python3 tuning/eval_bench.py test engine_nnue_v10.py --sample 1000 --depth 10
+    python3 tuning/eval_bench.py test NNUE/shims/engine_nnue_v10.py --sample 1000 --depth 10
 
 WHAT THIS IS FOR, AND WHAT IT IS NOT
 ------------------------------------
@@ -506,7 +506,7 @@ def main():
     b.set_defaults(func=cmd_build)
 
     t = sub.add_parser("test", help="score an engine/net against the reference")
-    t.add_argument("engine", help="engine .py (e.g. engine_nnue_v10.py)")
+    t.add_argument("engine", help="engine .py (e.g. NNUE/shims/engine_nnue_v10.py)")
     t.add_argument("--sample", type=int, default=1000)
     t.add_argument("--depth", type=int, default=10)
     t.add_argument("--seed", type=int, default=59)
