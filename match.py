@@ -48,7 +48,7 @@ Usage::
                                                                its own --mode, like --nodes does)
                      [--book1 book.bin] [--book2 book.bin]   (per-engine opening books; book testing)
                      [--start-pos True]                       (all games from startpos, ignore the FEN file)
-                     [--sprt]                                 (SPRT early-stop: quit as soon as the result is
+                     [--sprt] [--sprt-min-pairs N]            (SPRT early-stop: quit as soon as the result is
                                                                provably good/bad instead of playing the whole
                                                                budget -- default [0, 4] normalized, a=b=0.05;
                                                                override --sprt-elo0/elo1/alpha/beta/model)
@@ -271,6 +271,10 @@ except Exception:
 # the user's call. The Wald bounds already control the error rates -- this
 # floor only guards the pathological first-few-pairs regime, and 500 pairs
 # was costing an hour before a landslide could ever be called.)
+# --sprt-min-pairs N raises it per run. Worth raising on a SCREEN, where the
+# error bars are wide and an early crossing is more likely to be a fluctuation
+# than a verdict -- and where the point is to kill the clearly-bad cheaply
+# rather than to measure anything precisely.
 SPRT_MIN_PAIRS = 250
 
 
@@ -1805,6 +1809,10 @@ def main():
             i += 2
         elif argv[i] == "--sprt-beta" and i + 1 < len(argv):
             sprt_beta = float(argv[i + 1])
+            i += 2
+        elif argv[i] == "--sprt-min-pairs" and i + 1 < len(argv):
+            global SPRT_MIN_PAIRS
+            SPRT_MIN_PAIRS = max(1, int(argv[i + 1]))
             i += 2
         elif argv[i] == "--sprt-model" and i + 1 < len(argv):
             sprt_model = argv[i + 1].strip().lower()
