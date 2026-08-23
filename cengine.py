@@ -243,6 +243,36 @@ per node buys more nodes than the extra tree costs). The v58-era package
 readings (+19.30 arm64 / +5.91 x86, NNUE+lazy vs HCE) are superseded by
 this isolated number.
 
+v60 = v59 + **the net retrained on REAL GAMES** (nnue_v12): the search is
+byte-identical to v59 and only NNUE_FILE moves. Every net before this learned
+from self-play positions generated for the purpose; v12 learned from
+24,825,823 positions harvested out of this project's own A/B match logs,
+labelled by the search those games actually ran (depth 12-16) instead of a
+5,000-node budget, every contributing side predating FI-29 so the cycle bound
+cannot draw-flatten a label through path history the features cannot see.
+Trained at LAMBDA 1.0 -- search scores ONLY, game result discarded -- which is
+a correctness requirement rather than a tuning choice: those logs predate the
+phantom-repetition fix and replay showed 1,479/1,479 and 2,215/2,215 of their
+repetition draws were phantom, the game having ended a ply before the position
+repeated. The cp column is sound, the result column is not.
+
+vs Old Engine/59 (which ships nnue_v4), TIMED 50+0.50 on x86, SUBSET_SEED 59:
+GSPRT[0,4] LLR **+2.957 ACCEPT H1** at 793 pairs, ptnml 27/137/301/272/56,
+ratio 2.00, 56.09% over 1,594 games -> +42.50 +/- 17.3 (STOPPED EARLY, so the
+magnitude is taken at a favourable fluctuation and the ledger is NOT advanced
+on it). Bench 1,214,534 -> 1,140,099.
+
+THREE THINGS THIS RELEASE DOES NOT KNOW. It was not measured to be the best
+net available: against v10 it drew, +3.75 +/- 6.8 over a FULL 10,000 games,
+LLR +1.235, and v12 ships as the point-estimate leader of two nets that could
+not be separated. The attribution behind it is unsettled -- v10 shares v4's
+corpus, recipe, dimensions AND default seed and still beat the baseline that
+carries v4's net, and two runs of one recipe landing ~40 Elo apart is wide
+enough to explain any single-net verdict here, this one included. And it does
+not know endgame theory: tuning/eval_bench.py against Stockfish at depth 16
+puts 39.6% of positions >10pp apart in win probability, with rook+bishop vs
+rook and rook+knight vs rook -- textbook draws -- scored at +400 to +475.
+
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
   * v30's P-35/U-06 soft-stop time management (stability-scaled),
@@ -1332,7 +1362,7 @@ class Engine:
     # not exist -- no silent HCE fallback).
     USE_NNUE = True
     NNUE_FILE = os.path.join("NNUE", "nets",
-                             "nnue_v4_6f910e35bb1e.nnue")
+                             "nnue_v12_bf86c4ced057.nnue")   # v60
     # FI-104. The net's value is a RACE between its better judgement and the
     # nodes that judgement costs: v3 measured +5.70 +/- 4.6 while conceding
     # 30.6% of its nodes to a SIMD build. On a CPU with neither NEON nor AVX2
