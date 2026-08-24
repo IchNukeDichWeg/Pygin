@@ -55,7 +55,14 @@ else
 fi
 
 echo "syzygy: unpacking..."
-unzip -o -q "$TMP" -d "$DEST"
+# python3's zipfile, not unzip: python3 is already a hard dependency of this
+# repo, while `unzip` is NOT installed on a minimal Ubuntu 24.04 image (hit
+# on a fresh box 2026-08-24, after the 379 MB download had already finished).
+if command -v unzip >/dev/null 2>&1; then
+    unzip -o -q "$TMP" -d "$DEST"
+else
+    python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])'         "$TMP" "$DEST"
+fi
 rm -f "$TMP"
 
 n=$(ls "$DEST"/*.rtbw 2>/dev/null | wc -l | tr -d ' ')
