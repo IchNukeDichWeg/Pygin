@@ -1,0 +1,27 @@
+{
+ "decision": null,
+ "llr": -1.2315583413566804,
+ "next_offset": 2500,
+ "pairs": 2500,
+ "penta": [
+  165,
+  633,
+  969,
+  559,
+  174
+ ],
+ "runs": [
+  {
+   "engine1": "engine_nnue_m1",
+   "engine2": "engine_nnue_v12",
+   "fen_file": "UHO_4060_v4.epd",
+   "mode": "clock 10.00+0.10",
+   "offset": 0,
+   "positions": 2500,
+   "positions_played": 2500,
+   "seed": 59,
+   "smp": 1,
+   "started": "2026-08-23 22:45:45"
+  }
+ ]
+}
