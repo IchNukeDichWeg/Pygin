@@ -45,6 +45,7 @@ import json
 import math
 import os
 import random
+import subprocess
 import sys
 import time
 
@@ -490,6 +491,112 @@ def cmd_test(args):
     return 0
 
 
+
+def _load_ref(path):
+    with open(path) as fh:
+        return json.load(fh)
+
+
+# --------------------------------------------------------------------------- #
+# rank -- static-eval nets against the reference, no games
+# --------------------------------------------------------------------------- #
+# CALIBRATED NEGATIVE 2026-08-24 over 12 nets with real Elo, in two
+# UNCONNECTED groups (8 seed nets vs v12 @10+0.1, and v9-v12 vs engine59
+# @50+0.5). Spearman of MAE against measured Elo:
+#
+#     bucket     8 seed nets    v9-v12
+#     opening      +0.000       +0.600
+#     middle       -0.214       +0.800
+#     endgame      +0.048       +1.000
+#     all          -0.071       +1.000
+#
+# Flat in one group, POSITIVE (wrong direction) in the other. **This does NOT
+# predict Elo and must never be used to pick a net.** A first pass read -0.95
+# on opening MAE; that was an artifact of comparing side-to-move net evals
+# against the WHITE-POV reference -- see the sign flip in _rank_eval_one.
+# Val loss is also 0-for-8 here, so nets still have to be measured by playing
+# games.
+#
+# What it IS good for: a fast REGRESSION check. Two nets that should be
+# related (a retrain, a requantisation, a format change) should land close
+# together; a net that moves 30 cp when it should not has changed in a way
+# worth explaining before it costs 5,000 games.
+def _rank_eval_one(net_path, ref_path):
+    """Static-eval one net over the reference. Runs in its OWN process: the C
+    side keeps a single global g_net, and two nets in one process is the .so
+    cross-contamination trap."""
+    sys.path.insert(0, os.path.join(REPO, "NNUE"))
+    from verify_c import load_lib, bargs
+    lib = load_lib()
+    rc = lib.nnue_load(net_path.encode())
+    if rc != 0:                      # nnue_load returns 0 = OK, else an errno
+        raise SystemExit(f"nnue_load rc={rc} for {net_path}")
+    rows = _load_ref(ref_path)["positions"]
+    out = []
+    for r in rows:
+        b = chess.Board(r["fen"])
+        # oracle is side-to-move POV; the reference stores WHITE POV
+        sign = 1 if b.turn == chess.WHITE else -1
+        out.append(int(lib.nnue_eval_oracle(*bargs(b))) * sign)
+    return out
+
+
+def cmd_rank(args):
+    ref = _load_ref(args.ref)
+    rows = ref["positions"]
+    if args._eval_one:
+        json.dump(_rank_eval_one(args._eval_one, args.ref), sys.stdout)
+        return 0
+    nets = args.nets
+    print(f"reference: {ref['n']:,} positions @ SF depth {ref['sf_depth']}"
+          f"  ({len(nets)} net(s))")
+    ph = [phase_of(chess.Board(r["fen"])) for r in rows]
+    bucket = ["endgame" if p <= 8 else ("middle" if p <= 18 else "opening")
+              for p in ph]
+    evals, t0 = {}, time.time()
+    tty = sys.stdout.isatty()
+    for i, n in enumerate(nets):
+        cp = subprocess.run([sys.executable, os.path.abspath(__file__), "rank",
+                             "--ref", args.ref, "--_eval-one", n],
+                            capture_output=True, text=True, cwd=REPO)
+        if cp.returncode != 0:
+            print(f"  {os.path.basename(n)}: FAILED  {cp.stderr.strip()[:120]}")
+            continue
+        evals[n] = json.loads(cp.stdout)
+        el = time.time() - t0
+        eta = el / (i + 1) * (len(nets) - i - 1)
+        msg = (f"  scored {i+1}/{len(nets)} ({(i+1)/len(nets)*100:5.1f}%)  "
+               f"elapsed {_fmt(int(el))}  ETA {_fmt(int(eta))}")
+        print(("\r" + msg + "    ") if tty else msg, end="" if tty else "\n",
+              flush=True)
+    if tty:
+        print()
+    if not evals:
+        print("no nets scored"); return 1
+
+    def mae(cps, bk=None):
+        v = [abs(cps[i] - rows[i]["cp"]) for i in range(len(rows))
+             if abs(rows[i]["cp"]) < MATE_CUT and abs(cps[i]) < MATE_CUT
+             and (bk is None or bucket[i] == bk)]
+        return sum(v) / len(v) if v else float("nan")
+
+    scored = [(n, mae(c, "opening"), mae(c, "middle"), mae(c, "endgame"),
+               mae(c)) for n, c in evals.items()]
+    scored.sort(key=lambda r: r[4])          # overall MAE; no bucket is special
+    print(f"\n{'net':34s} {'all':>8s} {'opening':>8s} {'middle':>8s} "
+          f"{'endgame':>8s}")
+    for n, op, mid, eg, allb in scored:
+        print(f"{os.path.basename(n)[:34]:34s} {allb:8.1f} {op:8.1f} "
+              f"{mid:8.1f} {eg:8.1f}")
+    print("\n  REGRESSION CHECK ONLY -- this does NOT predict Elo "
+          "(calibrated negative over 12 nets, see the note above).")
+    print("  A net that sits far from its siblings has changed; that is the "
+          "signal. Ordering here says nothing about strength.")
+    if len(scored) > 1:
+        print(f"  spread best->worst: {scored[-1][4] - scored[0][4]:.1f} cp")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -518,6 +625,14 @@ def main():
                    help="how many of the largest disagreements to list "
                         "(default: the top 1%%, minimum 5)")
     t.set_defaults(func=cmd_test)
+
+    r = sub.add_parser("rank", help="static-eval nets against the reference "
+                                    "(no games; kill filter)")
+    r.add_argument("nets", nargs="*", help="one or more .nnue files")
+    r.add_argument("--ref", default=DEFAULT_REF)
+    r.add_argument("--_eval-one", dest="_eval_one", default=None,
+                   help=argparse.SUPPRESS)   # internal: one net, one process
+    r.set_defaults(func=cmd_rank)
 
     args = ap.parse_args()
     sys.exit(args.func(args))
