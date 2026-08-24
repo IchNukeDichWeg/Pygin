@@ -75,7 +75,8 @@ from config import (LABEL_NODES, LABEL_MAX_ABS_CP, LABEL_MAX_HMC,
                     LABEL_MIN_RANDOM_PLIES, LABEL_MAX_RANDOM_PLIES,
                     LABEL_MAX_PLIES, LABEL_ADJ_CP, LABEL_ADJ_STREAK, LABEL_TT_BITS,
                     engine_fingerprint)
-from data_format import RECORD_DTYPE, write_pygdata, merge_pygdata
+from data_format import (RECORD_DTYPE, PygdataWriter, write_pygdata,
+                         merge_pygdata)
 
 
 def make_label_engine():
@@ -306,6 +307,25 @@ def play_game(eng, rng, nodes, contempt, mopup_min,
     return recs
 
 
+FLUSH_RECORDS = 1 << 16        # ~5.8 MB per shard write
+
+
+def _flush(writer, buf, cap):
+    """Append buffered games to the shard. cap > 0 truncates at that many
+    total records (the --positions mode stops mid-game rather than overrunning
+    its share). Returns how many records were written."""
+    # a game can legitimately yield NO positions, and an empty python list
+    # has dtype float64 -- concatenating one into structured records raises
+    # DTypePromotionError, so drop them before stacking
+    parts = [np.asarray(g, dtype=RECORD_DTYPE) for g in buf if len(g)]
+    if not parts:
+        return 0
+    arr = np.concatenate(parts) if len(parts) > 1 else parts[0]
+    if cap and writer.count + len(arr) > cap:
+        arr = arr[:max(0, cap - writer.count)]
+    return writer.append(arr)
+
+
 def run_worker(shard_path, positions, nodes, seed, book, endgame, eg_men,
                games_quota=0):
     """games_quota > 0: play exactly that many games, keep EVERY extracted
@@ -319,44 +339,55 @@ def run_worker(shard_path, positions, nodes, seed, book, endgame, eg_men,
     mopup_min = eng._py.MOPUP_MIN_ADV
     rng = random.Random(seed)
     book_size = os.path.getsize(book) if book else 0
-    rows = []
     games = 0
     stopped = False
+    # Records STREAM to the shard instead of accumulating in RAM: a 200M
+    # corpus is 17.6 GB, and holding that per-run capped the corpus at the
+    # box's memory. Buffer a little so writes stay chunky, flush the rest at
+    # close. A game's records are complete when play_game returns (it
+    # back-patches `result` on the whole game), so flushing per game is safe.
+    buf, nbuf = [], 0
+    writer = PygdataWriter(shard_path)
     try:
-      while (games < games_quota) if games_quota else (len(rows) < positions):
-        rows.extend(play_game(eng, rng, nodes, contempt, mopup_min,
-                              book=book, book_size=book_size,
-                              endgame=endgame, eg_men=eg_men))
-        games += 1
-        if games % 5 == 0:
-            # progress beacon for the parent's aggregate ETA line (tiny
-            # atomic-enough single write; parent polls, never blocks).
-            # Every 5 games so even short test runs show real numbers.
-            try:
-                with open(shard_path + ".progress", "w") as pf:
-                    pf.write(f"{games} {len(rows)}")
-            except OSError:
-                pass
-    except KeyboardInterrupt:
+      try:
+        while (games < games_quota) if games_quota \
+                else (writer.count + nbuf < positions):
+            buf.append(play_game(eng, rng, nodes, contempt, mopup_min,
+                                 book=book, book_size=book_size,
+                                 endgame=endgame, eg_men=eg_men))
+            nbuf += len(buf[-1])
+            games += 1
+            if nbuf >= FLUSH_RECORDS:
+                nbuf -= _flush(writer, buf, positions if not games_quota else 0)
+                buf = []
+            if games % 5 == 0:
+                # progress beacon for the parent's aggregate ETA line (tiny
+                # atomic-enough single write; parent polls, never blocks).
+                # Every 5 games so even short test runs show real numbers.
+                try:
+                    with open(shard_path + ".progress", "w") as pf:
+                        pf.write(f"{games} {writer.count + nbuf}")
+                except OSError:
+                    pass
+      except KeyboardInterrupt:
         # Ctrl-C in the terminal signals the whole process group, so EVERY
         # worker lands here at once. Swallow it: 111 simultaneous tracebacks
         # are unreadable, and the parent already reports the stop. Fall
-        # through to the write below -- the games played so far are real
+        # through to the flush below -- the games played so far are real
         # data, and a partial shard is a valid .pygdata file (merge and the
         # label audit take any number of records), so an interrupted run is
         # salvage, not loss.
         stopped = True
+      _flush(writer, buf, positions if not games_quota else 0)
+    finally:
+        total = writer.close()             # patches the header count
     try:                               # final beacon: the parent's last poll
         with open(shard_path + ".progress", "w") as pf:   # sees full counts
-            pf.write(f"{games} {len(rows)}")
+            pf.write(f"{games} {total}")
     except OSError:
         pass
-    if not games_quota:
-        rows = rows[:positions]
-    arr = np.stack(rows) if rows else np.zeros(0, dtype=RECORD_DTYPE)
-    write_pygdata(shard_path, arr)
     print(f"[worker seed={seed}] {'STOPPED' if stopped else 'done'}: "
-          f"{len(arr)} positions from {games} games -> {shard_path}",
+          f"{total} positions from {games} games -> {shard_path}",
           flush=True)
 
 

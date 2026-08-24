@@ -1127,6 +1127,48 @@ try:
 except Exception as _e:
     print(f"  note  could not run the cgroup probe ({_e})")
 
+# --- streaming .pygdata writer ------------------------------------------- #
+# gen_data's workers stream records to their shard instead of holding the run
+# in RAM (17.6 GB for a 200M-position corpus). Two contracts matter: the
+# streamed bytes must equal what the old one-shot write_pygdata produced, and
+# the file must be a VALID .pygdata at every moment, so a killed worker keeps
+# its flushed records instead of leaving an unreadable stub.
+print("\n--- streaming .pygdata writer ---")
+try:
+    import tempfile
+    import numpy as _np
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "NNUE"))
+    from data_format import (RECORD_DTYPE as _RD, PygdataWriter as _PW,
+                             write_pygdata as _wp, read_pygdata as _rp,
+                             check_pygdata as _cp)
+    _rng = _np.random.default_rng(4)
+    _recs = _np.zeros(2500, dtype=_RD)
+    _recs["score"] = _rng.integers(-2000, 2000, 2500)
+    _recs["stm"] = _rng.integers(0, 2, 2500)
+    _recs["pawns"] = _rng.integers(0, 2**63, 2500, dtype=_np.uint64)
+    with tempfile.TemporaryDirectory() as _d:
+        _a, _b = os.path.join(_d, "a.pygdata"), os.path.join(_d, "b.pygdata")
+        _wp(_a, _recs)                       # one shot, the old path
+        _w = _PW(_b)                         # streamed in three appends
+        _w.append(_recs[:1000])
+        _mid_n, _mid_ok, _ = _cp(_b)         # valid MID-STREAM?
+        _mid_records = len(_rp(_b))
+        _w.append(_recs[1000:2400])
+        _w.append(_recs[2400:])
+        _n = _w.close()
+        check("PygdataWriter: streamed == one-shot bytes",
+              open(_a, "rb").read() == open(_b, "rb").read())
+        check("PygdataWriter: close() returns the record count", _n == 2500,
+              detail=str(_n))
+        check("PygdataWriter: valid mid-stream (survives kill -9)",
+              _mid_ok and _mid_n == 1000 and _mid_records == 1000,
+              detail=f"count={_mid_n} ok={_mid_ok} readable={_mid_records}")
+        check("PygdataWriter: round-trips its records",
+              bool((_rp(_b)["score"] == _recs["score"]).all()))
+except Exception as _e:
+    check("streaming .pygdata writer", False, f"{type(_e).__name__}: {_e}")
+
 # --- local Syzygy probe (UseTB, <=5 men) --------------------------------- #
 # The local probe is what answers <=5-man positions without a network round
 # trip. Two properties matter and neither is visible by reading: it must
