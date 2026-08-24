@@ -472,11 +472,20 @@ def main():
                 n += len(y)
             if nchunk > 1:
                 el = time.time() - t_ep
+                # A chunk can hold ZERO training rows: the val split takes
+                # every VAL_BLOCK-th block of 5,000, so a corpus whose final
+                # partial chunk lands entirely on a val block contributes
+                # nothing. Chunk order is shuffled per epoch, so that chunk
+                # only lands FIRST occasionally -- which is why this crashed
+                # at epoch 36 of 40 on gen200m (200,000,080 records: the last
+                # 80 sit in block 40,000, a val block) after 35 clean epochs.
+                # Never divide by n here, and never print nothing either.
+                avg = f"{tot / n:.6f}" if n else "     n/a"
                 print(f"  epoch {ep:3d}  chunk {ci:3d}/{nchunk}  "
-                      f"train {tot / n:.6f}  {el / 60:.1f}m elapsed  "
+                      f"train {avg}  {el / 60:.1f}m elapsed  "
                       f"epoch ETA {el / ci * (nchunk - ci) / 60:.1f}m",
                       flush=True)
-        return tot / n
+        return tot / n if n else float("nan")
 
     # The best weights are held IN MEMORY as well as on disk. best.pt is the
     # only artifact a multi-hour run produces before the final export, and a
