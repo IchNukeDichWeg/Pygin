@@ -1127,6 +1127,69 @@ try:
 except Exception as _e:
     print(f"  note  could not run the cgroup probe ({_e})")
 
+# --- local Syzygy probe (UseTB, <=5 men) --------------------------------- #
+# The local probe is what answers <=5-man positions without a network round
+# trip. Two properties matter and neither is visible by reading: it must
+# REFUSE anything outside its range (so the Lichess path still gets 6-7 men),
+# and its DTZ move choice must actually CONVERT -- a WDL-only mover keeps the
+# win forever and draws by the 50-move rule. The conversion oracle needs the
+# tables, which are gitignored (940MB), so it skips when they are absent.
+print("\n--- local Syzygy probe ---")
+try:
+    import engine as _eng
+    _e = _eng.Engine()
+
+    # range + no-path guards: no tables needed
+    _e.syzygy_path = None
+    _e._syzygy = None
+    _nopath = _e._tb_probe_local(chess.Board("7k/8/8/8/8/8/8/KR6 w - - 0 1"))
+    check("local TB: no SyzygyPath -> None", _nopath is None, detail=repr(_nopath))
+
+    if os.path.isdir("syzygy"):
+        _e.syzygy_path = "syzygy"
+        _e._syzygy = None
+        _six = _e._tb_probe_local(
+            chess.Board("8/8/8/3k4/8/8/2PPPP2/3K4 w - - 0 1"))    # 6 men
+        check("local TB: >5 men -> None (Lichess keeps 6-7)",
+              _six is None, detail=repr(_six))
+
+        _bad = []
+        for _fen, _name, _wdl in [
+                ("7k/8/8/8/8/8/8/KR6 w - - 0 1", "KRvK", 2),
+                ("7k/8/8/8/8/8/8/KQ6 w - - 0 1", "KQvK", 2),
+                ("8/8/8/4k3/8/8/4P3/4K3 w - - 0 1", "KPvK", 0)]:
+            _r = _e._tb_probe_local(chess.Board(_fen))
+            if _r is None or _r[0] != _wdl:
+                _bad.append(f"{_name}: {_r if _r is None else _r[0]} != {_wdl}")
+        check("local TB: WDL verdicts correct (KRvK/KQvK win, KPvK draw)",
+              not _bad, detail="; ".join(_bad))
+
+        # the real oracle: does the mover MATE, or just shuffle?
+        import random as _rnd
+        _slow = []
+        for _fen, _name in [("7k/8/8/8/8/8/8/KR6 w - - 0 1", "KRvK"),
+                            ("7k/8/8/8/8/8/8/KQ6 w - - 0 1", "KQvK")]:
+            _b = chess.Board(_fen)
+            _rnd.seed(7)
+            _plies = 0
+            while not _b.is_game_over(claim_draw=True) and _plies < 120:
+                if _b.turn == chess.WHITE:
+                    _r = _e._tb_probe_local(_b)
+                    if _r is None:
+                        break
+                    _b.push(_r[1])
+                else:
+                    _b.push(_rnd.choice(list(_b.legal_moves)))
+                _plies += 1
+            if not _b.is_checkmate():
+                _slow.append(f"{_name}: {_b.result()} after {_plies} plies")
+        check("local TB: DTZ mover converts to mate (not a 50-move shuffle)",
+              not _slow, detail="; ".join(_slow))
+    else:
+        print("  skip  syzygy/ absent -- conversion oracle needs the tables")
+except Exception as _e:
+    check("local Syzygy probe", False, f"{type(_e).__name__}: {_e}")
+
 # --- verdict ------------------------------------------------------------- #
 if _failed:
     print(f"\n== FAILED: {len(_failed)} check(s): {', '.join(_failed)} ==")
