@@ -77,6 +77,7 @@ from config import (LABEL_NODES, LABEL_MAX_ABS_CP, LABEL_MAX_HMC,
                     engine_fingerprint)
 from data_format import (RECORD_DTYPE, PygdataWriter, write_pygdata,
                          merge_pygdata)
+from tablebase import Tablebase, add_arg as add_tb_arg
 
 
 def make_label_engine():
@@ -193,8 +194,12 @@ def _terminal(board):
             or board.halfmove_clock >= 100)
 
 
+TB_WIN_CP = 1000       # matches relabel_tb.py's --win-cp default
+
+
 def play_game(eng, rng, nodes, contempt, mopup_min,
-              book=None, book_size=0, endgame=False, eg_men=14):
+              book=None, book_size=0, endgame=False, eg_men=14,
+              tb=None, win_cp=TB_WIN_CP):
     """One self-play game; returns a list of RECORD_DTYPE rows.
 
     book: path to a plain-FEN/EPD file -- games start from a random line
@@ -231,6 +236,7 @@ def play_game(eng, rng, nodes, contempt, mopup_min,
     lib = eng._lib
     tbuf = (ctypes.c_uint8 * 16)()
     recs = []
+    tb_marks = []
     seen = set()
     streak = 0
     adjudicated = None
@@ -280,6 +286,13 @@ def play_game(eng, rng, nodes, contempt, mopup_min,
             r["hmc"] = board.halfmove_clock
             r["threat"] = np.frombuffer(bytes(tbuf), dtype=np.uint8)
             recs.append(r)
+            if tb is not None and tb.enabled:
+                v = tb.probe(board)            # -1/0/+1, WHITE POV
+                if v is not None:
+                    # both columns, or LAMBDA of the target keeps the wrong
+                    # number (see NNUE/relabel_tb.py)
+                    r["score"] = 0 if v == 0 else win_cp * v
+                    tb_marks.append((len(recs) - 1, v))
 
         board.push(mv)
         if streak >= LABEL_ADJ_STREAK and not endgame:
@@ -304,6 +317,10 @@ def play_game(eng, rng, nodes, contempt, mopup_min,
             result = 0
     for r in recs:
         r["result"] = result
+    # the game result must NOT overwrite tablebase truth: a game that was
+    # eventually won says nothing about a position the tablebase calls drawn
+    for i, v in tb_marks:
+        recs[i]["result"] = v
     return recs
 
 
@@ -327,14 +344,22 @@ def _flush(writer, buf, cap):
 
 
 def run_worker(shard_path, positions, nodes, seed, book, endgame, eg_men,
-               games_quota=0):
+               games_quota=0, syzygy=None, win_cp=TB_WIN_CP):
     """games_quota > 0: play exactly that many games, keep EVERY extracted
     position (position count becomes the variable). games_quota == 0: play
     until `positions` are collected (game count becomes the variable)."""
     eng = make_label_engine()
+    # Raises if the path is unusable: a run that quietly found no tables would
+    # look exactly like "the labels were already right", and would bake wrong
+    # <=5-man labels into the whole corpus with nothing in the log to show it.
+    tb = Tablebase(syzygy)
     if shard_path.endswith("shard0"):      # once per run, not once per worker
         print(engine_fingerprint(eng) + "   <- must MATCH verify_labels'",
               flush=True)
+        print(f"tablebase: {tb.n_tables} WDL tables from {syzygy!r}"
+              if tb.enabled else
+              "tablebase: DISABLED (no --syzygy) -- <=5-man labels come from "
+              "the search, which is wrong on ~31% of them", flush=True)
     contempt = eng._py.CONTEMPT
     mopup_min = eng._py.MOPUP_MIN_ADV
     rng = random.Random(seed)
@@ -354,7 +379,8 @@ def run_worker(shard_path, positions, nodes, seed, book, endgame, eg_men,
                 else (writer.count + nbuf < positions):
             buf.append(play_game(eng, rng, nodes, contempt, mopup_min,
                                  book=book, book_size=book_size,
-                                 endgame=endgame, eg_men=eg_men))
+                                 endgame=endgame, eg_men=eg_men,
+                                 tb=tb, win_cp=win_cp))
             nbuf += len(buf[-1])
             games += 1
             if nbuf >= FLUSH_RECORDS:
@@ -387,7 +413,9 @@ def run_worker(shard_path, positions, nodes, seed, book, endgame, eg_men,
     except OSError:
         pass
     print(f"[worker seed={seed}] {'STOPPED' if stopped else 'done'}: "
-          f"{total} positions from {games} games -> {shard_path}",
+          f"{total} positions from {games} games"
+          + (f", {tb.hits:,} tablebase-labelled" if tb.enabled else "")
+          + f" -> {shard_path}",
           flush=True)
 
 
@@ -423,6 +451,10 @@ def main():
                     help="endgame harvest: no early win adjudication, "
                          "record only positions with <= --eg-men total men")
     ap.add_argument("--eg-men", type=int, default=14)
+    add_tb_arg(ap)
+    ap.add_argument("--win-cp", type=int, default=TB_WIN_CP,
+                    help="cp magnitude written for a tablebase WIN/LOSS "
+                         "(draws get 0); matches relabel_tb.py")
     ap.add_argument("--shard", help=argparse.SUPPRESS)   # internal
     args = ap.parse_args()
     if args.book:
@@ -433,7 +465,8 @@ def main():
     if args.shard:                     # worker mode (fresh process = fresh
         run_worker(args.shard, args.positions, args.nodes, args.seed,  # .so)
                    args.book, args.endgame, args.eg_men,
-                   games_quota=args.games)
+                   games_quota=args.games, syzygy=args.syzygy,
+                   win_cp=args.win_cp)
         return
 
     # --- parent only (workers inherit an explicit count from below) ---
@@ -465,7 +498,9 @@ def main():
              "--seed", str(args.seed * 100003 + args.offset + w)]
             + (["--book", args.book] if args.book else [])
             + (["--endgame", "--eg-men", str(args.eg_men)]
-               if args.endgame else []),
+               if args.endgame else [])
+            + (["--syzygy", args.syzygy] if args.syzygy else [])
+            + ["--win-cp", str(args.win_cp)],
             cwd=REPO_DIR))
 
     # aggregate progress + ETA, one plain line per interval -- survives

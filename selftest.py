@@ -1127,6 +1127,56 @@ try:
 except Exception as _e:
     print(f"  note  could not run the cgroup probe ({_e})")
 
+# --- gen_data tablebase labelling ---------------------------------------- #
+# --syzygy replaces the search label with tablebase truth for <=5-man
+# positions. Measured 2026-08-24 on an endgame-harvest corpus: WITHOUT it
+# 15.69% of <=5-man `result` labels and 41.63% of score signs contradict the
+# tablebase; WITH it, 0.00%. The failure mode that matters is SILENT -- a
+# path that opens nothing would leave the search labels in place and look
+# exactly like success -- so an unusable path must RAISE.
+print("\n--- gen_data tablebase labelling ---")
+try:
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "NNUE"))
+    import tempfile as _tf
+    from tablebase import Tablebase as _TB
+
+    _raised = None
+    try:
+        _TB(os.path.join(_tf.gettempdir(), "pygin-no-such-syzygy-dir"))
+    except Exception as _e:
+        _raised = type(_e).__name__
+    check("Tablebase: missing dir RAISES (never silent)",
+          _raised == "FileNotFoundError", detail=str(_raised))
+
+    with _tf.TemporaryDirectory() as _d:
+        _raised = None
+        try:
+            _TB(_d)                       # exists, but holds no .rtbw
+        except Exception as _e:
+            _raised = type(_e).__name__
+        check("Tablebase: dir without .rtbw RAISES",
+              _raised == "FileNotFoundError", detail=str(_raised))
+
+    check("Tablebase: None disables cleanly", _TB(None).enabled is False)
+
+    if os.path.isdir("syzygy"):
+        _tb = _TB("syzygy")
+        _cases = [("6R1/8/8/3KB3/8/4r2k/8/8 w - - 0 1", 0, "R+B vs R drawn"),
+                  ("6R1/3K4/8/3N4/8/r7/5k2/8 w - - 0 1", 0, "R+N vs R drawn"),
+                  ("8/8/8/8/8/2k5/8/KQ6 w - - 0 1", 1, "KQvK white wins"),
+                  ("8/8/8/8/8/2K5/8/kq6 b - - 0 1", -1, "KQvK black wins")]
+        _bad = [w for f, want, w in _cases
+                if _tb.probe(chess.Board(f)) != want]
+        check("Tablebase: WHITE-POV verdicts correct (incl. black to move)",
+              not _bad, detail="; ".join(_bad))
+        # the shapes the corpus gets wrong must come back as dead draws
+        _tb.close()
+    else:
+        print("  skip  syzygy/ absent -- verdict check needs the tables")
+except Exception as _e:
+    check("gen_data tablebase labelling", False, f"{type(_e).__name__}: {_e}")
+
 # --- streaming .pygdata writer ------------------------------------------- #
 # gen_data's workers stream records to their shard instead of holding the run
 # in RAM (17.6 GB for a 200M-position corpus). Two contracts matter: the
