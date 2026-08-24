@@ -1127,6 +1127,18 @@ try:
 except Exception as _e:
     print(f"  note  could not run the cgroup probe ({_e})")
 
+def _has_syzygy_dtz(d="syzygy"):
+    """True only if DTZ (.rtbz) tables are present. The engine's local probe
+    selects moves BY DTZ and returns None without it, while the published
+    syzygy-345 release is WDL-only on purpose (training never needs DTZ). So
+    a correctly-provisioned TRAINING box has WDL and no DTZ, and gating the
+    move-selection checks on WDL alone made such a box report a red suite."""
+    try:
+        return any(f.endswith(".rtbz") for f in os.listdir(d))
+    except OSError:
+        return False
+
+
 def _has_syzygy(d="syzygy"):
     """True only if the directory actually holds WDL tables. Testing
     os.path.isdir alone made both tablebase gates FAIL on a fresh box where an
@@ -1256,6 +1268,10 @@ try:
         check("local TB: >5 men -> None (Lichess keeps 6-7)",
               _six is None, detail=repr(_six))
 
+    if _has_syzygy() and not _has_syzygy_dtz():
+        print("  skip  DTZ (.rtbz) absent -- move selection needs it; the "
+              "syzygy-345 release is WDL-only by design")
+    if _has_syzygy_dtz():
         _bad = []
         for _fen, _name, _wdl in [
                 ("7k/8/8/8/8/8/8/KR6 w - - 0 1", "KRvK", 2),
