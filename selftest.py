@@ -1127,6 +1127,17 @@ try:
 except Exception as _e:
     print(f"  note  could not run the cgroup probe ({_e})")
 
+def _has_syzygy(d="syzygy"):
+    """True only if the directory actually holds WDL tables. Testing
+    os.path.isdir alone made both tablebase gates FAIL on a fresh box where an
+    interrupted fetch had left an empty syzygy/ behind -- a missing optional
+    asset must skip, not fail."""
+    try:
+        return any(f.endswith(".rtbw") for f in os.listdir(d))
+    except OSError:
+        return False
+
+
 # --- gen_data tablebase labelling ---------------------------------------- #
 # --syzygy replaces the search label with tablebase truth for <=5-man
 # positions. Measured 2026-08-24 on an endgame-harvest corpus: WITHOUT it
@@ -1160,7 +1171,7 @@ try:
 
     check("Tablebase: None disables cleanly", _TB(None).enabled is False)
 
-    if os.path.isdir("syzygy"):
+    if _has_syzygy():
         _tb = _TB("syzygy")
         _cases = [("6R1/8/8/3KB3/8/4r2k/8/8 w - - 0 1", 0, "R+B vs R drawn"),
                   ("6R1/3K4/8/3N4/8/r7/5k2/8 w - - 0 1", 0, "R+N vs R drawn"),
@@ -1237,7 +1248,7 @@ try:
     _nopath = _e._tb_probe_local(chess.Board("7k/8/8/8/8/8/8/KR6 w - - 0 1"))
     check("local TB: no SyzygyPath -> None", _nopath is None, detail=repr(_nopath))
 
-    if os.path.isdir("syzygy"):
+    if _has_syzygy():
         _e.syzygy_path = "syzygy"
         _e._syzygy = None
         _six = _e._tb_probe_local(
