@@ -40,10 +40,16 @@ if [ -t 1 ]; then
 else
     curl -fL --retry 3 --retry-delay 2 -o "$TMP" "$URL" --silent --show-error &
     CP=$!
+    t0=$(date +%s)
     while kill -0 $CP 2>/dev/null; do
-        sz=$(du -m "$TMP" 2>/dev/null | cut -f1 || echo 0)
-        echo "  syzygy: ${sz:-0}/379 MB"
-        sleep 20
+        sleep 5
+        kill -0 $CP 2>/dev/null || break
+        sz=$(( $(wc -c < "$TMP" 2>/dev/null || echo 0) / 1048576 ))
+        el=$(( $(date +%s) - t0 ))
+        rate=$(( el > 0 ? sz / el : 0 ))
+        eta=$(( rate > 0 ? (379 - sz) / rate : 0 ))
+        printf "  syzygy: %d/379 MB (%d%%)  %d MB/s  elapsed %ds  ETA %ds\n" \
+            "$sz" "$(( sz * 100 / 379 ))" "$rate" "$el" "$eta"
     done
     wait $CP
 fi
