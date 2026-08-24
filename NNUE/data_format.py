@@ -43,6 +43,75 @@ def write_pygdata(path, records):
         f.write(records.tobytes())
 
 
+class PygdataWriter:
+    """Streaming .pygdata writer -- append as you go, patch the count at close.
+
+    gen_data's workers used to hold every record in RAM until the run ended
+    (`rows.extend(...)` then one write_pygdata). At 88 bytes a record that is
+    17.6 GB across the workers for a 200M-position corpus, which caps the
+    corpus size at whatever the box happens to have. The header stores the
+    count at a FIXED offset, so streaming just means writing a placeholder
+    count, appending blocks, then seeking back to patch it.
+
+    Crash/Ctrl-C safety: the header is patched and flushed after EVERY
+    append, so the file on disk is a valid .pygdata at all times. A hard kill
+    loses only the records still sitting in the caller's buffer, never the
+    shard. Ctrl-C additionally flushes that buffer on the way out.
+    """
+
+    def __init__(self, path):
+        self.path = path
+        self.count = 0
+        self._f = open(path, "wb")
+        self._write_header()
+
+    def _write_header(self):
+        self._f.write(_HDR.pack(DATA_MAGIC, DATA_VERSION, RECORD_SIZE,
+                                self.count, THREAT_VER, 0))
+
+    def append(self, records):
+        """Append records; returns how many were actually written."""
+        arr = np.ascontiguousarray(records, dtype=RECORD_DTYPE)
+        if len(arr):
+            self._f.write(arr.tobytes())
+            self.count += len(arr)
+            self._sync_header()
+        return len(arr)
+
+    def _sync_header(self):
+        """Patch the count and flush, so the file ON DISK is always a valid
+        .pygdata holding every appended record.
+
+        Costs one seek plus 32 bytes per flush -- once per ~65k records, which
+        is nothing next to the 5.8 MB data write beside it. Without this the
+        count is only correct at close(), so a `kill -9`, an OOM or a box
+        going away loses the ENTIRE shard rather than just the un-flushed
+        buffer. Measured: a killed worker used to leave a 0-byte file that
+        `struct.unpack` could not even read a header from."""
+        end = self._f.tell()
+        self._f.seek(0)
+        self._write_header()
+        self._f.seek(end)
+        self._f.flush()
+
+    def close(self):
+        if self._f is None:
+            return self.count
+        try:
+            self._sync_header()
+        finally:
+            self._f.close()
+            self._f = None
+        return self.count
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+        return False
+
+
 def read_pygdata(path):
     with open(path, "rb") as f:
         magic, ver, rsize, count, tver, _ = _HDR.unpack(f.read(HEADER_SIZE))
