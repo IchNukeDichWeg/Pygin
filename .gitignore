@@ -293,3 +293,4 @@ puzzles-csv.zip
 # DeepMind's searchless_chess clone (external yardstick, see uci/sl_uci.py).
 # Upstream code + its venv + 63MB checkpoints -- not ours to vendor.
 searchless_chess/
+make_release.py
