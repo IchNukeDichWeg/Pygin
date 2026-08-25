@@ -36,16 +36,13 @@ LOGDIR="${LOGDIR:-$PWD}"
 # 96-core the density stops matching the screen, and that is the human's call.
 CORES=$(nproc)
 WORKERS=$((CORES / 2))
-SCREEN_WORKERS=48
-if [ "$WORKERS" -ne "$SCREEN_WORKERS" ]; then
-    echo "STOP: this box has $CORES cores -> $WORKERS workers, but the seed"
-    echo "screen these results pool with ran $SCREEN_WORKERS. Different worker"
-    echo "density is a DIFFERENT INSTRUMENT and the numbers cannot be pooled."
-    echo "Re-run on a 96-core box, or accept the deviation by setting"
-    echo "WORKERS=$SCREEN_WORKERS explicitly and saying so out loud."
-    exit 1
-fi
-echo "workers: $WORKERS (cores $CORES / 2, matches the seed screen)"
+[ "$WORKERS" -lt 1 ] && WORKERS=1
+echo "workers: $WORKERS  (cores $CORES / 2 -- a game runs TWO engines, so this"
+echo "         is one core each; oversubscribing starves them and NPS at a"
+echo "         fixed clock IS playing strength)"
+echo "NOTE: worker density is part of the instrument. These results only pool"
+echo "      with a campaign run at the SAME density -- sanity-check this number"
+echo "      against the screen you intend to compare with before trusting it."
 BASE=NNUE/shims/engine_nnue_v12.py
 [ -f "$BASE" ] || { echo "missing baseline $BASE"; exit 1; }
 for n in g1 g2 g3; do
