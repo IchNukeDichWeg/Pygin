@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""sl_uci.py -- a minimal UCI front-end for DeepMind's searchless_chess.
+"""uci/sl_uci.py -- a minimal UCI front-end for DeepMind's searchless_chess.
 
 An external yardstick of a completely different shape: a transformer that
 plays by ONE forward pass per position, no tree at all (arXiv 2402.04494).
@@ -7,9 +7,9 @@ Useful here precisely because it shares nothing with Pygin -- no search, no
 NNUE, no handcrafted eval -- so a match against it probes different
 weaknesses than Stockfish does.
 
-    python3 uci_match.py \
+    python3 uci/uci_match.py \
         --engine1 "python3 cuci.py" --name1 pygin \
-        --engine2 "searchless_chess/venv/bin/python sl_uci.py" --name2 sl9M \
+        --engine2 "searchless_chess/venv/bin/python uci/sl_uci.py" --name2 sl9M \
         --option2 Model=9M \
         --threads1 1 --hash1 128 --book off --positions 2 \
         --tc1 10+0.1 --depth2 1
@@ -18,7 +18,7 @@ weaknesses than Stockfish does.
 optional. The net ignores every go limit by construction, but a forward
 pass costs real time. Under a shared 10+0.1 clock the 9M flags around move
 14 and every game ends TIME_FORFEIT instead of on the board. A fixed limit
-makes uci_match.py skip clock accounting for that side; --tc1 then sets
+makes uci/uci_match.py skip clock accounting for that side; --tc1 then sets
 Pygin's strength alone.
 
 COST, measured on this Mac (M2, 10 cores, 16 GB), 10 moves from one
@@ -40,7 +40,7 @@ eight is not. Memory caps it too -- 270M is ~1.1 GB of float32 params per
 process before activations.
 
 MODELS. `setoption name Model value X` picks the checkpoint, so one command
-per model with no file edits (uci_match.py spells it --option2 Model=X).
+per model with no file edits (uci/uci_match.py spells it --option2 Model=X).
 Three load: 9M, 136M and 270M, all action-value -- P(win | state, action),
 the paper's headline line, same Lichess corpus at three sizes. 270M is the
 one the paper rates ~2895 Lichess blitz.
@@ -92,10 +92,11 @@ MODELS = {
 }
 CHECKPOINT_STEP = 6_400_000
 
-_ROOT = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _CLONE = os.path.join(_ROOT, "searchless_chess")
 _SRC = os.path.join(_CLONE, "src")
-sys.path.insert(0, _ROOT)              # so `searchless_chess.*` imports
+sys.path.insert(0, _ROOT)              # repo root: `searchless_chess.*`
+                                       # and this repo's own modules
 
 if not os.path.isdir(_SRC):
     sys.exit(f"searchless_chess clone not found at {_CLONE} "
@@ -169,7 +170,7 @@ def _score(engine, board, move, policy):
     because it costs one conditional and is the difference between working
     and silently scoring the wrong move if that net ever becomes loadable.
 
-    uci_match.py does not adjudicate on score -- MAX_PLIES is its only
+    uci/uci_match.py does not adjudicate on score -- MAX_PLIES is its only
     adjudicated result -- so this is for the log, not for correctness.
     Returns None rather than raising: a missing score costs an info field,
     while a raised exception would cost the game."""
