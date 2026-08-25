@@ -8,7 +8,7 @@ to the s1-s4 seed screen -- 40-epoch cosine, d2 16, lambda 0.75 -- so g vs s
 is a clean read on the corpus, with the seed spread measured on both sides.
 
     python3 match.py NNUE/shims/engine_nnue_g1.py NNUE/shims/engine_nnue_v12.py \
-        2500 0 --workers 0 --tc 10+0.1 --seed 59 --sprt --sprt-min-pairs 1500
+        5000 0 --workers 0 --tc 10+0.1 --seed 59 --sprt --sprt-min-pairs 1500
 
 Trained val 0.059137 at epoch 35 of 40 (crashed at epoch 36 on the all-val-chunk bug fixed in 4906878; best.pt recovered, and 35 was its best epoch anyway).
 Val is NOT a strength signal here: it has been inverted or inert 8 times, and
