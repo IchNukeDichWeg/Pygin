@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""uci_match.py -- match runner for two arbitrary UCI engines.
+"""uci/uci_match.py -- match runner for two arbitrary UCI engines.
 
 Unlike match.py (which imports this repo's Python engine modules directly),
 this speaks plain UCI over stdin/stdout via python-chess, so ANY UCI engine
@@ -20,7 +20,7 @@ Search limit, first one that is set per engine wins over the clock:
     --nodes N        fixed node count
     --tc BASE[+INC]  clock in seconds (default 30+0.3 when nothing is set)
 
-    python3 uci_match.py \
+    python3 uci/uci_match.py \
         --engine1 "python3 cuci.py" --dir1 . --name1 cengine \
         --engine2 "venv/bin/python uci.py" --dir2 ../numbfish --name2 numbfish \
         --threads 1 --hash 128 --book off \
@@ -51,7 +51,8 @@ import chess.pgn
 
 # match.py carries the whole reporting/stats/SPRT toolbox; reuse it wholesale
 # (importing it only defines config constants + functions, ~0.2 s).
-import match as m
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import match as m                      # repo root: this file lives in uci/
 
 MAX_PLIES = 500          # safety net: unfinished game past this = draw
 DEFAULT_EPD = "data/UHO_4060_v4.epd"

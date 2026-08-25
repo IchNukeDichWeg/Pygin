@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""cuci57.py -- cuci.py's UCI layer driving the FROZEN v57 engine.
+"""uci/cuci57.py -- cuci.py's UCI layer driving the FROZEN v57 engine.
 
-    python3 cuci57.py
+    python3 uci/cuci57.py
 
 v57 is the last pure-HCE release. Plain `cuci.py` is the live engine, which
 since v58 arms the NNUE net, so it cannot stand in for v57 in a match that
@@ -19,8 +19,9 @@ import importlib.util
 import os
 import sys
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_V57 = os.path.join(_HERE, "Old Engine", "57", "engine57.py")
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT)              # this file lives in uci/, not the root
+_V57 = os.path.join(_ROOT, "Old Engine", "57", "engine57.py")
 
 if not os.path.isfile(_V57):
     raise SystemExit(f"missing the v57 snapshot: {_V57}")
