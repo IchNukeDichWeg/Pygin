@@ -8,6 +8,12 @@
 # it and "g median vs s median (-29)" is a like-for-like read. Changing any
 # of it is a DEVIATION and must be said out loud, not buried here.
 #
+# --workers 48, NOT --workers 0. Worker density is part of the INSTRUMENT: the
+# seed screen ran 48 parallel on a 96-core box, and measured worker density
+# moves NPS hard (48 workers 2.28M nps vs 111 workers 1.02M nps), which moves
+# playing strength at a fixed clock. Running g at 95 against an s screen taken
+# at 48 would be two instruments, and they could not be pooled.
+#
 # 5,000 positions = 10,000 games per net (match.py's 3rd arg is POSITIONS,
 # each played twice for colour balance), twice the seed screen's budget:
 # the screen was a kill filter, this is a measurement.
@@ -33,7 +39,7 @@ echo ""
 for n in g1 g2 g3; do
     echo "=== $n vs v12  $(TZ=Europe/Zurich date '+%H:%M:%S') ==="
     python3 match.py "NNUE/shims/engine_nnue_$n.py" "$BASE" \
-        5000 0 --workers 0 --tc 10+0.1 --seed 59 \
+        5000 0 --workers 48 --tc 10+0.1 --seed 59 \
         --sprt --sprt-min-pairs 1500 \
         --sprt-resume "sprt_engine_nnue_${n}_vs_engine_nnue_v12_tc10+0.1.json" \
         2>&1 | tee "$LOGDIR/ab_$n.log"
