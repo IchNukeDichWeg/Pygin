@@ -1150,6 +1150,54 @@ def _has_syzygy(d="syzygy"):
         return False
 
 
+# --- match.py Elo error bar ------------------------------------------------ #
+# The margin must come from the OBSERVED variance, not a coin flip. It used
+# se = 0.5/sqrt(n) (Bernoulli 0.25), true only if every game were win-or-lose
+# with no draws. At our measured 41% draw rate the per-game variance is 0.148,
+# and the pentanomial cuts it to 0.062 per pair -- so every margin this
+# project ever printed was ~1.41x too WIDE. Nothing pinned it, which is how it
+# survived. Values below are hand-computed from real campaign pentanomials.
+print("\n--- match.py Elo error bar ---")
+try:
+    import importlib.util as _ilu
+    _spec = _ilu.spec_from_file_location("_m", "match.py")
+    _m = _ilu.module_from_spec(_spec)
+    sys.modules["_m"] = _m
+    try:
+        _spec.loader.exec_module(_m)
+    except SystemExit:
+        pass
+
+    def _score(penta):
+        n = float(sum(penta))
+        return sum((c / n) * v for c, v in zip(penta, (0.0, .25, .5, .75, 1.0)))
+
+    # (label, pentanomial, games, expected margin) -- g2/g1/s1, real campaigns
+    _cases = [("g2", [324, 1248, 1957, 1167, 304], 10000, 4.78),
+              ("g1", [153, 421, 577, 280, 69], 3010, 8.96),
+              ("s1", [232, 707, 951, 500, 110], 5000, 6.86)]
+    _bad = []
+    for _tag, _p, _ng, _want in _cases:
+        _e, _mar = _m.elo(_score(_p), _ng, penta=_p)
+        if abs(_mar - _want) > 0.05:
+            _bad.append(f"{_tag}: {_mar:.2f} != {_want}")
+    check("elo(): pentanomial margin matches hand-computed",
+          not _bad, detail="; ".join(_bad))
+
+    # the coin-flip fallback must still be reachable, and must be WIDER
+    _e1, _m_penta = _m.elo(_score(_cases[0][1]), 10000, penta=_cases[0][1])
+    _e2, _m_coin = _m.elo(_score(_cases[0][1]), 10000)
+    check("elo(): coin-flip fallback is the conservative one",
+          _m_coin > _m_penta, detail=f"coin {_m_coin:.2f} vs penta {_m_penta:.2f}")
+
+    # trinomial path sits BETWEEN coin flip and pentanomial
+    _e3, _m_tri = _m.elo(_score(_cases[0][1]), 10000, wdl=(2894, 4091, 3015))
+    check("elo(): trinomial sits between pentanomial and coin flip",
+          _m_penta < _m_tri < _m_coin,
+          detail=f"penta {_m_penta:.2f} < tri {_m_tri:.2f} < coin {_m_coin:.2f}")
+except Exception as _e:
+    check("match.py Elo error bar", False, f"{type(_e).__name__}: {_e}")
+
 # --- gen_data tablebase labelling ---------------------------------------- #
 # --syzygy replaces the search label with tablebase truth for <=5-man
 # positions. Measured 2026-08-24 on an endgame-harvest corpus: WITHOUT it
