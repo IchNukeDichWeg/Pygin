@@ -905,6 +905,25 @@ A real NNUE is **not** integrated, on purpose:
 That said, a proper NNUE remains the biggest single upgrade available:
 replacing all hand-crafted terms with learned weights could be worth
 **+200-300 Elo**.
+
+ERROR BARS BEFORE 2026-08-25 ARE ~1.4x TOO WIDE (most of them).
+match.py's elo() computed its 95% margin as se = 0.5/sqrt(n) -- Bernoulli
+variance 0.25, i.e. every game a coin flip. Real games are not: at a 41% draw
+rate the per-game variance is 0.148, and the pentanomial cuts it to 0.062 per
+pair. Fixed 2026-08-25; elo() now derives the variance from the pentanomial
+(or W/D/L), and agrees exactly with Testing/sprt.py, which was always right.
+
+Provenance is MIXED, so do not apply a blanket factor: numbers that came
+through Testing/sprt.py were already correct (v58 +19.11 +/-7.8, v59 +13.84
++/-6.4, NNUE v4, the v5 LTC null -- all within 1% of the recomputed value).
+Numbers printed by match.py's summary were 1.06x-1.72x too wide.
+
+Re-checked all 46 historical results carrying a pentanomial:
+  * NO verdict flips from rejected/null to a POSITIVE gain -- the ledger stands
+  * 3 flip from null to significantly NEGATIVE (v8 control net, P-41 revert,
+    FI-64): tighter bars made those rejections stronger, not weaker
+  * 39 unchanged, 4 already correct
+Point estimates never moved; only the +/- does.
 """
 # lib/ holds the shared support modules (time_manager, wdl, interruptible,
 # smp, shared_tt) since the 2026-07-24 reshuffle. They stay importable by
