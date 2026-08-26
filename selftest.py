@@ -1150,6 +1150,49 @@ def _has_syzygy(d="syzygy"):
         return False
 
 
+# --- SPRT budgeting + book bias -------------------------------------------- #
+# sprt.expected_pairs() answers "is this budget big enough?" BEFORE any games
+# are played -- the job the sprt_calc draw-ratio/RMS-bias fields exist for.
+# Pinned against campaigns whose outcome is already known: g2 at -4.20 Elo
+# needed more pairs than its 5,000-pair budget and indeed reached no decision,
+# while g1/g3 at ~-35 Elo needed ~950 and both tripped the reject bound.
+print("\n--- SPRT budgeting + book bias ---")
+try:
+    import importlib.util as _ilu2
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "Testing"))
+    import sprt as _sp
+
+    def _sc(elo):
+        return 1.0 / (1.0 + 10 ** (-elo / 400.0))
+
+    _n_g2 = _sp.expected_pairs(0.409, _sc(-4.20), elo0=0.0, elo1=4.0)
+    _n_g1 = _sp.expected_pairs(0.409, _sc(-35.56), elo0=0.0, elo1=4.0)
+    check("expected_pairs: g2 needs MORE than its 5,000-pair budget",
+          _n_g2 is not None and _n_g2 > 5000,
+          detail=f"{_n_g2:,.0f} pairs" if _n_g2 else "None")
+    check("expected_pairs: a ~-35 Elo change resolves inside 1,500 pairs",
+          _n_g1 is not None and _n_g1 < 1500,
+          detail=f"{_n_g1:,.0f} pairs" if _n_g1 else "None")
+    check("expected_pairs: a bigger effect needs fewer pairs",
+          _n_g1 < _n_g2, detail=f"{_n_g1:,.0f} < {_n_g2:,.0f}")
+
+    # book bias: pairing must REDUCE variance on a real campaign, and the
+    # trinomial cannot be recovered from the pentanomial (middle bucket
+    # merges DD with WL), so W/D/L is required and its absence must be caught.
+    _bb = _ilu2.spec_from_file_location("_bb", "tuning/book_bias.py")
+    _bbm = _ilu2.module_from_spec(_bb)
+    sys.modules["_bb"] = _bbm
+    _bb.loader.exec_module(_bbm)
+    _r = _bbm.stats([324, 1248, 1957, 1167, 304], (2894, 4091, 3015))
+    _ratio, _rms, _pd, _vp, _vi = _r
+    check("book_bias: pairing reduces variance on a real campaign",
+          0.80 < _ratio < 0.87, detail=f"ratio {_ratio:.3f} (expect ~0.834)")
+    check("book_bias: draw rate read back from the trinomial",
+          abs(_pd - 0.4091) < 0.001, detail=f"{_pd:.4f}")
+except Exception as _e:
+    check("SPRT budgeting + book bias", False, f"{type(_e).__name__}: {_e}")
+
 # --- match.py Elo error bar ------------------------------------------------ #
 # The margin must come from the OBSERVED variance, not a coin flip. It used
 # se = 0.5/sqrt(n) (Bernoulli 0.25), true only if every game were win-or-lose

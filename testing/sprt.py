@@ -251,3 +251,37 @@ if __name__ == "__main__":
               f"(bounds {r['lower']:+.3f} .. {r['upper']:+.3f})")
         print(f"  target score {r['s0']:.5f} (H0) .. {r['s1']:.5f} (H1)")
         print(f"  -> {verdict}")
+
+def expected_pairs(draw_rate, score, elo0=0.0, elo1=2.0, model="normalized",
+                   alpha=0.05, beta=0.05, scale=200000.0):
+    """A-PRIORI estimate of the pairs needed to reach a bound.
+
+    This is the number the sprt_calc "Draw ratio" / "RMS bias" fields exist to
+    produce: a BUDGET, decided before any games are played. The live test
+    never needs it -- evaluate() reads the real counts -- but a campaign has
+    to be scheduled and a box has to be rented, and "5,000 positions" was
+    chosen by habit rather than by arithmetic.
+
+    Builds the pentanomial an independent-pair model implies for `draw_rate`
+    and per-game `score`, reads the LLR drift per pair straight off
+    evaluate(), and divides the relevant bound by it. Returns None when the
+    drift is nil (the change sits exactly between the hypotheses, so the test
+    never resolves).
+
+    Validated against campaigns whose outcome was already known: g2 at
+    -4.20 Elo predicts 5,957 pairs against its 5,000-pair budget, and g2
+    indeed reached no decision; g1/g3 at ~-35 Elo predict ~950, and both
+    tripped the reject bound as soon as their 1,500-pair floor allowed.
+    """
+    pd = max(0.0, min(1.0, draw_rate))
+    pw = min(max(score - 0.5 * pd, 0.0), 1.0 - pd)
+    pl = max(0.0, 1.0 - pw - pd)
+    counts = [max(1.0, x * scale) for x in
+              (pl * pl, 2 * pl * pd, pd * pd + 2 * pw * pl, 2 * pw * pd, pw * pw)]
+    r = evaluate(counts, elo0=elo0, elo1=elo1, model=model,
+                 alpha=alpha, beta=beta)
+    drift = r["llr"] / sum(counts)
+    if abs(drift) < 1e-12:
+        return None
+    return abs((r["upper"] if drift > 0 else r["lower"]) / drift)
+
