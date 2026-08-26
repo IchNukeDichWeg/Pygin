@@ -1150,6 +1150,55 @@ def _has_syzygy(d="syzygy"):
         return False
 
 
+# --- anomalous-worker chi-squared ------------------------------------------ #
+# One sick core (thermal throttling, a stale .so, a starved engine child)
+# biases only ITS games. At 48 workers that is ~2% of a campaign -- a couple
+# of Elo, the size of the effects we are trying to measure -- and a
+# campaign-wide average hides it completely. Deliberately CONSERVATIVE: the
+# null variance uses mu(1-mu), an upper bound for 0/0.5/1 scores, so it
+# under-flags rather than crying wolf on a healthy box.
+print("\n--- anomalous-worker chi-squared ---")
+try:
+    import importlib.util as _ilu3, random as _rnd3
+    _sp3 = _ilu3.spec_from_file_location("_m3", "match.py")
+    _m3 = _ilu3.module_from_spec(_sp3)
+    sys.modules["_m3"] = _m3
+    try:
+        _sp3.loader.exec_module(_m3)
+    except SystemExit:
+        pass
+
+    def _sim(nw, each, pw, bad=None, seed=7):
+        _rnd3.seed(seed)
+        out = {}
+        for w in range(nw):
+            q = bad if (bad is not None and w == 0) else pw
+            sc = sum(_rnd3.choices([0, 0.5, 1],
+                                   weights=[max(1e-9, 1 - q - 0.4), 0.4, q])[0]
+                     for _ in range(each))
+            out[w] = {"n": each, "score": sc}
+        return out
+
+    _c_ok = _m3.worker_chi2(_sim(48, 200, 0.30))
+    check("worker_chi2: a healthy fleet is NOT flagged",
+          _c_ok is not None and _c_ok[2] >= 0.01,
+          detail=f"p={_c_ok[2]:.3f}" if _c_ok else "None")
+
+    _c_bad = _m3.worker_chi2(_sim(48, 200, 0.30, bad=0.05))
+    check("worker_chi2: one sick worker IS flagged",
+          _c_bad is not None and _c_bad[2] < 0.01,
+          detail=f"p={_c_bad[2]:.4f}" if _c_bad else "None")
+    check("worker_chi2: names the offending worker",
+          _c_bad is not None and _c_bad[3][0] == 0,
+          detail=f"worst={_c_bad[3][0]}" if _c_bad else "None")
+
+    check("worker_chi2: too few workers -> None (no false verdict)",
+          _m3.worker_chi2({0: {"n": 500, "score": 250.0}}) is None)
+    check("worker_chi2: below min_games -> None",
+          _m3.worker_chi2({w: {"n": 5, "score": 2.5} for w in range(10)}) is None)
+except Exception as _e:
+    check("anomalous-worker chi-squared", False, f"{type(_e).__name__}: {_e}")
+
 # --- SPRT budgeting + book bias -------------------------------------------- #
 # sprt.expected_pairs() answers "is this budget big enough?" BEFORE any games
 # are played -- the job the sprt_calc draw-ratio/RMS-bias fields exist for.
