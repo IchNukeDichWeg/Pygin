@@ -603,14 +603,57 @@ def load_fens(path):
     return fens
 
 
-def elo(score, n):
-    """Elo difference for a match score in [0,1] over n games, with a rough 95%
-    margin. Returns (elo, margin)."""
+def elo(score, n, penta=None, wdl=None):
+    """Elo difference for a match score in [0,1] over n games, with a 95%
+    margin. Returns (elo, margin).
+
+    THE VARIANCE MUST COME FROM THE RESULTS, NOT A COIN FLIP. This used
+    `se = 0.5/sqrt(n)`, i.e. Bernoulli variance 0.25 -- true only if every
+    game were a 50/50 win-or-lose with no draws. Real games are nothing like
+    that: at our measured 41% draw rate the per-game variance is 0.148, and
+    pairing each opening (the pentanomial) cuts it further to 0.062 per pair.
+    The old margin was therefore ~1.41x too WIDE on every campaign this
+    project has ever reported (measured across g1/g2/g3/s1/s2: 1.40-1.43x).
+
+    Too wide is the safe direction -- no verdict was ever wrongly ACCEPTED --
+    but it means real gains could be dismissed as noise, and it made the
+    printed margin disagree with the SPRT beside it, which always used the
+    real pentanomial variance via normalized_elo().
+
+    Variance, best source first:
+      penta -- dict/seq of the 5 pentanomial buckets: pairs are independent,
+               the shared opening cancels, smallest honest error bar.
+      wdl   -- (wins, draws, losses): trinomial, still far better than 0.25.
+      neither -- falls back to the old coin-flip bound, marked by returning
+               the same conservative number rather than silently inventing one.
+    """
     score = min(max(score, 1e-9), 1 - 1e-9)
     e = -400.0 * math.log10(1.0 / score - 1.0)
     if n <= 0:
         return e, 999.0
-    se = 0.5 / math.sqrt(n)
+
+    se = None
+    if penta is not None:
+        c = [float(penta[i]) for i in range(5)]
+        n_pairs = sum(c)
+        if n_pairs > 0:
+            p = [x / n_pairs for x in c]
+            vals = (0.0, 0.5, 1.0, 1.5, 2.0)          # pair score out of 2
+            mu = sum(pi * v for pi, v in zip(p, vals))
+            var_pair = sum(pi * (v - mu) ** 2 for pi, v in zip(p, vals))
+            se = math.sqrt(var_pair / 4.0 / n_pairs)  # SE of the mean GAME score
+    if se is None and wdl is not None:
+        w, d, l = (float(x) for x in wdl)
+        tot = w + d + l
+        if tot > 0:
+            pw, pd, pl = w / tot, d / tot, l / tot
+            mu = pw + 0.5 * pd
+            var_game = (pw * (1 - mu) ** 2 + pd * (0.5 - mu) ** 2
+                        + pl * (0.0 - mu) ** 2)
+            se = math.sqrt(var_game / tot)
+    if se is None or se == 0.0:
+        se = 0.5 / math.sqrt(n)                        # last-resort coin flip
+
     lo = min(max(score - 1.96 * se, 1e-9), 1 - 1e-9)
     hi = min(max(score + 1.96 * se, 1e-9), 1 - 1e-9)
     margin = (-400.0 * math.log10(1.0 / hi - 1.0)
@@ -1294,7 +1337,11 @@ def write_summary(fh, e1, e2, tally, total_games, start_t, stopped,
         lines.append(f"Errors/Skipped (excluded): {tally['errors']:,}")
     if tally["completed"]:
         score = (tally["e1"] + 0.5 * tally["draws"]) / tally["completed"]
-        el, margin = elo(score, tally["completed"])
+        _p = tally.get("penta")
+        el, margin = elo(score, tally["completed"],
+                         penta=([_p[i] for i in range(5)]
+                                if _p and sum(_p.values()) > 0 else None),
+                         wdl=(tally["e1"], tally["draws"], tally["e2"]))
         lines.append(
             f"Engine 1 score: {tally['e1'] + 0.5*tally['draws']:.2f}/{tally['completed']} "
             f"({100*score:.2f}%)  =>  {el:+.2f} +/- {margin:.1f} Elo")
@@ -2440,7 +2487,11 @@ def main():
         bn = g["black"].name
         if tally["completed"]:
             sc = (tally["e1"] + 0.5 * tally["draws"]) / tally["completed"]
-            el, mar = elo(sc, tally["completed"])
+            _p = tally.get("penta")
+            el, mar = elo(sc, tally["completed"],
+                          penta=([_p[i] for i in range(5)]
+                                 if _p and sum(_p.values()) > 0 else None),
+                          wdl=(tally["e1"], tally["draws"], tally["e2"]))
             run = (f"{e1.name} {tally['e1']:,}W | {tally['draws']:,} D | "
                    f"{e2.name} {tally['e2']:,}W "
                    f"({100*sc:.2f}%, {el:+.2f} +/-{mar:.1f} Elo)")
