@@ -1356,6 +1356,21 @@ def write_summary(fh, e1, e2, tally, total_games, start_t, stopped,
         # separators, so it pastes directly into other Fishtest-style tooling.
         ptnml = ", ".join(str(penta[i]) for i in range(5))
         lines.append(f"Ptnml: {ptnml}")
+        _bw = tally.get("by_worker")
+        if _bw:
+            _c = worker_chi2(_bw)
+            if _c:
+                _chi, _dof, _p, (_ww, _wz, _wn, _wobs) = _c
+                _verdict = ("workers consistent" if _p >= 0.01 else
+                            "ANOMALOUS WORKER -- results may be skewed")
+                lines.append(
+                    f"Worker chi2: {_chi:.1f} on {_dof} dof, p={_p:.3f}  "
+                    f"-- {_verdict}")
+                if _p < 0.01:
+                    lines.append(
+                        f"  worst: worker {_ww} scored {_wobs*100:.2f}% over "
+                        f"{_wn:,} games (z2={_wz:.1f}) -- check that core, its "
+                        f"engine children, and for thermal throttling")
         if tally.get("penta_incomplete"):
             lines.append(f"Incomplete pairs (excluded): {tally['penta_incomplete']:,}")
         ratio = pair_ratio(penta)
@@ -1491,10 +1506,61 @@ def _sprt_budget_line(sprt_cfg, n_positions):
         return ""          # never let a diagnostic stop a campaign
 
 
-def _pack_result(g, e1):
+def worker_chi2(by_worker, min_games=200):
+    """Chi-squared over per-worker scores: is any worker an outlier?
+
+    Fishtest runs this to spot a sick machine. We run every worker on ONE box,
+    which does not make it moot: a single core that thermally throttles, or an
+    engine child that came up with a stale .so, biases only the games THAT
+    worker played, and a campaign-wide average hides it completely. A 48-way
+    split means one bad worker is ~2% of the games -- easily a couple of Elo,
+    which is the size of the effects we are trying to measure.
+
+    Score per game is in [0,1]; under the null every worker draws from the
+    same distribution, so sum((obs-exp)^2 / var) over workers is chi-squared
+    with (k-1) degrees of freedom. Returns (chi2, dof, p, worst_worker) or
+    None when there is not enough data to say anything.
+    """
+    rows = [(w, d["n"], d["score"]) for w, d in by_worker.items()
+            if d["n"] >= min_games and w >= 0]
+    if len(rows) < 3:
+        return None
+    tot_n = sum(r[1] for r in rows)
+    tot_s = sum(r[2] for r in rows)
+    mu = tot_s / tot_n
+    if not (0.0 < mu < 1.0):
+        return None
+    # per-GAME variance under the null, from the pooled mean. Scores are
+    # 0/0.5/1 so this is an upper bound on the true variance, which makes the
+    # test CONSERVATIVE -- it under-flags rather than crying wolf.
+    var = mu * (1.0 - mu)
+    if var <= 0:
+        return None
+    chi2 = 0.0
+    worst = None
+    for w, n, sc in rows:
+        obs = sc / n
+        z2 = n * (obs - mu) ** 2 / var
+        chi2 += z2
+        if worst is None or z2 > worst[1]:
+            worst = (w, z2, n, obs)
+    dof = len(rows) - 1
+    # survival function of chi-squared without scipy: regularised upper
+    # incomplete gamma via a continued fraction is overkill here, so use the
+    # Wilson-Hilferty normal approximation, good to ~1% for dof >= 3.
+    t = (chi2 / dof) ** (1.0 / 3.0)
+    m = 1.0 - 2.0 / (9.0 * dof)
+    sd = math.sqrt(2.0 / (9.0 * dof))
+    z = (t - m) / sd if sd else 0.0
+    p = 0.5 * math.erfc(z / math.sqrt(2.0))
+    return chi2, dof, p, worst
+
+
+def _pack_result(g, e1, widx=-1):
     """Strip non-picklable references from a play_game result so it can be
     sent back over a queue. The worker only knows its own e1/e2 identity."""
     return {
+        "worker": widx,
         "round": g["round"], "fen": g["fen"],
         "result": g["result"], "reason": g["reason"], "error": g["error"],
         "white_is_e1": g["white"] is e1,
@@ -1519,6 +1585,7 @@ def _unpack_result(r, e1, e2):
     else:
         winner = None
     return {
+        "worker": r.get("worker", -1),     # survives the queue for the chi^2
         "round": r["round"], "fen": r["fen"],
         "white": white, "black": black,
         "result": r["result"], "reason": r["reason"], "error": r["error"],
@@ -1527,7 +1594,7 @@ def _unpack_result(r, e1, e2):
 
 
 def _worker_loop(in_q, out_q, engine1_path, engine2_path, mode_cfg,
-                 use_book, pv_uci, book1=None, book2=None):
+                 use_book, pv_uci, book1=None, book2=None, widx=-1):
     """Worker entry point: hold one engine pair, pull (rno, fen, white_is_e1)
     jobs off `in_q`, push packed results onto `out_q`. Engine startup is paid
     ONCE per worker, not per game -- crucial since loading an engine .py file
@@ -1594,7 +1661,7 @@ def _worker_loop(in_q, out_q, engine1_path, engine2_path, mode_cfg,
             black = e2 if white_is_e1 else e1
             try:
                 g = play_game(round_no, fen, white, black, e1, mode_cfg)
-                out_q.put(_pack_result(g, e1))
+                out_q.put(_pack_result(g, e1, widx))
             except Exception as ex:
                 import traceback
                 out_q.put({
@@ -2512,14 +2579,24 @@ def main():
             tag = f"ERR ({g['error'][:40]})"
         else:
             tally["completed"] += 1
+            # per-worker score, for the anomalous-worker chi-squared below.
+            # A single sick core (thermal throttling, a stale .so, a starved
+            # engine) biases only ITS OWN games, and a campaign-wide average
+            # hides that completely.
+            _w = g.get("worker", -1)
+            _ws = tally.setdefault("by_worker", {}).setdefault(
+                _w, {"n": 0, "score": 0.0})
             if g["winner"] is None:
                 tally["draws"] += 1
+                _ws["n"] += 1; _ws["score"] += 0.5
                 tag = f"draw  {short_reason(g['reason'])}"
             elif g["winner"] is e1:
                 tally["e1"] += 1
+                _ws["n"] += 1; _ws["score"] += 1.0
                 tag = f"{e1.name} wins  {short_reason(g['reason'])}"
             else:
                 tally["e2"] += 1
+                _ws["n"] += 1
                 tag = f"{e2.name} wins  {short_reason(g['reason'])}"
         wn = g["white"].name
         bn = g["black"].name
@@ -2557,7 +2634,7 @@ def main():
         if parallel:
             in_q = ctx.Queue()
             out_q = ctx.Queue()
-            for _ in range(n_workers):
+            for _widx in range(n_workers):
                 # NOT daemon: each worker spawns its own EngineProcess children,
                 # and daemonic processes are forbidden from having children.
                 # We rely on the explicit shutdown protocol below (None x N on
@@ -2567,7 +2644,7 @@ def main():
                     target=_worker_loop,
                     args=(in_q, out_q, engine1, engine2, mode_cfg,
                           ENGINE_USE_BOOK, PV_UCI,
-                          BOOK_ENGINE1, BOOK_ENGINE2),
+                          BOOK_ENGINE1, BOOK_ENGINE2, _widx),
                 )
                 w.start()
                 workers.append(w)
