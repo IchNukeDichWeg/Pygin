@@ -1456,6 +1456,41 @@ class _EngineStub:
         self.name = os.path.splitext(os.path.basename(path))[0]
 
 
+def _sprt_budget_line(sprt_cfg, n_positions):
+    """A-priori 'is this budget big enough?' line, printed BEFORE any games.
+
+    The live SPRT reads real counts and needs none of this, but the campaign
+    still has to be scheduled and a box rented, and the budget has always been
+    picked by habit. Prints, for a few candidate true strengths, the pairs the
+    test would need -- so a budget that cannot resolve the effect you care
+    about is visible up front instead of after ten thousand games.
+
+    Draw rate defaults to 0.41, measured on UHO_4060_v4 at 10+0.1; override
+    with PYGIN_PRIOR_DRAW only if you have a better prior for YOUR book and TC.
+    """
+    if not sprt_cfg:
+        return ""
+    try:
+        import sprt as _s
+        draw = float(os.environ.get("PYGIN_PRIOR_DRAW", "0.41"))
+        e0 = sprt_cfg.get("elo0", 0.0)
+        e1 = sprt_cfg.get("elo1", 4.0)
+        rows = []
+        for probe in (2.0, 5.0, 10.0, 20.0):
+            sc = 1.0 / (1.0 + 10 ** (-probe / 400.0))
+            n = _s.expected_pairs(draw, sc, elo0=e0, elo1=e1)
+            if n is None:
+                continue
+            fits = "fits" if n <= n_positions else "TOO SMALL"
+            rows.append(f"+{probe:.0f}->{n:,.0f}p {fits}")
+        if not rows:
+            return ""
+        return ("SPRT budget (prior draw %.2f): %s\n"
+                % (draw, "  ".join(rows)))
+    except Exception:
+        return ""          # never let a diagnostic stop a campaign
+
+
 def _pack_result(g, e1):
     """Strip non-picklable references from a play_game result so it can be
     sent back over a queue. The worker only knows its own e1/e2 identity."""
@@ -2168,6 +2203,9 @@ def main():
               f"{sprt_model}, alpha={sprt_alpha:g} beta={sprt_beta:g} "
               f"(bounds {lo:+.3f} .. {hi:+.3f}); stops as soon as a bound is "
               f"crossed, else runs the full {total_games:,}-game budget.")
+        _bl = _sprt_budget_line(sprt_cfg, total_games // 2)
+        if _bl:
+            print(_bl, end="")
     # FI-103: --sprt ALWAYS writes a state file, named after the run when the
     # user did not pick one. A no-decision tranche is only worth the compute if
     # a later tranche can pool with it, and that pooling needs the pentanomial
