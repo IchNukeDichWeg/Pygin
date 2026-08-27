@@ -6,7 +6,7 @@ same TT size, same search -- the ONLY variable is which entry a store evicts.
 FI-115: an entry whose stored piece count exceeds the root's is provably
 unreachable (material is irreversible), so it is taken first; a still-reachable
 old entry is depth-protected instead of clobbered on age alone. First
-measurement, 24-ply self-play at depth 10 with a 12 MB table: -13.7% nodes for
+measurement, 24-ply self-play at depth 10 with a 12 MiB table: -13.7% nodes for
 the same moves. That is a tree-quality change and needs games, not node counts.
 
 TT_BITS 20 deliberately: the tag matters most under replacement pressure, and
