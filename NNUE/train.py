@@ -259,6 +259,11 @@ def main():
                          "price. The engine needs no change: nnue.c reads d2 "
                          "from the .nnue header.")
     ap.add_argument("--lr", type=float, default=1e-3)
+    ap.add_argument("--wd", type=float, default=0.0,
+                    help="AdamW decoupled weight decay (0 = plain Adam, "
+                         "identical to the old path). Anti-saturation lever: "
+                         "the gen200m nets pinned 7.3%% of w1 at the int8 "
+                         "clip; decay pulls weights off the boundary.")
     ap.add_argument("--lr-schedule", choices=["none", "cosine"], default="none",
                     help="none (default) reproduces earlier runs. cosine "
                          "decays lr to --lr-final over --epochs, with one "
@@ -386,7 +391,16 @@ def main():
     global DEVICE
     DEVICE = torch.device(args.device)
     model = NNUEModel(d2=args.d2 or D2).to(DEVICE)
-    opt = torch.optim.Adam(model.parameters(), lr=args.lr)
+    # --wd: decoupled weight decay (AdamW) to fight int8 saturation. Measured
+    # on the gen200m nets 2026-08-26: 7.3% of feature-transformer weights
+    # pinned at the int8 clip against v12's 0.02% -- clip_weights() pins
+    # growing weights at the boundary every step, and a pinned weight has
+    # lost its gradient. Decay pulls them back inside the representable
+    # range. 0 (the default) is byte-identical to the old Adam path.
+    opt = (torch.optim.AdamW(model.parameters(), lr=args.lr,
+                             weight_decay=args.wd)
+           if args.wd > 0 else
+           torch.optim.Adam(model.parameters(), lr=args.lr))
     if args.device != "cpu":
         print(f"training on {args.device}", flush=True)
     os.makedirs(CHECKPOINTS_DIR, exist_ok=True)
