@@ -21,8 +21,11 @@ cd "$(dirname "$0")/.."
 REPO="$(pwd)"
 MT="${MT:-$REPO/../matetrack}"
 PY="$MT/.venv/bin/python"
-EPD="mates2000.epd"; TIME_MS=200; CONC=8
-VERSIONS="$(ls "Old Engine" | grep -E '^[0-9]+$' | sort -n | awk '$1>=31')"   # default: C era; pass --versions "$(seq 1 60)" for everything
+EPD="mates2000.epd"; TIME_MS=0.2; CONC=6      # TIME_MS is SECONDS (matecheck --time)
+# v51+ only: the modern cuci.py drives snapshots back to v51 (verified by
+# each version's bench signature). v31-v50 need C setters and instance
+# attributes their releases never had -- uci/cuci_old.py --audit shows what.
+VERSIONS="$(ls "Old Engine" | grep -E '^[0-9]+$' | sort -n | awk '$1>=51')"   # default: C era; pass --versions "$(seq 1 60)" for everything
 SYZYGY="$REPO/syzygy"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -40,7 +43,7 @@ done
 OUT="$REPO/matetrack_history_$(date +%Y%m%d_%H%M%S).tsv"
 printf 'version\ttotal\tfound\tbest\tfound_pct\tbest_pct\tepd\ttime_ms\tconcurrency\n' > "$OUT"
 N=$(echo "$VERSIONS" | wc -w | tr -d ' '); i=0; t0=$(date +%s)
-echo "matetrack across $N versions -- $EPD @ ${TIME_MS}ms, concurrency $CONC"
+echo "matetrack across $N versions -- $EPD @ ${TIME_MS}s, concurrency $CONC"
 echo "output: $OUT"
 echo ""
 for v in $VERSIONS; do
