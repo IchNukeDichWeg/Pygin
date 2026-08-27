@@ -1726,7 +1726,19 @@ static uint64_t g_tt_mask = ((uint64_t)1 << TT_BITS) - 1;
  * median, 3/3 pairs positive. Node-identical (a prefetch is a hint; raw
  * key is fine, the EP-01 fixup diverges only on rare phantom-ep nodes).
  * Timed Elo measured as part of the FI-26a batch A/B. */
-#define TT_PREFETCH(k) do { if (g_tt) __builtin_prefetch(&g_tt[(k) & TT_MASK], 0, 0); } while (0)
+#define TT_PREFETCH(k) do { if (g_tt) { const char* _p = (const char*)&g_tt[(k) & TT_MASK]; \
+    __builtin_prefetch(_p, 0, 3); __builtin_prefetch(_p + 23, 0, 3); } } while (0)
+/* FI-113 (2026-08-27): prefetch BOTH cache lines, keep-in-cache hint.
+ * 24-byte entries mean 2 of every 8 straddle a 64-byte line, and the old
+ * single prefetch with hint 0 (non-temporal) covered only the first line
+ * and asked for early eviction of an entry the probe reads ~100ns later.
+ * _p+23 touches the entry's last byte, so the second prefetch lands on the
+ * next line exactly when the entry straddles and is a same-line no-op
+ * otherwise. Node-identical (prefetches are hints; 90/90 positions exact,
+ * nps13 pair nodes identical). Measured arm64 M-series: nps13 +1.09%
+ * median, 31/39, p=0.000 (40 rounds); a 90-position 3-32-men sweep read
+ * +1.6-2.5% median, positive at 27 of 30 piece counts. x86 UNMEASURED
+ * (NPS gains do not travel between architectures -- see nps13.py). */
 #define TT_EXACT 0
 #define TT_LOWER 1
 #define TT_UPPER 2
