@@ -22,7 +22,7 @@ REPO="$(pwd)"
 MT="${MT:-$REPO/../matetrack}"
 PY="$MT/.venv/bin/python"
 EPD="mates2000.epd"; TIME_MS=200; CONC=8
-VERSIONS="$(ls "Old Engine" | grep -E '^[0-9]+$' | sort -n | awk '$1>=31')"
+VERSIONS="$(ls "Old Engine" | grep -E '^[0-9]+$' | sort -n | awk '$1>=31')"   # default: C era; pass --versions "$(seq 1 60)" for everything
 SYZYGY="$REPO/syzygy"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -47,10 +47,18 @@ for v in $VERSIONS; do
   i=$((i+1))
   # a tiny exec wrapper per version: matecheck's --engine wants a program
   W="$(mktemp -t pygin-v$v)"
-  if [ "$v" = "60" ] || [ ! -f "Old Engine/$v/csearch.so" ]; then
+  if [ "$v" = "60" ]; then
+      # the live tree IS v60; there is no snapshot .so to load
       printf '#!/bin/sh\nexec python3 %s/cuci.py "$@"\n' "$REPO" > "$W"
-  else
+  elif [ -f "Old Engine/$v/csearch.so" ]; then
       printf '#!/bin/sh\nexec python3 %s/uci/cuci_old.py %s "$@"\n' "$REPO" "$v" > "$W"
+  else
+      # pre-C era (v1-v30): the pure-Python wrapper. The old fallback sent
+      # these to the LIVE cuci.py, which would have silently measured v60
+      # under a v12 label -- the exact mislabel a history file must never
+      # contain. ~100-200x slower than the C era, and their Bad-PV column
+      # is meaningless (they expose no PV); found/best remain real.
+      printf '#!/bin/sh\nexec python3 %s/uci/uci_old.py %s "$@"\n' "$REPO" "$v" > "$W"
   fi
   chmod +x "$W"
   res=$(cd "$MT" && "$PY" matecheck.py --engine "$W" --epdFile "$EPD" \
