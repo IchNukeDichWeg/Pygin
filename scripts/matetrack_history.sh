@@ -22,10 +22,12 @@ REPO="$(pwd)"
 MT="${MT:-$REPO/../matetrack}"
 PY="$MT/.venv/bin/python"
 EPD="mates2000.epd"; TIME_MS=0.2; CONC=6      # TIME_MS is SECONDS (matecheck --time)
-# v51+ only: the modern cuci.py drives snapshots back to v51 (verified by
-# each version's bench signature). v31-v50 need C setters and instance
-# attributes their releases never had -- uci/cuci_old.py --audit shows what.
-VERSIONS="$(ls "Old Engine" | grep -E '^[0-9]+$' | sort -n | awk '$1>=51')"   # default: C era; pass --versions "$(seq 1 60)" for everything
+# v31+ -- the whole C era runs under uci/cuci_old.py's compatibility layer.
+# CAVEAT: only v56-v60 have a RECORDED bench signature to check against, and
+# all four match exactly. v31-v55 run but supply 17-74 defaulted attributes
+# each (uci/cuci_old.py <N> --audit lists them), so their rows are indicative,
+# not proof that the snapshot behaves as it shipped.
+VERSIONS="$(ls "Old Engine" | grep -E '^[0-9]+$' | sort -n | awk '$1>=31')"   # default: C era; pass --versions "$(seq 1 60)" for everything
 SYZYGY="$REPO/syzygy"
 while [ $# -gt 0 ]; do
   case "$1" in
