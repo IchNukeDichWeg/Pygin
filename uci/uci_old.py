@@ -85,6 +85,12 @@ def main():
     eng = _mod.Engine()
     if hasattr(eng, "use_book"):
         eng.use_book = False           # a book hit bypasses the search
+    if hasattr(eng, "smp_workers"):
+        # v19+ spawn an SMP pool inside get_best_move_timed when workers > 1.
+        # Force the single-threaded path: a suite runs ONE engine per position
+        # with concurrency at the harness, and several snapshots (v21 among
+        # them) do not even carry their smp.py, so the lazy import dies.
+        eng.smp_workers = 1
     board = chess.Board()
     out = sys.stdout
     for raw in sys.stdin:

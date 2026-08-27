@@ -21,7 +21,7 @@ cd "$(dirname "$0")/.."
 REPO="$(pwd)"
 MT="${MT:-$REPO/../matetrack}"
 PY="$MT/.venv/bin/python"
-EPD="mates2000.epd"; TIME_MS=0.2; CONC=6      # TIME_MS is SECONDS (matecheck --time)
+EPD="mates2000.epd"; TIME_S=0.2; CONC=6      # seconds per position (matecheck --time)
 # v31+ -- the whole C era runs under uci/cuci_old.py's compatibility layer.
 # CAVEAT: only v56-v60 have a RECORDED bench signature to check against, and
 # all four match exactly. v31-v55 run but supply 17-74 defaulted attributes
@@ -32,7 +32,7 @@ SYZYGY="$REPO/syzygy"
 while [ $# -gt 0 ]; do
   case "$1" in
     --epd) EPD="$2"; shift 2 ;;
-    --time) TIME_MS="$2"; shift 2 ;;
+    --time) TIME_S="$2"; shift 2 ;;
     --concurrency) CONC="$2"; shift 2 ;;
     --versions) VERSIONS="$2"; shift 2 ;;
     --no-syzygy) SYZYGY=""; shift ;;
@@ -43,9 +43,9 @@ done
 [ -f "$MT/$EPD" ] || { echo "no $EPD in $MT"; exit 1; }
 
 OUT="$REPO/matetrack_history_$(date +%Y%m%d_%H%M%S).tsv"
-printf 'version\ttotal\tfound\tbest\tfound_pct\tbest_pct\tepd\ttime_ms\tconcurrency\n' > "$OUT"
+printf 'version\ttotal\tfound\tbest\tfound_pct\tbest_pct\tepd\ttime_s\tconcurrency\n' > "$OUT"
 N=$(echo "$VERSIONS" | wc -w | tr -d ' '); i=0; t0=$(date +%s)
-echo "matetrack across $N versions -- $EPD @ ${TIME_MS}s, concurrency $CONC"
+echo "matetrack across $N versions -- $EPD @ ${TIME_S}s, concurrency $CONC"
 echo "output: $OUT"
 echo ""
 for v in $VERSIONS; do
@@ -67,7 +67,7 @@ for v in $VERSIONS; do
   fi
   chmod +x "$W"
   res=$(cd "$MT" && "$PY" matecheck.py --engine "$W" --epdFile "$EPD" \
-        --time "$TIME_MS" --concurrency "$CONC" \
+        --time "$TIME_S" --concurrency "$CONC" \
         ${SYZYGY:+--syzygyPath "$SYZYGY"} 2>/dev/null)
   tot=$(echo "$res" | grep -oE 'Total FENs: *[0-9]+' | grep -oE '[0-9]+$')
   fnd=$(echo "$res" | grep -oE 'Found mates: *[0-9]+' | grep -oE '[0-9]+$')
@@ -77,9 +77,9 @@ for v in $VERSIONS; do
       fp=$(awk -v a="$fnd" -v b="$tot" 'BEGIN{printf "%.2f", 100*a/b}')
       bp=$(awk -v a="$bst" -v b="$tot" 'BEGIN{printf "%.2f", 100*a/b}')
       printf 'v%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$v" "$tot" "$fnd" "$bst" "$fp" "$bp" "$EPD" "$TIME_MS" "$CONC" >> "$OUT"
+        "$v" "$tot" "$fnd" "$bst" "$fp" "$bp" "$EPD" "$TIME_S" "$CONC" >> "$OUT"
   else
-      printf 'v%s\tFAILED\t\t\t\t\t%s\t%s\t%s\n' "$v" "$EPD" "$TIME_MS" "$CONC" >> "$OUT"
+      printf 'v%s\tFAILED\t\t\t\t\t%s\t%s\t%s\n' "$v" "$EPD" "$TIME_S" "$CONC" >> "$OUT"
       fp="--"; bp="--"; fnd="FAILED"; bst=""
   fi
   el=$(( $(date +%s) - t0 )); eta=$(( el * (N - i) / i ))

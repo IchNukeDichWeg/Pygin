@@ -168,7 +168,16 @@ class _Compat(_mod.Engine):
             # CONTEMPT = 50; whatever the live default is, v31 must run as 50).
             _up = name.upper()
             if _up != name:
-                for _src in (_mod.Engine, _live.Engine):
+                # the snapshot's EMBEDDED engine first: v31 keeps CONTEMPT=50
+                # on self._py's class, not on the driver Engine -- and the
+                # historical value must win over today's.
+                _srcs = []
+                try:
+                    _srcs.append(object.__getattribute__(self, "_py"))
+                except AttributeError:
+                    pass
+                _srcs += [_mod.Engine, _live.Engine]
+                for _src in _srcs:
                     if hasattr(_src, _up):
                         DEFAULTED.add(name)
                         return getattr(_src, _up)
