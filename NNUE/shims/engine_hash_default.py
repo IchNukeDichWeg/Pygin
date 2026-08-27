@@ -5,7 +5,7 @@ run the v12 net (what v60 ships) and the same search, so the only variable is
 transposition-table size.
 
 WHY. A 90-position sweep (3 per piece count, 32..3 men, fresh TT, ~1M-node
-searches) measured a 6 MB table at +11.2% NPS over 100 MB, faster in 84/87 --
+searches) measured a 6 MiB table at +11.2% NPS over 96 MiB, faster in 84/87 --
 probes stay cache-resident instead of TLB-missing across a big cold table.
 Pushed to 7-27x oversubscription the gain HELD (+12.3%) and cost only ~2% in
 extra nodes at fixed depth, because always-replace keeps the entries that
@@ -31,4 +31,4 @@ class Engine(cengine.Engine):
     USE_NNUE = True
     NNUE_FILE = "NNUE/nets/nnue_v12_bf86c4ced057.nnue"
     LAZY_NNUE = True
-    TT_BITS = 23          # 200 MB at 24 B/entry
+    TT_BITS = 23          # 192 MiB -- the shipped default, matches UCI Hash 192

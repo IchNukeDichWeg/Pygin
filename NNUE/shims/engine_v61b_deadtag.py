@@ -15,7 +15,7 @@ cores/2 workers). Budget note: this resolves ~+9 Elo and up; a null means
 WHY. Material is irreversible: once the game passes a capture, no
 position with MORE men can recur, so a TT entry whose stored piece count
 exceeds the root's is provably unreachable -- garbage with certainty, not a
-heuristic. Audited in a self-play game with a 12 MB table kept across moves:
+heuristic. Audited in a self-play game with a 12 MiB table kept across moves:
 by ply 56-64, 53-72% of the table was provably dead, while old-generation
 entries supplied 39-82% of ALL hits. The existing "different generation ->
 overwrite" rule was therefore discarding the treasure along with the garbage.
@@ -25,7 +25,7 @@ REACHABLE old one.
 Nothing is ever cleared -- a dead entry cannot produce a hit, it only holds a
 slot. This is purely a better victim choice at store time, no sweep.
 
-First measurement, 24-ply self-play at depth 10 with a 12 MB table:
+First measurement, 24-ply self-play at depth 10 with a 12 MiB table:
 1,226,107 -> 1,058,229 nodes, -13.7% for the same moves. That is tree
 quality, not speed, so only games decide it."""
 

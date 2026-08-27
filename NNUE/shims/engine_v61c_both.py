@@ -28,5 +28,5 @@ class Engine(cengine.Engine):
     USE_NNUE = True
     NNUE_FILE = "NNUE/nets/nnue_v12_bf86c4ced057.nnue"   # the net v60 ships
     LAZY_NNUE = True
-    TT_BITS = 20          # 24 MB
+    TT_BITS = 20          # 24 MiB
     TT_DEADTAG = True     # FI-115
