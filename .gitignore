@@ -294,3 +294,4 @@ puzzles-csv.zip
 # Upstream code + its venv + 63MB checkpoints -- not ours to vendor.
 searchless_chess/
 make_release.py
+matetrack_history_*.tsv
