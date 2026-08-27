@@ -1610,6 +1610,11 @@ class Engine:
         lib.set_root_order(1 if self.ROOT_ORDER else 0)        # FI-06
         lib.set_null_verify(1 if self.NULL_VERIFY else 0)      # NV-01
         lib.set_tt_bits(int(self.TT_BITS))                     # FI-10 (Hash)
+        # FI-115: dead-entry tag for TT replacement. Default OFF -- with it
+        # off the store path is byte-identical to before (the piece count is
+        # stamped into spare bits either way; only the victim rule changes).
+        if hasattr(lib, "set_tt_deadtag"):
+            lib.set_tt_deadtag(1 if getattr(self, "TT_DEADTAG", False) else 0)
         lib.set_hist_prune(int(self.HIST_PRUNE))               # FI-23
         lib.set_qs_tt_sharpen(1 if self.QS_TT_SHARPEN else 0)  # FI-30(a)
         lib.set_qs_keep_move(1 if self.QS_KEEP_MOVE else 0)    # FI-30(b)
@@ -1886,11 +1891,13 @@ class Engine:
             self._abort = False
 
     def get_best_move(self, board, depth):
+        self._lib.cs_set_root_pc(int(bin(board.occupied).count("1")))  # FI-115
         self._clear_stale_abort()
         self._go_pending = False             # FB-21: window closed
         return self._search(board, None, depth)
 
     def get_best_move_timed(self, board, time_limit, max_depth=245):
+        self._lib.cs_set_root_pc(int(bin(board.occupied).count("1")))  # FI-115
         # Default = MAX_DEPTH_CAP so the clock, not the cap, is the limit --
         # the old default of 10 silently capped ad-hoc timed searches (the C
         # core passes depth 10 in well under a second).

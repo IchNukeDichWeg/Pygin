@@ -1777,6 +1777,28 @@ typedef struct {
 #define TT_EVAL(e)     ((int)(int16_t)(uint16_t)((e).d2 >> 48))
 #define TT_EVAL_NONE   (-32768)
 
+/* FI-115: dead-entry tag for TT replacement (Sam's idea, 2026-08-27).
+ * Piece count is IRREVERSIBLE: once the game passes a capture, no position
+ * with MORE material can ever recur, so an entry whose stored count exceeds
+ * the root's is provably unreachable -- garbage with certainty, not a guess.
+ *
+ * Measured in a self-play game with a 12 MB table kept across moves: by ply
+ * 56-64, 53-72% of the table was provably dead. Crucially, old-generation
+ * entries supplied 39-82% of ALL hits, so today's "different generation ->
+ * overwrite" rule is clobbering the treasure along with the garbage. The tag
+ * separates them: overwrite a DEAD incumbent always, and protect a
+ * REACHABLE old one unless the newcomer is deeper.
+ *
+ * Nothing is ever cleared. A dead entry cannot produce a hit (its position
+ * cannot recur), so it only occupies a slot -- this is purely a better
+ * victim choice, checked at store time, no sweep. 6 spare bits in d2. */
+static int g_tt_deadtag = 0;                  /* visible switch, default OFF */
+void set_tt_deadtag(int v) { g_tt_deadtag = v ? 1 : 0; }
+static __thread int g_node_pc = 0;            /* piece count at this node */
+static int g_root_pc = 32;                    /* piece count at the root */
+void cs_set_root_pc(int n) { g_root_pc = n; }
+#define TT_PC(e) ((int)(((e).d2 >> 19) & 63))
+
 static TTEntry* g_tt = NULL;
 static int g_use_tt = 1;
 static int g_gen = 0;       /* step 6: bumped per root search; old-gen entries
@@ -1883,6 +1905,7 @@ static inline void tt_store_raw(TTEntry* t, uint64_t key, int value,
     uint64_t d1 = (uint64_t)(uint32_t)value | ((uint64_t)move << 32);
     uint64_t d2 = (uint64_t)(uint16_t)depth
                 | ((uint64_t)(uint16_t)(flag | ((pv & 1) << 2)) << 16)
+                | ((uint64_t)(g_node_pc & 63) << 19)   /* FI-115 */
                 | ((uint64_t)(uint16_t)g_gen << 32)
                 | ((uint64_t)(uint16_t)(int16_t)ev << 48);   /* FI-03 */
     /* FB-12: relaxed ATOMIC stores. The table is shared by every Lazy-SMP
@@ -3501,7 +3524,14 @@ static inline void qs_tt_store(TTEntry* t, uint64_t key, int val, int ply,
                 ? (TT_DEPTH(cur) <= depth            /* was <= 0; == at depth 0 */
                    && !tt_exact_shield(cur, depth, flag))   /* FI-48 */
                 : (TT_GEN(cur) != (int)(uint16_t)g_gen
-                       ? (g_qs_evict_max < 0 || TT_DEPTH(cur) <= g_qs_evict_max)
+                       ? (g_tt_deadtag && TT_PC(cur)
+                          /* FI-115: an old entry with MORE men than the root
+                           * is unreachable -- always take it. An old entry
+                           * still reachable gets depth-protected instead of
+                           * being clobbered on age alone. */
+                          ? (TT_PC(cur) > g_root_pc
+                             || TT_DEPTH(cur) + tt_exact_bonus(cur) <= depth)
+                          : (g_qs_evict_max < 0 || TT_DEPTH(cur) <= g_qs_evict_max))
                        : TT_DEPTH(cur) + tt_exact_bonus(cur) <= depth);
     if (!replace) return;
     int sv = val;
@@ -3547,6 +3577,7 @@ _Static_assert(offsetof(Board, knights) == offsetof(Board, pawns) + 1 * sizeof(u
 static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
                    int hmc)
 {
+    g_node_pc = __builtin_popcountll(b->occ[0] | b->occ[1]);  /* FI-115 */
     g_nodes++;
     g_pv_len[ply] = 0;     /* PV-01: every exit path leaves a valid (empty)
                             * line -- a stale slot would splice wrong moves
@@ -3834,6 +3865,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                    uint32_t prev12, int in_chk, int hmc, int chk, int srb,
                    int cutnode)
 {
+    g_node_pc = __builtin_popcountll(b->occ[0] | b->occ[1]);  /* FI-115 */
     /* FI-104: sticky ttPv. Set here rather than beside is_pv further down,
      * because the TT probe that ORs in a stored marker runs BEFORE that
      * declaration -- (beta - alpha) > 1 is the same test, just hoisted. */
