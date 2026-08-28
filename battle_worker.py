@@ -85,6 +85,29 @@ def _format_info(depth, score_cp, mate, nodes, nps, time_ms):
             f"nps {nps} time {time_ms}")
 
 
+def _resolve_net(path, engine_py):
+    """Absolute path to a relative NNUE_FILE, trying every root that can be right.
+
+    cengine resolves NNUE_FILE against ITS OWN directory, so for a shim living
+    in NNUE/shims/ the REPO ROOT is authoritative, not the shim's directory.
+    Resolving against the shim's directory made every shim A/B print "NNUE ON
+    but net missing" for a net that had loaded fine -- all four runs of the
+    2026-08-28 campaign say it, and the results are valid. A frozen
+    "Old Engine/<N>" snapshot ships its own cengine and climbs back out with
+    "../../", so the engine's own directory has to be tried as well. Whichever
+    candidate exists is the one the engine actually loaded; if neither does,
+    return the first so the caller reports a missing net against a sane path.
+    """
+    if os.path.isabs(path):
+        return path
+    roots = []
+    if engine_py:
+        roots.append(os.path.dirname(os.path.abspath(engine_py)))
+    roots.append(os.path.dirname(os.path.abspath(__file__)))
+    cands = [os.path.join(r, path) for r in roots]
+    return next((c for c in cands if os.path.isfile(c)), cands[0])
+
+
 def describe_nnue(engine, engine_py=None):
     """What net, if any, this engine will actually play with.
 
@@ -122,9 +145,7 @@ def describe_nnue(engine, engine_py=None):
         # sys.modules, so the lookup silently returns None.
         base = engine_py or getattr(
             sys.modules.get(type(engine).__module__, None), "__file__", None)
-        root = os.path.dirname(os.path.abspath(base)) if base else \
-            os.path.dirname(os.path.abspath(__file__))
-        path = os.path.join(root, path)
+        path = _resolve_net(path, base)
     out["net"] = os.path.basename(path)
     if not os.path.isfile(path):
         out["missing"] = True
@@ -180,12 +201,7 @@ def describe_nnue_source(engine_py):
     if not parts:
         out["missing"] = True
         return out
-    path = os.path.join(*parts)
-    if not os.path.isabs(path):
-        # Against the ENGINE's directory, not this file's: cengine resolves
-        # NNUE_FILE against its own _DIR, and a frozen snapshot climbs back
-        # out of "Old Engine/<N>/" with "../../".
-        path = os.path.join(os.path.dirname(os.path.abspath(engine_py)), path)
+    path = _resolve_net(os.path.join(*parts), engine_py)
     out["net"] = os.path.basename(path)
     if not os.path.isfile(path):
         out["missing"] = True
