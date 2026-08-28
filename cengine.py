@@ -721,6 +721,14 @@ class Engine:
     # to 20 GB -- serious long games set it there, which is the right place
     # for this knob to live.
     TT_BITS = 23
+    # FI-115 CONFIRMED and ARMED 2026-08-29. Dead-entry TT replacement: an
+    # entry whose stored piece count exceeds the root's is provably
+    # unreachable (material is irreversible), so it is evicted first, and a
+    # still-reachable old entry is depth-protected instead of clobbered on
+    # age alone. +15.89 +/- 4.2 Elo at 50+0.5 with 192 MiB on BOTH sides --
+    # the shipped table size on the release instrument, 10,000 games at a
+    # FIXED budget so the number carries no stopping bias.
+    TT_DEADTAG = True
 
     # Simplify-at-500 (v30's use_simplify ported: material-diff bonus past a
     # >=500cp gate; v30's 200cp version A/B'd -14, traded into drawn endings).
