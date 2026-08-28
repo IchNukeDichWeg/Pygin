@@ -22,12 +22,19 @@ REPO="$(pwd)"
 MT="${MT:-$REPO/../matetrack}"
 PY="$MT/.venv/bin/python"
 EPD="mates2000.epd"; TIME_S=0.2; CONC=6      # seconds per position (matecheck --time)
-# v31+ -- the whole C era runs under uci/cuci_old.py's compatibility layer.
-# CAVEAT: only v56-v60 have a RECORDED bench signature to check against, and
-# all four match exactly. v31-v55 run but supply 17-74 defaulted attributes
-# each (uci/cuci_old.py <N> --audit lists them), so their rows are indicative,
-# not proof that the snapshot behaves as it shipped.
-VERSIONS="$(ls "Old Engine" | grep -E '^[0-9]+$' | sort -n | awk '$1>=31')"   # default: C era; pass --versions "$(seq 1 60)" for everything
+# EVERY version. Three front ends, picked per release below:
+#   v1-v30   uci/uci_legacy.py  -- pre-C, no protocol of their own
+#   v31-v59  uci/cuci_old.py    -- C era, modern cuci.py + compatibility layer
+#   v60+     cuci.py            -- the live tree
+# New releases need no change here: anything above the newest snapshot falls
+# through to the live engine, and a new snapshot is picked up by the glob.
+#
+# CAVEAT worth carrying into any conclusion: only v56-v60 have a RECORDED
+# bench signature to check against (all four match exactly). v31-v55 supply
+# 17-74 defaulted attributes each (uci/cuci_old.py <N> --audit lists them) and
+# v1-v30 run through a synthesised protocol, so those rows are indicative
+# rather than proof the snapshot behaves as it shipped.
+VERSIONS="$(ls "Old Engine" | grep -E '^[0-9]+$' | sort -n)"   # default: C era; pass --versions "$(seq 1 60)" for everything
 SYZYGY="$REPO/syzygy"
 while [ $# -gt 0 ]; do
   case "$1" in
