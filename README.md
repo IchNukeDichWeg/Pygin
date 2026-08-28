@@ -30,14 +30,14 @@ representation, move generation and legality.
 
 <table>
 <tr>
-<td><img src="docs/elo_progression.svg" width="100%" alt="Cumulative A/B Elo across the C era, v31=0 climbing to +354 at v61"/></td>
-<td><img src="docs/speed_progression.svg" width="100%" alt="Single-thread speed as a multiple of v31, peaking at 1.45x and ending at 1.07x once the net is armed"/></td>
+<td><img src="docs/elo_progression.svg?v=61" width="100%" alt="Cumulative A/B Elo across the C era, v31=0 climbing to +354 at v61"/></td>
+<td><img src="docs/speed_progression.svg?v=61" width="100%" alt="Single-thread speed as a multiple of v31, peaking at 1.45x and ending at 1.07x once the net is armed"/></td>
 </tr>
 </table>
 
 <table>
 <tr>
-<td><img src="docs/mate_progression.svg" width="100%" alt="Mate-finding on mates2000.epd across the C era, rising from 23.4% at v31 to a 51.6% plateau, then falling back to 41.0% at v61 as the net arms"/></td>
+<td><img src="docs/mate_progression.svg?v=61" width="100%" alt="Mate-finding on mates2000.epd across the C era, rising from 23.4% at v31 to a 51.6% plateau, then falling back to 41.0% at v61 as the net arms"/></td>
 </tr>
 </table>
 
