@@ -273,6 +273,47 @@ not know endgame theory: tuning/eval_bench.py against Stockfish at depth 16
 puts 39.6% of positions >10pp apart in win probability, with rook+bishop vs
 rook and rook+knight vs rook -- textbook draws -- scored at +400 to +475.
 
+v61 = v60 + **FI-115 dead-entry TT replacement** (TT_DEADTAG True), Sam's idea:
+material is irreversible, so a TT entry whose stored piece count EXCEEDS the
+current root's describes a position that can never recur -- garbage with
+certainty, not a guess. It is evicted first, and a still-reachable old entry is
+depth-protected instead of clobbered on age alone. The piece count rides in 6
+spare bits of d2 and is stamped either way, so with the toggle off the store
+path is byte-identical to v60. Nothing is ever swept; this is purely a better
+victim choice, checked at store time.
+
+vs engine_nnue_v12 with 192 MiB on BOTH sides -- the shipped table size -- TIMED
+50+0.5 on x86, SUBSET_SEED 59, same v12 net both arms so the victim rule is the
+only variable: **+15.89 +/- 4.2** over a FIXED 10,000-game budget (52.29%,
+2,826W/4,805D/2,369L, ptnml 146/1044/2226/1375/209, ratio 1.33, nElo +25.77,
+worker chi2 22.7/47 p=0.999). NO SPRT: nothing stopped early, so the magnitude
+carries no stopping bias and is quotable as it stands. Post-hoc GSPRT[0,4] on
+the same pentanomial reads LLR +7.771 against bounds +/-2.944. Ledger
+~+338 -> **~+354**. Second-largest NNUE-era gain after v58's +19.11.
+
+THE TABLE SIZE IS PART OF THE RESULT. The 10+0.1 screen that first accepted
+this ran 24 MiB on both sides, chosen to MAXIMISE replacement pressure, and a
+verdict from the regime built to favour a change does not transfer. 192 MiB at
+10+0.1 would not have worked either -- the FI-116 ramp work measured a 192 MiB
+table reaching only a ~22-bit working set by ply 40 at 0.15s/move, so nothing
+is evicted and a victim rule has nothing to improve. It took the shipped size
+AND a clock long enough to saturate it (hashfull 833 permille by ply 8 at
+1.4s/move, full from ply 16) for the effect to be measurable at all.
+
+Bench signature UNCHANGED at 1,140,099, and that is expected rather than
+suspicious: bench searches from a cold TT, so the table never fills, nothing is
+evicted, and the replacement rule has nothing to choose between. The bench and
+the d14 ladder are both blind to this change by construction. Also carried in
+v61: FI-113 (TT prefetch covering both cache lines of the 24-byte entry,
++4.9% -> +1.09% NPS re-bench, node-identical, adopted without a slot).
+
+REJECTED alongside it, recorded so it is not re-minted: FI-116 growing TT
+(start at 24 MiB, widen the active window at 75% full) measured **-2.88 +/- 4.4**
+at 10+0.1 over a full 10,000 games, GSPRT[0,4] ACCEPT H0 pooled at 6,725 pairs.
+The no-rehash variant drops every entry wanting the newly-exposed bit, and at
+10+0.1 the window widens TWICE mid-game -- it throws away half the live table
+while the game is still being decided. The copy-on-grow version is untested.
+
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
   * v30's P-35/U-06 soft-stop time management (stability-scaled),
