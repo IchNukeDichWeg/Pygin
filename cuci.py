@@ -967,6 +967,14 @@ def main():
                     f" use_nnue={int(engine.USE_NNUE)}"
                     f" king_shelter={int(engine.USE_KING_SHELTER)}"
                     f" tt_keep_warm={int(engine.TT_KEEP_WARM)}"
+                    # FI-115. This line is the ONLY way to observe the tag
+                    # from outside: the bench and the d14 ladder both reset
+                    # the table per search, so it never fills, nothing is
+                    # evicted and the rule never fires -- they are byte
+                    # identical whether it is on or off. Without this field
+                    # a v61 build and a v60 build are indistinguishable to
+                    # anyone who cannot read the source.
+                    f" deadtag={int(getattr(engine, 'TT_DEADTAG', False))}"
                     f" simplify_threshold={engine.SIMPLIFY_THRESHOLD}"
                     f" contempt={engine.contempt}"
                     f" hash_bits={engine.TT_BITS}"
