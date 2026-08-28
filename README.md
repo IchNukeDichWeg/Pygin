@@ -21,12 +21,12 @@ representation, move generation and legality.
 
 ### At a glance
 
-| | | | |
-|---|---|---|---|
-| **~2868 Elo** | SF-18 UCI_Elo scale | **5.6M nps** | the net costs ~30% of it |
-| **~+354 Elo** | A/B-confirmed, v31→v61 | **~18 ply** | from startpos in 5 s |
-| **+19.11 Elo** | v58 NNUE, TIMED | **1.43x** | single-thread vs v31 |
-| **v53+v54** eval lane | +37.52 & +31.20, the two biggest | **1 dependency** | `python-chess` only |
+<table>
+<tr><td><b>~2868 Elo</b></td><td>SF-18 UCI_Elo scale</td><td><b>5.6M nps</b></td><td>the net costs ~30% of it</td></tr>
+<tr><td><b>~+354 Elo</b></td><td>A/B-confirmed, v31&rarr;v61</td><td><b>~18 ply</b></td><td>from startpos in 5 s</td></tr>
+<tr><td><b>+48.84 Elo</b></td><td>the NNUE era, v58&rarr;v61</td><td><b>1.07&times;</b></td><td>single-thread vs v31</td></tr>
+<tr><td><b>v53+v54</b> eval lane</td><td>+37.52 &amp; +31.20, the two biggest</td><td><b>1 dependency</b></td><td><code>python-chess</code> only</td></tr>
+</table>
 
 <table>
 <tr>
