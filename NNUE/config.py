@@ -48,6 +48,27 @@ THREAT_VER = 1           # bump when the T16 formulas change (forces regen)
 
 # --- label rules (Phase 2) ------------------------------------------------
 LABEL_NODES = 5000       # fixed node budget per labeling search
+# CALIBRATED 2026-08-28 -- 5,000 is too shallow, and ~25,000 is the knee.
+# label_teacher_probe.py ranks labels against the GAME RESULT (scale-free,
+# so it works across eval families). Spearman rho, uho5k, 4,000 hmc==0
+# positions, paired within each seed:
+#
+#            5,000n    25,000n    50,000n   100,000n
+#   seed 0   +0.6387   +0.6473    +0.6500   +0.6501
+#   seed 1   +0.6270   +0.6375       --     +0.6385
+#
+# Both seeds: nearly the whole gain arrives by 25,000 (+0.0086 / +0.0105),
+# and 25,000 -> 100,000 adds almost nothing (+0.0028 / +0.0010). Deeper
+# labels keep MOVING past that -- label_depth_probe.py has the median |delta|
+# flat at 9-10cp per doubling out to 100,000 with ~21% of labels shifting
+# more than 25cp -- but the movement stops making them better predictors of
+# the outcome. Past ~25,000 nodes it is churn, not information.
+#
+# So the corpus to generate is ~25,000 nodes, 5x this. At the CPU gen200m
+# cost that is ~40M positions, and volume is measured as NOT the constraint
+# (a 28.9M-position run beat v4 on twice the data), so the trade is right.
+# What is NOT the lever: the eval family. Swapping the labeller to the armed
+# net moves rho by +0.002 to +0.005, i.e. nothing (see label_teacher_probe).
 LABEL_TT_BITS = 16       # 2^16 x 24B = 1.5 MB TT for LABELING only (the
                          # engine's own default is 21 = 48 MB). Labels are
                          # made with a cold TT per move, so the table is
