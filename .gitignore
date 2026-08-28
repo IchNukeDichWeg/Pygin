@@ -295,3 +295,4 @@ puzzles-csv.zip
 searchless_chess/
 make_release.py
 matetrack_history_*.tsv
+matetrack_history_*.svg
