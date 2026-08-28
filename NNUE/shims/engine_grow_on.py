@@ -25,6 +25,15 @@ is played at parity, so the gain should shrink as TC grows -- the reverse of
 most search items. This pair is for 10+0.1; 50+0.5 needs its own measurement
 and should be expected to measure smaller, not larger.
 
+REJECTED 2026-08-28. GSPRT[0,4] ACCEPT H0, LLR -2.960 over 6,725 pooled pairs.
+Tranche 1 ran the full 10,000 games and so its number is quotable: -2.88 +/-
+4.4 Elo, 49.59%, ptnml 239/1159/2270/1110/222, ratio 0.95, nElo -4.50, worker
+chi2 20.7/46 p=1.000. Rejected in the regime that most favoured it, so 50+0.5
+needs no run -- the ramp is over by ply 21 there and the effect can only be
+smaller. What was rejected is the NO-REHASH variant: widening the window drops
+every entry wanting the new bit, and at 10+0.1 that happens TWICE mid-game.
+The copy-on-grow version is untested and is a different experiment.
+
 INSTRUMENT CAVEAT, read before spending a slot. At the calibrated ~1.16 Elo per
 1% NPS, even a good outcome here is single-digit Elo and a 10,000-game A/B
 resolves ~+9 and up. The honest primary instrument is an NPS bench over a

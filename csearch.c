@@ -1738,7 +1738,27 @@ static uint64_t g_tt_mask = ((uint64_t)1 << TT_BITS) - 1;
  * The window matters most at SHORT TC. The recorded hashfull curve in
  * cengine.py has 192 MiB at 833 permille by ply 8 at 1.4s/move, so at
  * 50+0.20 the ramp is over in ~2 moves; at 10+0.1 (~250k nodes/move) the
- * ramp spans a large part of the game, which is where the NPS is. */
+ * ramp spans a large part of the game, which is where the NPS is.
+ *
+ * REJECTED 2026-08-28 at 10+0.1, in the regime that most favoured it.
+ * GSPRT[0,4] ACCEPT H0, LLR -2.960 over 6,725 pooled pairs. Tranche 1 ran
+ * the full 10,000 games, so that number IS quotable: -2.88 +/- 4.4 Elo,
+ * 49.59%, ptnml 239/1159/2270/1110/222, pair ratio 0.95, nElo -4.50.
+ *
+ * WHAT WAS REJECTED IS THE NO-REHASH VARIANT, which is the cheap half of
+ * the original idea and not the whole of it. Growing without copying drops
+ * every entry whose key wants the newly-exposed bit, and at 10+0.1 the
+ * window widens TWICE mid-game (20 -> 21 at ply 23, -> 22 at ply 31), so it
+ * throws away half the live table twice while the game is still being
+ * decided. Roughly -3 Elo says the discarded entries were worth more than
+ * the cache locality bought. That is the ceiling the tt_maybe_grow comment
+ * named, now measured rather than assumed.
+ *
+ * The version with the COPY -- rehash old -> new in place on each widen --
+ * is untested and is a different experiment: it keeps the entries and pays
+ * a scattered walk instead. Whether that walk costs less than 3 Elo at
+ * 10+0.1 is the open question, and the ~150ms it would add per game over
+ * the whole ramp is the number to beat. Default stays OFF. */
 #define TT_GROW_BITS 20         /* growth start: 2^20 x 24B = 24 MiB */
 static int      g_tt_grow  = 0;                       /* visible switch, OFF */
 static size_t   g_tt_alloc = (size_t)1 << TT_BITS;    /* allocated entries */
