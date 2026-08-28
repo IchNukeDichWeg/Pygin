@@ -118,7 +118,9 @@ def _chart(title, unit, xs, ys, colour, fmt, y0=None, ymax=None):
         s.append(f'<text x="{ML-8}" y="{yy+4:.1f}" fill="{AXIS}" font-size="11" '
                  f'text-anchor="end">{fmt(yv)}</text>')
     # x labels
-    for xv in [xs[0]] + list(range(35, xs[-1], 5)) + [xs[-1]]:
+    # A 5-step tick two versions from the end collides with the final label
+    # -- v60 printed on top of v61 in the shipped charts. Drop it.
+    for xv in [xs[0]] + [v for v in range(35, xs[-1], 5) if xs[-1] - v > 2] + [xs[-1]]:
         s.append(f'<text x="{px(xv):.1f}" y="{H-12}" fill="{AXIS}" font-size="11" '
                  f'text-anchor="middle">v{xv}</text>')
 
