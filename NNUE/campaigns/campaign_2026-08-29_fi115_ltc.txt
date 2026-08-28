@@ -1,0 +1,21 @@
+FI-115 CONFIRMATION -- 192 MiB, 50+0.5, FIXED BUDGET (no early stop)
+box 185.8.106.199, 96 cores, 48 workers, seed 59, UHO_4060_v4 [0,5000)
+2026-08-28 18:13 -> 2026-08-29 00:39 CEST, 6h 25m
+
+Net (engine_v61b_deadtag): nnue_v12_bf86c4ced057.nnue  (sha bf86c4ced057)
+Net (engine_nnue_v12): nnue_v12_bf86c4ced057.nnue  (sha bf86c4ced057)
+Net (engine_v61b_deadtag): nnue_v12_bf86c4ced057.nnue  (sha bf86c4ced057)
+Net (engine_nnue_v12): nnue_v12_bf86c4ced057.nnue  (sha bf86c4ced057)
+Games scored: 10,000  (of 10,000 scheduled)
+Engine 1 Wins: 2,826
+Engine 2 Wins: 2,369
+Draws: 4,805
+Engine 1 score: 5228.50/10000 (52.29%)  =>  +15.89 +/- 4.2 Elo
+Pairs scored: 5,000  (LL=146  LD=1044  DD_WL=2226  WD=1375  WW=209)
+Ptnml: 146, 1044, 2226, 1375, 209
+Worker chi2: 22.7 on 47 dof, p=0.999  -- workers consistent
+Game pair ratio (WW+WD)/(LL+LD): 1.33
+Normalized Elo: +25.77
+
+post-hoc LLR [0,4] normalized: +7.771  (bounds -2.944 / +2.944)
+Unbiased: nothing stopped early, so this Elo is quotable as-is.
