@@ -80,7 +80,7 @@ from data_format import (RECORD_DTYPE, PygdataWriter, write_pygdata,
 from tablebase import Tablebase, add_arg as add_tb_arg
 
 
-def make_label_engine():
+def make_label_engine(label_nnue=False):
     import cengine
 
     class LabelEngine(cengine.Engine):
@@ -88,7 +88,20 @@ def make_label_engine():
                                # confirmed defaults -- FI-29's path-history
                                # alpha-raise draw-flattens labels; it stays
                                # on at inference
-        USE_NNUE = False       # (ROOT_LMR etc. follow cengine's confirmed
+        USE_NNUE = bool(label_nnue)   # --label-nnue. Default OFF: every
+                               # existing corpus was labelled with the HCE and
+                               # verify_labels reproduces against that, so the
+                               # default must not move under old data.
+                               # MEASURED 2026-08-29: at 25,000 nodes the net
+                               # labeller is closer to a 200,000-node reference
+                               # than the HCE one on all four comparisons
+                               # (+0.0009/+0.0026 vs an hce reference,
+                               # +0.0042/+0.0060 vs an nnue reference, two
+                               # seeds, 2,000 positions). Small, but never
+                               # negative, and it is the direction a bootstrap
+                               # has to move: a teacher that never improves
+                               # caps the student at its own ceiling.
+                               # (ROOT_LMR etc. follow cengine's confirmed
                                # defaults -- FI-56 confirmed into v51, so
                                # labels now come from the strongest
                                # confirmed search, per F5-19)
@@ -344,11 +357,12 @@ def _flush(writer, buf, cap):
 
 
 def run_worker(shard_path, positions, nodes, seed, book, endgame, eg_men,
-               games_quota=0, syzygy=None, win_cp=TB_WIN_CP):
+               games_quota=0, syzygy=None, win_cp=TB_WIN_CP,
+               label_nnue=False):
     """games_quota > 0: play exactly that many games, keep EVERY extracted
     position (position count becomes the variable). games_quota == 0: play
     until `positions` are collected (game count becomes the variable)."""
-    eng = make_label_engine()
+    eng = make_label_engine(label_nnue)
     # Raises if the path is unusable: a run that quietly found no tables would
     # look exactly like "the labels were already right", and would bake wrong
     # <=5-man labels into the whole corpus with nothing in the log to show it.
@@ -452,6 +466,15 @@ def main():
                          "record only positions with <= --eg-men total men")
     ap.add_argument("--eg-men", type=int, default=14)
     add_tb_arg(ap)
+    ap.add_argument("--label-nnue", action="store_true",
+                    help="label with the NNUE eval instead of the "
+                         "hand-crafted one. Default OFF so existing corpora "
+                         "keep reproducing. MEASURED 2026-08-29 at 25,000 "
+                         "nodes: net labels sit closer to a 200,000-node "
+                         "reference on all four comparisons (+0.0009/+0.0026 "
+                         "vs an hce reference, +0.0042/+0.0060 vs an nnue "
+                         "one; two seeds, 2,000 positions). The fingerprint "
+                         "line prints nnue=1 when this is on.")
     ap.add_argument("--win-cp", type=int, default=TB_WIN_CP,
                     help="cp magnitude written for a tablebase WIN/LOSS "
                          "(draws get 0); matches relabel_tb.py")
@@ -466,7 +489,7 @@ def main():
         run_worker(args.shard, args.positions, args.nodes, args.seed,  # .so)
                    args.book, args.endgame, args.eg_men,
                    games_quota=args.games, syzygy=args.syzygy,
-                   win_cp=args.win_cp)
+                   win_cp=args.win_cp, label_nnue=args.label_nnue)
         return
 
     # --- parent only (workers inherit an explicit count from below) ---
@@ -500,7 +523,8 @@ def main():
             + (["--endgame", "--eg-men", str(args.eg_men)]
                if args.endgame else [])
             + (["--syzygy", args.syzygy] if args.syzygy else [])
-            + ["--win-cp", str(args.win_cp)],
+            + ["--win-cp", str(args.win_cp)]
+            + (["--label-nnue"] if args.label_nnue else []),
             cwd=REPO_DIR))
 
     # aggregate progress + ETA, one plain line per interval -- survives

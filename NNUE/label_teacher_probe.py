@@ -114,6 +114,12 @@ def main():
     ap.add_argument("--sample", type=int, default=4000)
     ap.add_argument("--nodes", type=int, default=LABEL_NODES)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--reference-nodes", type=int, default=0,
+                    help="also search at this much deeper budget and ask "
+                         "which shallow teacher better predicts it. The "
+                         "game result is unbiased but noisy and dominated "
+                         "by easy positions; a deep search is the sharper "
+                         "reference for where a teacher actually differs.")
     ap.add_argument("--worker", choices=("hce", "nnue"), help=argparse.SUPPRESS)
     ap.add_argument("--npz", help=argparse.SUPPRESS)
     args = ap.parse_args()
@@ -130,6 +136,7 @@ def main():
     idx = rng.choice(h0, min(args.sample, len(h0)), replace=False)
     recs = np.asarray(d[np.sort(idx)])
     npz = os.path.join(REPO_DIR, ".teacher_probe_sample.npz")
+    npz2 = npz
     np.savez(npz, recs=recs)
 
     stored = recs["score"].astype(np.int64)     # White POV cp
@@ -151,8 +158,7 @@ def main():
             scores[fam] = np.array(json.loads(p.stdout.strip().splitlines()[-1]),
                                    dtype=np.int64)
     finally:
-        if os.path.exists(npz):
-            os.remove(npz)
+        pass          # npz is removed at the end -- the reference passes reuse it
 
     exact = int((scores["hce"] == stored).sum())
     if args.nodes == LABEL_NODES:
@@ -176,6 +182,32 @@ def main():
         print(f"  {fam:4s}  Spearman rho {rho:+.4f}   "
               f"sign agreement on decisive games {100*sign_ok:5.2f}%")
 
+    if args.reference_nodes:
+        ref = {}
+        for fam in ("hce", "nnue"):
+            p2 = subprocess.run(
+                [sys.executable, os.path.abspath(__file__), args.dataset,
+                 "--worker", fam, "--npz", npz2,
+                 "--nodes", str(args.reference_nodes)],
+                capture_output=True, text=True, cwd=REPO_DIR)
+            if p2.returncode != 0:
+                sys.exit(f"{fam} reference arm failed:\n{p2.stderr[-2000:]}")
+            ref[fam] = np.array(
+                json.loads(p2.stdout.strip().splitlines()[-1]), dtype=np.int64)
+        print(f"\nAGREEMENT WITH A {args.reference_nodes:,}-NODE REFERENCE "
+              "(sharper than the game result):")
+        print("  the cross-family column is the fair one -- a reference shares "
+              "its eval\n  with the same-family candidate and flatters it.")
+        for rf in ("hce", "nnue"):
+            a = spearman(scores["hce"], ref[rf])
+            b = spearman(scores["nnue"], ref[rf])
+            mark = "nnue better" if b - a > 0.002 else (
+                   "hce better" if a - b > 0.002 else "no difference")
+            print(f"  vs {rf:4s}@{args.reference_nodes:,}   "
+                  f"hce@{args.nodes:,} {a:+.4f}   "
+                  f"nnue@{args.nodes:,} {b:+.4f}   "
+                  f"({b-a:+.4f}, {mark})")
+
     r_h = spearman(scores["hce"], result)
     r_n = spearman(scores["nnue"], result)
     print(f"\n  teacher-vs-teacher rank correlation: "
@@ -196,6 +228,8 @@ def main():
         print(f"NO MEANINGFUL DIFFERENCE: rho {r_h:+.4f} vs {r_n:+.4f} "
               f"({d_rho:+.4f}).\nSwapping the labeller alone would not change "
               "the targets; depth is the\nremaining lever.")
+    if os.path.exists(npz):
+        os.remove(npz)
     print("\nThis ranks LABEL QUALITY against game outcomes. It does not say a "
           "net trained\non those labels plays better -- only an A/B says that.")
 

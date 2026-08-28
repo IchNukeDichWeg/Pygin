@@ -53,15 +53,18 @@ def mk_board(r):
     return b
 
 
-def research(records, nodes, cycle_on):
+def research(records, nodes, cycle_on, label_nnue=False):
     """Re-search each record, return White-POV scores (this process's
     engine config is fixed by the first construction -- FB-04)."""
     import cengine
 
     class AuditEngine(cengine.Engine):
         CYCLE_DETECT = bool(cycle_on)   # must mirror gen_data's LabelEngine
-        USE_NNUE = False                # (all other toggles = confirmed
-                                        # defaults, same as the generator)
+        USE_NNUE = bool(label_nnue)     # mirrors gen_data's --label-nnue;
+                                        # a corpus generated with the net must
+                                        # be audited with the net or NOTHING
+                                        # reproduces (all other toggles =
+                                        # confirmed defaults, as the generator)
         TT_BITS = LABEL_TT_BITS         # MUST mirror gen_data's LabelEngine:
                                         # TT size changes which entries
                                         # survive, so it changes the search,
@@ -91,6 +94,8 @@ def main():
     ap.add_argument("dataset")
     ap.add_argument("--sample", type=int, default=200)
     ap.add_argument("--nodes", type=int, default=LABEL_NODES)
+    ap.add_argument("--label-nnue", action="store_true",
+                    help="the corpus was generated with gen_data --label-nnue; the\n audit must use the same eval family or nothing reproduces")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--debug", action="store_true",
                     help="on hard-gate mismatches, re-search each offender "
@@ -118,14 +123,16 @@ def main():
     if args.cycle_on_worker:            # subprocess: CYCLE_DETECT=1 pass
         idx = rng.choice(len(d), min(args.sample, len(d)), replace=False)
         recs = np.asarray(d[np.sort(idx)])
-        scores = research(recs, args.nodes, cycle_on=True)
+        scores = research(recs, args.nodes, cycle_on=True,
+                          label_nnue=args.label_nnue)
         diffs = sum(int(s) != int(r["score"]) for s, r in zip(scores, recs))
         print(f"CYCLE_ON_DIFFS {diffs} / {len(recs)}")
         return
 
     idx = rng.choice(len(d), min(args.sample, len(d)), replace=False)
     recs = np.asarray(d[np.sort(idx)])
-    scores = research(recs, args.nodes, cycle_on=False)
+    scores = research(recs, args.nodes, cycle_on=False,
+                      label_nnue=args.label_nnue)
 
     h0 = [(s, r) for s, r in zip(scores, recs) if r["hmc"] == 0]
     hN = [(s, r) for s, r in zip(scores, recs) if r["hmc"] > 0]
@@ -144,7 +151,8 @@ def main():
             if int(s0) == int(r["score"]) or shown >= 3:
                 continue
             shown += 1
-            tries = [research(np.asarray([r]), args.nodes, cycle_on=False)[0]
+            tries = [research(np.asarray([r]), args.nodes, cycle_on=False,
+                              label_nnue=args.label_nnue)[0]
                      for _ in range(3)]
             verdict = ("STABLE-but-different-from-generation"
                        if len(set(tries + [int(s0)])) == 1
@@ -159,7 +167,8 @@ def main():
     p = subprocess.run(
         [sys.executable, os.path.abspath(__file__), args.dataset,
          "--sample", str(args.sample), "--nodes", str(args.nodes),
-         "--seed", str(args.seed), "--cycle-on-worker"],
+         "--seed", str(args.seed), "--cycle-on-worker"]
+        + (["--label-nnue"] if args.label_nnue else []),
         capture_output=True, text=True, cwd=REPO_DIR)
     line = [l for l in p.stdout.splitlines() if l.startswith("CYCLE_ON_DIFFS")]
     print(f"FI-29 shaping population (report): "
