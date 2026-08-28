@@ -4,13 +4,13 @@
 #   ./scripts/ab_ltc_deadtag.sh [positions] [offset]      default: 2500 0
 #
 #   engine_v61b_deadtag (192 MiB, tag ON)  vs  engine_nnue_v12 (192 MiB, OFF)
-#   50+0.20, seed 59, UHO_4060_v4, cores/2 workers
+#   50+0.5, seed 59, UHO_4060_v4, cores/2 workers
 #
 # SPLIT IT ACROSS BOXES. positions x 2 = games, and the offset picks which
 # openings. Two boxes, disjoint offsets, pooled afterwards:
 #     box A:  ./scripts/ab_ltc_deadtag.sh 2500 0
 #     box B:  ./scripts/ab_ltc_deadtag.sh 2500 2500
-# 10,000 games total lands in about 2.4h instead of 4.8h. Both boxes must run
+# 10,000 games total lands in about 3.3h instead of 6.5h. Both boxes must run
 # the SAME worker density (cores/2) or the halves are different instruments
 # and must not be pooled.
 #
@@ -21,11 +21,13 @@
 # afterwards, which the tail of this script does. One run, both answers, half
 # the compute of running a screen and then a measurement.
 #
-# WHY 50+0.20 AND NOT 50+0.5. The requirement is a SATURATED 192 MiB table,
-# and 50+0.20 is exactly where that was measured: the recorded hashfull curve
-# in cengine.py reads 833 permille by ply 8 and full from ply 16 at its
-# 1.4s/move operating point. 50+0.5 saturates no harder and costs 1.4x more.
-# It is also the TC the ledger's own hash-sizing entries (v46, v47) used.
+# WHY 50+0.5. User's call 2026-08-28, and it is the release instrument: this
+# run decides whether FI-115 ships. Saturation is satisfied well before here
+# -- the recorded hashfull curve reads 833 permille by ply 8 and full from
+# ply 16 at 1.4s/move, so 50+0.20 would already have done -- but 50+0.5 is
+# what the recent NNUE ledger runs used, and a release number should sit on
+# the instrument the release is judged on. It costs ~1.4x more; that is the
+# price of pooling with the runs it will be compared against.
 #
 # WHY NOT 10+0.1. The table never fills there: the FI-116 ramp work put a
 # 192 MiB table at roughly a 22-bit working set by ply 40 at 0.15s/move, so
@@ -74,12 +76,12 @@ print("  192 MiB both sides, tag is the only variable -- correct.")
 PY
 
 echo ""
-echo "### FI-115 @ 192 MiB, 50+0.20, FIXED BUDGET (no early stop)"
+echo "### FI-115 @ 192 MiB, 50+0.5, FIXED BUDGET (no early stop)"
 echo "### $POS positions x 2 = $((POS * 2)) games from offset $OFF, $WORKERS workers"
 echo "### start $(TZ=Europe/Zurich date '+%H:%M:%S %Z')"
 LOG="$LOGDIR/ab_deadtag192_${OFF}.log"
 python3 match.py "$A" "$B" "$POS" "$OFF" \
-    --workers "$WORKERS" --tc 50+0.20 --seed 59 2>&1 | tee "$LOG"
+    --workers "$WORKERS" --tc 50+0.5 --seed 59 2>&1 | tee "$LOG"
 
 echo ""
 echo "### FI-115 RESULT  $(TZ=Europe/Zurich date '+%H:%M:%S %Z')"
