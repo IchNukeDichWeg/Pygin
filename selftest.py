@@ -52,8 +52,29 @@ BASELINE_OFF = ()   # (none pending; P-42 was here, A/B'd -16.4 and reverted)
 _failed = []
 
 
+# Colour, so a 1,400-line run is readable at a glance: the whole PASS line
+# green, the whole FAIL line red, and the verdict block the same. Guarded on
+# isatty for the same reason the progress bars are -- redirected to a file or
+# piped into grep, raw escape codes are noise, and CI logs keep them forever.
+# NO_COLOR is honoured (https://no-color.org) so it can be turned off without
+# an edit.
+_COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+_GREEN, _RED, _YELLOW, _OFF = (
+    ("\033[32m", "\033[31m", "\033[33m", "\033[0m") if _COLOR else ("",) * 4)
+
+
+def _paint(text, colour):
+    return f"{colour}{text}{_OFF}" if _COLOR else text
+
+
+def skip(text):
+    """A skipped check is neither pass nor fail -- yellow, and never counted."""
+    print(_paint(f"  skip  {text}", _YELLOW))
+
+
 def check(label, ok, detail=""):
-    print(f"  {'PASS' if ok else 'FAIL'}  {label}" + (f"  ({detail})" if detail else ""))
+    line = f"  {'PASS' if ok else 'FAIL'}  {label}" + (f"  ({detail})" if detail else "")
+    print(_paint(line, _GREEN if ok else _RED))
     if not ok:
         _failed.append(label)
     return ok
@@ -1007,7 +1028,7 @@ if os.path.exists(os.path.join("NNUE", "selftest_nnue.py")):
             [sys.executable, os.path.join("NNUE", "selftest_nnue.py")],
             capture_output=True, text=True, timeout=600)
         if r.returncode == 42:
-            print("\n  skip  NNUE checks (no net file -- dormant FI-15 build)")
+            print(); skip("NNUE checks (no net file -- dormant FI-15 build)")
         else:
             tail = (r.stdout.strip().splitlines() or ["(no output)"])[-1]
             check("NNUE unit checks (toy net, subprocess)",
@@ -1336,7 +1357,7 @@ try:
         # the shapes the corpus gets wrong must come back as dead draws
         _tb.close()
     else:
-        print("  skip  syzygy/ absent -- verdict check needs the tables")
+        skip("syzygy/ absent -- verdict check needs the tables")
 except Exception as _e:
     check("gen_data tablebase labelling", False, f"{type(_e).__name__}: {_e}")
 
@@ -1409,7 +1430,7 @@ try:
               _six is None, detail=repr(_six))
 
     if _has_syzygy() and not _has_syzygy_dtz():
-        print("  skip  DTZ (.rtbz) absent -- move selection needs it; the "
+        skip("DTZ (.rtbz) absent -- move selection needs it; the "
               "syzygy-345 release is WDL-only by design")
     if _has_syzygy_dtz():
         _bad = []
@@ -1445,13 +1466,14 @@ try:
         check("local TB: DTZ mover converts to mate (not a 50-move shuffle)",
               not _slow, detail="; ".join(_slow))
     else:
-        print("  skip  syzygy/ absent -- conversion oracle needs the tables")
+        skip("syzygy/ absent -- conversion oracle needs the tables")
 except Exception as _e:
     check("local Syzygy probe", False, f"{type(_e).__name__}: {_e}")
 
 # --- verdict ------------------------------------------------------------- #
 if _failed:
-    print(f"\n== FAILED: {len(_failed)} check(s): {', '.join(_failed)} ==")
+    print(_paint(f"\n== FAILED: {len(_failed)} check(s): "
+                 f"{', '.join(_failed)} ==", _RED))
     sys.exit(1)
-print("\n== ALL CHECKS PASSED ==")
+print(_paint("\n== ALL CHECKS PASSED ==", _GREEN))
 sys.exit(0)
