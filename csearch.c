@@ -1851,18 +1851,28 @@ typedef struct {
  * cannot recur), so it only occupies a slot -- this is purely a better
  * victim choice, checked at store time, no sweep. 6 spare bits in d2.
  *
- * CONFIRMED 2026-08-28 at 10+0.1. GSPRT[0,4] ACCEPT H1, LLR +2.957 past
- * +2.944 over 6,160 pooled pairs (deadtag_on vs deadtag_off, same v12 net
- * and same 24 MiB table both sides -- only the victim rule differs). No Elo
- * quoted: the test stopped AT a bound, so its magnitude is biased upward by
- * construction; a fixed-budget run is owed for the number.
+ * CONFIRMED 2026-08-28 at 10+0.1 AND AT 24 MiB, WHICH IS NOT WHAT SHIPS.
+ * GSPRT[0,4] ACCEPT H1, LLR +2.957 past +2.944 over 6,160 pooled pairs
+ * (deadtag_on vs deadtag_off, same v12 net, only the victim rule differs).
+ * No Elo quoted: the test stopped AT a bound, so its magnitude is biased
+ * upward by construction.
  *
- * STILL OWED before this ships: a 50+0.20 confirmation. The ledger is
- * denominated at long TC and this has only been measured at short. The
- * mechanism points the right way -- the recorded hashfull curve has 192 MiB
- * fully saturated from ply 16 at 1.4s/move, so eviction pressure is HIGHER
- * there and choosing the victim better should matter more, not less -- but
- * that is an argument, not a measurement. Default stays OFF until it is. */
+ * READ THE TABLE SIZE BEFORE READING THE VERDICT. Both arms ran TT_BITS 20
+ * = 24 MiB. That was a deliberate screening choice -- a victim rule can only
+ * pay where entries are actually being evicted, and the A/B shim says so in
+ * as many words: "the tag matters most under replacement pressure, and a
+ * 192 MiB table has little". So this is a confirmation in the regime built
+ * to maximise the effect, and the design note itself predicts LESS at the
+ * shipped size. It does not transfer on its own.
+ *
+ * WHAT DECIDES SHIPPING is deadtag at the shipped 192 MiB, at 50+0.20.
+ * Not 192 MiB at 10+0.1: the FI-116 ramp measurement showed a 192 MiB table
+ * only reaching about a 22-bit working set by ply 40 at 0.15s/move, so it
+ * never fills, nothing is evicted, and a null there would mean "no pressure
+ * to relieve" rather than "rule does not work". At 1.4s/move the recorded
+ * hashfull curve has 192 MiB at 833 permille by ply 8 and saturated from
+ * ply 16 -- real eviction, the shipped size, and the TC the ledger is
+ * denominated in. Default stays OFF until that run reports. */
 static int g_tt_deadtag = 0;                  /* visible switch, default OFF */
 void set_tt_deadtag(int v) { g_tt_deadtag = v ? 1 : 0; }
 static __thread int g_node_pc = 0;            /* piece count at this node */
