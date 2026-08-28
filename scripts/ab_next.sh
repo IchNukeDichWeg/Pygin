@@ -1,5 +1,10 @@
 #!/bin/bash
-# The v61 candidates against the shipped engine. Run: ./scripts/ab_v61.sh
+# Open candidates against the shipped engine (v60). Run: ./scripts/ab_next.sh
+#
+# These are CANDIDATES, not a release. Nothing has confirmed since v60: the
+# two gw nets were rejected and the static-hash arm measured null, so a "v61"
+# today would contain FI-113 alone (+1.09% NPS = ~+1 Elo) and is not worth
+# cutting. A version number gets assigned when something here confirms.
 #
 # 10+0.1 ONLY. 50+0.5 is a separate decision and a separate campaign -- these
 # same shim files serve it unchanged when that time comes.
@@ -32,6 +37,8 @@ run () {
 # 2026-08-28. Re-running it would buy nothing, so it is dropped, and v61c
 # (small hash + deadtag) collapses to v61b at a smaller table -- also dropped.
 # What replaces them is the item that null does NOT cover: a table that GROWS.
+# deadtag_192 is NOT tonight's deadtag run: tonight tests it at 24 MiB, this
+# tests it at the shipped 192 MiB.
 run grow         NNUE/shims/engine_grow_on.py
-run v61b_deadtag NNUE/shims/engine_v61b_deadtag.py
-echo "### ALL V61 CANDIDATES DONE $(TZ=Europe/Zurich date '+%H:%M:%S')"
+run deadtag_192  NNUE/shims/engine_v61b_deadtag.py
+echo "### ALL CANDIDATES DONE $(TZ=Europe/Zurich date '+%H:%M:%S')"
