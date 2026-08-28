@@ -7,7 +7,17 @@ ENTIRE per-node search loop in C (csearch.c): board, move ordering,
 transposition table, pruning, quiescence and the full static eval
 (bit-exact port of engine.py's ``_evaluate_static``, verified over 3M
 positions). Born as phase-3 step 6 of the C-core plan; the shipped engine
-since Old Engine/31. Its defaults ARE v42 -- v41 + CW-01 cannot-win eval
+since Old Engine/31.
+
+ITS DEFAULTS ARE v61 (2026-08-29): the shipped engine is v60's nnue_v12 net
+plus FI-115 dead-entry TT replacement (TT_DEADTAG True, +15.89 +/- 4.2 at
+50+0.5 with 192 MiB both sides, over a FIXED 10,000-game budget) and FI-113's
+two-cache-line TT prefetch. Bench signature 1,140,099. C-era ledger ~+354 over
+v31. The running history below is APPEND-ONLY and each paragraph describes the
+version it names, not the current default -- this line is the one to trust for
+"what ships today", and it is the one to update on every release.
+
+v42 = v41 + CW-01 cannot-win eval
 clamp (+3.27 +/-6.8 vs Old Engine/41, a null KEPT as correctness: the
 eval no longer favors sides that cannot force mate; snapshotted Old
 Engine/42). v43 = v42 MINUS CB-02's deep-null verification: NV-01

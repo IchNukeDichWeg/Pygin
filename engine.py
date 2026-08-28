@@ -134,6 +134,15 @@ per-node cost. Fixed and flagged inline with ``# FIX``:
 
 Version history
 ---------------
+THIS FILE STOPPED BEING THE SHIPPED ENGINE AT v31. From there the entire
+per-node search moved into C (``csearch.c``, driven by ``cengine.py``), and the
+history below ends at v24 for that reason -- it is not stale so much as closed.
+What engine.py still IS: the reference implementation of the evaluation, whose
+scalars ``cengine`` imports at construction and whose ``_evaluate_static`` the C
+port is verified bit-exact against, plus the readable statement of what the
+search does. For what SHIPS today see cengine.py's header (v61 as of
+2026-08-29); for the C-era feature ledger see docs/DESIGN_c_search_core.md.
+
 Each version is a saved snapshot in ``Old Engine/<N>/``; only the *changes* are
 logged here. For what the current build does, see "Search features" and
 "Evaluation" above. Aggregate NPS/Elo numbers live in "Cross-version
