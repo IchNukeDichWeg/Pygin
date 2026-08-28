@@ -26,8 +26,10 @@ python3 - <<'PY'
 import os, sys
 sys.path.insert(0, ".")
 from battle_worker import describe_nnue_source, nnue_label
-ARMS = ["engine_grow_on", "engine_nnue_v12",
-        "engine_deadtag_on", "engine_deadtag_off", "engine_v61b_deadtag"]
+# Exactly the arms ab_next.sh runs, no more: a preflight that checks things
+# the campaign never loads is noise that hides a real miss.
+ARMS = ["engine_deadtag_on", "engine_deadtag_off",
+        "engine_grow_on", "engine_nnue_v12"]
 bad = 0
 for a in ARMS:
     p = f"NNUE/shims/{a}.py"
