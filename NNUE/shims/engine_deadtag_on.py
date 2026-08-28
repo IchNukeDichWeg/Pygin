@@ -16,7 +16,7 @@ CONFIRMED 2026-08-28: GSPRT[0,4] ACCEPT H1, LLR +2.957 over 6,160 pooled pairs.
 Bound-stopped, so no quotable Elo. READ THE TABLE SIZE WITH THE VERDICT: this
 pair is 24 MiB on both sides, chosen above to maximise replacement pressure,
 and the line above predicts less at the shipped 192 MiB. The run that decides
-shipping is engine_v61b_deadtag (192 MiB) at 50+0.20, not this one.
+shipping is engine_v61b_deadtag (192 MiB) at 50+0.5, not this one.
 """
 
 import cengine
