@@ -1,0 +1,47 @@
+Campaign 2026-08-28 -- run-until-decision, box 185.8.106.199 (96 cores),
+10+0.1, seed 59, UHO_4060_v4, 48 workers (cores/2). Both candidates DECIDED.
+
+  deadtag (FI-115)  6,160 pooled pairs  LLR +2.957  ACCEPT H1  CONFIRMED
+  grow    (FI-116)  6,725 pooled pairs  LLR -2.960  ACCEPT H0  REJECTED
+
+deadtag resumed the 5,000 pairs from the 2026-08-28 four-A/B campaign and
+crossed after 1,160 more. Bound-stopped: the magnitude is NOT quotable.
+
+grow tranche 1 ran the FULL 10,000 games, so ITS number IS quotable:
+  -2.88 +/- 4.4 Elo, 49.59%, ptnml 239/1159/2270/1110/222, ratio 0.95,
+  nElo -4.50, worker chi2 20.7/46 dof p=1.000. Tranche 2 crossed H0.
+
+===== deadtag
+Resuming 'sprt_deadtag_tc10+0.1.json': 5,000 prior pairs (276/1131/2037/1246/310) over 1 run(s); the LLR continues from there.
+Games scored: 2,328  (of 10,000 scheduled)
+Engine 1 score: 1185.50/2328 (50.92%)  =>  +6.42 +/- 9.7 Elo
+Pairs scored: 1,160  (LL=58  LD=269  DD_WL=484  WD=271  WW=78)
+Ptnml: 58, 269, 484, 271, 78
+Game pair ratio (WW+WD)/(LL+LD): 1.07
+Normalized Elo: +9.21
+SPRT[0, 4] normalized (alpha=0.05 beta=0.05): LLR +2.957 in [-2.944, +2.944]  <- for engine_deadtag_on (Engine 1) as the CANDIDATE; put the change in slot 1
+SPRT verdict: ACCEPT H1 -- change is good (ship); stopped early.
+STATE-LINE sprt_deadtag_tc10+0.1.json: penta 334/1400/2521/1517/388 pairs 6160 next_offset 6171 llr 2.9567563608368075
+
+===== grow
+Games scored: 10,000  (of 10,000 scheduled)
+Engine 1 score: 4958.50/10000 (49.59%)  =>  -2.88 +/- 4.4 Elo
+Pairs scored: 5,000  (LL=239  LD=1159  DD_WL=2270  WD=1110  WW=222)
+Ptnml: 239, 1159, 2270, 1110, 222
+Worker chi2: 20.7 on 46 dof, p=1.000  -- workers consistent
+Game pair ratio (WW+WD)/(LL+LD): 0.95
+Normalized Elo: -4.50
+SPRT[0, 4] normalized (alpha=0.05 beta=0.05): LLR -2.151 in [-2.944, +2.944]  <- for engine_grow_on (Engine 1) as the CANDIDATE; put the change in slot 1
+SPRT verdict: no decision within the game budget (inconclusive -- read the Elo / ptnml above).
+STATE-LINE sprt_grow_tc10+0.1.json: penta 239/1159/2270/1110/222 pairs 5000 next_offset 5000 llr -2.151266456230947
+Resuming 'sprt_grow_tc10+0.1.json': 5,000 prior pairs (239/1159/2270/1110/222) over 1 run(s); the LLR continues from there.
+Games scored: 3,455  (of 10,000 scheduled)
+Engine 1 score: 1710.50/3455 (49.51%)  =>  -3.42 +/- 7.6 Elo
+Pairs scored: 1,725  (LL=83  LD=420  DD_WL=754  WD=383  WW=85)
+Ptnml: 83, 420, 754, 383, 85
+Game pair ratio (WW+WD)/(LL+LD): 0.93
+Normalized Elo: -5.08
+SPRT[0, 4] normalized (alpha=0.05 beta=0.05): LLR -2.960 in [-2.944, +2.944]  <- for engine_grow_on (Engine 1) as the CANDIDATE; put the change in slot 1
+SPRT verdict: ACCEPT H0 -- change rejected; stopped early.
+STATE-LINE sprt_grow_tc10+0.1.json: penta 322/1579/3024/1493/307 pairs 6725 next_offset 6734 llr -2.960379691244426
+
