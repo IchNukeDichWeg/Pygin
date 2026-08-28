@@ -1865,7 +1865,8 @@ typedef struct {
  * to maximise the effect, and the design note itself predicts LESS at the
  * shipped size. It does not transfer on its own.
  *
- * WHAT DECIDES SHIPPING is deadtag at the shipped 192 MiB, at 50+0.20.
+ * WHAT DECIDES SHIPPING is deadtag at the shipped 192 MiB, at 50+0.5
+ * (scripts/ab_ltc_deadtag.sh).
  * Not 192 MiB at 10+0.1: the FI-116 ramp measurement showed a 192 MiB table
  * only reaching about a 22-bit working set by ply 40 at 0.15s/move, so it
  * never fills, nothing is evicted, and a null there would mean "no pressure
