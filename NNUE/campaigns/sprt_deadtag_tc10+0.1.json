@@ -1,14 +1,14 @@
 {
- "decision": null,
- "llr": 2.402252043918694,
- "next_offset": 5000,
- "pairs": 5000,
+ "decision": "H1",
+ "llr": 2.9567563608368075,
+ "next_offset": 6171,
+ "pairs": 6160,
  "penta": [
-  276,
-  1131,
-  2037,
-  1246,
-  310
+  334,
+  1400,
+  2521,
+  1517,
+  388
  ],
  "runs": [
   {
@@ -22,6 +22,18 @@
    "seed": 59,
    "smp": 1,
    "started": "2026-08-28 00:07:15"
+  },
+  {
+   "engine1": "engine_deadtag_on",
+   "engine2": "engine_deadtag_off",
+   "fen_file": "UHO_4060_v4.epd",
+   "mode": "clock 10.00+0.10",
+   "offset": 5000,
+   "positions": 5000,
+   "positions_played": 1171,
+   "seed": 59,
+   "smp": 1,
+   "started": "2026-08-28 13:47:42"
   }
  ]
 }
