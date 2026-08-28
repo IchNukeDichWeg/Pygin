@@ -27,7 +27,11 @@ run () {
         2>&1 | tee "$LOGDIR/ab_$L.log"
     echo "### $L DONE $(TZ=Europe/Zurich date '+%H:%M:%S')"
 }
-run v61a_hash    NNUE/shims/engine_v61a_hash.py
+# v61a_hash IS the hash_small experiment and it is ALREADY ANSWERED: static
+# 24 MiB vs 192 MiB measured NULL over the full 10,000 games @10+0.1 on
+# 2026-08-28. Re-running it would buy nothing, so it is dropped, and v61c
+# (small hash + deadtag) collapses to v61b at a smaller table -- also dropped.
+# What replaces them is the item that null does NOT cover: a table that GROWS.
+run grow         NNUE/shims/engine_grow_on.py
 run v61b_deadtag NNUE/shims/engine_v61b_deadtag.py
-run v61c_both    NNUE/shims/engine_v61c_both.py
 echo "### ALL V61 CANDIDATES DONE $(TZ=Europe/Zurich date '+%H:%M:%S')"
