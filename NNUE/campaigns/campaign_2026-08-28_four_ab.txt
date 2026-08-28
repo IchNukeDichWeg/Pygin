@@ -1,0 +1,68 @@
+Campaign 2026-08-27/28 -- four A/Bs, one box (185.8.106.202, 96 cores),
+one instrument: 10+0.1, seed 59, UHO_4060_v4 offset 0, 48 workers (cores/2).
+Nets DID load: the 'net missing' line in these logs is a battle_worker
+path-resolution bug (it resolves NNUE_FILE against the shim dir, cengine
+resolves against the repo root). Fixed separately; results are valid.
+
+===== gw5_vs_v12
+SPRT early-stop ON: [0, 4] normalized, alpha=0.05 beta=0.05 (bounds -2.944 .. +2.944); stops as soon as a bound is crossed, else runs the full 10,000-game budget.
+SPRT budget (prior draw 0.41): +2->73,586p TOO SMALL  +5->9,856p TOO SMALL  +10->4,039p fits  +20->1,864p fits
+Games scored: 3,008  (of 10,000 scheduled)
+Engine 1 score: 1333.50/3008 (44.33%)  =>  -39.56 +/- 8.8 Elo
+Pairs scored: 1,500  (LL=146  LD=441  DD_WL=579  WD=273  WW=61)
+Ptnml: 146, 441, 579, 273, 61
+Game pair ratio (WW+WD)/(LL+LD): 0.57
+Normalized Elo: -56.00
+SPRT[0, 4] normalized (alpha=0.05 beta=0.05): LLR -5.434 in [-2.944, +2.944]  <- for engine_nnue_gw5 (Engine 1) as the CANDIDATE; put the change in slot 1
+SPRT verdict: ACCEPT H0 -- change rejected; stopped early.
+SPRT state file: sprt_gw5_vs_v12_tc10+0.1.json
+SPRT state written to: sprt_gw5_vs_v12_tc10+0.1.json (1,500 pooled pairs; next tranche must use --offset >= 1524)
+STATE-LINE sprt_gw5_vs_v12_tc10+0.1.json: penta 146/441/579/273/61 pairs 1500 next_offset 1524 llr -5.433766790727812
+
+===== gw6_vs_v12
+SPRT early-stop ON: [0, 4] normalized, alpha=0.05 beta=0.05 (bounds -2.944 .. +2.944); stops as soon as a bound is crossed, else runs the full 10,000-game budget.
+SPRT budget (prior draw 0.41): +2->73,586p TOO SMALL  +5->9,856p TOO SMALL  +10->4,039p fits  +20->1,864p fits
+Games scored: 3,010  (of 10,000 scheduled)
+Engine 1 score: 1366.00/3010 (45.38%)  =>  -32.18 +/- 8.7 Elo
+Pairs scored: 1,500  (LL=137  LD=415  DD_WL=598  WD=289  WW=61)
+Ptnml: 137, 415, 598, 289, 61
+Game pair ratio (WW+WD)/(LL+LD): 0.63
+Normalized Elo: -46.40
+SPRT[0, 4] normalized (alpha=0.05 beta=0.05): LLR -4.643 in [-2.944, +2.944]  <- for engine_nnue_gw6 (Engine 1) as the CANDIDATE; put the change in slot 1
+SPRT verdict: ACCEPT H0 -- change rejected; stopped early.
+SPRT state file: sprt_gw6_vs_v12_tc10+0.1.json
+SPRT state written to: sprt_gw6_vs_v12_tc10+0.1.json (1,500 pooled pairs; next tranche must use --offset >= 1516)
+STATE-LINE sprt_gw6_vs_v12_tc10+0.1.json: penta 137/415/598/289/61 pairs 1500 next_offset 1516 llr -4.643114850958652
+
+===== hash_small
+SPRT early-stop ON: [0, 4] normalized, alpha=0.05 beta=0.05 (bounds -2.944 .. +2.944); stops as soon as a bound is crossed, else runs the full 10,000-game budget.
+SPRT budget (prior draw 0.41): +2->73,586p TOO SMALL  +5->9,856p TOO SMALL  +10->4,039p fits  +20->1,864p fits
+Games scored: 10,000  (of 10,000 scheduled)
+Engine 1 score: 5033.00/10000 (50.33%)  =>  +2.29 +/- 4.7 Elo
+Pairs scored: 5,000  (LL=281  LD=1188  DD_WL=2001  WD=1244  WW=286)
+Ptnml: 281, 1188, 2001, 1244, 286
+Worker chi2: 28.7 on 46 dof, p=0.979  -- workers consistent
+Game pair ratio (WW+WD)/(LL+LD): 1.04
+Normalized Elo: +3.35
+SPRT[0, 4] normalized (alpha=0.05 beta=0.05): LLR +0.446 in [-2.944, +2.944]  <- for engine_hash_small (Engine 1) as the CANDIDATE; put the change in slot 1
+SPRT verdict: no decision within the game budget (inconclusive -- read the Elo / ptnml above).
+SPRT state file: sprt_hash_small_tc10+0.1.json
+SPRT state written to: sprt_hash_small_tc10+0.1.json (5,000 pooled pairs; next tranche must use --offset >= 5000)
+STATE-LINE sprt_hash_small_tc10+0.1.json: penta 281/1188/2001/1244/286 pairs 5000 next_offset 5000 llr 0.4456153753095312
+
+===== deadtag
+SPRT early-stop ON: [0, 4] normalized, alpha=0.05 beta=0.05 (bounds -2.944 .. +2.944); stops as soon as a bound is crossed, else runs the full 10,000-game budget.
+SPRT budget (prior draw 0.41): +2->73,586p TOO SMALL  +5->9,856p TOO SMALL  +10->4,039p fits  +20->1,864p fits
+Games scored: 10,000  (of 10,000 scheduled)
+Engine 1 score: 5091.50/10000 (50.91%)  =>  +6.36 +/- 4.7 Elo
+Pairs scored: 5,000  (LL=276  LD=1131  DD_WL=2037  WD=1246  WW=310)
+Ptnml: 276, 1131, 2037, 1246, 310
+Worker chi2: 21.8 on 46 dof, p=0.999  -- workers consistent
+Game pair ratio (WW+WD)/(LL+LD): 1.11
+Normalized Elo: +9.26
+SPRT[0, 4] normalized (alpha=0.05 beta=0.05): LLR +2.402 in [-2.944, +2.944]  <- for engine_deadtag_on (Engine 1) as the CANDIDATE; put the change in slot 1
+SPRT verdict: no decision within the game budget (inconclusive -- read the Elo / ptnml above).
+SPRT state file: sprt_deadtag_tc10+0.1.json
+SPRT state written to: sprt_deadtag_tc10+0.1.json (5,000 pooled pairs; next tranche must use --offset >= 5000)
+STATE-LINE sprt_deadtag_tc10+0.1.json: penta 276/1131/2037/1246/310 pairs 5000 next_offset 5000 llr 2.402252043918694
+

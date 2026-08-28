@@ -1,0 +1,27 @@
+{
+ "decision": null,
+ "llr": 0.4456153753095312,
+ "next_offset": 5000,
+ "pairs": 5000,
+ "penta": [
+  281,
+  1188,
+  2001,
+  1244,
+  286
+ ],
+ "runs": [
+  {
+   "engine1": "engine_hash_small",
+   "engine2": "engine_hash_default",
+   "fen_file": "UHO_4060_v4.epd",
+   "mode": "clock 10.00+0.10",
+   "offset": 0,
+   "positions": 5000,
+   "positions_played": 5000,
+   "seed": 59,
+   "smp": 1,
+   "started": "2026-08-27 22:49:40"
+  }
+ ]
+}
