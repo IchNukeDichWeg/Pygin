@@ -3,24 +3,25 @@
 <text x="58" y="24" fill="#8b949e" font-size="15" font-weight="700">Single-thread speed</text>
 <text x="738" y="24" fill="#8b949e" font-size="12" text-anchor="end">x v31</text>
 <line x1="58" y1="266.0" x2="738" y2="266.0" stroke="#8b949e33"/>
-<text x="50" y="270.0" fill="#8b949e" font-size="11" text-anchor="end">0.73x</text>
+<text x="50" y="270.0" fill="#8b949e" font-size="11" text-anchor="end">0.85x</text>
 <line x1="58" y1="210.5" x2="738" y2="210.5" stroke="#8b949e33"/>
-<text x="50" y="214.5" fill="#8b949e" font-size="11" text-anchor="end">0.99x</text>
+<text x="50" y="214.5" fill="#8b949e" font-size="11" text-anchor="end">1.04x</text>
 <line x1="58" y1="155.0" x2="738" y2="155.0" stroke="#8b949e33"/>
-<text x="50" y="159.0" fill="#8b949e" font-size="11" text-anchor="end">1.25x</text>
+<text x="50" y="159.0" fill="#8b949e" font-size="11" text-anchor="end">1.23x</text>
 <line x1="58" y1="99.5" x2="738" y2="99.5" stroke="#8b949e33"/>
-<text x="50" y="103.5" fill="#8b949e" font-size="11" text-anchor="end">1.51x</text>
+<text x="50" y="103.5" fill="#8b949e" font-size="11" text-anchor="end">1.41x</text>
 <line x1="58" y1="44.0" x2="738" y2="44.0" stroke="#8b949e33"/>
-<text x="50" y="48.0" fill="#8b949e" font-size="11" text-anchor="end">1.77x</text>
+<text x="50" y="48.0" fill="#8b949e" font-size="11" text-anchor="end">1.60x</text>
 <text x="58.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v31</text>
-<text x="158.7" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v35</text>
-<text x="284.7" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v40</text>
-<text x="410.6" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v45</text>
-<text x="536.5" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v50</text>
-<text x="662.4" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v55</text>
-<text x="738.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v58</text>
-<path d="M58.0,266.0 L58.0,208.2 L83.2,203.6 L108.4,229.1 L133.6,227.2 L158.7,175.4 L183.9,130.9 L209.1,133.6 L234.3,140.0 L259.5,115.5 L284.7,117.3 L309.9,120.0 L335.0,120.0 L360.2,127.3 L385.4,87.3 L410.6,113.7 L435.8,80.9 L461.0,130.9 L486.1,141.8 L511.3,135.5 L536.5,128.2 L561.7,76.4 L586.9,76.4 L612.1,79.1 L637.3,85.5 L662.4,40.0 L687.6,40.0 L712.8,40.0 L738.0,117.3 L738.0,266.0 Z" fill="url(#g58a6ff)"/>
-<polyline points="58.0,208.2 83.2,203.6 108.4,229.1 133.6,227.2 158.7,175.4 183.9,130.9 209.1,133.6 234.3,140.0 259.5,115.5 284.7,117.3 309.9,120.0 335.0,120.0 360.2,127.3 385.4,87.3 410.6,113.7 435.8,80.9 461.0,130.9 486.1,141.8 511.3,135.5 536.5,128.2 561.7,76.4 586.9,76.4 612.1,79.1 637.3,85.5 662.4,40.0 687.6,40.0 712.8,40.0 738.0,117.3" fill="none" stroke="#58a6ff" stroke-width="2.5" stroke-linejoin="round"/>
-<circle cx="738.0" cy="117.3" r="4" fill="#58a6ff"/>
-<text x="730.0" y="108.3" fill="#58a6ff" font-size="13" font-weight="700" text-anchor="end">1.43x</text>
+<text x="148.7" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v35</text>
+<text x="262.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v40</text>
+<text x="375.3" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v45</text>
+<text x="488.7" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v50</text>
+<text x="602.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v55</text>
+<text x="715.3" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v60</text>
+<text x="738.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v61</text>
+<path d="M58.0,266.0 L58.0,221.2 L80.7,224.1 L103.3,221.2 L126.0,219.6 L148.7,177.9 L171.3,137.4 L194.0,157.1 L216.7,168.9 L239.3,121.0 L262.0,117.7 L284.7,119.4 L307.3,101.3 L330.0,105.3 L352.7,89.5 L375.3,108.7 L398.0,118.2 L420.7,122.2 L443.3,123.9 L466.0,125.5 L488.7,130.6 L511.3,130.6 L534.0,127.8 L556.7,127.2 L579.3,136.2 L602.0,125.5 L624.7,112.6 L647.3,122.2 L670.0,223.5 L692.7,192.0 L715.3,195.9 L738.0,201.0 L738.0,266.0 Z" fill="url(#g58a6ff)"/>
+<polyline points="58.0,221.2 80.7,224.1 103.3,221.2 126.0,219.6 148.7,177.9 171.3,137.4 194.0,157.1 216.7,168.9 239.3,121.0 262.0,117.7 284.7,119.4 307.3,101.3 330.0,105.3 352.7,89.5 375.3,108.7 398.0,118.2 420.7,122.2 443.3,123.9 466.0,125.5 488.7,130.6 511.3,130.6 534.0,127.8 556.7,127.2 579.3,136.2 602.0,125.5 624.7,112.6 647.3,122.2 670.0,223.5 692.7,192.0 715.3,195.9 738.0,201.0" fill="none" stroke="#58a6ff" stroke-width="2.5" stroke-linejoin="round"/>
+<circle cx="738.0" cy="201.0" r="4" fill="#58a6ff"/>
+<text x="730.0" y="192.0" fill="#58a6ff" font-size="13" font-weight="700" text-anchor="end">1.07x</text>
 </svg>

@@ -11,7 +11,7 @@ no borrowed data and no borrowed weights.<br/>
 representation, move generation and legality.
 
 ![Strength](https://img.shields.io/badge/strength-~2868_Elo-3fb950)
-![Speed](https://img.shields.io/badge/speed-3.3M_nps-58a6ff)
+![Speed](https://img.shields.io/badge/speed-5.6M_nps-58a6ff)
 ![Versions](https://img.shields.io/badge/versions-61-8b949e)
 ![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B354_Elo-f0883e)
 ![Source](https://img.shields.io/badge/source-MIT-green)
@@ -23,23 +23,38 @@ representation, move generation and legality.
 
 | | | | |
 |---|---|---|---|
-| **~2868 Elo** | SF-18 UCI_Elo scale | **3.3M nps** | the net costs ~30% of it |
+| **~2868 Elo** | SF-18 UCI_Elo scale | **5.6M nps** | the net costs ~30% of it |
 | **~+354 Elo** | A/B-confirmed, v31→v61 | **~18 ply** | from startpos in 5 s |
 | **+19.11 Elo** | v58 NNUE, TIMED | **1.43x** | single-thread vs v31 |
 | **v53+v54** eval lane | +37.52 & +31.20, the two biggest | **1 dependency** | `python-chess` only |
 
 <table>
 <tr>
-<td><img src="docs/elo_progression.svg" width="100%" alt="Cumulative A/B Elo across the C era, v31=0 climbing to +324"/></td>
-<td><img src="docs/speed_progression.svg" width="100%" alt="Single-thread speed as a multiple of v31, peaking at 1.79x and ending at 1.43x once the net is armed"/></td>
+<td><img src="docs/elo_progression.svg" width="100%" alt="Cumulative A/B Elo across the C era, v31=0 climbing to +354 at v61"/></td>
+<td><img src="docs/speed_progression.svg" width="100%" alt="Single-thread speed as a multiple of v31, peaking at 1.45x and ending at 1.07x once the net is armed"/></td>
 </tr>
 </table>
 
-Both charts are self-play. Every C-era version (v31 and up) is A/B-tested against
-the one before it, and the gains stack to about +354 Elo. Single-thread speed peaked
-at 1.79× and sits at 1.43× today: v58 hands about 30% of it to the net and still
-comes out +19.11 ahead. The v30→v31 C rewrite (~34× faster) is off the left
-edge, so v31 is the honest zero.
+<table>
+<tr>
+<td><img src="docs/mate_progression.svg" width="100%" alt="Mate-finding on mates2000.epd across the C era, rising from 23.4% at v31 to a 51.6% plateau, then falling back to 41.0% at v61 as the net arms"/></td>
+</tr>
+</table>
+
+All three charts are self-play. Every C-era version (v31 and up) is A/B-tested
+against the one before it, and the gains stack to about **+354 Elo**.
+Single-thread speed peaked at 1.45× and sits at 1.07× today: v58 hands about
+30% of it to the net and still comes out +19.11 ahead. The v30→v31 C rewrite
+(~34× faster) is off the left edge, so v31 is the honest zero.
+
+Mate-finding is the one curve that does **not** track Elo, and it is left in
+because of that. It climbs to a ~51% plateau by v39, then falls away as the
+search gets more selective and the net arms — v61 finds 41.0% of
+`mates2000.epd` at 0.25s where v49 found 51.6%. Forward pruning and a net that
+values position over forced sequences both cost mate speed, and every one of
+those releases still measured POSITIVE in games. A tactical-suite score is a
+different instrument from an A/B, and where they disagree the A/B is the one
+that decides.
 
 The odds ladder against full-strength Stockfish is currently **unmeasured**.
 Every rung on it was measured on a harness that erased Stockfish's won

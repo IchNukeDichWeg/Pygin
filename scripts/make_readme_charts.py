@@ -19,31 +19,41 @@ import os
 # v31 is the C-era baseline (delta 0); its +215 vs v30 is odds-derived, not an
 # A/B, so it does not enter the cumulative line.
 DATA = {
-    31: (0.0, 2.34), 32: (7.30, 2.39), 33: (23.52, 2.11), 34: (6.81, 2.13),
-    35: (72.0, 2.70), 36: (24.67, 3.19), 37: (0.17, 3.16), 38: (1.36, 3.09),
-    39: (8.86, 3.36), 40: (4.31, 3.34), 41: (-2.88, 3.31), 42: (3.27, 3.31),
-    43: (5.18, 3.23), 44: (13.31, 3.67), 45: (13.52, 3.38), 46: (5.94, 3.74),
-    47: (3.16, 3.19), 48: (4.73, 3.07), 49: (0.97, 3.14), 50: (1.60, 3.22),
-    51: (11.12, 3.79), 52: (6.63, 3.79), 53: (37.52, 3.76),
-    54: (31.20, 3.69),
-    # v55 = the node-identical speed pair (FI-11 + FI-42), CONFIRMED
-    # +9.66 +/-8.2 @6,874 games on a TIMED 50+0.20 A/B (the --nodes
-    # instrument reads zero for it by construction). Speed extends v54's
-    # 3.69x by the arm64 paired ratio (+13.5%); the Elo is the x86 figure
-    # (+8.34% there), so this row mixes machines by necessity.
-    55: (9.66, 4.19),
-    # v56 = FI-107 ProbCut. The TIMED cross-check (+11.44 +/-6.9 @5,924) is
-    # the ledger's own instrument and the number banked; the --nodes campaign
-    # that shipped it read +4.11 and is CONSERVATIVE for a node-saving change.
-    # Node count falls 21.6% at fixed depth, which is not an NPS change.
-    56: (11.44, 4.19),
-    # v57 = host layer only, node-identical to v56. No A/B slot, no movement.
-    57: (0.0, 4.19),
-    # v58 = the NNUE net armed. The engine hands the net ~30% of its NPS and
-    # is still +19.11 ahead, so the speed column drops while the Elo climbs --
-    # the one row in this table where those two move in opposite directions.
-    58: (19.11, 3.34),
+    31: (0.00, 5.23), 32: (7.30, 5.18), 33: (23.52, 5.23), 34: (6.81, 5.26),
+    35: (72.00, 6.00), 36: (24.67, 6.72), 37: (0.17, 6.37), 38: (1.36, 6.16),
+    39: (8.86, 7.01), 40: (4.31, 7.07), 41: (-2.88, 7.04), 42: (3.27, 7.36),
+    43: (5.18, 7.29), 44: (13.31, 7.57), 45: (13.52, 7.23), 46: (5.94, 7.06),
+    47: (3.16, 6.99), 48: (4.73, 6.96), 49: (0.97, 6.93), 50: (1.60, 6.84),
+    51: (11.12, 6.84), 52: (6.63, 6.89), 53: (37.52, 6.90), 54: (31.20, 6.74),
+    55: (9.66, 6.93), 56: (11.44, 7.16), 57: (0.00, 6.99), 58: (19.11, 5.19),
+    59: (13.84, 5.75), 60: (0.00, 5.68), 61: (15.89, 5.59),
 }
+
+# EVERY NPS FIGURE ABOVE IS FROM ONE MACHINE and one instrument:
+# nps_history_bench.py's trimmed mean across 10 positions at 4s/run, swept
+# v1-v61 on a Mac17,8 (Apple M5 Pro), 2026-08-27/29. The column used to mix
+# a per-version bench-signature NPS taken on older hardware, which made the
+# multiplier chart read 1.43x at v58 where one consistent machine reads
+# 0.99x -- a hardware artefact plotted as an engine trend. NPS is
+# architecture-specific (the same node-identical change measured +8.3% on
+# x86 and +13.5% on arm64), so this column is comparable to itself and to
+# nothing else. Re-sweep the whole range when the machine changes; do not
+# append a single version measured somewhere else.
+
+# Mate-finding across the C era: matetrack on mates2000.epd @ 0.25s,
+# concurrency 6, one machine. (version, found%, best%) -- "found" is any
+# mate, "best" is the SHORTEST mate. v1-v30 predate the C core and are not
+# runnable through cuci_old, so the series starts at v31.
+MATETRACK = [
+    (31, 23.4, 21.1), (32, 26.2, 23.3), (33, 26.1, 23.3), (34, 26.9, 23.9),
+    (35, 40.5, 35.4), (36, 43.35, 37.6), (37, 43.3, 38.0), (38, 50.55, 44.15),
+    (39, 51.55, 45.2), (40, 51.35, 44.95), (41, 50.75, 44.2), (42, 51.05, 44.6),
+    (43, 51.05, 44.85), (44, 51.45, 45.15), (45, 51.55, 44.5), (46, 51.1, 44.0),
+    (47, 50.2, 43.15), (48, 50.35, 43.05), (49, 51.6, 44.15), (50, 51.15, 44.55),
+    (51, 51.4, 44.35), (52, 47.7, 41.0), (53, 48.75, 41.45), (54, 48.45, 41.05),
+    (55, 48.25, 41.0), (56, 42.75, 36.2), (57, 43.25, 36.6), (58, 37.15, 33.1),
+    (59, 39.95, 35.8), (60, 40.45, 35.75), (61, 41.0, 36.35),
+]
 
 # Knight odds win% vs FULL-STRENGTH Stockfish 18 -- the external yardstick.
 # Four real measurements (odds.py records them all): v31/v49/v52 at 400-1,000
@@ -121,7 +131,12 @@ def _chart(title, unit, xs, ys, colour, fmt, y0=None, ymax=None):
     # end dot + value
     ex, ey = pts[-1]
     s.append(f'<circle cx="{ex:.1f}" cy="{ey:.1f}" r="4" fill="{colour}"/>')
-    s.append(f'<text x="{ex-8:.1f}" y="{ey-9:.1f}" fill="{colour}" font-size="13" '
+    # Keep the final value INSIDE the plot. On a monotonically rising series
+    # the last point is also the highest, so ey-9 lands above the top margin
+    # and the number is clipped by the chart frame -- which is exactly the
+    # number a reader came for. Flip it below the dot when it would not fit.
+    ly = ey - 9 if ey - 9 > MT + 12 else ey + 19
+    s.append(f'<text x="{ex-8:.1f}" y="{ly:.1f}" fill="{colour}" font-size="13" '
              f'font-weight="700" text-anchor="end">{fmt(ys[-1])}</text>')
     s.append('</svg>')
     return "\n".join(s)
@@ -231,10 +246,15 @@ def main():
 
     open("docs/elo_progression.svg", "w").write(_chart(
         "Cumulative A/B Elo", "vs v31 baseline", vs, cum, "#3fb950",
-        lambda y: f"+{y:.0f}", y0=0, ymax=260))
+        lambda y: f"+{y:.0f}", y0=0, ymax=380))
     open("docs/speed_progression.svg", "w").write(_chart(
         "Single-thread speed", "x v31", vs, mult, "#58a6ff",
-        lambda y: f"{y:.2f}x", y0=0.8, ymax=1.7))
+        lambda y: f"{y:.2f}x", y0=0.9, ymax=1.55))
+    open("docs/mate_progression.svg", "w").write(_line_points(
+        "Mate-finding on mates2000.epd", "0.25s/position",
+        [("any mate", "#f0883e", [(v, f) for v, f, _ in MATETRACK]),
+         ("shortest", "#a371f7", [(v, b) for v, _, b in MATETRACK])],
+        18, 56))
     open("docs/odds_knight.svg", "w").write(_line_points(
         "Odds win% vs full-strength SF-18", "knight closed -> pawn active",
         [("knight", "#a371f7", ODDS_KNIGHT), ("pawn", "#3fb950", ODDS_PAWN)],
@@ -242,8 +262,11 @@ def main():
     open("docs/odds_ladder.svg", "w").write(_bars(
         "Odds it can spot full-strength SF-18 and still win", "latest each",
         ODDS_LADDER, "#f0883e"))
-    print("wrote 4 SVGs to docs/")
-    print(f"  cumulative Elo v31->newest: +{cum[-1]:.0f}   speed: {mult[-1]:.2f}x")
+    print("wrote 5 SVGs to docs/")
+    print(f"  cumulative Elo v31->newest: +{cum[-1]:.0f}   "
+          f"speed: {mult[-1]:.2f}x (peak {max(mult):.2f}x)")
+    print(f"  mate-finding v31->newest: {MATETRACK[0][1]:.1f}% -> "
+          f"{MATETRACK[-1][1]:.1f}% found, {MATETRACK[-1][2]:.1f}% shortest")
     print(f"  knight odds: {ODDS_KNIGHT[-1][1]}%   ladder: "
           + ", ".join(f"{l} {v}%" for l, v, _ in ODDS_LADDER))
 

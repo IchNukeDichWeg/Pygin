@@ -427,6 +427,37 @@ def run_all(versions, positions, runs_per_position, seconds_per_run, max_depth,
 
 
 # Light backgrounds for the per-position best/worst cells in the HTML report.
+def machine_id():
+    """Which box these numbers came from.
+
+    NPS is architecture-specific -- the same node-identical change measured
+    +8.3% on x86 and +13.5% on arm64 -- so a 60-version NPS table with no
+    hardware line is a table nobody can safely compare against anything. The
+    report carried none until 2026-08-29.
+    """
+    import platform
+    import subprocess
+    cpu = platform.processor() or platform.machine()
+    if platform.system() == "Darwin":
+        try:
+            cpu = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"],
+                                 capture_output=True, text=True,
+                                 timeout=5).stdout.strip() or cpu
+        except Exception:                                     # noqa: BLE001
+            pass
+        try:
+            model = subprocess.run(["sysctl", "-n", "hw.model"],
+                                   capture_output=True, text=True,
+                                   timeout=5).stdout.strip()
+            if model:
+                cpu = f"{model} ({cpu})"
+        except Exception:                                     # noqa: BLE001
+            pass
+    return (f"{platform.system()} {platform.machine()} | {cpu} | "
+            f"{os.cpu_count()} logical cores | python "
+            f"{platform.python_version()}")
+
+
 # Inline styles render in local markdown viewers (VS Code preview, browsers);
 # GitHub sanitizes them, so there the cells show plain -- that's fine.
 _HL_BEST = "#d6f5d6"    # light green -- highest in this position (column)
@@ -637,6 +668,10 @@ def build_markdown(results, source_path):
     lines = ["# NPS / Depth Benchmark Report\n"]
     lines.append(f"- **Source file:** `{os.path.basename(source_path)}` (created {src_mtime})")
     lines.append(f"- **Report generated:** {generated}")
+    lines.append(f"- **Machine:** {machine_id()}")
+    lines.append("  <br>*NPS is architecture-specific: the same node-identical "
+                 "change has measured +8.3% on x86 and +13.5% on arm64. These "
+                 "numbers are comparable to each other and to nothing else.*")
     if versions:
         lines.append(f"- **Versions covered:** v{versions[0]}-v{versions[-1]} "
                       f"({len(versions)} version{'s' if len(versions) != 1 else ''})")
