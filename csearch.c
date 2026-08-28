@@ -1720,6 +1720,44 @@ static size_t   g_tt_size = (size_t)1 << TT_BITS;
 static uint64_t g_tt_mask = ((uint64_t)1 << TT_BITS) - 1;
 #define TT_SIZE g_tt_size
 #define TT_MASK g_tt_mask
+/* FI-116 (2026-08-28): GROWING TT. g_tt_size/g_tt_mask are now the ACTIVE
+ * window; g_tt_alloc is what was actually calloc'd. With growth on, the
+ * table starts at TT_GROW_BITS and doubles the active window whenever it
+ * passes 75% full, up to the allocated size.
+ *
+ * WHY: a cold 192 MiB table scatters its few entries over 192 MiB, so every
+ * probe is a TLB + LLC miss into cold DRAM. Indexing only the low bits keeps
+ * the live set dense (and, since the OS maps pages lazily, keeps the RSS
+ * small too) -- measured +11.2-12.3% NPS at 24 MiB vs 192 MiB on the
+ * piece-count bench. A STATIC small table gives that back by evicting real
+ * work: 24 MiB vs 192 MiB measured NULL over 10,000 games @10+0.1
+ * (2026-08-28 campaign). Growing is the asymmetry -- while the table is
+ * underfilled a smaller window costs NOTHING, because the entries all still
+ * fit; the window only widens once they stop fitting.
+ *
+ * The window matters most at SHORT TC. The recorded hashfull curve in
+ * cengine.py has 192 MiB at 833 permille by ply 8 at 1.4s/move, so at
+ * 50+0.20 the ramp is over in ~2 moves; at 10+0.1 (~250k nodes/move) the
+ * ramp spans a large part of the game, which is where the NPS is. */
+#define TT_GROW_BITS 20         /* growth start: 2^20 x 24B = 24 MiB */
+static int      g_tt_grow  = 0;                       /* visible switch, OFF */
+static size_t   g_tt_alloc = (size_t)1 << TT_BITS;    /* allocated entries */
+
+/* Put the active window back to its starting size. Called wherever the table
+ * is wiped (ucinewgame, resize, bench) -- a fresh table is cold again, so the
+ * ramp restarts with it. */
+static void tt_window_reset(void)
+{
+    size_t n = g_tt_alloc;
+    if (g_tt_grow) {
+        size_t start = (size_t)1 << TT_GROW_BITS;
+        if (start < n) n = start;
+    }
+    g_tt_size = n;
+    g_tt_mask = (uint64_t)n - 1;
+}
+
+void set_tt_grow(int v) { g_tt_grow = v ? 1 : 0; tt_window_reset(); }
 /* FI-17/FI-26a (P-45 re-arm, ADOPTED 2026-07-12): prefetch the child's TT
  * line right after apply_move. P-45 measured null because computing the
  * child key ate the gain; FI-01 made c.key free -- re-benched at +4.9% NPS
@@ -1808,7 +1846,10 @@ void set_use_tt(int v) { g_use_tt = v; }
 
 void cs_tt_reset(void)
 {
-    if (g_tt) memset(g_tt, 0, TT_SIZE * sizeof(TTEntry));
+    /* FI-116: wipe the whole ALLOCATION, not just the active window -- the
+     * window grows into the tail later and must not find last game's entries. */
+    if (g_tt) memset(g_tt, 0, g_tt_alloc * sizeof(TTEntry));
+    tt_window_reset();
     g_gen = 0;
 }
 
@@ -1824,19 +1865,20 @@ void set_tt_bits(int bits)
      * here would overflow and calloc a fraction of the table. */
     if (bits > 30) bits = 30;
     size_t n = (size_t)1 << bits;
-    if (n == g_tt_size && g_tt) return;
-    size_t old_size = g_tt_size;             /* FB-26: the comment promised */
+    if (n == g_tt_alloc && g_tt) return;
+    size_t old_size = g_tt_alloc;            /* FB-26: the comment promised */
     uint64_t old_mask = g_tt_mask;           /* "the OLD size" -- keep it   */
     free(g_tt);
     g_tt = (TTEntry*)calloc(n, sizeof(TTEntry));
     if (g_tt == NULL) {                      /* degrade like Q-13: retry at
                                               * the old size next move */
+        g_tt_alloc = old_size;
         g_tt_size = old_size;
         g_tt_mask = old_mask;
         return;
     }
-    g_tt_size = n;
-    g_tt_mask = (uint64_t)n - 1;
+    g_tt_alloc = n;
+    tt_window_reset();                       /* FI-116: ramp restarts */
     g_gen = 0;
 }
 
@@ -1870,6 +1912,33 @@ int cs_hashfull(void)
         if (e.key_x | e.d1 | e.d2) used++;
     }
     return used;
+}
+
+/* FI-116: widen the active window one bit once it passes 75% full.
+ * ponytail: this does NOT rehash. An entry whose key wants the newly-exposed
+ * high bit stays where it is and becomes unreachable, then gets recycled by
+ * the generation scheme like any stale entry. Copying them would mean a
+ * scattered walk of the whole table at exactly the moment the engine is busy
+ * thinking; the window only ever doubles, so at most half the live entries
+ * are dropped per step and occupancy lands at ~37.5% (no runaway growth).
+ * Upgrade path if a bench ever shows the dropped entries cost more than the
+ * walk: rehash old -> new in place here, high bit first. */
+/* The oracle for FI-116: how wide the active window is right now. Without it
+ * growth is invisible from outside and can only be inferred from node counts. */
+int cs_tt_active_bits(void)
+{
+    int b = 0;
+    for (size_t n = g_tt_size; n > 1; n >>= 1) b++;
+    return b;
+}
+
+static void tt_maybe_grow(void)
+{
+    if (!g_tt_grow || g_tt == NULL) return;
+    if (g_tt_size >= g_tt_alloc) return;
+    if (cs_hashfull() < 750) return;         /* permille */
+    g_tt_size <<= 1;
+    g_tt_mask = (uint64_t)g_tt_size - 1;
 }
 
 static __thread int g_is_helper = 0;    /* set at helper-thread entry;
@@ -4507,13 +4576,16 @@ void cs_search_begin(const uint64_t* hist, int nhist, double budget_sec)
         /* Q-13 + FB-13b: degrade, don't segfault -- and RETRY each move
          * instead of latching g_use_tt=0 forever (a transient failure would
          * have permanently disabled the TT). Consumers guard on g_tt. */
-        g_tt = (TTEntry*)calloc(TT_SIZE, sizeof(TTEntry));
+        g_tt = (TTEntry*)calloc(g_tt_alloc, sizeof(TTEntry));
         if (g_tt == NULL)
             fprintf(stderr, "csearch: TT calloc(%zu) failed -- searching "
                     "without a transposition table this move\n",
-                    (size_t)TT_SIZE * sizeof(TTEntry));
+                    (size_t)g_tt_alloc * sizeof(TTEntry));
+        else
+            tt_window_reset();           /* FI-116 */
     }
     if (!g_lmr_ready) init_lmr();
+    tt_maybe_grow();                     /* FI-116: once per root search */
     g_gen = (g_gen + 1) & 0x7FFF;        /* old entries become replaceable */
 }
 
@@ -4960,7 +5032,10 @@ uint32_t search_bench(uint64_t pawns, uint64_t knights, uint64_t bishops,
                       int depth, uint64_t* out_nodes, int* out_score)
 {
     cs_search_begin(NULL, 0, 0.0);
-    if (g_tt) memset(g_tt, 0, TT_SIZE * sizeof(TTEntry));  /* fresh TT */
+    if (g_tt) {                                        /* fresh TT */
+        memset(g_tt, 0, g_tt_alloc * sizeof(TTEntry));
+        tt_window_reset();                             /* FI-116 */
+    }
     int done, aborted, second;
     return cs_search_root(pawns, knights, bishops, rooks, queens, kings,
                           occ_w, occ_b, turn, ep, castling,

@@ -1615,6 +1615,12 @@ class Engine:
         # stamped into spare bits either way; only the victim rule changes).
         if hasattr(lib, "set_tt_deadtag"):
             lib.set_tt_deadtag(1 if getattr(self, "TT_DEADTAG", False) else 0)
+        # FI-116: growing TT. Default OFF -- on, the table is allocated at
+        # TT_BITS but indexed with 20 bits (24 MiB) until it passes 75% full,
+        # doubling the active window from there. Must run AFTER set_tt_bits,
+        # which sets the allocation the window grows into.
+        if hasattr(lib, "set_tt_grow"):
+            lib.set_tt_grow(1 if getattr(self, "TT_GROW", False) else 0)
         lib.set_hist_prune(int(self.HIST_PRUNE))               # FI-23
         lib.set_qs_tt_sharpen(1 if self.QS_TT_SHARPEN else 0)  # FI-30(a)
         lib.set_qs_keep_move(1 if self.QS_KEEP_MOVE else 0)    # FI-30(b)
