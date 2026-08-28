@@ -204,6 +204,63 @@ def _line_points(title, unit, series, ylo, yhi):
     return "\n".join(s)
 
 
+
+def _dual_line(title, unit, series, ylo, yhi, fmt=lambda v: f"{v:.0f}%"):
+    """Dense two-series line chart: many points, NO per-point labels.
+
+    _line_points labels every dot, which is right for four odds measurements
+    and catastrophic for thirty-one versions -- the first cut of the mate
+    chart was a wall of overlapping text. Here only the two END values are
+    labelled, with a legend carrying the series names, the way a reader
+    actually consumes a trend line.
+    """
+    xs = [x for _, _, pts in series for x, _ in pts]
+    x0, x1 = min(xs), max(xs)
+    pad = (yhi - ylo) * 0.08
+    lo, hi = ylo - pad, yhi + pad
+    px = lambda x: ML + (x - x0) / (x1 - x0) * (W - ML - MR)
+    py = lambda y: MT + (hi - y) / (hi - lo) * (H - MT - MB)
+
+    s = [SVG_OPEN]
+    s.append(f'<text x="{ML}" y="{MT-20}" fill="#c9d1d9" font-size="15" '
+             f'font-weight="600">{title}</text>')
+    s.append(f'<text x="{W-MR}" y="{MT-20}" fill="{AXIS}" font-size="11" '
+             f'text-anchor="end">{unit}</text>')
+    for i in range(5):
+        yv = lo + (hi - lo) * i / 4
+        yy = py(yv)
+        s.append(f'<line x1="{ML}" y1="{yy:.1f}" x2="{W-MR}" y2="{yy:.1f}" '
+                 f'stroke="{GRID}"/>')
+        s.append(f'<text x="{ML-8}" y="{yy+4:.1f}" fill="{AXIS}" font-size="11" '
+                 f'text-anchor="end">{fmt(yv)}</text>')
+    # Drop any 5-step tick that would sit on top of the final one -- v60 and
+    # v61 rendered as overlapping text in the first cut.
+    ticks = [x0] + [v for v in range(35, x1, 5) if x1 - v > 2] + [x1]
+    for xv in ticks:
+        s.append(f'<text x="{px(xv):.1f}" y="{H-12}" fill="{AXIS}" font-size="11" '
+                 f'text-anchor="middle">v{xv}</text>')
+
+    for li, (label, colour, pts) in enumerate(series):
+        P = [(px(x), py(y)) for x, y in pts]
+        s.append(f'<polyline points="{" ".join(f"{a:.1f},{b:.1f}" for a, b in P)}" '
+                 f'fill="none" stroke="{colour}" stroke-width="2.5" '
+                 f'stroke-linejoin="round"/>')
+        for a, b in P:
+            s.append(f'<circle cx="{a:.1f}" cy="{b:.1f}" r="2.4" fill="{colour}"/>')
+        ex, ey = P[-1]
+        ly = ey - 10 if li == 0 else ey + 18
+        s.append(f'<text x="{ex-6:.1f}" y="{ly:.1f}" fill="{colour}" '
+                 f'font-size="13" font-weight="700" text-anchor="end">'
+                 f'{pts[-1][1]:.1f}%</text>')
+        # legend, top-left inside the plot where the early data is lowest
+        lx, lyy = ML + 14, MT + 16 + li * 19
+        s.append(f'<circle cx="{lx}" cy="{lyy-4}" r="4" fill="{colour}"/>')
+        s.append(f'<text x="{lx+11}" y="{lyy}" fill="{colour}" font-size="12" '
+                 f'font-weight="600">{label}</text>')
+    s.append('</svg>')
+    return "\n".join(s)
+
+
 def _bars(title, unit, rows, colour):
     """Horizontal bars, one per label, values 0..100%."""
     n = len(rows); gap = 16
@@ -250,11 +307,11 @@ def main():
     open("docs/speed_progression.svg", "w").write(_chart(
         "Single-thread speed", "x v31", vs, mult, "#58a6ff",
         lambda y: f"{y:.2f}x", y0=0.9, ymax=1.55))
-    open("docs/mate_progression.svg", "w").write(_line_points(
-        "Mate-finding on mates2000.epd", "0.25s/position",
+    open("docs/mate_progression.svg", "w").write(_dual_line(
+        "Mate-finding on mates2000.epd", "2,000 problems @ 0.25s each",
         [("any mate", "#f0883e", [(v, f) for v, f, _ in MATETRACK]),
-         ("shortest", "#a371f7", [(v, b) for v, _, b in MATETRACK])],
-        18, 56))
+         ("shortest mate", "#a371f7", [(v, b) for v, _, b in MATETRACK])],
+        20, 53, fmt=lambda v: f"{v:.0f}%"))
     open("docs/odds_knight.svg", "w").write(_line_points(
         "Odds win% vs full-strength SF-18", "knight closed -> pawn active",
         [("knight", "#a371f7", ODDS_KNIGHT), ("pawn", "#3fb950", ODDS_PAWN)],
