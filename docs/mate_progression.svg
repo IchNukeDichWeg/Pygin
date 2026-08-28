@@ -1,0 +1,176 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="300" viewBox="0 0 760 300" preserveAspectRatio="xMidYMid meet" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+<defs><linearGradient id="gf0883e" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0883e" stop-opacity="0.28"/><stop offset="1" stop-color="#f0883e" stop-opacity="0"/></linearGradient><linearGradient id="ga371f7" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a371f7" stop-opacity="0.28"/><stop offset="1" stop-color="#a371f7" stop-opacity="0"/></linearGradient></defs>
+<text x="58" y="24" fill="#8b949e" font-size="15" font-weight="700">Mate-finding on mates2000.epd</text>
+<text x="738" y="24" fill="#8b949e" font-size="12" text-anchor="end">0.25s/position</text>
+<line x1="58" y1="266.0" x2="738" y2="266.0" stroke="#8b949e33"/>
+<text x="50" y="270.0" fill="#8b949e" font-size="11" text-anchor="end">18%</text>
+<line x1="58" y1="210.5" x2="738" y2="210.5" stroke="#8b949e33"/>
+<text x="50" y="214.5" fill="#8b949e" font-size="11" text-anchor="end">28%</text>
+<line x1="58" y1="155.0" x2="738" y2="155.0" stroke="#8b949e33"/>
+<text x="50" y="159.0" fill="#8b949e" font-size="11" text-anchor="end">37%</text>
+<line x1="58" y1="99.5" x2="738" y2="99.5" stroke="#8b949e33"/>
+<text x="50" y="103.5" fill="#8b949e" font-size="11" text-anchor="end">46%</text>
+<line x1="58" y1="44.0" x2="738" y2="44.0" stroke="#8b949e33"/>
+<text x="50" y="48.0" fill="#8b949e" font-size="11" text-anchor="end">56%</text>
+<path d="M58.0,266.0 L58.0,234.5 L80.7,218.1 L103.3,218.7 L126.0,214.0 L148.7,134.6 L171.3,117.9 L194.0,118.2 L216.7,75.8 L239.3,70.0 L262.0,71.2 L284.7,74.7 L307.3,72.9 L330.0,72.9 L352.7,70.6 L375.3,70.0 L398.0,72.6 L420.7,77.9 L443.3,77.0 L466.0,69.7 L488.7,72.3 L511.3,70.9 L534.0,92.5 L556.7,86.4 L579.3,88.1 L602.0,89.3 L624.7,121.4 L647.3,118.5 L670.0,154.1 L692.7,137.8 L715.3,134.8 L738.0,131.6 L738.0,266.0 Z" fill="url(#gf0883e)"/>
+<polyline points="58.0,234.5 80.7,218.1 103.3,218.7 126.0,214.0 148.7,134.6 171.3,117.9 194.0,118.2 216.7,75.8 239.3,70.0 262.0,71.2 284.7,74.7 307.3,72.9 330.0,72.9 352.7,70.6 375.3,70.0 398.0,72.6 420.7,77.9 443.3,77.0 466.0,69.7 488.7,72.3 511.3,70.9 534.0,92.5 556.7,86.4 579.3,88.1 602.0,89.3 624.7,121.4 647.3,118.5 670.0,154.1 692.7,137.8 715.3,134.8 738.0,131.6" fill="none" stroke="#f0883e" stroke-width="2.5" stroke-linejoin="round"/>
+<circle cx="58.0" cy="234.5" r="4" fill="#f0883e"/>
+<text x="58.0" y="223.5" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">23.40%</text>
+<circle cx="80.7" cy="218.1" r="4" fill="#f0883e"/>
+<text x="80.7" y="207.1" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">26.20%</text>
+<circle cx="103.3" cy="218.7" r="4" fill="#f0883e"/>
+<text x="103.3" y="207.7" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">26.10%</text>
+<circle cx="126.0" cy="214.0" r="4" fill="#f0883e"/>
+<text x="119.0" y="203.0" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="end">26.90%</text>
+<circle cx="148.7" cy="134.6" r="4" fill="#f0883e"/>
+<text x="148.7" y="123.6" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">40.50%</text>
+<circle cx="171.3" cy="117.9" r="4" fill="#f0883e"/>
+<text x="171.3" y="106.9" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">43.35%</text>
+<circle cx="194.0" cy="118.2" r="4" fill="#f0883e"/>
+<text x="187.0" y="107.2" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="end">43.30%</text>
+<circle cx="216.7" cy="75.8" r="4" fill="#f0883e"/>
+<text x="216.7" y="64.8" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">50.55%</text>
+<circle cx="239.3" cy="70.0" r="4" fill="#f0883e"/>
+<text x="239.3" y="59.0" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">51.55%</text>
+<circle cx="262.0" cy="71.2" r="4" fill="#f0883e"/>
+<text x="262.0" y="60.2" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">51.35%</text>
+<circle cx="284.7" cy="74.7" r="4" fill="#f0883e"/>
+<text x="284.7" y="63.7" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">50.75%</text>
+<circle cx="307.3" cy="72.9" r="4" fill="#f0883e"/>
+<text x="307.3" y="61.9" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">51.05%</text>
+<circle cx="330.0" cy="72.9" r="4" fill="#f0883e"/>
+<text x="330.0" y="61.9" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">51.05%</text>
+<circle cx="352.7" cy="70.6" r="4" fill="#f0883e"/>
+<text x="352.7" y="59.6" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">51.45%</text>
+<circle cx="375.3" cy="70.0" r="4" fill="#f0883e"/>
+<text x="375.3" y="59.0" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">51.55%</text>
+<circle cx="398.0" cy="72.6" r="4" fill="#f0883e"/>
+<text x="398.0" y="61.6" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">51.10%</text>
+<circle cx="420.7" cy="77.9" r="4" fill="#f0883e"/>
+<text x="420.7" y="66.9" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">50.20%</text>
+<circle cx="443.3" cy="77.0" r="4" fill="#f0883e"/>
+<text x="443.3" y="66.0" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">50.35%</text>
+<circle cx="466.0" cy="69.7" r="4" fill="#f0883e"/>
+<text x="466.0" y="58.7" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">51.60%</text>
+<circle cx="488.7" cy="72.3" r="4" fill="#f0883e"/>
+<text x="488.7" y="61.3" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">51.15%</text>
+<circle cx="511.3" cy="70.9" r="4" fill="#f0883e"/>
+<text x="511.3" y="59.9" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">51.40%</text>
+<circle cx="534.0" cy="92.5" r="4" fill="#f0883e"/>
+<text x="534.0" y="81.5" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">47.70%</text>
+<circle cx="556.7" cy="86.4" r="4" fill="#f0883e"/>
+<text x="556.7" y="75.4" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">48.75%</text>
+<circle cx="579.3" cy="88.1" r="4" fill="#f0883e"/>
+<text x="579.3" y="77.1" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">48.45%</text>
+<circle cx="602.0" cy="89.3" r="4" fill="#f0883e"/>
+<text x="602.0" y="78.3" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">48.25%</text>
+<circle cx="624.7" cy="121.4" r="4" fill="#f0883e"/>
+<text x="624.7" y="110.4" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">42.75%</text>
+<circle cx="647.3" cy="118.5" r="4" fill="#f0883e"/>
+<text x="647.3" y="107.5" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">43.25%</text>
+<circle cx="670.0" cy="154.1" r="4" fill="#f0883e"/>
+<text x="670.0" y="143.1" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">37.15%</text>
+<circle cx="692.7" cy="137.8" r="4" fill="#f0883e"/>
+<text x="692.7" y="126.8" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="middle">39.95%</text>
+<circle cx="715.3" cy="134.8" r="4" fill="#f0883e"/>
+<text x="738.0" y="123.8" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="end">40.45%</text>
+<circle cx="738.0" cy="131.6" r="4" fill="#f0883e"/>
+<text x="738.0" y="120.6" fill="#f0883e" font-size="12.5" font-weight="700" text-anchor="end">41.00%</text>
+<text x="67.0" y="250.5" fill="#f0883e" font-size="12" font-weight="600" text-anchor="start">any mate</text>
+<path d="M58.0,266.0 L58.0,247.9 L80.7,235.0 L103.3,235.0 L126.0,231.5 L148.7,164.3 L171.3,151.5 L194.0,149.2 L216.7,113.2 L239.3,107.1 L262.0,108.6 L284.7,112.9 L307.3,110.6 L330.0,109.1 L352.7,107.4 L375.3,111.2 L398.0,114.1 L420.7,119.1 L443.3,119.7 L466.0,113.2 L488.7,110.9 L511.3,112.1 L534.0,131.6 L556.7,129.0 L579.3,131.3 L602.0,131.6 L624.7,159.7 L647.3,157.3 L670.0,177.8 L692.7,162.0 L715.3,162.3 L738.0,158.8 L738.0,266.0 Z" fill="url(#ga371f7)"/>
+<polyline points="58.0,247.9 80.7,235.0 103.3,235.0 126.0,231.5 148.7,164.3 171.3,151.5 194.0,149.2 216.7,113.2 239.3,107.1 262.0,108.6 284.7,112.9 307.3,110.6 330.0,109.1 352.7,107.4 375.3,111.2 398.0,114.1 420.7,119.1 443.3,119.7 466.0,113.2 488.7,110.9 511.3,112.1 534.0,131.6 556.7,129.0 579.3,131.3 602.0,131.6 624.7,159.7 647.3,157.3 670.0,177.8 692.7,162.0 715.3,162.3 738.0,158.8" fill="none" stroke="#a371f7" stroke-width="2.5" stroke-linejoin="round"/>
+<circle cx="58.0" cy="247.9" r="4" fill="#a371f7"/>
+<text x="58.0" y="236.9" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">21.10%</text>
+<circle cx="80.7" cy="235.0" r="4" fill="#a371f7"/>
+<text x="80.7" y="224.0" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">23.30%</text>
+<circle cx="103.3" cy="235.0" r="4" fill="#a371f7"/>
+<text x="103.3" y="224.0" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">23.30%</text>
+<circle cx="126.0" cy="231.5" r="4" fill="#a371f7"/>
+<text x="119.0" y="220.5" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="end">23.90%</text>
+<circle cx="148.7" cy="164.3" r="4" fill="#a371f7"/>
+<text x="148.7" y="153.3" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">35.40%</text>
+<circle cx="171.3" cy="151.5" r="4" fill="#a371f7"/>
+<text x="171.3" y="140.5" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">37.60%</text>
+<circle cx="194.0" cy="149.2" r="4" fill="#a371f7"/>
+<text x="194.0" y="138.2" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">38.00%</text>
+<circle cx="216.7" cy="113.2" r="4" fill="#a371f7"/>
+<text x="216.7" y="102.2" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">44.15%</text>
+<circle cx="239.3" cy="107.1" r="4" fill="#a371f7"/>
+<text x="239.3" y="96.1" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">45.20%</text>
+<circle cx="262.0" cy="108.6" r="4" fill="#a371f7"/>
+<text x="262.0" y="97.6" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">44.95%</text>
+<circle cx="284.7" cy="112.9" r="4" fill="#a371f7"/>
+<text x="284.7" y="101.9" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">44.20%</text>
+<circle cx="307.3" cy="110.6" r="4" fill="#a371f7"/>
+<text x="307.3" y="99.6" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">44.60%</text>
+<circle cx="330.0" cy="109.1" r="4" fill="#a371f7"/>
+<text x="330.0" y="98.1" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">44.85%</text>
+<circle cx="352.7" cy="107.4" r="4" fill="#a371f7"/>
+<text x="352.7" y="96.4" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">45.15%</text>
+<circle cx="375.3" cy="111.2" r="4" fill="#a371f7"/>
+<text x="375.3" y="100.2" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">44.50%</text>
+<circle cx="398.0" cy="114.1" r="4" fill="#a371f7"/>
+<text x="398.0" y="103.1" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">44.00%</text>
+<circle cx="420.7" cy="119.1" r="4" fill="#a371f7"/>
+<text x="420.7" y="108.1" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">43.15%</text>
+<circle cx="443.3" cy="119.7" r="4" fill="#a371f7"/>
+<text x="443.3" y="108.7" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">43.05%</text>
+<circle cx="466.0" cy="113.2" r="4" fill="#a371f7"/>
+<text x="466.0" y="102.2" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">44.15%</text>
+<circle cx="488.7" cy="110.9" r="4" fill="#a371f7"/>
+<text x="488.7" y="99.9" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">44.55%</text>
+<circle cx="511.3" cy="112.1" r="4" fill="#a371f7"/>
+<text x="511.3" y="101.1" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">44.35%</text>
+<circle cx="534.0" cy="131.6" r="4" fill="#a371f7"/>
+<text x="534.0" y="120.6" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">41.00%</text>
+<circle cx="556.7" cy="129.0" r="4" fill="#a371f7"/>
+<text x="556.7" y="118.0" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">41.45%</text>
+<circle cx="579.3" cy="131.3" r="4" fill="#a371f7"/>
+<text x="579.3" y="120.3" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">41.05%</text>
+<circle cx="602.0" cy="131.6" r="4" fill="#a371f7"/>
+<text x="602.0" y="120.6" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">41.00%</text>
+<circle cx="624.7" cy="159.7" r="4" fill="#a371f7"/>
+<text x="624.7" y="148.7" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">36.20%</text>
+<circle cx="647.3" cy="157.3" r="4" fill="#a371f7"/>
+<text x="647.3" y="146.3" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">36.60%</text>
+<circle cx="670.0" cy="177.8" r="4" fill="#a371f7"/>
+<text x="670.0" y="166.8" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">33.10%</text>
+<circle cx="692.7" cy="162.0" r="4" fill="#a371f7"/>
+<text x="692.7" y="151.0" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="middle">35.80%</text>
+<circle cx="715.3" cy="162.3" r="4" fill="#a371f7"/>
+<text x="738.0" y="151.3" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="end">35.75%</text>
+<circle cx="738.0" cy="158.8" r="4" fill="#a371f7"/>
+<text x="738.0" y="147.8" fill="#a371f7" font-size="12.5" font-weight="700" text-anchor="end">36.35%</text>
+<text x="67.0" y="263.9" fill="#a371f7" font-size="12" font-weight="600" text-anchor="start">shortest</text>
+<text x="58.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v31</text>
+<text x="80.7" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v32</text>
+<text x="103.3" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v33</text>
+<text x="126.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v34</text>
+<text x="148.7" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v35</text>
+<text x="171.3" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v36</text>
+<text x="194.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v37</text>
+<text x="216.7" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v38</text>
+<text x="239.3" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v39</text>
+<text x="262.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v40</text>
+<text x="284.7" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v41</text>
+<text x="307.3" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v42</text>
+<text x="330.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v43</text>
+<text x="352.7" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v44</text>
+<text x="375.3" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v45</text>
+<text x="398.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v46</text>
+<text x="420.7" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v47</text>
+<text x="443.3" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v48</text>
+<text x="466.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v49</text>
+<text x="488.7" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v50</text>
+<text x="511.3" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v51</text>
+<text x="534.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v52</text>
+<text x="556.7" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v53</text>
+<text x="579.3" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v54</text>
+<text x="602.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v55</text>
+<text x="624.7" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v56</text>
+<text x="647.3" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v57</text>
+<text x="670.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v58</text>
+<text x="692.7" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v59</text>
+<text x="715.3" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v60</text>
+<text x="738.0" y="288" fill="#8b949e" font-size="11" text-anchor="middle">v61</text>
+</svg>
