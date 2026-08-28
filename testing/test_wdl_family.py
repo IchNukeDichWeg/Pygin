@@ -17,7 +17,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
 
 import fit_wdl_model as F
 
-NNUE_LOG = "engine_nnue_vs_engine55_2026-07-28_13-15-20_10556.txt"
+# Dated on/after NNUE_MIN_DATE, which tracks the CURRENT net rather than the
+# first net ever trained (moved to nnue_v12's 2026-08-22 on 2026-08-28). A net
+# change is a cp-scale change, so a log from an older net is now as unusable
+# as a pre-net one -- STALE_NNUE_LOG pins that half of the contract.
+NNUE_LOG = "engine_nnue_vs_engine55_2026-08-22_13-15-20_10556.txt"
+STALE_NNUE_LOG = "engine_nnue_vs_engine55_2026-07-28_13-15-20_10556.txt"
 HCE_LOG = "cengine_vs_engine55_2026-07-28_09-00-00_1.txt"
 OLD_LOG = "cengine_vs_engine52_2026-07-01_09-00-00_1.txt"
 
@@ -42,6 +47,10 @@ assert F.eval_family("engine57") == "hce"           # ...engine57 is hce forever
 # --- the pairing is near-equal in STRENGTH regardless of family ------- #
 assert F.near_equal_pair("engine_nnue", "engine55", NNUE_LOG)
 assert F.near_equal_pair("cengine", "engine55", HCE_LOG)
+# A net older than the shipped one is a different cp scale, so its NNUE side
+# is out of era even though the pairing itself is near-equal in strength.
+assert not F._side_in_era("engine_nnue", STALE_NNUE_LOG)
+assert not F.near_equal_pair("engine_nnue", "engine55", STALE_NNUE_LOG)
 assert not F.near_equal_pair("engine53", "engine55", HCE_LOG)   # 2 eras apart
 assert not F.near_equal_pair("cengine", "engine52", OLD_LOG)    # pre-v53
 

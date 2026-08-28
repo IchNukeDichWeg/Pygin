@@ -207,6 +207,18 @@ NEAR_EQUAL_EXTRA = {
     "cengine",
     "engine_qtt_off",   # v34-era P-44 isolation build, paired vs its
                         # contemporary cengine only -- near-equal like it
+    # 2026-08-28 campaign arms. Same shape as engine_qtt_off: a single toggle
+    # or table size flipped against an otherwise identical build, so the
+    # pairing is near-equal BY CONSTRUCTION -- both sides run the same v12 net
+    # and differ by one config line. These are the best WDL corpus available
+    # (20,000 games, identical evals both sides) and they were being dropped
+    # in full, because the arm names carry no "nnue" for _NNUE_RE to find.
+    # Family comes from the log date via NNUE_DEFAULT_SINCE, as for cengine.
+    "engine_deadtag_on",    # FI-115 dead-entry TT tag
+    "engine_deadtag_off",
+    "engine_hash_small",    # TT sizing, 24 MiB vs 192 MiB
+    "engine_hash_default",
+    "engine_grow_on",       # FI-116 growing TT, vs engine_nnue_v12
 }
 _BASE_NUM_RE = re.compile(r"^engine(\d+)$")
 _MIN_C_ERA_SNAPSHOT = 53
@@ -226,7 +238,14 @@ _MIN_C_ERA_SNAPSHOT = 53
 # engine<N>) start reporting NNUE cp under the old names -- set
 # NNUE_DEFAULT_SINCE to that ship date then; nothing else needs to change.
 _NNUE_RE = re.compile(r"(?:^|_)nnue(?:_|$)")
-NNUE_MIN_DATE = "2026-07-28"     # nnue_v3_d16_2880b51afe28 (FI-15)
+NNUE_MIN_DATE = "2026-08-22"     # nnue_v12_bf86c4ced057, the net v60 ships
+                                 # (added 2026-08-22 01:55). This tracks the
+                                 # CURRENT net on purpose: a new net is a new
+                                 # cp scale, and leaving this at the old
+                                 # nnue_v3 date (2026-07-28) silently pooled
+                                 # v3..v12 cp into one fit -- the exact blur
+                                 # the family guard below exists to prevent.
+                                 # BUMP THIS WHENEVER THE SHIPPED NET CHANGES.
 NNUE_DEFAULT_SINCE = "2026-08-03"  # v58 shipped USE_NNUE=True: from this date
                                  # the un-suffixed dev names (cengine) report
                                  # NNUE cp. Was left None until 2026-08-10, so

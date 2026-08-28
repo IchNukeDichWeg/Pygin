@@ -83,8 +83,8 @@ _WDL_BS = [83.9952667919631, 0.571979115933054, -95.9143821000079, 106.515423515
 # kept in step by it. LIVE since v58: the runtime reports WDL on the eval it
 # actually plays, so arming USE_NNUE has to move this too or every `wdl` line
 # is calibrated to an eval the engine is no longer using.
-_WDL_AS_NNUE = [-165.79921092443115, 514.6827245811494, -534.6823573292019, 287.59167627200674]
-_WDL_BS_NNUE = [97.3684150055025, -4.704875173889645, -108.46870312672085, 104.8570272444552]
+_WDL_AS_NNUE = [-105.00423352804697, 392.0957342148286, -459.82467212157627, 273.85261765327135]
+_WDL_BS_NNUE = [132.46600596622187, -78.33713317106809, -54.71428299847303, 96.95845124078289]
 
 # Which family we report WDL on. Bound ONCE, by _bind_wdl_family() right after
 # the engine is constructed -- deliberately not from cengine.Engine.USE_NNUE at
