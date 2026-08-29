@@ -1819,7 +1819,12 @@ class Engine:
             int(eng.SIMPLIFY_WEIGHT))
 
         # --- host-visible state (battle_worker contract) ------------------ #
-        self.use_book = True
+        # OFF by default (user call 2026-08-29). A book is an opening
+        # PREFERENCE, not strength: a GUI or bot operator who wants one says
+        # so, and every A/B harness here already sets it explicitly. Silently
+        # playing book moves also makes the first plies of an analysis session
+        # not the engine's own judgement, which is rarely what is wanted.
+        self.use_book = False
         # Tablebase probe (delegated to the embedded engine, root-only), OFF
         # by default like v30. When on, it is additionally gated to
         # *difficult* positions: at ~2.5M nps the search converts clearly

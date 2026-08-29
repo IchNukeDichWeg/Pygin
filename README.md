@@ -399,15 +399,15 @@ GUI options:
 | `Threads` | spin | 1 | 1–512 | Lazy-SMP search threads. Above your **physical** core count they timeshare and cost strength |
 | `Hash` | spin | 192 | 2–24576 | Transposition-table size (MB); resizing wipes it. Sizes are powers of two, so anything between rounds **down** (6144 / 12288 / 24576 near the top). **Raise it for long games or analysis** -- at 50+0.20 the default is full by move 16 |
 | `MultiPV` | spin | 1 | 1–20 | PV lines reported. >1 is an analysis mode: it bypasses the book and is never active in match play |
-| `OwnBook` | check | true | -- | Use opening book |
+| `OwnBook` | check | false | -- | Play from the bundled Polyglot book. Off by default: a book is an opening preference, not strength |
 | `BookFile` | string |  | -- | Path to Polyglot `.bin` book (empty ⇒ bundled `Perfect2023.bin`) |
-| `UseTB` | check | false | -- | Probe Syzygy at the root: ≤5 men from `SyzygyPath` locally when set, 6-7 men from Lichess online (needs network) |
+| `UseTB` | check | false | -- | Probe Syzygy at the root. **Local `SyzygyPath` is always tried first**; the online Lichess probe is the opt-in fallback for sizes you do not have (needs network) |
 | `Move Overhead` | spin | 40 | 0–5000 | Clock margin (ms) for GUI/network lag |
 | `Premove` | check | false | -- | Emit certified instant-reply premoves (opt-in) |
 | `UCI_ShowWDL` | check | true | -- | Emit `wdl` on info lines (opt-out for strict arenas) |
 | `Clear Hash` | button | -- | -- | Wipe the transposition table without `ucinewgame` |
 | `Contempt` | spin | 50 | -100–100 | Draw score bias (cp) when ahead/behind |
-| `SyzygyPath` | string |  | -- | Folder of local Syzygy `.rtbw`/`.rtbz` tables (≤5 men answered locally; `UseTB` still covers 6-7 online) |
+| `SyzygyPath` | string |  | -- | Folder of local Syzygy `.rtbw`/`.rtbz` tables. The man-count is **detected from what is on disk**, so 6- and 7-man sets are used locally if you have them; the online probe is only a fallback for what you do not |
 | `Ponder` | check | false | -- | Think on the opponent's clock. A ponderhit honours the soft-stop rather than spending the full fresh budget |
 | `SoftStop` | spin | 55 | 1–100 | Base soft-stop fraction (% of the move budget) before the search may stop between iterations |
 | `SoftStopStable` | spin | 40 | 1–100 | Soft-stop fraction once the best move has held for `SoftStopStableIters` iterations |

@@ -2106,7 +2106,12 @@ class Engine:
         self.tb_max_pieces = 7              # Lichess hosts 7-man Syzygy
         self.syzygy_path = None             # local .rtbw/.rtbz dir (UCI
                                             # SyzygyPath); None = online only
-        self.TB_LOCAL_MAX_PIECES = 5        # what the shipped tables cover
+        # DETECTED from the tables on disk at open time, not hardcoded. It
+        # was pinned at 5 because that is what the syzygy-345 release ships,
+        # which silently sent 6-man positions to Lichess even for a user who
+        # had the 6-man tables sitting locally -- a network round-trip to be
+        # told what was already on the filesystem. None = not probed yet.
+        self.TB_LOCAL_MAX_PIECES = None
         self._syzygy = None                 # lazy handle; False = unavailable
         self.tb_timeout = 1.0               # max seconds to wait on the network
         self.tb_url = "https://tablebase.lichess.ovh/standard?fen="
@@ -2415,6 +2420,27 @@ class Engine:
     # ================================================================== #
     # #4 Endgame tablebase (Lichess Syzygy API)
     # ================================================================== #
+    @staticmethod
+    def _local_tb_max_men(path):
+        """Largest man-count actually present in a Syzygy folder.
+
+        A Syzygy stem is the two sides' pieces joined by 'v' -- KQvK is 3 men,
+        KRPvKR is 6 -- so the count is the stem length minus the separator.
+        Both .rtbw (WDL) and .rtbz (DTZ) must be present at a size for it to
+        count: move selection needs DTZ, and a WDL-only set at 6 men would
+        make the probe return None for every 6-man position anyway.
+        """
+        import glob
+        best = 0
+        for w in glob.glob(os.path.join(path, "*.rtbw")):
+            stem = os.path.splitext(os.path.basename(w))[0]
+            if "v" not in stem:
+                continue
+            if not os.path.isfile(os.path.join(path, stem + ".rtbz")):
+                continue                       # WDL without DTZ cannot convert
+            best = max(best, len(stem) - stem.count("v"))
+        return best
+
     def _tb_probe_local(self, board):
         """Probe LOCAL Syzygy files for the optimal move -- same (wdl, move)
         contract as _tb_probe, and the same never-raises rule.
@@ -2446,7 +2472,8 @@ class Engine:
             except Exception:
                 self._syzygy = False
                 return None
-        if board.occupied.bit_count() > self.TB_LOCAL_MAX_PIECES:
+            self.TB_LOCAL_MAX_PIECES = self._local_tb_max_men(path)
+        if board.occupied.bit_count() > (self.TB_LOCAL_MAX_PIECES or 0):
             return None
         try:
             best = None
