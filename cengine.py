@@ -2080,8 +2080,15 @@ class Engine:
         # is what the shipped .rtbw/.rtbz set covers; 6-7 still go to Lichess,
         # which hosts tables we do not carry, and keep the gate.
         tb = None
-        if self.use_tb and board.occupied.bit_count() <= self._py.TB_LOCAL_MAX_PIECES:
-            tb = self._py._tb_probe_local(board)
+        # TB_LOCAL_MAX_PIECES is None until the first probe detects it from
+        # disk (dddb68a made the pin lazy); comparing against None raised
+        # TypeError and turned EVERY UseTB search into bestmove 0000. None
+        # means "unknown yet" and must fall through to the probe, which does
+        # its own detection and its own piece-count gate (engine.py:2476).
+        if self.use_tb:
+            _cap = self._py.TB_LOCAL_MAX_PIECES
+            if _cap is None or board.occupied.bit_count() <= _cap:
+                tb = self._py._tb_probe_local(board)
         if tb is None and self.use_tb and abs(prev_verdict) < self.TB_DIFFICULT_CP:
             self._py.use_tb = True
             tb_to = self._py.tb_timeout
