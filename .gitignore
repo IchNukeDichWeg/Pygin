@@ -157,6 +157,10 @@ dist/
 !/scripts/
 !/uci/
 !/data/
+# .githooks/ holds the commit-msg format gate. It was swallowed by /*/ for
+# months, which is how the hook came to exist only on a stale branch while
+# nothing enforced the format.
+!/.githooks/
 # ...but data/ holds generated and oversized artifacts: setup.sh gunzips the
 # 174 MB EPD from the tracked .gz, and it must not be committed.
 data/UHO_Lichess_4852_v1.epd

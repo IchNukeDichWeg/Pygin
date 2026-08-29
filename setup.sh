@@ -286,6 +286,16 @@ if [ -f csearch.c ]; then
     fi
 fi
 
+# --- 6b. commit-msg hook ---------------------------------------------- #
+# core.hooksPath is LOCAL config, not something a clone carries, so it has to
+# be re-pointed on every fresh clone or the format silently stops being
+# enforced. The hook exists because the message format drifted twice despite
+# being written down.
+if [ -d .githooks ]; then
+    git config core.hooksPath .githooks 2>/dev/null && \
+        echo "-> commit-msg hook installed (core.hooksPath=.githooks)"
+fi
+
 # --- 7. Old Engine snapshots (best effort, for A/B matches) ----------- #
 if [ -d "Old Engine" ] && [ "$BUILD_OLD" -eq 0 ]; then
     echo "-> SKIPPING Old Engine snapshot libraries (--no-old-engines)."
