@@ -28,8 +28,13 @@ sys.path.insert(0, ".")
 from battle_worker import describe_nnue_source, nnue_label
 # Exactly the arms ab_next.sh runs, no more: a preflight that checks things
 # the campaign never loads is noise that hides a real miss.
-ARMS = ["engine_deadtag_on", "engine_deadtag_off",
-        "engine_grow_on", "engine_nnue_v12"]
+# The 2026-08-30 queue: the baseline every arm is measured against, the six
+# runnable search shims, and the three v13 net seeds. p2_improving and
+# s14_repstrict are deliberately absent -- they are do-not-run.
+ARMS = ["engine_v61b_deadtag",
+        "engine_p1_corrhist", "engine_p3_cutlmr", "engine_p4_ttpvlmr",
+        "engine_s10_asp", "engine_s11_falleval", "engine_s6_lmrhist",
+        "engine_v13s1", "engine_v13s2", "engine_v13s3"]
 bad = 0
 for a in ARMS:
     p = f"NNUE/shims/{a}.py"
