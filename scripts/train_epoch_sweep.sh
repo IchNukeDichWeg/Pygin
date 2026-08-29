@@ -36,10 +36,24 @@ python3 - <<PY || exit 1
 import os, sys
 rec = os.path.getsize("$D") // 88
 need = rec * 0.95 * 0.8 / 1e6
-try:
-    lim = int(open("/sys/fs/cgroup/memory.max").read().strip())
-except Exception:
+# cgroup v2, then v1, and ONLY then the host figure. Inside a container
+# sysconf reports the HOST, which is the lie this gate exists to catch: the
+# 2026-08-29 box claimed 503 GB via free with a 241.7 GB actual grant, and a
+# smaller box would have sailed through the check it was supposed to fail.
+lim, src = None, None
+for path, tag in (("/sys/fs/cgroup/memory.max", "cgroup v2"),
+                  ("/sys/fs/cgroup/memory/memory.limit_in_bytes", "cgroup v1")):
+    try:
+        v = open(path).read().strip()
+        if v != "max":
+            lim, src = int(v), tag
+            break
+    except Exception:
+        pass
+if lim is None or lim > 2**50:      # v1 prints a sentinel when uncapped
     lim = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    src = "host (NO cgroup limit found -- may be overstated)"
+print(f"  limit source: {src}")
 print(f"  records {rec:,}  cache needs ~{need:.0f} GB  limit {lim/2**30:.0f} GB")
 if need > lim / 2**30 * 0.85:
     sys.exit("  REFUSING: --cache-chunks would not fit. Rent a bigger box or "
