@@ -1,5 +1,5 @@
 {
-  "//": "The five shared modules live in lib/ (time_manager, wdl, interruptible, smp, shared_tt) and are imported by their PLAIN names -- every entry point puts lib/ on sys.path at import time, so `import interruptible` is correct at runtime. Pyright/Pylance cannot see a sys.path insert, so without extraPaths it marks all 16 importers as unresolved. Same reason for the repo root: bench/, tuning/, testing/ and scripts/ import engine/cengine from one level up.",
+  "//": "The four shared modules live in lib/ (time_manager, interruptible, smp, shared_tt) and are imported by their PLAIN names -- every entry point puts lib/ on sys.path at import time, so `import interruptible` is correct at runtime. Pyright/Pylance cannot see a sys.path insert, so without extraPaths it marks all 16 importers as unresolved. Same reason for the repo root: bench/, tuning/, testing/ and scripts/ import engine/cengine from one level up.",
   "extraPaths": [".", "lib"],
   "typeCheckingMode": "off",
   "reportMissingImports": "warning",

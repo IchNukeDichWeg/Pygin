@@ -55,12 +55,12 @@ sys.path.insert(0, REPO)
 import chess
 import chess.pgn
 
-# The project's fitted WDL model, read straight from data/. NOT via
-# lib/wdl.py: that module resolves the model relative to lib/ itself
-# (lib/data/wdl_model.json), which has not existed since the 2026-07-24
-# reshuffle moved the models to data/ -- it has no callers left and silently
-# returns None. These nets are the NNUE family, so the _nnue fit is the
-# right one; the hce model is the no-SIMD fallback and a different cp scale.
+# The project's fitted WDL model, read straight from data/. There is no
+# shared reader to route through: lib/wdl.py resolved the path relative to
+# lib/ itself and so returned None for every call from the 2026-07-24
+# reshuffle until it was deleted. These nets are the NNUE family, so the
+# _nnue fit is the right one; the hce model is the no-SIMD fallback and a
+# different cp scale.
 _WDL_PATH = os.path.join(REPO, "data", "wdl_model_nnue.json")
 
 

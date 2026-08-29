@@ -49,7 +49,7 @@ here, at each `go`) is what makes a stop that races the search thread's
 startup stick: cs_stop() alone was erased by cs_search_begin, leaving
 `go infinite` running to the depth cap with the host hung in join().
 """
-# lib/ holds the shared support modules (time_manager, wdl, interruptible,
+# lib/ holds the shared support modules (time_manager, interruptible,
 # smp, shared_tt) since the 2026-07-24 reshuffle. They stay importable by
 # their plain names, so nothing else in the tree had to change.
 import os as _os, sys as _sys
