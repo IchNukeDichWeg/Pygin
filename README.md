@@ -246,22 +246,85 @@ removal are nodes-to-depth gains at flat speed.
 
 ## Features
 
-- Search: negamax/alpha-beta, PVS, iterative deepening, aspiration windows,
-  transposition table, quiescence.
-- Selectivity: null-move, reverse-futility and futility pruning, LMR + LMP,
-  check / single-reply / passed-pawn extensions.
-- Move ordering: TT move, MVV-LVA + capture history, killers, counter-moves,
-  history heuristic, SEE.
-- Evaluation: tapered HCE (material + PSQT, pawn structure, king safety,
-  mobility, rook files, bishop pair, threats, endgame mop-up), ported to C.
-- C internals: magic-bitboard movegen reproducing python-chess's order
-  byte-for-byte, the whole per-node search loop in C, and a bit-exact eval port
-  verified over 3M positions.
-- Lazy SMP: pthreads + lock-free shared TT (UCI `Threads`); the Python engine
-  has a multi-process variant.
-- Optional: bundled Polyglot book (`Perfect2023.bin`), online Syzygy probing.
+**Search**
+- Negamax / alpha-beta with **PVS**; iterative deepening reusing the previous
+  iteration's PV move, killers, history and TT; **aspiration windows**.
+- Partial-iteration salvage: if time runs out mid-depth, the best root move
+  evaluated so far is used rather than falling back to the last full depth.
+- **Quiescence** with stand-pat, delta pruning, check evasions, and a lazy
+  stand-pat that skips the expensive eval terms when the cheap base already
+  proves a cutoff (exact -- the tree is unchanged).
+- **Internal Iterative Reduction** at TT-less nodes; **ProbCut** on the
+  fail-high side, where a qsearch filter is *confirmed* by a real reduced-depth
+  search so nothing is ever cut on a static score.
 
----
+**Transposition table** (24-byte entries, lockless XOR-folded, `Hash` MB)
+- **Dead-entry replacement (FI-115, ours):** material is irreversible, so an
+  entry whose piece count exceeds the root's can never recur -- evicted first,
+  while a still-reachable old entry is depth-protected instead of clobbered on
+  age. The count rides in 6 spare bits.
+- **Kept warm across irreversible moves** rather than wiped, plus a rule-50
+  guard so a stored score cannot outlive the draw counter that justified it.
+- Depth-preferred replacement with an exact-bound bonus, terminal-node storing,
+  depth-independent mate handling, and a two-cache-line prefetch of the child
+  entry issued right after `apply_move`.
+- **Cuckoo upcoming-repetition detection** (Stockfish's scheme): a cycle
+  reachable in one move scores as a draw before the repetition physically happens.
+
+**Selectivity**
+- Null-move pruning with no-double-null and eval-scaled reduction; reverse
+  futility (static null); futility pruning; **LMR** including *root* moves; LMP.
+- SEE gating of captures at frontier nodes; a cannot-win clamp so a side without
+  mating material is never scored as winning.
+
+**Extensions** -- checks (per-line budget 5), single reply, passed-pawn pushes.
+
+**Move ordering** -- TT move, MVV-LVA plus capture history, killers,
+counter-moves, the history heuristic with quiet malus, and SEE for capture
+sorting.
+
+**Evaluation -- NNUE (armed)**
+- `(6144 → 256)×2 → 16 → 32 → 1`, perspective accumulators updated
+  **incrementally** through the game, int8/int16 quantized (QA 127, QB 64,
+  output cp/400).
+- **Lazy NNUE:** the forward pass is skipped wherever a cheap bound already
+  decides the node -- the gain is in the nodes that buys.
+- SIMD kernels (NEON+dotprod / AVX2) with a hard guard that refuses to arm the
+  net on scalar builds, where the ~3× slower tail makes the engine *worse*.
+- Trained on positions labelled by real search, blended cp + game result
+  (`LAMBDA 0.75`), cosine LR schedule -- the schedule alone was worth +19 Elo.
+
+**Evaluation -- hand-crafted (the qsearch stand-pat, and the whole eval on
+non-SIMD hosts)**
+- Tapered mg/eg by game phase: material, piece-square tables.
+- Pawns: doubled, isolated, backward, passed.
+- King safety: pawn shield, king-ring attacks, open/semi-open file penalties.
+- Mobility, rook open and semi-open files, bishop pair, threats, pin penalty, tempo.
+- Endgame: mop-up (centre-manhattan drive), simplification bias, contempt, and
+  insufficient-material / cannot-win handling.
+- 44 scalars Texel-fitted; the C port is verified **bit-exact** against the
+  Python reference over 3M positions.
+
+**Engine internals**
+- Magic-bitboard movegen reproducing python-chess's move order **byte-for-byte**,
+  perft-verified over 1.49 billion nodes.
+- The entire per-node loop in C; Python keeps only clock, host and orchestration.
+- **Lazy SMP** over pthreads on a lock-free shared TT (`Threads`); the Python
+  engine has a separate multi-process variant.
+
+**Endgame and play**
+- Local **Syzygy** 3-4-5 probing (WDL + DTZ, so it converts rather than
+  shuffling), with online Lichess probing for 6-7 men.
+- Bundled Polyglot book (`Perfect2023.bin`); real UCI pondering with a
+  soft-stop-aware ponderhit; **MultiPV** by root exclusion; certified instant
+  premoves; `wdl` info lines from a WDL model fitted per eval family.
+
+**Built, measured, and deliberately OFF** -- kept because the mechanism is
+sound and the verdict is recorded: singular extensions, outpost and king-shelter
+eval terms, SEE pruning of losing captures, root-move ordering by subtree count,
+history-driven quiet pruning, several qsearch-TT variants, and a growing
+transposition table. Each was A/B'd, measured null or negative, and left in the
+tree at its default rather than deleted.
 
 ## Setup
 
@@ -294,8 +357,8 @@ python3 selftest.py        # health check; exit 0 = OK, chainable
 per-game log and PGN.
 
 ```bash
-# C search core vs a saved snapshot: 100 positions (×2 colours), every core
-python3 match.py cengine.py "Old Engine/34/engine34.py" 100 0 --workers 0
+# the live engine (v61) vs the previous release: 100 positions (×2 colours)
+python3 match.py cengine.py "Old Engine/60/engine60.py" 100 0 --workers 0
 ```
 
 - Positional args are `engine1 engine2 NUM_POSITIONS OFFSET`. Each position is
@@ -338,12 +401,18 @@ GUI options:
 | `MultiPV` | spin | 1 | 1–20 | PV lines reported. >1 is an analysis mode: it bypasses the book and is never active in match play |
 | `OwnBook` | check | true | -- | Use opening book |
 | `BookFile` | string |  | -- | Path to Polyglot `.bin` book (empty ⇒ bundled `Perfect2023.bin`) |
-| `UseTB` | check | false | -- | Probe the online Lichess Syzygy tablebase at the root (needs network; no local path) |
+| `UseTB` | check | false | -- | Probe Syzygy at the root: ≤5 men from `SyzygyPath` locally when set, 6-7 men from Lichess online (needs network) |
 | `Move Overhead` | spin | 40 | 0–5000 | Clock margin (ms) for GUI/network lag |
 | `Premove` | check | false | -- | Emit certified instant-reply premoves (opt-in) |
 | `UCI_ShowWDL` | check | true | -- | Emit `wdl` on info lines (opt-out for strict arenas) |
 | `Clear Hash` | button | -- | -- | Wipe the transposition table without `ucinewgame` |
 | `Contempt` | spin | 50 | -100–100 | Draw score bias (cp) when ahead/behind |
+| `SyzygyPath` | string |  | -- | Folder of local Syzygy `.rtbw`/`.rtbz` tables (≤5 men answered locally; `UseTB` still covers 6-7 online) |
+| `Ponder` | check | false | -- | Think on the opponent's clock. A ponderhit honours the soft-stop rather than spending the full fresh budget |
+| `SoftStop` | spin | 55 | 1–100 | Base soft-stop fraction (% of the move budget) before the search may stop between iterations |
+| `SoftStopStable` | spin | 40 | 1–100 | Soft-stop fraction once the best move has held for `SoftStopStableIters` iterations |
+| `SoftStopUnstable` | spin | 90 | 1–100 | Soft-stop fraction while the best move is still changing |
+| `SoftStopStableIters` | spin | 3 | 1–20 | Iterations the best move must hold before "stable" applies |
 
 ---
 
@@ -363,28 +432,48 @@ GUI options:
 ## Project layout
 
 ```
-engine.py              the reference Python engine (search + eval orchestration)
-cengine.py             root driver for the C search core (the strongest engine)
+engine.py              the reference Python engine: the readable statement of
+                       the search, and the source of every eval scalar the C
+                       port is verified bit-exact against
+cengine.py             root driver for the C search core -- THE SHIPPED ENGINE.
+                       Its class attributes are the live toggle set
 csearch.c              the whole per-node search loop in C (built to .so)
 eval_c.c / movegen.c   C evaluation and move generation (built to .so)
 Constants.c/.h         magic-bitboard + attack tables (linked into the .so files)
-cuci.py                UCI host for the C search core
-match.py               headless engine-vs-engine match runner
+cuci.py                UCI host for the C search core (17 options)
+match.py               headless engine-vs-engine match runner (SPRT, pentanomial)
 battle_worker.py       per-game worker process used by match.py
 stockfish_engine.py    UCI adapter exposing Stockfish through the same API
 odds.py                material / time-odds match runner
+selftest.py            the pre-commit gate: every behavioural contract, colour-coded
+setup.sh               builds the three .so files, then runs the selftest
 Old Engine/<N>/        frozen version snapshots (engineN.py + its C sources)
 
-lib/                   shared support modules: time_manager (clock budgets),
-                       wdl (W/D/L model reader), interruptible (Ctrl-C/SIGTERM
-                       salvage), smp + shared_tt (the PYTHON engine's
-                       multi-process Lazy SMP and its lock-free shared TT)
-data/                  opening books, EPD position sets, the fitted WDL model
-docs/                  design notes, OpenBench guide, third-party licences
-tuning/                texel.py and the eval-fitting tools
-bench/                 NPS / depth / profiling harnesses
-testing/               perft, SPRT, one-off correctness gates
-scripts/               build, release, export and generator scripts
+NNUE/                  the whole net lane -- config.py (labelling + arch
+                       constants), gen_data.py (self-play generation, --syzygy,
+                       --label-nnue), train.py, model.py, data_format.py,
+                       verify_labels.py (label reproduction gate),
+                       label_depth_probe.py + label_teacher_probe.py (is the
+                       corpus deep enough / is the net a better teacher),
+                       nnue.c, nets/, datasets/, shims/ (one file per A/B arm),
+                       campaigns/ (SPRT state, committed the turn a run ends)
+uci/                   front ends for FROZEN snapshots: cuci_old.py drives any
+                       C-era engineN.py, uci_old/uci_legacy for the Python era
+lib/                   shared support: time_manager (clock budgets), wdl (W/D/L
+                       model reader), interruptible (Ctrl-C/SIGTERM salvage),
+                       smp + shared_tt (the PYTHON engine's multi-process Lazy
+                       SMP and its lock-free shared TT)
+data/                  Perfect2023.bin book, UHO opening EPDs, fen.txt, and the
+                       two fitted WDL models (hce + nnue -- different cp scales,
+                       never pooled)
+syzygy/                local Syzygy 3-4-5 WDL/DTZ tables (gitignored, ~939 MB;
+                       scripts/fetch_syzygy.sh pulls and checksums them)
+docs/                  design notes, OpenBench guide, progression SVGs, licences
+tuning/                texel.py, fit_wdl_model.py and the eval-fitting tools
+bench/                 NPS / depth / profiling harnesses, incl. nps_history_bench
+testing/               perft, SPRT, and the correctness gates selftest shells out
+                       to (test_tt_deadtag, test_wdl_family, test_sprt_resume ...)
+scripts/               build, release, A/B campaign, export and fetch scripts
 ```
 
 `Old Engine/<N>/` holds every historical version, each self-contained. See
