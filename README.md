@@ -425,7 +425,7 @@ GUI options:
 | `bench/nps_history_bench.py` | NPS / depth benchmark across the `Old Engine/` snapshots. |
 | `bench/benchmark.py` | NPS / depth / nodes benchmark for the C search core (`--type`, `--threads`, `--hash`, averaged over `--runs`). |
 | `cuci.py` | UCI host for the C search core (`Threads` / `OwnBook` / `UseTB` options). |
-| `tuning/fit_wdl_model.py` | Fit the win/draw/loss model from match logs (`data/wdl_model.json`; `wdl.py` reads it). |
+| `tuning/fit_wdl_model.py` | Fit the win/draw/loss model from match logs (`data/wdl_model.json` + `data/wdl_model_nnue.json`; `match.py` and `tuning/eval_bench.py` read them, `--sync-only` copies the coefficients into `cuci.py`). |
 
 ---
 
@@ -459,10 +459,10 @@ NNUE/                  the whole net lane -- config.py (labelling + arch
                        campaigns/ (SPRT state, committed the turn a run ends)
 uci/                   front ends for FROZEN snapshots: cuci_old.py drives any
                        C-era engineN.py, uci_old/uci_legacy for the Python era
-lib/                   shared support: time_manager (clock budgets), wdl (W/D/L
-                       model reader), interruptible (Ctrl-C/SIGTERM salvage),
-                       smp + shared_tt (the PYTHON engine's multi-process Lazy
-                       SMP and its lock-free shared TT)
+lib/                   shared support: time_manager (clock budgets),
+                       interruptible (Ctrl-C/SIGTERM salvage), smp + shared_tt
+                       (the PYTHON engine's multi-process Lazy SMP and its
+                       lock-free shared TT)
 data/                  Perfect2023.bin book, UHO opening EPDs, fen.txt, and the
                        two fitted WDL models (hce + nnue -- different cp scales,
                        never pooled)

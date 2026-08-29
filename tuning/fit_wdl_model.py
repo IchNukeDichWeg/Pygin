@@ -898,10 +898,13 @@ def main():
     # Machine-readable model for the runtime consumers (uci.py's UCI_ShowWDL
     # and match.py's adjudication) -- they load this file lazily and stay
     # dormant while it doesn't exist.
-    # ponytail: lib/wdl.py hardcodes wdl_model.json, so a _nnue model sits
-    # unread until something loads it. That wiring belongs to the release
-    # that makes USE_NNUE the default -- the runtime has one eval at a time,
-    # so lib/wdl.py picks a filename then, it doesn't need to hold both.
+    # Every consumer picks its own family: cuci.py binds _WDL_AS/_WDL_AS_NNUE
+    # from the eval the engine actually armed (--sync-only writes both pairs),
+    # match.py's _wdl_win_threshold reads the per-family file, and
+    # tuning/eval_bench.py reads the _nnue one directly. lib/wdl.py used to be
+    # a fifth reader; it resolved the path relative to lib/ itself, so it had
+    # returned None for every call since the 2026-07-24 reshuffle and was
+    # deleted rather than fixed.
     import datetime
     import json
     model_path = os.path.join(os.path.dirname(os.path.dirname(
