@@ -11,6 +11,17 @@ Three checks on a generated dataset:
    label is reproduced exactly.
    hmc == 0 records carry no game-history repetition context, so the
    standalone re-search is byte-deterministic vs generation time.
+
+   PASS --syzygy WHEN THE CORPUS WAS GENERATED WITH IT. gen_data labels
+   <=5-man positions from the tablebase (+/-win_cp or 0) instead of the
+   search -- eng.use_tb is False, so the override is applied OUTSIDE the
+   search and a re-search here can never land on it. Without --syzygy every
+   overridden endgame reads as a hard-gate mismatch: the 105M 25k corpus
+   audited 282/285 on 2026-08-29 and all three "failures" were <=5-man
+   records storing exactly +1000/0/-1000. Given the path, those are probed,
+   confirmed to equal the override, and reported separately instead of
+   failing the gate. A <=5-man record whose label is NOT the override still
+   fails, which is the case worth catching.
 2. HISTORY DRIFT (report only): the same re-search on hmc > 0 records --
    differences here are the documented residual history dependence
    (in-window repetition scoring), not corruption.
@@ -51,6 +62,14 @@ def mk_board(r):
     b.ep_square = int(r["ep"]) if r["ep"] >= 0 else None
     b.halfmove_clock = int(r["hmc"])
     return b
+
+
+def _men(r):
+    """Total men on the board -- only used to hint that a mismatch is an
+    endgame the tablebase would have overridden."""
+    u = (int(r["pawns"]) | int(r["knights"]) | int(r["bishops"])
+         | int(r["rooks"]) | int(r["queens"]) | int(r["kings"]))
+    return bin(u).count("1")
 
 
 def research(records, nodes, cycle_on, label_nnue=False):
@@ -97,6 +116,10 @@ def main():
     ap.add_argument("--label-nnue", action="store_true",
                     help="the corpus was generated with gen_data --label-nnue; the\n audit must use the same eval family or nothing reproduces")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--syzygy", default=None,
+                    help="the folder of .rtbw tables the corpus was generated\n with -- required to audit a --syzygy corpus, see above")
+    ap.add_argument("--win-cp", type=int, default=1000,
+                    help="gen_data's --win-cp for that run (default 1000)")
     ap.add_argument("--debug", action="store_true",
                     help="on hard-gate mismatches, re-search each offender "
                          "3x and report whether the search is stable (input/"
@@ -136,10 +159,34 @@ def main():
 
     h0 = [(s, r) for s, r in zip(scores, recs) if r["hmc"] == 0]
     hN = [(s, r) for s, r in zip(scores, recs) if r["hmc"] > 0]
-    bad0 = sum(int(s) != int(r["score"]) for s, r in h0)
+    miss0 = [(s, r) for s, r in h0 if int(s) != int(r["score"])]
     badN = sum(int(s) != int(r["score"]) for s, r in hN)
+
+    # A mismatch that is exactly the tablebase override is the generator
+    # working, not the corpus rotting -- split it out before the gate reads.
+    tb_ok = []
+    if args.syzygy:
+        sys.path.insert(0, NNUE_DIR)
+        from tablebase import Tablebase
+        tb = Tablebase(args.syzygy)
+        for s, r in list(miss0):
+            v = tb.probe(mk_board(r))
+            if v is not None and int(r["score"]) == args.win_cp * v:
+                tb_ok.append((s, r))
+                miss0.remove((s, r))
+        tb.close()
+
+    bad0 = len(miss0)
     print(f"reproduction (hmc==0, HARD GATE): {len(h0)-bad0}/{len(h0)} "
           f"exact ({bad0} mismatches)")
+    if args.syzygy:
+        print(f"  tablebase overrides (expected, not failures): {len(tb_ok)}"
+              f"  [probed against {args.syzygy!r} at win_cp {args.win_cp}]")
+    elif miss0 and any(_men(r) <= 5 for _, r in miss0):
+        print("  NOTE: some mismatches are <=5-man positions. If this corpus "
+              "was\n  generated with --syzygy, re-run this audit with "
+              "--syzygy <path>\n  or the tablebase overrides count as "
+              "failures.")
     if args.debug and bad0:
         # Diagnosis: re-search each mismatched hmc==0 record 3x more.
         # 3 equal values != stored -> the search is stable NOW but differed
@@ -147,9 +194,9 @@ def main():
         # 3 unequal values -> the search itself is nondeterministic on this
         #   machine -- report that immediately, do NOT generate on it.
         shown = 0
-        for s0, r in h0:
-            if int(s0) == int(r["score"]) or shown >= 3:
-                continue
+        for s0, r in miss0:
+            if shown >= 3:
+                break
             shown += 1
             tries = [research(np.asarray([r]), args.nodes, cycle_on=False,
                               label_nnue=args.label_nnue)[0]
