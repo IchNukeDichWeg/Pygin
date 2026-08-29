@@ -1440,6 +1440,26 @@ try:
               (_six is not None) if _max_men >= 6 else (_six is None),
               detail=repr(_six))
 
+    # dddb68a regression pin: cengine's pre-gate read TB_LOCAL_MAX_PIECES
+    # (None until first detection) with <= and raised TypeError, turning
+    # EVERY UseTB search into bestmove 0000 -- tables present or not. The
+    # contract: a fresh engine with use_tb on must SEARCH, not crash. The
+    # online fallback is blocked via the difficulty gate (last_score high)
+    # so this never touches the network.
+    try:
+        import cengine as _ce
+        _c = _ce.Engine()
+        _c.use_tb = True
+        _c.last_score = 10 ** 5          # abs() >= TB_DIFFICULT_CP: no network
+        _c._py.syzygy_path = "syzygy" if _has_syzygy() else None
+        _c._py._syzygy = None
+        _pmv = _c.get_best_move(chess.Board("7k/8/8/8/8/8/8/KR6 w - - 0 1"), 3)
+        check("local TB: UseTB survives the undetected None cap (dddb68a pin)",
+              _pmv is not None, detail=f"mv={_pmv}")
+    except Exception as _px:
+        check("local TB: UseTB survives the undetected None cap (dddb68a pin)",
+              False, f"{type(_px).__name__}: {_px}")
+
     if _has_syzygy() and not _has_syzygy_dtz():
         skip("DTZ (.rtbz) absent -- move selection needs it; the "
               "syzygy-345 release is WDL-only by design")
