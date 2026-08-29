@@ -1424,10 +1424,21 @@ try:
     if _has_syzygy():
         _e.syzygy_path = "syzygy"
         _e._syzygy = None
+        # CONTRACT CHANGED 2026-08-29: the local cap is DETECTED from the
+        # tables on disk, not pinned at 5. This box ships syzygy-345, so a
+        # 6-man position must still return None here -- but for the right
+        # reason. Drop 6-man tables into syzygy/ and the same probe answers
+        # them locally instead of paying a network round-trip for something
+        # already on the filesystem.
+        _max_men = _e._local_tb_max_men("syzygy")
+        check("local TB: piece cap detected from disk, not hardcoded",
+              _max_men >= 3, detail=f"{_max_men} men present")
         _six = _e._tb_probe_local(
             chess.Board("8/8/8/3k4/8/8/2PPPP2/3K4 w - - 0 1"))    # 6 men
-        check("local TB: >5 men -> None (Lichess keeps 6-7)",
-              _six is None, detail=repr(_six))
+        check(f"local TB: 6 men -> {'answered' if _max_men >= 6 else 'None'} "
+              f"(disk has {_max_men})",
+              (_six is not None) if _max_men >= 6 else (_six is None),
+              detail=repr(_six))
 
     if _has_syzygy() and not _has_syzygy_dtz():
         skip("DTZ (.rtbz) absent -- move selection needs it; the "

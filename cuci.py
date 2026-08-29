@@ -17,7 +17,7 @@ Options:
                                               else book hits show no lines;
                                               =1 is byte-identical to before,
                                               match play never sets it)
-    OwnBook       (check, default true)    -- engine's own Polyglot book
+    OwnBook       (check, default false)   -- engine's own Polyglot book
     BookFile      (string, default empty)  -- path to a custom Polyglot .bin
                                               (empty = bundled Perfect2023.bin)
     UseTB         (check, default false)   -- root Lichess-Syzygy probe
@@ -886,7 +886,7 @@ def main():
                 out(f"id author {AUTHOR}")
                 out("option name Threads type spin default 1 min 1 max 512")
                 out("option name MultiPV type spin default 1 min 1 max 20")
-                out("option name OwnBook type check default true")
+                out("option name OwnBook type check default false")
                 out("option name BookFile type string default <empty>")
                 out("option name UseTB type check default false")
                 out("option name SyzygyPath type string default <empty>")
