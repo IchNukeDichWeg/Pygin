@@ -1,0 +1,52 @@
+{
+  "decision": "NULL",
+  "llr": -0.6550575385299512,
+  "next_offset": 10366,
+  "pairs": 10346,
+  "penta": [
+    609,
+    2458,
+    4197,
+    2445,
+    637
+  ],
+  "runs": [
+    {
+      "engine1": "engine_p3_cutlmr",
+      "engine2": "engine_v61b_deadtag",
+      "fen_file": "UHO_4060_v4.epd",
+      "mode": "clock 10.00+0.10",
+      "offset": 0,
+      "positions": 5000,
+      "positions_played": 5000,
+      "seed": 59,
+      "smp": 1,
+      "started": "2026-08-30 19:40:14"
+    },
+    {
+      "engine1": "engine_p3_cutlmr",
+      "engine2": "engine_v61b_deadtag",
+      "fen_file": "UHO_4060_v4.epd",
+      "mode": "clock 10.00+0.10",
+      "offset": 5000,
+      "positions": 5000,
+      "positions_played": 5000,
+      "seed": 59,
+      "smp": 1,
+      "started": "2026-08-30 20:58:43"
+    },
+    {
+      "engine1": "engine_p3_cutlmr",
+      "engine2": "engine_v61b_deadtag",
+      "fen_file": "UHO_4060_v4.epd",
+      "mode": "clock 10.00+0.10",
+      "offset": 10000,
+      "positions": 5000,
+      "positions_played": 366,
+      "seed": 59,
+      "smp": 1,
+      "started": "2026-08-30 22:17:10"
+    }
+  ],
+  "note": "called NULL by the user 2026-08-31 at 10,346 pairs / 20,692 games. The LLR wandered -0.579 -> -0.276 -> -0.655 across three tranches with no trend toward either bound: flat at twice the standard budget is a decision, not a reason to keep spending. Reproduces its own history (+2.84 +/-4.6 over 22k, consistently positive never confirmable), except the lean here is slightly negative."
+}
