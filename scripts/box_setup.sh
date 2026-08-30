@@ -75,15 +75,28 @@ print(f"  worker_chi2 present: {callable(getattr(m, 'worker_chi2', None))}")
 PY
 
 echo ""
-echo "### CAMPAIGN STATE: restore the deadtag tranche so it RESUMES, not restarts"
-rm -f sprt_*.json
-cp NNUE/campaigns/sprt_deadtag_tc10+0.1.json . 2>/dev/null \
-  && python3 -c "
-import json; d = json.load(open('sprt_deadtag_tc10+0.1.json'))
-print(f\"  restored: {d['pairs']:,} pairs, LLR {d['llr']:+.3f}, next_offset {d['next_offset']}\")
-assert d['pairs'] == 5000 and d['decision'] is None, 'unexpected state -- STOP'
-print('  a fresh run here would DISCARD 5,000 real pairs; --sprt-resume prevents that')" \
-  || echo "  NO deadtag state -- the continuation would restart from zero"
+echo "### CAMPAIGN STATE"
+# NEVER blind-delete sprt_*.json here. This script is re-run to re-verify arms,
+# and an earlier version did `rm -f sprt_*.json` unconditionally -- re-running
+# it mid-campaign would have discarded every pooled pair with no error, which
+# is the same class of mistake as overwriting a checkpoint mid-run.
+LIVE=$(ls sprt_*.json 2>/dev/null | wc -l | tr -d " ")
+if [ "$LIVE" -gt 0 ]; then
+    echo "  $LIVE live state file(s) present -- LEFT UNTOUCHED:"
+    for f in sprt_*.json; do python3 -c "
+import json; d = json.load(open('$f'))
+print(f\"    {'$f':44s} {d['pairs']:6,d} pairs  LLR {d['llr']:+.3f}  {d['decision']}\")"; done
+    echo "  (a campaign is in progress; do not restart it -- --sprt-resume pools onto these)"
+else
+    n=0
+    for f in NNUE/campaigns/sprt_*_tc10+0.1.json; do
+        [ -f "$f" ] || continue
+        python3 -c "
+import json,sys; d=json.load(open('$f'))
+sys.exit(0 if d.get('decision') is None else 1)" 2>/dev/null && { cp "$f" .; n=$((n+1)); }
+    done
+    echo "  restored $n undecided campaign(s) from NNUE/campaigns/ (decided ones stay put)"
+fi
 
 echo ""
 echo "### BOOK"
@@ -93,5 +106,5 @@ print(f'  UHO_4060_v4.epd: {n:,} positions (need >= 10,000 for offset 5000 + 500
 assert n >= 10000"
 
 echo ""
-[ "$SHIMS_OK" -eq 0 ] && echo "### READY -- run ./scripts/ab_next.sh" \
+[ "$SHIMS_OK" -eq 0 ] && echo "### READY -- run ./scripts/ab_queue_0830.sh" \
                       || echo "### NOT READY -- a shim could not find its net"
