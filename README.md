@@ -399,6 +399,7 @@ GUI options:
 | `Threads` | spin | 1 | 1–512 | Lazy-SMP search threads. Above your **physical** core count they timeshare and cost strength |
 | `Hash` | spin | 192 | 2–24576 | Transposition-table size (MB); resizing wipes it. Sizes are powers of two, so anything between rounds **down** (6144 / 12288 / 24576 near the top). **Raise it for long games or analysis** -- at 50+0.20 the default is full by move 16 |
 | `MultiPV` | spin | 1 | 1–20 | PV lines reported. >1 is an analysis mode: it bypasses the book and is never active in match play |
+| `Skill Level` | spin | 40 | 0–40 | Deliberately imperfect play for human opponents. **40 = full strength** and is byte-identical to the option being absent; lower levels cap the search depth and add a random bias that grows with how far a candidate trails the best move, so weak levels routinely pick a worse one. **Not an Elo scale** -- see below |
 | `OwnBook` | check | false | -- | Play from the bundled Polyglot book. Off by default: a book is an opening preference, not strength |
 | `BookFile` | string |  | -- | Path to Polyglot `.bin` book (empty ⇒ bundled `Perfect2023.bin`) |
 | `UseTB` | check | false | -- | Probe Syzygy at the root. **Local `SyzygyPath` is always tried first**; the online Lichess probe is the opt-in fallback for sizes you do not have (needs network) |
@@ -413,6 +414,31 @@ GUI options:
 | `SoftStopStable` | spin | 40 | 1–100 | Soft-stop fraction once the best move has held for `SoftStopStableIters` iterations |
 | `SoftStopUnstable` | spin | 90 | 1–100 | Soft-stop fraction while the best move is still changing |
 | `SoftStopStableIters` | spin | 3 | 1–20 | Iterations the best move must hold before "stable" applies |
+
+**On `Skill Level` and the missing `UCI_Elo`.** The weakening scheme is
+Stockfish's -- search at least four root candidates, then add a randomised
+bias to each score that grows with how far it trails the best -- on a 0–40
+scale instead of 0–20, which halves the step size without moving the
+endpoints (weakness `120 - level`, depth cap `1 + level // 2`).
+
+`UCI_Elo` and `UCI_LimitStrength` are **deliberately not implemented**, and
+setting them returns an `info string` saying so rather than silently doing
+nothing. `UCI_Elo` is a calibrated claim in Elo units, and no campaign has
+fitted that curve for this engine; Stockfish's is fitted to Stockfish and
+tops out around 700 Elo above this engine's own measured class, so adopting
+it would assert a number nobody here has measured. `Skill Level` promises
+only a relative ordering, which is a promise the code can keep.
+
+That relativity is also why the scale needs no upkeep: a level is defined
+against the engine it sits in, so a stronger release lifts every level with
+it and 40 remains exactly full strength. An `UCI_Elo` mapping would instead
+need re-fitting on every release. `scripts/calibrate_skill.py` measures what
+each level is currently worth if you want the table.
+
+⚠️ **Do not measure engine progress against a skill-limited engine.** A
+limiter injects errors at a fixed *rate*, and exploiting them is nearly
+fixed-yield, so real differences compress: a version pair measured at +119
+Elo directly read as ~22 against an Elo-limited opponent.
 
 ---
 
