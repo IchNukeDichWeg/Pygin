@@ -12,7 +12,7 @@ representation, move generation and legality.
 
 ![Strength](https://img.shields.io/badge/strength-~2868_Elo-3fb950)
 ![Speed](https://img.shields.io/badge/speed-5.6M_nps-58a6ff)
-![Versions](https://img.shields.io/badge/versions-61-8b949e)
+![Versions](https://img.shields.io/badge/versions-62-8b949e)
 ![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B354_Elo-f0883e)
 ![Source](https://img.shields.io/badge/source-MIT-green)
 &nbsp;·&nbsp; Built with **[Claude Code](https://claude.com/claude-code)**
@@ -23,21 +23,21 @@ representation, move generation and legality.
 
 <table>
 <tr><td><b>~2868 Elo</b></td><td>SF-18 UCI_Elo scale</td><td><b>5.6M nps</b></td><td>the net costs ~30% of it</td></tr>
-<tr><td><b>~+354 Elo</b></td><td>A/B-confirmed, v31&rarr;v61</td><td><b>~18 ply</b></td><td>from startpos in 5 s</td></tr>
-<tr><td><b>+48.84 Elo</b></td><td>the NNUE era, v58&rarr;v61</td><td><b>1.07&times;</b></td><td>single-thread vs v31</td></tr>
+<tr><td><b>~+354 Elo</b></td><td>A/B-confirmed, v31&rarr;v62</td><td><b>~18 ply</b></td><td>from startpos in 5 s</td></tr>
+<tr><td><b>+48.84 Elo</b></td><td>the NNUE era, v58&rarr;v62</td><td><b>1.07&times;</b></td><td>single-thread vs v31</td></tr>
 <tr><td><b>v53+v54</b> eval lane</td><td>+37.52 &amp; +31.20, the two biggest</td><td><b>1 dependency</b></td><td><code>python-chess</code> only</td></tr>
 </table>
 
 <table>
 <tr>
-<td><img src="docs/elo_progression.svg?v=61" width="100%" alt="Cumulative A/B Elo across the C era, v31=0 climbing to +354 at v61"/></td>
-<td><img src="docs/speed_progression.svg?v=61" width="100%" alt="Single-thread speed as a multiple of v31, peaking at 1.45x and ending at 1.07x once the net is armed"/></td>
+<td><img src="docs/elo_progression.svg?v=62" width="100%" alt="Cumulative A/B Elo across the C era, v31=0 climbing to +354 at v61"/></td>
+<td><img src="docs/speed_progression.svg?v=62" width="100%" alt="Single-thread speed as a multiple of v31, peaking at 1.45x and ending at 1.07x once the net is armed"/></td>
 </tr>
 </table>
 
 <table>
 <tr>
-<td><img src="docs/mate_progression.svg?v=61" width="100%" alt="Mate-finding on mates2000.epd across the C era, rising from 23.4% at v31 to a 51.6% plateau, then falling back to 41.0% at v61 as the net arms"/></td>
+<td><img src="docs/mate_progression.svg?v=62" width="100%" alt="Mate-finding on mates2000.epd across the C era, rising from 23.4% at v31 to a 51.6% plateau, then falling back to 41.0% at v61 as the net arms"/></td>
 </tr>
 </table>
 
@@ -143,6 +143,7 @@ above summarise it. Regenerate both with `bench/bench_progress.py` and
 <details>
 <summary><b>Every version in full</b> -- complete milestone + Elo list</summary>
 
+- **v62** -- **the aspiration window stopped fighting itself.** The root window opened flat at 30cp whatever the position and widened 2&times; per failure, and a fail-low left `beta` untouched -- so a position could oscillate low/high and pay the whole ladder out to the 1920 fallback. Three riders replace that as one policy: the opening delta scales with the previous score, a fail-low pulls `beta` to the midpoint before `alpha` drops, and growth is 1.5&times;. Driver-only; the C core is byte-identical to v61. *(**+18.40 ±7.6** at 50+0.5 over 3,439 games, 52.65%, ptnml 62/361/735/450/109, nElo +28.25, SPRT[0,4] LLR +2.959 **ACCEPT H1** -- and **+2.969 ACCEPT** on the 10+0.1 screen before it. Both **stopped early, so the magnitude is bound-biased and the ledger is not advanced on it**; a fixed-budget 50+0.5 run is owed. Bench 1,140,099 -> 1,203,792 -- unlike v61 this one does move the signature, because the window shapes the root search from the first iteration.)*
 - **v61** -- **dead entries in the transposition table are now evicted first.** Material is irreversible, so an entry whose stored piece count *exceeds* the current root's can never occur again -- garbage with certainty, not a guess. v61 stamps that count into 6 spare bits and takes those first, depth-protecting a still-reachable old entry instead of clobbering it on age. Nothing is swept; it is a better choice of victim, made at store time. Also carried: FI-113's two-cache-line TT prefetch, node-identical, +1.09% NPS. *(**+15.89 ±4.2** over a **fixed** 10,000-game budget at 50+0.5, 192 MiB both sides, 52.29%, ptnml 146/1044/2226/1375/209, ratio 1.33, nElo +25.77. No early stop, so the ledger advances: +338 -> **+354**. Measured at the shipped table size deliberately -- the 10+0.1 screen ran 24 MiB to force replacement pressure -- and a cold-TT bench cannot see this rule at all, so the signature stays 1,140,099.)*
 - **v60** -- **the first net trained on real games, not generated ones.** The search is byte-identical to v59; only `NNUE_FILE` moves, to `nnue_v12_bf86c4ced057.nnue`. Every net before this learned from self-play positions manufactured for the purpose. v12 learned from **24,825,823 positions harvested out of Pygin's own A/B match logs**, labelled at depth 12-16 by the search those games actually ran. It is also the first trained with the game-result term off (`LAMBDA 1.0`) -- a correctness requirement, not a tuning choice: those logs predate the phantom-repetition fix and replay showed **1,479/1,479** of their repetition draws were phantom. *(GSPRT[0,4] LLR **+2.957 ACCEPT** at 793 pairs vs `Old Engine/59`, TIMED 50+0.5, 56.09% over 1,594 games -> +42.50 ±17.3 -- **stopped early, so the magnitude is bound-biased and the ledger is not advanced on it**. Against the v10 net it drew over a full 10,000 games.)*
 - **v59** -- **lazy NNUE evaluation, and the first release measured as exactly the config that ships.** `LAZY_NNUE` is armed: the engine skips the net's forward pass wherever a cheap bound already decides the node, spending the saved time on more nodes (bench 1,074,820 -> **1,214,534**). The toggle was isolated for the first time -- same v4 net on both sides, nothing else different -- against `Old Engine/58` on the corrected harness. *(GSPRT[0,4] LLR **+2.950 ACCEPT** at 2,264 pooled pairs, TIMED 50+0.5 on x86, ptnml 69/509/975/595/116, pooled 51.99% -> **+13.84 ±6.4**, stopped early so the magnitude is bound-biased -- the verdict is the result. Historical note: v58's own +19.11 turned out to have been measured with this toggle ON while the release ran it OFF; v59 closes that gap by shipping what was measured.)*

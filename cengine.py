@@ -13,7 +13,9 @@ ITS DEFAULTS ARE v62 (2026-08-31): v61 plus FI-21/S10, the aspiration-window
 repair (ASPIRATION_FI21 True, +18.40 +/- 7.6 at 50+0.5, SPRT ACCEPT H1 stopped
 early over 3,439 games). v61 itself is v60's nnue_v12 net plus FI-115
 dead-entry TT replacement and FI-113's two-cache-line TT prefetch. Bench
-signature 1,203,792. C-era ledger ~+372 over v31. The running history below is APPEND-ONLY and each paragraph describes the
+signature 1,203,792. C-era ledger ~+354 over v31 -- UNCHANGED: v62's
+number is bound-stopped, and per the v60 precedent the ledger only advances
+on a fixed-budget measurement. The running history below is APPEND-ONLY and each paragraph describes the
 version it names, not the current default -- this line is the one to trust for
 "what ships today", and it is the one to update on every release.
 
@@ -309,7 +311,8 @@ Shipping instrument 50+0.5: **+18.40 +/- 7.6** over 3,439 games (52.65%, ptnml
 62/361/735/450/109, nElo +28.25), SPRT[0,4] LLR +2.959 -> ACCEPT H1, STOPPED
 EARLY. Both runs crossed a bound, so both magnitudes carry the stopping bias
 that turned FI-115's +33.83 into +19.11 at a fixed budget; a fixed-budget
-50+0.5 re-run is owed before this number is treated as settled.
+50+0.5 re-run is owed before this number is treated as settled. The ledger therefore
+STAYS at ~+354, per the v60 precedent.
 
 It was the ONLY survivor of the 2026-08-31 campaign: eleven candidates, six
 rejections (correction history -8.18, falling-eval time, all three v13 corpus
