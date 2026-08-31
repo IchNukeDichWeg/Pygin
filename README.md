@@ -24,14 +24,14 @@ representation, move generation and legality.
 <table>
 <tr><td><b>~2868 Elo</b></td><td>SF-18 UCI_Elo scale</td><td><b>5.6M nps</b></td><td>the net costs ~30% of it</td></tr>
 <tr><td><b>~+354 Elo</b></td><td>A/B-confirmed, v31&rarr;v62</td><td><b>~18 ply</b></td><td>from startpos in 5 s</td></tr>
-<tr><td><b>+48.84 Elo</b></td><td>the NNUE era, v58&rarr;v62</td><td><b>1.09&times;</b></td><td>single-thread vs v31</td></tr>
+<tr><td><b>+48.84 Elo</b></td><td>the NNUE era, v58&rarr;v62</td><td><b>1.11&times;</b></td><td>single-thread vs v31</td></tr>
 <tr><td><b>v53+v54</b> eval lane</td><td>+37.52 &amp; +31.20, the two biggest</td><td><b>1 dependency</b></td><td><code>python-chess</code> only</td></tr>
 </table>
 
 <table>
 <tr>
 <td><img src="docs/elo_progression.svg?v=62" width="100%" alt="Cumulative A/B Elo across the C era, v31=0 climbing to +354 at v61"/></td>
-<td><img src="docs/speed_progression.svg?v=62" width="100%" alt="Single-thread speed as a multiple of v31, peaking at 1.45x and ending at 1.07x once the net is armed"/></td>
+<td><img src="docs/speed_progression.svg?v=62" width="100%" alt="Single-thread speed as a multiple of v31, peaking at 1.60x and ending at 1.11x once the net is armed"/></td>
 </tr>
 </table>
 
@@ -43,7 +43,7 @@ representation, move generation and legality.
 
 All three charts are self-play. Every C-era version (v31 and up) is A/B-tested
 against the one before it, and the gains stack to about **+354 Elo**.
-Single-thread speed peaked at 1.45× and sits at 1.07× today: v58 hands about
+Single-thread speed peaked at 1.60× and sits at 1.11× today: v58 hands about
 30% of it to the net and still comes out +19.11 ahead. The v30→v31 C rewrite
 (~34× faster) is off the left edge, so v31 is the honest zero.
 
