@@ -107,9 +107,16 @@ fi
 [ "$STOP" -eq 1 ] || run_until_decision s11_falleval NNUE/shims/engine_s11_falleval.py "$BASE"
 [ "$STOP" -eq 1 ] || run_until_decision s6_lmrhist NNUE/shims/engine_s6_lmrhist.py "$BASE"
 
+# X1/X2 added 2026-08-31: two selectivity constants the NNUE switch left
+# uncalibrated. Both are pure Python class attributes (PROBCUT_MARGIN,
+# LAZY_NNUE_MARGIN) -- no C change -- so they run on the SAME build and
+# baseline as everything above and pool with it.
+[ "$STOP" -eq 1 ] || run_until_decision x1_probcut130 NNUE/shims/engine_x1_probcut130.py "$BASE"
+[ "$STOP" -eq 1 ] || run_until_decision x2_lazy300 NNUE/shims/engine_x2_lazy300.py "$BASE"
+
 echo ""
 echo "### QUEUE DONE $(TZ=Europe/Zurich date '+%H:%M:%S')"
-for L in p1_corrhist p3_cutlmr v13s1 v13s2 v13s3 p4_ttpvlmr s10_asp s11_falleval s6_lmrhist; do
+for L in p1_corrhist p3_cutlmr v13s1 v13s2 v13s3 p4_ttpvlmr s10_asp s11_falleval s6_lmrhist x1_probcut130 x2_lazy300; do
     S="sprt_${L}_tc10+0.1.json"
     [ -f "$S" ] && python3 -c "
 import json; d = json.load(open('$S'))
