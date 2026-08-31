@@ -398,6 +398,118 @@ def _search_multipv(engine, board, k, budget, max_depth, white_to_move,
 
 
 # --------------------------------------------------------------------------- #
+# Skill Level (Stockfish's weakening scheme, on a 40-step scale).
+#
+# Stockfish picks a deliberately imperfect move by searching at least 4
+# candidates, then adding a randomised bias to each candidate's score that
+# grows with how far that candidate trails the best one -- so at low skill the
+# worse moves routinely win the comparison. It does this at a capped depth
+# (SF: 1 + level). This is that scheme with the scale doubled to 0..40, which
+# halves the step size without changing the endpoints:
+#
+#     weakness   120 - level        SF: 120 - 2*level    (both span 120..~81)
+#     depth cap  1 + level // 2     SF: 1 + level        (both span 1..20)
+#
+# so every step moves the noise term and every SECOND step also moves the
+# depth -- twice SF's resolution over the same range.
+#
+# LEVEL 40 IS OFF, and off means byte-identical to a build without this: the
+# caller never enters here, no MultiPV is forced, no depth is capped.
+#
+# THIS IS NOT AN ELO SCALE, and must never be quoted as one. UCI_Elo is a
+# calibrated claim in Elo units; Pygin has no such calibration, and shipping
+# Stockfish's curve would assert a number nobody measured (SF's tops out at
+# ~3200, roughly 700 above Pygin's own class estimate). Until a campaign
+# fits the curve, the UCI_Elo/UCI_LimitStrength options are answered with an
+# info string rather than a lie.
+#
+# DO NOT MEASURE PYGIN AGAINST A SKILL-LIMITED PYGIN. Measured 2026-07-07 on
+# Elo-limited Stockfish: a real +119 Elo gap between two versions read as ~22
+# against the limiter, because errors are injected at a fixed RATE and
+# exploiting them is nearly fixed-yield. Limited engines compress differences
+# ~5x, which is why limited SF was retired as a progress instrument here.
+import random as _skill_random
+_SKILL_RNG = _skill_random.Random()   # system-seeded: two games at the same
+                                      # level must not play the same mistakes
+SKILL_MAX = 40                 # = full strength = feature off
+SKILL_CANDIDATES = 4           # SF's floor; MultiPV may raise it
+
+
+def _skill_pick(lines, level, rng):
+    """SF's pick_best on (move, score) candidates, best-first.
+
+    push = (weakness*(top - score) + delta*rand(weakness)) / 128, added to
+    each candidate's score; the winner is the max. The first term rewards
+    being WORSE (it is zero for the best move), so low skill = high weakness
+    = worse moves routinely outbid the best one.
+    """
+    top = lines[0][1]
+    delta = min(top - lines[-1][1], 100)      # SF caps this at a pawn
+    weakness = 120.0 - level                  # 40-step scale
+    best_mv, best_val = lines[0][0], -10 ** 9
+    for mv, sc in lines:
+        push = int((weakness * (top - sc)
+                    + delta * (rng.randrange(int(weakness)))) / 128)
+        if sc + push >= best_val:             # >= : ties go to the worse move
+            best_val, best_mv = sc + push, mv
+    return best_mv
+
+
+def _search_skill(engine, board, level, budget, max_depth, white_to_move,
+                  stop_evt, rng):
+    """Search SKILL_CANDIDATES root moves at the capped depth, then pick.
+
+    Candidates come the same way MultiPV gets them -- re-search with the
+    better moves excluded at the C root -- so this needs no new C. Returns
+    the chosen move; engine.last_* is left describing the CHOSEN line, not
+    line 1, because that is what the GUI and the bestmove must agree on.
+    """
+    import time as _t
+    lib = engine._lib
+    t0 = _t.perf_counter()
+    deadline = (t0 + budget) if budget is not None else None
+    depth = max(1, min(1 + level // 2, max_depth))
+    k = max(SKILL_CANDIDATES, getattr(engine, "multipv", 1))
+    sv = (engine.use_book, engine.on_depth, engine.on_final)
+    engine.use_book = False        # a book move bypasses the whole scheme
+    engine.on_depth = engine.on_final = None
+    lines, excl, states, total = [], [], {}, 0
+    try:
+        for _ in range(k):
+            if stop_evt.is_set() or engine._abort:
+                break
+            if deadline is not None and _t.perf_counter() >= deadline:
+                break
+            lib.root_exclude_clear()
+            for m in excl:
+                lib.root_exclude_add(m.from_square | (m.to_square << 6)
+                                     | ((m.promotion or 0) << 12))
+            mv = engine.get_best_move(board, depth)
+            if mv is None or mv in excl:
+                break
+            total += engine.nodes_searched
+            lines.append((mv, engine.last_score))
+            states[mv] = (engine.last_score, engine.last_pv,
+                          engine.last_depth or depth)
+            excl.append(mv)
+    finally:
+        lib.root_exclude_clear()   # NEVER leak exclusions into play
+        engine.use_book, engine.on_depth, engine.on_final = sv
+    if not lines:
+        return None
+    chosen = _skill_pick(lines, level, rng)
+    sc, pv, dd = states[chosen]
+    engine.last_score, engine.last_pv, engine.last_depth = sc, pv, dd
+    engine.nodes_searched = total
+    el = max(1, int((_t.perf_counter() - t0) * 1000))
+    out(info_line({"depth": dd, "score": sc, "pv": pv,
+                   "nodes": total, "time_ms": el},
+                  white_to_move, engine, board=board))
+    return chosen
+
+
+
+# --------------------------------------------------------------------------- #
 # PM-01: certified instant reply (opt-in via `setoption name Premove value
 # true`; inert by default, zero effect on match play).
 #
@@ -798,6 +910,14 @@ def main():
                         engine, search_board, engine.multipv, budget,
                         max_depth, white_to_move, stop_evt,
                         fixed_depth=(max_depth if "depth" in params else None))
+                elif getattr(engine, "skill_level", SKILL_MAX) < SKILL_MAX \
+                        and not sm_active:
+                    # Skill Level: deliberately imperfect play. Off (=40)
+                    # keeps every path below byte-identical.
+                    mv = _search_skill(
+                        engine, search_board,
+                        int(engine.skill_level), budget, max_depth,
+                        white_to_move, stop_evt, _SKILL_RNG)
                 elif budget is None:
                     mv = engine.get_best_move(search_board, max_depth)
                 else:
@@ -900,6 +1020,7 @@ def main():
                 out("option name UCI_ShowWDL type check default true")
                 out("option name Ponder type check default false")
                 out("option name Clear Hash type button")
+                out("option name Skill Level type spin default 40 min 0 max 40")
                 out("option name Contempt type spin default 50 min -100 max 100")
                 out("option name Move Overhead type spin default 40 min 0 max 5000")
                 # P-35/U-06 time policy, exposed so the neighbourhood can be
@@ -1018,6 +1139,23 @@ def main():
                     engine.book_path = None if value in ("", "<empty>") else value
                 elif name == "usetb":
                     engine.use_tb = value.lower() == "true"   # local <=5, else Lichess
+                elif name == "skilllevel":
+                    try:
+                        lv = max(0, min(SKILL_MAX, int(value)))
+                    except ValueError:
+                        lv = SKILL_MAX
+                    engine.skill_level = lv
+                    if lv < SKILL_MAX:
+                        out(f"info string Skill Level {lv}/{SKILL_MAX} "
+                            f"(weakness {120 - lv}, depth cap "
+                            f"{1 + lv // 2}) -- NOT an Elo scale")
+                elif name in ("uci_elo", "uci_limitstrength"):
+                    # Refusing beats lying: UCI_Elo promises a calibrated
+                    # number in Elo units and no campaign has fitted one for
+                    # this engine. Stockfish's curve is fitted to Stockfish.
+                    out("info string UCI_Elo/UCI_LimitStrength are not "
+                        "implemented: they would assert an uncalibrated Elo. "
+                        "Use `setoption name Skill Level value 0..40`.")
                 elif name == "syzygypath":
                     # <=5 men are answered from these files; 6-7 still go to
                     # Lichess. Forwarded to the embedded engine because that is
