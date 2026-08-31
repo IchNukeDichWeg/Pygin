@@ -1,0 +1,51 @@
+{
+  "decision": "NULL",
+  "llr": null,
+  "next_offset": 10000,
+  "pairs": 10000,
+  "penta": [
+    588,
+    2390,
+    4030,
+    2345,
+    647
+  ],
+  "runs": [
+    {
+      "engine1": "engine_x2_lazy300",
+      "engine2": "engine_v61b_deadtag",
+      "fen_file": "UHO_4060_v4.epd",
+      "mode": "clock 10.00+0.10",
+      "offset": 0,
+      "positions": 5000,
+      "positions_played": 5000,
+      "seed": 59,
+      "smp": 1,
+      "started": "2026-08-31 10:30:06"
+    },
+    {
+      "engine1": "engine_x2_lazy300",
+      "engine2": "engine_v61b_deadtag",
+      "fen_file": "UHO_4060_v4.epd",
+      "mode": "clock 10.00+0.10",
+      "offset": 5000,
+      "positions": 5000,
+      "positions_played": 5000,
+      "seed": 59,
+      "smp": 1,
+      "started": "2026-08-31 11:47:35"
+    },
+    {
+      "engine1": "engine_x2_lazy300",
+      "engine2": "engine_v61b_deadtag",
+      "fen_file": "UHO_4060_v4.epd",
+      "mode": "clock 10.00+0.10",
+      "offset": 10000,
+      "positions": 5000,
+      "seed": 59,
+      "smp": 1,
+      "started": "2026-08-31 13:05:25"
+    }
+  ],
+  "note": "called NULL 2026-08-31: flat across two tranches, nowhere near either bound. Fourth 0-3-prior candidate to die flat (p3, s6, x1, x2). At this TC that prior range is not measurable by this screen."
+}
