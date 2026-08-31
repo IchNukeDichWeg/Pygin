@@ -3509,6 +3509,25 @@ static inline int tt_exact_shield(TTEntry cur, int new_depth, int new_flag)
 static inline int tt_exact_bonus(TTEntry cur)
 {   return (g_tt_keep_exact >= 2 && TT_FLAG(cur) == TT_EXACT) ? 2 : 0; }
 
+/* FI-115 victim rule for a CROSS-KEY store landing on an old-generation
+ * incumbent. Material is irreversible, so an entry holding MORE men than the
+ * root can never recur: it is garbage with certainty and is always taken. An
+ * old entry still REACHABLE is depth-protected instead of being clobbered on
+ * age alone -- old-generation entries supplied 39-82% of all hits in the
+ * FI-115 audit, so age alone was discarding the treasure with the garbage.
+ * Shipped since 2026-08-28 in qs_tt_store only; the negamax and null stores
+ * kept the age-alone rule, which is the half this restores. An untagged
+ * incumbent (TT_PC 0) or a disarmed toggle falls back to the old behaviour,
+ * so this is byte-identical with TT_DEADTAG off.
+ * qs_tt_store keeps its own copy: its fallback is the QS_EVICT_MAX rule, not
+ * plain overwrite, and that path is already measured. */
+static inline int tt_take_old(TTEntry cur, int depth)
+{
+    if (!(g_tt_deadtag && TT_PC(cur))) return 1;      /* pre-FI-115 rule */
+    return TT_PC(cur) > g_root_pc                     /* provably unreachable */
+        || TT_DEPTH(cur) + tt_exact_bonus(cur) <= depth;
+}
+
 /* FI-49 (armed for the twenty-fifth 50+0.20 A/B, vs Old Engine/49):
  * TT fail-high depth tightening, matching current Stockfish -- an
  * equal-depth TT_LOWER whose value would cut (v >= beta) needs one ply
@@ -4291,8 +4310,9 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                                                  depth, TT_LOWER,
                                                  store_eval, 0);
                             } else if (TT_GEN(cur) != (int)(uint16_t)g_gen
-                                       || depth >= TT_DEPTH(cur)
-                                                   + tt_exact_bonus(cur)) {
+                                       ? tt_take_old(cur, depth)   /* FI-115 */
+                                       : depth >= TT_DEPTH(cur)
+                                                  + tt_exact_bonus(cur)) {
                                 tt_store_raw(tte, key, ns, 0, depth,
                                              TT_LOWER, store_eval, 0);
                             }
@@ -4576,7 +4596,8 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                     ? (TT_DEPTH(cur) <= depth
                        && !tt_exact_shield(cur, depth, flag))   /* FI-48 */
                     : (TT_GEN(cur) != (int)(uint16_t)g_gen
-                       || TT_DEPTH(cur) + tt_exact_bonus(cur) <= depth);
+                       ? tt_take_old(cur, depth)                /* FI-115 */
+                       : TT_DEPTH(cur) + tt_exact_bonus(cur) <= depth);
         if (replace) {
             TT_TAG_PC(b);
             int sv = best;
