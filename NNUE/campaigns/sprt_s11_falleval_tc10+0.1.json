@@ -1,0 +1,39 @@
+{
+ "decision": "H0",
+ "llr": -2.9450878394775404,
+ "next_offset": 8712,
+ "pairs": 8702,
+ "penta": [
+  554,
+  2084,
+  3480,
+  2084,
+  500
+ ],
+ "runs": [
+  {
+   "engine1": "engine_s11_falleval",
+   "engine2": "engine_v61b_deadtag",
+   "fen_file": "UHO_4060_v4.epd",
+   "mode": "clock 10.00+0.10",
+   "offset": 0,
+   "positions": 5000,
+   "positions_played": 5000,
+   "seed": 59,
+   "smp": 1,
+   "started": "2026-08-31 01:34:21"
+  },
+  {
+   "engine1": "engine_s11_falleval",
+   "engine2": "engine_v61b_deadtag",
+   "fen_file": "UHO_4060_v4.epd",
+   "mode": "clock 10.00+0.10",
+   "offset": 5000,
+   "positions": 5000,
+   "positions_played": 3712,
+   "seed": 59,
+   "smp": 1,
+   "started": "2026-08-31 02:53:42"
+  }
+ ]
+}
