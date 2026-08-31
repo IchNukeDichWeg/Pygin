@@ -214,6 +214,24 @@ NEAR_EQUAL_EXTRA = {
     # (20,000 games, identical evals both sides) and they were being dropped
     # in full, because the arm names carry no "nnue" for _NNUE_RE to find.
     # Family comes from the log date via NNUE_DEFAULT_SINCE, as for cengine.
+    # 2026-08-31 campaign arms. Same rule: one config line flipped against an
+    # otherwise identical build, SAME v12 net on both sides, so the pairing is
+    # near-equal by construction and both sides' cp are on one scale.
+    "engine_v61b_deadtag",   # the campaign baseline, 20 logs on its own
+    "engine_p1_corrhist",    # correction history      (rejected -8.18)
+    "engine_p3_cutlmr",      # cutnode LMR             (null)
+    "engine_s10_asp",        # aspiration repair       (ACCEPTED -> v62)
+    "engine_s11_falleval",   # falling-eval time       (rejected)
+    "engine_s6_lmrhist",     # history-fed LMR         (null)
+    "engine_x1_probcut130",  # ProbCut margin 130      (null)
+    "engine_x2_lazy300",     # lazy-NNUE margin 300    (null)
+    # DELIBERATELY ABSENT, and not an oversight:
+    #   engine_v13s1/s2/s3 -- these swap the NET, not a search line. A
+    #     different net is a different cp scale, and this file's whole premise
+    #     is that scales are never pooled. Same reason hce and nnue are split.
+    #   engine_b05_deadtag_all -- measured -43.36, so the pairing is not
+    #     near-equal in strength whatever its construction says, and a lopsided
+    #     pairing biases the score -> outcome mapping this model IS.
     "engine_deadtag_on",    # FI-115 dead-entry TT tag
     "engine_deadtag_off",
     "engine_hash_small",    # TT sizing, 24 MiB vs 192 MiB
