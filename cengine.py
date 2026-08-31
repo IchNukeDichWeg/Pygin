@@ -9,11 +9,11 @@ transposition table, pruning, quiescence and the full static eval
 positions). Born as phase-3 step 6 of the C-core plan; the shipped engine
 since Old Engine/31.
 
-ITS DEFAULTS ARE v61 (2026-08-29): the shipped engine is v60's nnue_v12 net
-plus FI-115 dead-entry TT replacement (TT_DEADTAG True, +15.89 +/- 4.2 at
-50+0.5 with 192 MiB both sides, over a FIXED 10,000-game budget) and FI-113's
-two-cache-line TT prefetch. Bench signature 1,140,099. C-era ledger ~+354 over
-v31. The running history below is APPEND-ONLY and each paragraph describes the
+ITS DEFAULTS ARE v62 (2026-08-31): v61 plus FI-21/S10, the aspiration-window
+repair (ASPIRATION_FI21 True, +18.40 +/- 7.6 at 50+0.5, SPRT ACCEPT H1 stopped
+early over 3,439 games). v61 itself is v60's nnue_v12 net plus FI-115
+dead-entry TT replacement and FI-113's two-cache-line TT prefetch. Bench
+signature 1,203,792. C-era ledger ~+372 over v31. The running history below is APPEND-ONLY and each paragraph describes the
 version it names, not the current default -- this line is the one to trust for
 "what ships today", and it is the one to update on every release.
 
@@ -291,6 +291,31 @@ depth-protected instead of clobbered on age alone. The piece count rides in 6
 spare bits of d2 and is stamped either way, so with the toggle off the store
 path is byte-identical to v60. Nothing is ever swept; this is purely a better
 victim choice, checked at store time.
+
+v62 = v61 + **FI-21/S10 aspiration repair** (ASPIRATION_FI21 True): the root
+window was opened flat at 30cp regardless of position and widened 2x per fail,
+and a fail-low left beta where it was, which let a position oscillate low/high
+and pay the whole ladder out to the 1920 fallback. Three riders replace that as
+ONE policy -- they are not separable toggles: the opening delta scales with the
+previous score (14 + prev^2/16384), a fail-low pulls beta to the midpoint
+before alpha drops (Stockfish's order), and growth is 1.5x. Driver-only; the C
+core is untouched and the CB-02/FB-23 provisional-move machinery is preserved
+verbatim.
+
+Confirmed at BOTH time controls against v61 with the same v12 net on both arms,
+so the window policy is the only variable. Screen 10+0.1: ACCEPT H1, LLR +2.969
+over 6,687 games (51.58%, ptnml 169/769/1341/802/256, ratio 1.13, nElo +15.42).
+Shipping instrument 50+0.5: **+18.40 +/- 7.6** over 3,439 games (52.65%, ptnml
+62/361/735/450/109, nElo +28.25), SPRT[0,4] LLR +2.959 -> ACCEPT H1, STOPPED
+EARLY. Both runs crossed a bound, so both magnitudes carry the stopping bias
+that turned FI-115's +33.83 into +19.11 at a fixed budget; a fixed-budget
+50+0.5 re-run is owed before this number is treated as settled.
+
+It was the ONLY survivor of the 2026-08-31 campaign: eleven candidates, six
+rejections (correction history -8.18, falling-eval time, all three v13 corpus
+nets, and the FI-115 completion at -43.36), four nulls that never left the
+middle (cutnode LMR, history-fed LMR, ProbCut 130, lazy margin 300), and one
+skipped for want of an accepted P3.
 
 vs engine_nnue_v12 with 192 MiB on BOTH sides -- the shipped table size -- TIMED
 50+0.5 on x86, SUBSET_SEED 59, same v12 net both arms so the victim rule is the
@@ -1482,6 +1507,10 @@ class Engine:
     # v30 time-management / aspiration constants (ports, same values)
     ASPIRATION_MIN_DEPTH = 4
     ASPIRATION_DELTA = 30                    # centipawns; C scores are cp too
+    ASPIRATION_FI21 = True                   # FI-21/S10 window policy, v62.
+                                             # OFF restores the v61 window
+                                             # (flat delta, 2x growth, no
+                                             # midpoint pull) for A/B only.
     SOFT_STOP_STABLE_FRAC = 0.40
     # How long a PV may get. The EXACT prefix -- the line the search actually
     # proved, from the C triangular table -- is always emitted in full, past
@@ -2274,7 +2303,18 @@ class Engine:
         if (depth < self.ASPIRATION_MIN_DEPTH or prev_score is None
                 or abs(prev_score) >= CS_MATE_THRESH):
             return self._root(bargs, depth, -CS_INF, CS_INF, prev_key, hmc)
-        delta = self.ASPIRATION_DELTA
+        # FI-21/S10, CONFIRMED into v62 2026-08-31. Three riders, measured
+        # together as one change (they are one policy, not three toggles):
+        # a score-scaled opening window instead of a flat 30cp, a fail-low
+        # that pulls beta to the midpoint before dropping alpha, and 1.5x
+        # growth instead of 2x. ACCEPT H1 at BOTH time controls -- 10+0.1
+        # (LLR +2.969, 6,687 games) and the shipping 50+0.5 (LLR +2.959,
+        # 3,439 games). Both stopped at a bound, so the magnitude is biased
+        # upward and is NOT quoted here; a fixed-budget 50+0.5 run is owed.
+        if self.ASPIRATION_FI21:
+            delta = 14 + (prev_score * prev_score) // 16384
+        else:
+            delta = self.ASPIRATION_DELTA
         alpha = max(-CS_INF, prev_score - delta)   # FB-26: well-formed even
         beta = min(CS_INF, prev_score + delta)     # at near-mate prev_score
         provisional = 0                      # CB-02/FB-23: best PROVEN move
@@ -2289,6 +2329,11 @@ class Engine:
                 return res
             score = res[1]
             if score <= alpha:               # fail low: widen downward
+                if self.ASPIRATION_FI21:
+                    # SF order: beta comes off the OLD bounds first, then
+                    # alpha drops. Kills the fail-low/fail-high oscillation
+                    # that otherwise pays the full ladder to the 1920 cap.
+                    beta = (alpha + beta) // 2
                 alpha = max(-CS_INF, score - delta)
             elif score >= beta:              # fail high: widen upward
                 if self.CB2 and res[0]:
@@ -2300,7 +2345,7 @@ class Engine:
                 beta = min(CS_INF, score + delta)
             else:
                 return res
-            delta *= 2
+            delta += delta // 2 if self.ASPIRATION_FI21 else delta
             if delta >= 2 * self.ASPIRATION_DELTA * 32:
                 return self._root(bargs, depth, -CS_INF, CS_INF, prev_key, hmc)
 
