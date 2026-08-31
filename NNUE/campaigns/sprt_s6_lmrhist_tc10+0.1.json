@@ -1,0 +1,52 @@
+{
+  "decision": "NULL",
+  "llr": -0.18316362761275262,
+  "next_offset": 10082,
+  "pairs": 10071,
+  "penta": [
+    605,
+    2365,
+    4033,
+    2492,
+    576
+  ],
+  "runs": [
+    {
+      "engine1": "engine_s6_lmrhist",
+      "engine2": "engine_v61b_deadtag",
+      "fen_file": "UHO_4060_v4.epd",
+      "mode": "clock 10.00+0.10",
+      "offset": 0,
+      "positions": 5000,
+      "positions_played": 5000,
+      "seed": 59,
+      "smp": 1,
+      "started": "2026-08-31 03:52:25"
+    },
+    {
+      "engine1": "engine_s6_lmrhist",
+      "engine2": "engine_v61b_deadtag",
+      "fen_file": "UHO_4060_v4.epd",
+      "mode": "clock 10.00+0.10",
+      "offset": 5000,
+      "positions": 5000,
+      "positions_played": 5000,
+      "seed": 59,
+      "smp": 1,
+      "started": "2026-08-31 05:11:27"
+    },
+    {
+      "engine1": "engine_s6_lmrhist",
+      "engine2": "engine_v61b_deadtag",
+      "fen_file": "UHO_4060_v4.epd",
+      "mode": "clock 10.00+0.10",
+      "offset": 10000,
+      "positions": 5000,
+      "positions_played": 82,
+      "seed": 59,
+      "smp": 1,
+      "started": "2026-08-31 06:30:24"
+    }
+  ],
+  "note": "called NULL by the user 2026-08-31 at 10,000 pairs / 20,000 games. LLR -0.547 -> +0.042 across two tranches: not near either bound, dead centre, so the near-miss rule does not apply and forcing a sign would be inventing a verdict. Expected effect was +0-3, so a null is exactly what the prior predicted. Divisor 512 was the engaging setting; 2048 had already measured node-identical."
+}
