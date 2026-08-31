@@ -27,6 +27,13 @@ DATA = {
     51: (11.12, 6.84), 52: (6.63, 6.89), 53: (37.52, 6.90), 54: (31.20, 6.74),
     55: (9.66, 6.93), 56: (11.44, 7.16), 57: (0.00, 6.99), 58: (19.11, 5.19),
     59: (13.84, 5.75), 60: (0.00, 5.68), 61: (15.89, 5.59),
+    # v62 Elo is 0.00 ON PURPOSE, same as v60: the A/B accepted at a
+    # bound (+18.40 +/- 7.6, LLR +2.959), and a bound-stopped magnitude
+    # does not advance the ledger, so it must not draw a step in the
+    # cumulative line either. NPS measured on the same Mac17,8 as the
+    # rest of the column, gated on v61 reproducing its stored 5.59M
+    # within 1.8% first -- a loaded-machine read had said 3.83M.
+    62: (0.00, 5.70),
 }
 
 # EVERY NPS FIGURE ABOVE IS FROM ONE MACHINE and one instrument:
@@ -53,6 +60,15 @@ MATETRACK = [
     (51, 51.4, 44.35), (52, 47.7, 41.0), (53, 48.75, 41.45), (54, 48.45, 41.05),
     (55, 48.25, 41.0), (56, 42.75, 36.2), (57, 43.25, 36.6), (58, 37.15, 33.1),
     (59, 39.95, 35.8), (60, 40.45, 35.75), (61, 41.0, 36.35),
+    # v62 measured 2026-08-31. A DECLINE, and recorded as one: v61 re-run the
+    # same day read 41.35/36.60 at load 5.49 while v62 read 40.40/36.10 at the
+    # LIGHTER load 3.97, so the gap is not the machine. Plausible mechanism:
+    # the FI-21 window opens tighter on a balanced score, and a mate found
+    # outside that window costs a re-search the 0.25s budget may not afford.
+    # Per this file's own rule a single reading is not a verdict -- but a
+    # reproducible decline deserves weight, so re-measure it next release.
+    (62, 40.40, 36.10),
+
 ]
 
 # Knight odds win% vs FULL-STRENGTH Stockfish 18 -- the external yardstick.
