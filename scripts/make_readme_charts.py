@@ -19,26 +19,22 @@ import os
 # v31 is the C-era baseline (delta 0); its +215 vs v30 is odds-derived, not an
 # A/B, so it does not enter the cumulative line.
 DATA = {
-    31: (0.00, 5.23), 32: (7.30, 5.18), 33: (23.52, 5.23), 34: (6.81, 5.26),
-    35: (72.00, 6.00), 36: (24.67, 6.72), 37: (0.17, 6.37), 38: (1.36, 6.16),
-    39: (8.86, 7.01), 40: (4.31, 7.07), 41: (-2.88, 7.04), 42: (3.27, 7.36),
-    43: (5.18, 7.29), 44: (13.31, 7.57), 45: (13.52, 7.23), 46: (5.94, 7.06),
-    47: (3.16, 6.99), 48: (4.73, 6.96), 49: (0.97, 6.93), 50: (1.60, 6.84),
-    51: (11.12, 6.84), 52: (6.63, 6.89), 53: (37.52, 6.90), 54: (31.20, 6.74),
-    55: (9.66, 6.93), 56: (11.44, 7.16), 57: (0.00, 6.99), 58: (19.11, 5.19),
-    59: (13.84, 5.75), 60: (0.00, 5.68), 61: (15.89, 5.59),
-    # v62 Elo is 0.00 ON PURPOSE, same as v60: the A/B accepted at a
-    # bound (+18.40 +/- 7.6, LLR +2.959), and a bound-stopped magnitude
-    # does not advance the ledger, so it must not draw a step in the
-    # cumulative line either. NPS measured on the same Mac17,8 as the
-    # rest of the column, gated on v61 reproducing its stored 5.59M
-    # within 1.8% first -- a loaded-machine read had said 3.83M.
-    62: (0.00, 5.70),
+    31: (0.00, 5.34), 32: (7.30, 5.33), 33: (23.52, 5.31), 34: (6.81, 5.18),
+    35: (72.00, 6.25), 36: (24.67, 7.49), 37: (0.17, 7.32), 38: (1.36, 7.05),
+    39: (8.86, 7.89), 40: (4.31, 7.91), 41: (-2.88, 7.62), 42: (3.27, 8.09),
+    43: (5.18, 8.25), 44: (13.31, 8.57), 45: (13.52, 8.07), 46: (5.94, 7.56),
+    47: (3.16, 7.15), 48: (4.73, 7.19), 49: (0.97, 7.07), 50: (1.60, 7.17),
+    51: (11.12, 7.18), 52: (6.63, 7.18), 53: (37.52, 7.23), 54: (31.20, 7.06),
+    55: (9.66, 7.26), 56: (11.44, 7.44), 57: (0.00, 7.40), 58: (19.11, 5.32),
+    59: (13.84, 5.89), 60: (0.00, 5.84), 61: (15.89, 5.91), 62: (0.00, 5.94),
 }
 
 # EVERY NPS FIGURE ABOVE IS FROM ONE MACHINE and one instrument:
-# nps_history_bench.py's trimmed mean across 10 positions at 4s/run, swept
-# v1-v61 on a Mac17,8 (Apple M5 Pro), 2026-08-27/29. The column used to mix
+# nps_history_bench.py's trimmed mean across 10 positions, 3 runs x 4s,
+# --workers 1, swept v31-v62 in ONE session on a Mac17,8 (Apple M5 Pro),
+# 2026-08-31. Re-swept WHOLE rather than appending v62: two measurements
+# of v61 the same day differed by ~7%, so a spliced column would have
+# plotted session variance as an engine trend right at the seam. The column used to mix
 # a per-version bench-signature NPS taken on older hardware, which made the
 # multiplier chart read 1.43x at v58 where one consistent machine reads
 # 0.99x -- a hardware artefact plotted as an engine trend. NPS is
