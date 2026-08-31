@@ -1,0 +1,64 @@
+{
+  "decision": "NULL",
+  "llr": 0.3694942061747024,
+  "next_offset": 15034,
+  "pairs": 15022,
+  "penta": [
+    892,
+    3547,
+    6021,
+    3651,
+    911
+  ],
+  "runs": [
+    {
+      "engine1": "engine_x1_probcut130",
+      "engine2": "engine_v61b_deadtag",
+      "fen_file": "UHO_4060_v4.epd",
+      "mode": "clock 10.00+0.10",
+      "offset": 0,
+      "positions": 5000,
+      "positions_played": 5000,
+      "seed": 59,
+      "smp": 1,
+      "started": "2026-08-31 06:32:31"
+    },
+    {
+      "engine1": "engine_x1_probcut130",
+      "engine2": "engine_v61b_deadtag",
+      "fen_file": "UHO_4060_v4.epd",
+      "mode": "clock 10.00+0.10",
+      "offset": 5000,
+      "positions": 5000,
+      "positions_played": 5000,
+      "seed": 59,
+      "smp": 1,
+      "started": "2026-08-31 07:51:33"
+    },
+    {
+      "engine1": "engine_x1_probcut130",
+      "engine2": "engine_v61b_deadtag",
+      "fen_file": "UHO_4060_v4.epd",
+      "mode": "clock 10.00+0.10",
+      "offset": 10000,
+      "positions": 5000,
+      "positions_played": 5000,
+      "seed": 59,
+      "smp": 1,
+      "started": "2026-08-31 09:10:31"
+    },
+    {
+      "engine1": "engine_x1_probcut130",
+      "engine2": "engine_v61b_deadtag",
+      "fen_file": "UHO_4060_v4.epd",
+      "mode": "clock 10.00+0.10",
+      "offset": 15000,
+      "positions": 5000,
+      "positions_played": 34,
+      "seed": 59,
+      "smp": 1,
+      "started": "2026-08-31 10:28:52"
+    }
+  ],
+  "note": "called NULL 2026-08-31 at ~15,000 pairs / 30,000 games. LLR +0.218 -> +1.006 -> +0.339: it climbed a third of the way to the accept bound and then retreated, so the apparent trend after two tranches was noise. Nowhere near either bound at three tranches and 3x the standard budget. Expected effect was 0-3 and the pooled read sits inside it. Same shape as p3_cutlmr and s6_lmrhist: flat is a decision."
+}
