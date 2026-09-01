@@ -45,9 +45,14 @@ ENGINE_2_PATH = "stockfish_engine.py"
 ENGINE_1_PLAYS_FIRST = "white"          # "white" | "black"
 
 # --- Match length & parallelism --------------------------------------- #
-NUM_GAMES = 400       # TOTAL games (400 -> ~±35 Elo CI: enough to SEE a
+NUM_GAMES = 500       # TOTAL games -- matches the v58 pawn-odds point (500)
+                      # so v62 extends that series rather than starting one.
+                      # (400 -> ~±35 Elo CI: enough to SEE a
                       # step on the rook-odds line, per the v30-era runs)
-N_WORKERS = 10        # parallel games (worker processes); 1 = sequential,
+N_WORKERS = 9         # cores/2 on this 18-core Mac: a game runs TWO engines,
+                      # so this is one core each and SF is never starved --
+                      # the v58 point was measured at cores/2 for that reason.
+                      # parallel games (worker processes); 1 = sequential,
                       # 0 = auto (cores - 1, same rule as match.py).
                       # Keep N_WORKERS * ENGINE_SMP <= CPU cores.
 
