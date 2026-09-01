@@ -107,6 +107,21 @@ ODDS_GIVEN_BY = "engine_2"
                                         #   v52  81.65% (1000g,  +259 +/-36)
                                         # +52 Elo for +215 of self-play Elo, then
                                         # the ceiling -- rook odds went the same way.
+# WHEN f2 SATURATES, THE LADDER IS NOT FINISHED (user's idea 2026-09-01, and
+# it is right): f2 is the LARGEST pawn handicap, not the smallest. Removing it
+# opens the e1-h4 diagonal, weakens the castled king and concedes the f-file,
+# so it costs far more than its material. The rungs below it, easiest-to-give
+# last:
+#     ["f2"]   biggest  king safety + open file   <- current, 90.30% @v58
+#     ["h2"]   middle   rook pawn, still kingside
+#     ["a2"]   smallest queenside rook pawn, king untouched: nearly pure
+#              material, which is exactly what a finer rung needs to be
+# A SMALLER handicap makes it HARDER for us, so the win% drops and resolution
+# comes back. Move down a rung when a measurement clears ~93%.
+#
+# And if even a2 saturates, the ladder does not have to be material at all --
+# this harness already supports TIME odds (see ENGINE_*_MODE above), which is
+# a continuous knob rather than three discrete steps.
 ODDS_SQUARES = ["f2"]                   # PAWN odds (f-pawn) -- the ACTIVE
                                         # yardstick, the rung with headroom.
                                         # 2026-08-13 @v59, CORRECTED harness
