@@ -105,11 +105,22 @@ measured 45.45%.
 Those numbers have been removed rather than annotated. A retracted measurement
 kept on the page with a footnote still gets quoted.
 
-**Pawn odds (f2)** -- the active rung, and the one handicap Stockfish still
+**Pawn odds (f2)** -- the published rung, and the one handicap Stockfish still
 scores against: **81.00% over 1,000 games** (704W / 212D / 84L, +251.89
 +/-35.2) at v59, 50+0.50, full-strength SF-18, corrected harness, 2026-08-13.
 The withdrawn pre-fix figure was 90.30%; about nine points of it were the
 buggy termination erasing Stockfish's conversions, not engine strength.
+
+**Pawn odds (h2)** is the ACTIVE rung as of 2026-09-02, at **56.75% over 200
+games** (75W / 77D / 48L, +47.19 +/-49.4) at v62. All eight white pawns were
+measured that night: six of them cluster at 73.5-77.5% and are not separable
+from each other, f2 leads at 80.50%, and h2 alone sits near 50%. The switch is
+for resolution, not saturation -- an era gain of +35 Elo moves f2 by 3.0 score
+points and h2 by 4.9, so h2 answers the same question with 41% fewer games.
+Why h2 costs Stockfish so much less than the other seven is **not explained**;
+the obvious candidate, that it hands SF an open file, was tested and rejected
+(SF advances a rook up the vacated file in 76% of a2 games and 72% of h2 ones).
+f2 and h2 numbers are different instruments and are never pooled.
 
 Against its own Python engine (v30, ~2440-2450), v59 scored **195W / 5D / 0L
 over 200 games** (98.75%) at 50+0.50 on the corrected harness, 2026-08-12. No
@@ -377,7 +388,7 @@ python3 match.py engine.py stockfish_engine.py 100 0 --sf-elo 2000   # 0 = full 
 ```
 
 **Material / time odds** are configured in `odds.py`'s `CONFIG` block (the
-default is pawn odds, `f2`). The opponent is **full-strength SF-18** -- that is
+default is pawn odds, `h2`). The opponent is **full-strength SF-18** -- that is
 what the ladder means, and a capped opponent measures something else that no
 recorded rung can be compared to. Each worker runs two engines, so `--workers 0`
 here means cores/2, not cores-1 -- a real clock TC gets starved by

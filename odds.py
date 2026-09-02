@@ -153,8 +153,38 @@ ODDS_GIVEN_BY = "engine_2"
 # And if even a2 saturates, the ladder does not have to be material at all --
 # this harness already supports TIME odds (see ENGINE_*_MODE above), which is
 # a continuous knob rather than three discrete steps.
-ODDS_SQUARES = ["f2"]                   # PAWN odds (f-pawn) -- the ACTIVE
-                                        # yardstick, the rung with headroom.
+ODDS_SQUARES = ["h2"]                   # PAWN odds (h-pawn) -- the ACTIVE
+                                        # yardstick since 2026-09-02. DELIBERATE
+                                        # INSTRUMENT CHANGE, and f2 numbers can
+                                        # NOT be pooled with h2 numbers.
+                                        # WHY: resolution, not saturation. f2
+                                        # is only at 80.50%, nowhere near the
+                                        # ~93% switch trigger, but a rung near
+                                        # 50% converts a score shift into far
+                                        # more Elo. Measured over 200 games
+                                        # each, same night, same machine:
+                                        #   f2  +246.30 +/- 79.5 Elo
+                                        #   h2   +47.19 +/- 49.4 Elo
+                                        # An era gain of +35 Elo moves f2 by
+                                        # 2.97 score points and h2 by 4.86, so
+                                        # seeing it at 3 sigma costs 1,928
+                                        # games per run at f2 and 1,136 at h2:
+                                        # 41% cheaper for the same answer.
+                                        # 2026-09-02 @v62, 200g (a screen, not
+                                        # a published figure):
+                                        #   56.75% (+47.19 +/-49.4)
+                                        #   75W / 77D / 48L, 50+0.50, FULL
+                                        #   strength, on the 18-core Mac.
+# ODDS_SQUARES = ["f2"]                 # PAWN odds (f-pawn) -- the FORMER
+                                        # yardstick, retired 2026-09-02 for
+                                        # resolution. Its clean series is:
+                                        # 2026-09-02 @v62: 80.50% (200g,
+                                        #   +246.30 +/-79.5) 136W/50D/14L.
+                                        #   0.2 sigma from the v59 point, but
+                                        #   a DIFFERENT MACHINE on a TIMED
+                                        #   instrument, so this is not a delta
+                                        #   on v59 -- it is a fresh reading
+                                        #   that happens to agree.
                                         # 2026-08-13 @v59, CORRECTED harness
                                         # (fc82cb7) + SF respawn + native WDL:
                                         #   81.00% (1000g, +251.89 +/-35.2)
