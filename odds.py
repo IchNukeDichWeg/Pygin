@@ -108,16 +108,47 @@ ODDS_GIVEN_BY = "engine_2"
                                         # +52 Elo for +215 of self-play Elo, then
                                         # the ceiling -- rook odds went the same way.
 # WHEN f2 SATURATES, THE LADDER IS NOT FINISHED (user's idea 2026-09-01, and
-# it is right): f2 is the LARGEST pawn handicap, not the smallest. Removing it
-# opens the e1-h4 diagonal, weakens the castled king and concedes the f-file,
-# so it costs far more than its material. The rungs below it, easiest-to-give
-# last:
-#     ["f2"]   biggest  king safety + open file   <- current, 90.30% @v58
-#     ["h2"]   middle   rook pawn, still kingside
-#     ["a2"]   smallest queenside rook pawn, king untouched: nearly pure
-#              material, which is exactly what a finer rung needs to be
-# A SMALLER handicap makes it HARDER for us, so the win% drops and resolution
-# comes back. Move down a rung when a measurement clears ~93%.
+# it is right): f2 is the LARGEST pawn handicap, not the smallest. A SMALLER
+# handicap makes it HARDER for us, so the win% drops and resolution comes back.
+#
+# MEASURED 2026-09-02, all eight white pawns, 200 games each, 50+0.50, 9
+# workers, full-strength SF, v62 + nnue_v12 (scripts/odds_pawn_sweep.sh):
+#
+#     f2  80.50% +/-2.17   136W  50D  14L
+#     e2  77.50% +/-2.17   123W  64D  13L
+#     d2  76.00% +/-2.34   123W  58D  19L
+#     a2  75.50% +/-2.06   111W  80D   9L
+#     g2  75.25% +/-2.42   123W  55D  22L
+#     c2  74.75% +/-2.18   112W  75D  13L
+#     b2  73.50% +/-2.32   112W  70D  18L
+#     h2  56.75% +/-2.73    75W  77D  48L
+#
+# THERE ARE ONLY TWO USABLE RUNGS, not eight. The middle six span 73.5-77.5%
+# and no pair of them is separated by even 1.5 SE: as rungs they are the same
+# rung. h2 sits 4.7 SE below the nearest of them and 6.8 below f2, and its
+# 48 losses (vs 9-22 everywhere else) are what moves it -- SF a pawn down
+# still WINS games without its h-pawn, which it essentially never does
+# without any other pawn.
+#
+#     ["f2"]   80.50%  the saturating rung, still the published yardstick
+#     ["h2"]   56.75%  the fine rung: near 50%, where a match carries the
+#                      most information per game
+#
+# THE PRE-SWEEP THEORY WAS WRONG and it is recorded here so it is not
+# re-derived: it had h2 as the MIDDLE rung and a2 as the smallest, reasoning
+# that a queenside rook pawn is near-pure material while h2 still touches the
+# castled king. Measurement says the opposite -- a2 is indistinguishable from
+# the pack (1.7 SE off f2), and h2 alone is the fine rung. Tested and REJECTED
+# as the explanation: "SF gets an open file for its rook". SF advances a rook
+# up the vacated file just as often on a2 (76% of games) as on h2 (72%), so
+# the open file is not what separates them. The mechanism is unexplained.
+# Both colours show it (cengine 65.00% as White, 48.50% as Black), so it is
+# not a colour artefact.
+#
+# CAVEAT ON THE RANKING: every game starts from the initial position minus the
+# pawn, with no book, so the only source of variety is engine nondeterminism.
+# It is enough -- 185-198 of 200 games per square reach a distinct position by
+# ply 8 -- but 200 games only resolves the f2/pack/h2 TIERS, never neighbours.
 #
 # And if even a2 saturates, the ladder does not have to be material at all --
 # this harness already supports TIME odds (see ENGINE_*_MODE above), which is
