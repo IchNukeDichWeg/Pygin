@@ -490,6 +490,42 @@ if os.path.exists("csearch.c"):
               if ok_all else "a value changed -- confirmed C-search change? "
               "re-measure CE_LADDER; else regression")
 
+        # --- 5b-tt. retained-TT pin: the ONLY check that sees a TT
+        # REPLACEMENT rule ------------------------------------------------ #
+        # Every check above resets the table (`cs_tt_reset()` per depth, and
+        # the ladder comment says so out loud: "cold TT => reproducible
+        # count"). A victim rule only ever runs when the table is FULL and
+        # carried across moves, so from a cold table its code never executes
+        # and the ladder, the bench signature and REF_NODES are all
+        # structurally blind to it. That blindness shipped a rejected change:
+        # the b05 FI-115 completion (b4339ae + a1a31cd) measured H0 at
+        # LLR -5.98, was never reverted, and rode into v62 with bench
+        # (1,203,792) and kiwipete d12 (670,778) IDENTICAL on both cores.
+        # Playing a game with the table kept is what exposes it.
+        #
+        # Re-pin on any confirmed change to a TT store/replacement path, and
+        # NOWHERE ELSE -- like CE_LADDER this is Mac-only, and a moved value
+        # with no such change in the diff is the regression this exists for.
+        # Old Engine/62 (the b05 core) reads 3,294,864 here; v61's core and
+        # HEAD both read the pinned value.
+        TT_RETAINED_NODES = 2_479_366
+        ce._lib.set_tt_bits(19)            # 12 MiB: real replacement pressure
+        ce._lib.cs_tt_reset()
+        _b, _tot = chess.Board(), 0
+        for _ in range(28):
+            _b.push(ce.get_best_move(_b, 10))
+            _tot += ce.nodes_searched
+        ce._lib.set_tt_bits(int(ce.TT_BITS))   # restore, and it re-callocs
+        ce._lib.cs_tt_reset()
+        print(f"\nC core retained-TT probe (28 plies, d10, 12 MiB kept): "
+              f"{_tot:,} nodes")
+        check("C core TT replacement rule pinned (retained-TT probe)",
+              _tot == TT_RETAINED_NODES,
+              f"{_tot:,} nodes"
+              + ("" if _tot == TT_RETAINED_NODES else
+                 f" != pinned {TT_RETAINED_NODES:,} -- a TT store/replacement "
+                 "path changed; confirmed? re-pin. else regression"))
+
         # --- 5c. NPS: 2s timed search, print throughput ------------------ #
         # Catches the two disasters a fixed-depth ladder can't: a slow/
         # unoptimized build and the pure-Python eval fallback. Absolute NPS
