@@ -9,13 +9,32 @@ transposition table, pruning, quiescence and the full static eval
 positions). Born as phase-3 step 6 of the C-core plan; the shipped engine
 since Old Engine/31.
 
-ITS DEFAULTS ARE v62 (2026-08-31): v61 plus FI-21/S10, the aspiration-window
-repair (ASPIRATION_FI21 True, +18.40 +/- 7.6 at 50+0.5, SPRT ACCEPT H1 stopped
-early over 3,439 games). v61 itself is v60's nnue_v12 net plus FI-115
-dead-entry TT replacement and FI-113's two-cache-line TT prefetch. Bench
-signature 1,203,792. C-era ledger ~+354 over v31 -- UNCHANGED: v62's
-number is bound-stopped, and per the v60 precedent the ledger only advances
-on a fixed-budget measurement. The running history below is APPEND-ONLY and each paragraph describes the
+ITS DEFAULTS ARE A v63 CANDIDATE (2026-09-02), NOT v62 as released. The tree
+is v62's settings on v61's C core: csearch.so here is byte-identical to
+Old Engine/61/csearch.so, and the retained-TT probe reads 2,479,366 against
+the shipped v62's 3,294,864.
+
+WHY THE CORE MOVED. v62 shipped carrying b4339ae + a1a31cd, the b05 FI-115
+completion, which had ALREADY measured ACCEPT H0 (LLR -5.98, 1,500 pairs) as
+its own arm against Old Engine/61. The verdict was committed (0edfa68, 15:38
+on 08-31); the code was not reverted, and the release froze it four hours
+later. Reverting is not a new bet, it restores a measured decision.
+
+S10 STILL STANDS. Its A/B was engine_s10_asp vs engine_v61b_deadtag, both
+Python shims over the same live csearch.so, so the b05 core sat on BOTH arms
+and cancelled: +18.40 +/- 7.6 at 50+0.5 is an honest reading of the window
+change relative to that core. What was never measured is v62-as-shipped
+against v61-as-shipped, and that A/B is now owed at 50+0.5 -- HEAD vs
+Old Engine/61 prices the window repair on a clean core.
+
+v62 itself is v61 plus FI-21/S10 (ASPIRATION_FI21 True); v61 is v60's
+nnue_v12 net plus FI-115 dead-entry TT replacement (qsearch-only scope, which
+is the part that measured +15.89 and the part that stays) and FI-113's
+two-cache-line TT prefetch. Bench signature 1,203,792, UNCHANGED by the
+revert -- bench, CE_LADDER and REF_NODES are all structurally blind to a TT
+replacement rule, which is exactly how this shipped. C-era ledger ~+354 over
+v31 -- UNCHANGED, and now doubly so: v62's number is bound-stopped, and the
+core it was measured on is not the core here. The running history below is APPEND-ONLY and each paragraph describes the
 version it names, not the current default -- this line is the one to trust for
 "what ships today", and it is the one to update on every release.
 

@@ -1876,19 +1876,7 @@ typedef struct {
  * denominated in. Default stays OFF until that run reports. */
 static int g_tt_deadtag = 0;                  /* visible switch, default OFF */
 void set_tt_deadtag(int v) { g_tt_deadtag = v ? 1 : 0; }
-/* FI-115 store tag. Stamped from the STORING node's own board at each store,
- * never at node entry: an entry-time write is overwritten by every child
- * before the end-of-node store reads it, so entries carried a descendant
- * leaf's (lower) count. Measured 2026-08-29 on the shipped build: 75.9% of
- * end-of-node stores were mis-stamped (0 over-tags -- the error was
- * one-directional, which is why it was safe but wrong). An under-tagged
- * entry looks reachable and is depth-protected: exactly the garbage the
- * victim rule exists to evict.
- * The two store helpers take the board and stamp INSIDE, so no call site can
- * forget -- and so no stamp can ever be inserted between a brace-less `if`
- * and its store (which silently makes the store unconditional). */
-#define TT_TAG_PC(bd) (g_node_pc = __builtin_popcountll((bd)->occ[0] | (bd)->occ[1]))
-static __thread int g_node_pc = 0;            /* piece count of the STORING node */
+static __thread int g_node_pc = 0;            /* piece count at this node */
 static int g_root_pc = 32;                    /* piece count at the root */
 void cs_set_root_pc(int n) { g_root_pc = n; }
 #define TT_PC(e) ((int)(((e).d2 >> 19) & 63))
@@ -3509,25 +3497,6 @@ static inline int tt_exact_shield(TTEntry cur, int new_depth, int new_flag)
 static inline int tt_exact_bonus(TTEntry cur)
 {   return (g_tt_keep_exact >= 2 && TT_FLAG(cur) == TT_EXACT) ? 2 : 0; }
 
-/* FI-115 victim rule for a CROSS-KEY store landing on an old-generation
- * incumbent. Material is irreversible, so an entry holding MORE men than the
- * root can never recur: it is garbage with certainty and is always taken. An
- * old entry still REACHABLE is depth-protected instead of being clobbered on
- * age alone -- old-generation entries supplied 39-82% of all hits in the
- * FI-115 audit, so age alone was discarding the treasure with the garbage.
- * Shipped since 2026-08-28 in qs_tt_store only; the negamax and null stores
- * kept the age-alone rule, which is the half this restores. An untagged
- * incumbent (TT_PC 0) or a disarmed toggle falls back to the old behaviour,
- * so this is byte-identical with TT_DEADTAG off.
- * qs_tt_store keeps its own copy: its fallback is the QS_EVICT_MAX rule, not
- * plain overwrite, and that path is already measured. */
-static inline int tt_take_old(TTEntry cur, int depth)
-{
-    if (!(g_tt_deadtag && TT_PC(cur))) return 1;      /* pre-FI-115 rule */
-    return TT_PC(cur) > g_root_pc                     /* provably unreachable */
-        || TT_DEPTH(cur) + tt_exact_bonus(cur) <= depth;
-}
-
 /* FI-49 (armed for the twenty-fifth 50+0.20 A/B, vs Old Engine/49):
  * TT fail-high depth tightening, matching current Stockfish -- an
  * equal-depth TT_LOWER whose value would cut (v >= beta) needs one ply
@@ -3627,10 +3596,8 @@ void set_iir_weak(int v) { g_iir_weak = v ? 1 : 0; }
 static int g_lmr_badcap = 0;
 void set_lmr_badcap(int v) { g_lmr_badcap = v ? 1 : 0; }
 
-static void tt_store_terminal(const Board* bd, TTEntry* t, uint64_t key,
-                              int val, int ply)
+static void tt_store_terminal(TTEntry* t, uint64_t key, int val, int ply)
 {
-    TT_TAG_PC(bd);
     if (!g_term_store || !g_use_tt || t == NULL || CS_UNWINDING()) return;
     int sv = val;
     if (sv >= MATE_THRESH) sv += ply;                /* node -> ply-relative */
@@ -3657,12 +3624,10 @@ static void tt_store_terminal(const Board* bd, TTEntry* t, uint64_t key,
  *
  * Written down so the next reader knows it was measured and chosen, not
  * missed -- and does not "fix" it with a CAS that costs NPS for nothing. */
-static inline void qs_tt_store(const Board* bd, TTEntry* t, uint64_t key,
-                               int val, int ply,
+static inline void qs_tt_store(TTEntry* t, uint64_t key, int val, int ply,
                                uint32_t move, int flag, int ev,
                                int depth)  /* FI-52: depth; FI-71: slot in */
 {
-    TT_TAG_PC(bd);
     /* FI-71: the slot pointer is computed once at the probe and threaded
      * in -- every call site is inside `if (use_qtt ...)`, and g_tt cannot
      * change mid-search, so it is never NULL here. Byte-identical output. */
@@ -3725,6 +3690,7 @@ _Static_assert(offsetof(Board, knights) == offsetof(Board, pawns) + 1 * sizeof(u
 static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
                    int hmc)
 {
+    g_node_pc = __builtin_popcountll(b->occ[0] | b->occ[1]);  /* FI-115 */
     g_nodes++;
     g_pv_len[ply] = 0;     /* PV-01: every exit path leaves a valid (empty)
                             * line -- a stale slot would splice wrong moves
@@ -3808,7 +3774,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         n = gen_legal(b, moves);                     /* full evasions */
         if (n == 0) {                                /* checkmate */
             if (use_qtt)                             /* FI-54: permanent fact */
-                tt_store_terminal(b, &g_tt[key & TT_MASK], key,
+                tt_store_terminal(&g_tt[key & TT_MASK], key,
                                   -CS_INF + ply, ply);
             return -CS_INF + ply;
         }
@@ -3828,7 +3794,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         if (stand >= beta) {                         /* fail-soft stand-pat */
             if (has_legal_quiet(b) || gen_noisy(b, moves) > 0) {
                 if (use_qtt && !CS_UNWINDING())      /* P-44: cache the cutoff */
-                    qs_tt_store(b, qslot, key, stand, ply, 0, TT_LOWER, raw_stand, 0);
+                    qs_tt_store(qslot, key, stand, ply, 0, TT_LOWER, raw_stand, 0);
                 return stand;
             }
             SM_TALLY(b);
@@ -3885,7 +3851,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
                                                   * TT_LOWER; !in_chk => raw
                                                   * eval kept, FI-52 tag 0) */
                     if (use_qtt && !CS_UNWINDING())
-                        qs_tt_store(b, qslot, key, best, ply, bm, TT_LOWER,
+                        qs_tt_store(qslot, key, best, ply, bm, TT_LOWER,
                                     raw_stand, 0);
                     return best;
                 }
@@ -3917,7 +3883,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         stand = qs_sharpen_stand(stand, qs_sh_flag, qs_sh_val);   /* FB-40 */
         if (stand >= beta) {                         /* fail-soft stand-pat */
             if (use_qtt && !CS_UNWINDING())          /* P-44: cache the cutoff */
-                qs_tt_store(b, qslot, key, stand, ply, 0, TT_LOWER, raw_stand, 0);
+                qs_tt_store(qslot, key, stand, ply, 0, TT_LOWER, raw_stand, 0);
             return stand;
         }
         if (stand > alpha) alpha = stand;
@@ -4001,7 +3967,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
     if (use_qtt && !CS_UNWINDING()) {
         int flag = (best <= alpha_orig) ? TT_UPPER
                  : (best >= beta)       ? TT_LOWER : TT_EXACT;
-        qs_tt_store(b, qslot, key, best, ply, bm, flag,
+        qs_tt_store(qslot, key, best, ply, bm, flag,
                     in_chk ? TT_EVAL_NONE : raw_stand,   /* FI-03: RAW eval */
                     (g_qs_chk_d1 && in_chk) ? 1 : 0);    /* FI-52: depth-1 tag */
     }
@@ -4012,6 +3978,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                    uint32_t prev12, int in_chk, int hmc, int chk, int srb,
                    int cutnode)
 {
+    g_node_pc = __builtin_popcountll(b->occ[0] | b->occ[1]);  /* FI-115 */
     /* FI-104: sticky ttPv. Set here rather than beside is_pv further down,
      * because the TT probe that ORs in a stored marker runs BEFORE that
      * declaration -- (beta - alpha) > 1 is the same test, just hoisted. */
@@ -4291,7 +4258,6 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                     if (g_use_tt && tte && ns < MATE_THRESH
                         && !CS_UNWINDING()) {
                         if (!g_cb2) {
-                            TT_TAG_PC(b);
                             tt_store_raw(tte, key, ns, 0, depth, TT_LOWER,
                                          store_eval, 0);      /* FI-106 */
                         } else {
@@ -4300,7 +4266,6 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                              * same-key entry's move (ordering asset). */
                             TTEntry cur = tt_snapshot(tte);   /* FB-12 */
                             uint64_t ck = cur.key_x ^ cur.d1 ^ cur.d2;
-                            TT_TAG_PC(b);
                             if (ck == key) {
                                 if (depth >= TT_DEPTH(cur)
                                     && !tt_exact_shield(cur, depth,
@@ -4310,9 +4275,8 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                                                  depth, TT_LOWER,
                                                  store_eval, 0);
                             } else if (TT_GEN(cur) != (int)(uint16_t)g_gen
-                                       ? tt_take_old(cur, depth)   /* FI-115 */
-                                       : depth >= TT_DEPTH(cur)
-                                                  + tt_exact_bonus(cur)) {
+                                       || depth >= TT_DEPTH(cur)
+                                                   + tt_exact_bonus(cur)) {
                                 tt_store_raw(tte, key, ns, 0, depth,
                                              TT_LOWER, store_eval, 0);
                             }
@@ -4388,7 +4352,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             if (!in_chk) SM_TALLY(b);
             int tv = in_chk ? -CS_INF + ply
                             : (g_sm_contempt ? draw_score(b) : 0);   /* FB-48 */
-            tt_store_terminal(b, tte, key, tv, ply);    /* FI-54 */
+            tt_store_terminal(tte, key, tv, ply);    /* FI-54 */
             return tv;
         }
         /* P-43: single-reply extension -- node-level, fires when this node
@@ -4550,7 +4514,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         if (!in_chk) SM_TALLY(b);
         int tv = in_chk ? -CS_INF + ply
                         : (g_sm_contempt ? draw_score(b) : 0);       /* FB-48 */
-        tt_store_terminal(b, tte, key, tv, ply);        /* FI-54 */
+        tt_store_terminal(tte, key, tv, ply);        /* FI-54 */
         return tv;
     }
 
@@ -4596,10 +4560,8 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                     ? (TT_DEPTH(cur) <= depth
                        && !tt_exact_shield(cur, depth, flag))   /* FI-48 */
                     : (TT_GEN(cur) != (int)(uint16_t)g_gen
-                       ? tt_take_old(cur, depth)                /* FI-115 */
-                       : TT_DEPTH(cur) + tt_exact_bonus(cur) <= depth);
+                       || TT_DEPTH(cur) + tt_exact_bonus(cur) <= depth);
         if (replace) {
-            TT_TAG_PC(b);
             int sv = best;
             if (sv >= MATE_THRESH) sv += ply;
             else if (sv <= -MATE_THRESH) sv -= ply;
@@ -4828,7 +4790,6 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
             && *out_done > 0 && !g_rx_n) {
         int flag = (best <= alpha_orig) ? TT_UPPER
                  : (best >= beta)       ? TT_LOWER : TT_EXACT;
-        TT_TAG_PC(rb);
         tt_store_raw(&g_tt[key & TT_MASK], key, best,
                      best_move & 0x7FFF, depth, flag, TT_EVAL_NONE, 1);
     }
