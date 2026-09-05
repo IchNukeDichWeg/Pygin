@@ -1737,6 +1737,17 @@ class _SPRTStop(Exception):
 _interrupted_by_signal = False
 
 
+def run_stamp():
+    """B-01: a campaign-state timestamp that survives crossing machines.
+
+    The "started" field was a bare local wall clock with no zone, so a tranche
+    run on a UTC rented box and one run here sorted into the wrong order in the
+    same state file, silently, with nothing in the file able to say which came
+    first. astimezone() attaches the offset; the format stays sortable.
+    """
+    return datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+
+
 def _install_signal_handlers():
     """Make SIGTERM behave exactly like Ctrl-C in the MAIN process: raise
     KeyboardInterrupt so the result loop unwinds into the finally block that
@@ -2330,7 +2341,7 @@ def main():
                 "offset": offset, "positions": len(fens),
                 "seed": SUBSET_SEED, "fen_file": FEN_FILE,
                 "mode": mode_desc, "smp": int(ENGINE_SMP),
-                "started": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+                "started": run_stamp()}
     # The gate is gone, so the CHECK has to be loud instead. Compare against
     # the last recorded run and say what moved. This is the part that used to
     # be a refusal: pooling a 1-thread tranche with a 4-thread one, or two
