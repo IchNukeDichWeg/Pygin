@@ -1618,9 +1618,15 @@ def _worker_loop(in_q, out_q, engine1_path, engine2_path, mode_cfg,
 
     # Propagate the toggles play_game / write_game_block read off the module
     # globals (kept simple instead of threading every flag through call sites).
-    global ENGINE_USE_BOOK, PV_UCI
+    global ENGINE_USE_BOOK, PV_UCI, ENGINE_SMP, stockfish_elo
     ENGINE_USE_BOOK = use_book
     PV_UCI = pv_uci
+    # T-14: MUST precede the two EngineProcess constructions below -- _spawn
+    # reads these globals at call time, so setting them afterwards is a no-op.
+    if "sf_elo" in mode_cfg:
+        stockfish_elo = mode_cfg["sf_elo"]
+    if "engine_smp" in mode_cfg:
+        ENGINE_SMP = int(mode_cfg["engine_smp"])
 
     ctx = wmp.get_context("spawn")
     e1 = EngineProcess(ctx, engine1_path, book1)
@@ -2094,7 +2100,14 @@ def main():
                 # default in every child, which is why this used to travel by
                 # environment variable. mode_cfg is already an argument to
                 # _worker_loop -> play_game, so it is the honest channel.
-                "adjudicate": ADJUDICATE}
+                "adjudicate": ADJUDICATE,
+                # T-14, same re-import reason as the two above. These are read
+                # by EngineProcess._spawn at CALL time, so losing them meant
+                # every spawned worker capped Stockfish at the module default
+                # 3000 and ran SMP=1 whatever --sf-elo/--smp asked for. Both
+                # 2026-09-01 bracket runs were played at 3000.
+                "sf_elo": stockfish_elo,
+                "engine_smp": int(ENGINE_SMP)}
     tc_label = f"{TC_SECONDS:.2f}+{TC_INCREMENT:.2f}" if MODE == "clock" else None
     tpm = TIME_PER_MOVE_MS if MODE == "time" else None
 
