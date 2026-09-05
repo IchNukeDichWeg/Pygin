@@ -29,7 +29,14 @@ run_cap () {            # run_cap <elo> <offset> <log>
     say "=== SF UCI_Elo $1, offset $2, $W workers, 50+0.5 ==="
     python3 match.py cengine.py stockfish_engine.py 500 "$2" \
         --workers "$W" --tc 50+0.5 --seed 62 --sf-elo "$1" 2>&1 | tee "$3"
-    if grep -qa "SIGTERM received\|KeyboardInterrupt" "$3"; then
+    # T-16/T-19: read the EXIT STATUS, not the log wording. `| tee` makes $? the
+    # status of tee, so the tool's own status has to come out of PIPESTATUS --
+    # and this guard used to grep for wording match.py never printed ("SIGTERM
+    # received" only appeared post-T-16; a plain Ctrl-C printed "interrupted"),
+    # so a Ctrl-C on cap 1 launched cap 2 anyway. The grep stays as a second
+    # line of defence for an older match.py that still exits 0.
+    ST=${PIPESTATUS[0]}
+    if [ "$ST" -ne 0 ] || grep -qa "SIGTERM received\|interrupted -- writing summary" "$3"; then
         say "cap $1 was INTERRUPTED -- stopping here, not starting the next cap"
         return 1
     fi
