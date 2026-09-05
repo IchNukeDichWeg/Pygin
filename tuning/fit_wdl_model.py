@@ -387,6 +387,11 @@ NEAR_EQUAL_STOCKFISH_LOGS = {
 # when it turns up in a CURRENT-era log, i.e. a new or renamed arm.
 UNRECOGNISED_BASES = defaultdict(int)     # base -> files skipped
 OTHER_FAMILY_PAIRS = defaultdict(int)     # "wb vs bb" -> files skipped
+# T-23: a log we could not READ is an operator problem, not a data property.
+# `except OSError: return False` made it indistinguishable from "this file is
+# not a match log", so a permissions or I/O failure silently shrank the corpus
+# a WDL model is fitted on, with nothing in the output to say so.
+UNREADABLE = {}                           # path -> the OSError that stopped us
 
 
 def _note_skip(wb, bb, path):
@@ -425,7 +430,8 @@ def classify_file(path):
                     black_path = m.group(1)
                 if white_path and black_path:
                     break
-    except OSError:
+    except OSError as ex:
+        UNREADABLE[path] = str(ex)        # T-23: counted and reported, not swallowed
         return False
     if white_path is None or black_path is None:
         return False
@@ -579,6 +585,12 @@ def extract_all(log_dirs):
               "or the corpus just shrank in silence:")
         for base, k in sorted(UNRECOGNISED_BASES.items(), key=lambda kv: -kv[1]):
             print(f"      {k:>4}x  {base}")
+    if UNREADABLE:
+        print(f"  WARNING -- {len(UNREADABLE)} log(s) could NOT BE READ and "
+              f"were skipped. This is an operator problem, not a data "
+              f"property: the corpus is smaller than the directory suggests.")
+        for path, err in sorted(UNREADABLE.items()):
+            print(f"      {os.path.basename(path)}: {err}")
     for k, v in sorted(stats.items()):
         if k not in ("games_used", "samples_added"):
             print(f"  {k}: {v:,}")
