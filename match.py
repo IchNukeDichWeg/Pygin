@@ -2341,7 +2341,30 @@ def main():
                 "offset": offset, "positions": len(fens),
                 "seed": SUBSET_SEED, "fen_file": FEN_FILE,
                 "mode": mode_desc, "smp": int(ENGINE_SMP),
+                # T-17: the fields that used to pool SILENTLY. The auto-name
+                # keys on engines and TC only, so two runs at different
+                # --sf-elo caps, different books or different adjudication
+                # landed in ONE file and were summed -- which is exactly how
+                # 1,000 void pairs from a mis-capped bracket ended up poolable
+                # with a real campaign.
+                "sf_elo": int(stockfish_elo),
+                "sf_our_clock": bool(sf_our_clock),
+                "adjudicate": bool(ADJUDICATE),
+                "book1": BOOK_ENGINE1, "book2": BOOK_ENGINE2,
+                # Worker density is part of the instrument for TIMED runs
+                # ONLY: NPS at a fixed clock IS strength. Fixed-node runs are
+                # contention-immune and use --workers 0, which resolves to a
+                # different number on every box, so recording it there would
+                # fire the warning on every legitimate cross-box tranche.
+                "workers": (int(n_workers) if MODE in ("clock", "time") else None),
                 "started": run_stamp()}
+    # A short stable digest of the instrument, so a human can compare two files
+    # at a glance instead of diffing ten fields.
+    this_run["instrument_key"] = "k" + hashlib.sha256(json.dumps(
+        {k: this_run[k] for k in ("engine1", "engine2", "mode", "smp",
+                                  "seed", "fen_file", "sf_elo", "sf_our_clock",
+                                  "adjudicate", "book1", "book2", "workers")},
+        sort_keys=True).encode()).hexdigest()[:8]
     # The gate is gone, so the CHECK has to be loud instead. Compare against
     # the last recorded run and say what moved. This is the part that used to
     # be a refusal: pooling a 1-thread tranche with a 4-thread one, or two
@@ -2355,7 +2378,8 @@ def main():
     if prev:
         moved = [(k, prev.get(k), this_run[k])
                  for k in ("engine1", "engine2", "mode", "smp", "seed",
-                           "fen_file")
+                           "fen_file", "sf_elo", "sf_our_clock", "adjudicate",
+                           "book1", "book2", "workers", "instrument_key")
                  if k in prev and prev.get(k) != this_run[k]]
         if moved:
             print("  ** CONFIG CHANGED since the last run in this file -- "
