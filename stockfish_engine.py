@@ -24,7 +24,27 @@ import subprocess
 
 import chess
 
+# Which Stockfish plays. A VISIBLE in-file pin, not an environment gate.
+#
+# WHY THIS EXISTS. Stockfish 19 shipped 2026-09-05 at up to +44 Elo over 18 and
+# `brew upgrade` replaced the binary AND deleted the old Cellar copy. Every odds
+# rung, the whole f2/h2 series and any strength figure this project has ever
+# published was measured against 18, and a number measured against 19 does NOT
+# pool with one measured against 18 -- it is a different opponent, not a newer
+# version of the same one.
+#
+# None  -> whatever the search below finds (currently Stockfish 19).
+# a path -> that binary, "~" expanded. SF18 was preserved before the upgrade at
+#           ~/.local/bin/stockfish18; set SF_BINARY to it to extend the existing
+#           series rather than start a new one.
+#
+# Whichever plays, its `id name` is recorded in the campaign state file and in
+# the instrument key, so a swap fires the CONFIG-CHANGED diff instead of
+# silently re-basing the yardstick.
+SF_BINARY = None
+
 _SF_PATHS = [
+    os.path.expanduser(SF_BINARY) if SF_BINARY else "",
     os.environ.get("STOCKFISH_PATH", ""),
     "/opt/homebrew/bin/stockfish", "/usr/local/bin/stockfish",
     "/usr/games/stockfish", "/usr/bin/stockfish", "stockfish",

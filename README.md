@@ -589,14 +589,27 @@ The one thing it cannot do is give a quotable magnitude *and* stop early. A
 bound-stopped number stays a verdict, the ledger stays at ~+354, and this file
 says so rather than quietly banking it.
 
-**Stockfish 18 is pinned as the yardstick opponent.** Stockfish 19 shipped
-2026-09-05 at up to +44 Elo over 18. It is a **different instrument**: no
-figure measured against 18 pools with one measured against 19, and upgrading
-the binary on any box silently re-bases every odds rung and every strength
-figure. Until today nothing recorded which Stockfish played; the version now
-sits in the campaign state file and in the instrument key, so a swap fires the
-CONFIG-CHANGED diff. Move to SF19 only at a deliberate era boundary, and bridge
-it by re-measuring the active rung against both.
+**Stockfish 19 is installed; Stockfish 18 is preserved and selectable.**
+SF19 shipped 2026-09-05 at up to +44 Elo over 18, and `brew upgrade` both
+replaced the binary and deleted the old Cellar copy -- so 18 was copied to
+`~/.local/bin/stockfish18` first and verified before the upgrade ran. **They
+are different instruments**: no figure measured against 18 pools with one
+measured against 19.
+
+`stockfish_engine.SF_BINARY` is the visible in-file pin -- `None` takes
+whatever is found (now SF19), a path takes that binary. The `id name` of
+whichever plays is recorded in the campaign state file and in the instrument
+key, so a swap fires the CONFIG-CHANGED diff instead of silently re-basing the
+yardstick. Nothing recorded this before 2026-09-05.
+
+**The era boundary is not free.** Everything published -- the f2 series, the
+eight-pawn sweep, the active h2 rung -- was measured against SF18, and against
+a capped SF18 at that. Moving the ladder to SF19 costs a bridge measurement:
+the active rung run against both, so the two eras can be related. Until that
+bridge exists, set `SF_BINARY` to the preserved SF18 for anything meant to
+extend the existing series. SF19 was checked against an odds position (h2 pawn
+removed) and returns a move rather than its new `CRITICAL ERROR`, so its
+stricter validation does not block the harness.
 
 ### Phase 1 -- the number we do not have
 
