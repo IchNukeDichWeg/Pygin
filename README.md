@@ -56,9 +56,10 @@ those releases still measured POSITIVE in games. A tactical-suite score is a
 different instrument from an A/B, and where they disagree the A/B is the one
 that decides.
 
-The odds ladder against full-strength Stockfish is currently **unmeasured**.
-Every rung on it was measured on a harness that erased Stockfish's won
-endgames, so those figures have been withdrawn rather than footnoted; see
+The odds ladder against **full-strength** Stockfish is **unmeasured**, and
+that is now true for two separate reasons. The pre-2026-08-13 rungs were
+measured on a harness that erased Stockfish's won endgames, so those figures
+are withdrawn rather than footnoted; see
 [Measured strength](#measured-strength).
 
 ### Two engines, one eval
@@ -107,12 +108,13 @@ kept on the page with a footnote still gets quoted.
 
 **Pawn odds (f2)** -- the published rung, and the one handicap Stockfish still
 scores against: **81.00% over 1,000 games** (704W / 212D / 84L, +251.89
-+/-35.2) at v59, 50+0.50, full-strength SF-18, corrected harness, 2026-08-13.
-The withdrawn pre-fix figure was 90.30%; about nine points of it were the
-buggy termination erasing Stockfish's conversions, not engine strength.
++/-35.2) at v59, 50+0.50, corrected harness, 2026-08-13, against Stockfish
+**capped at UCI_Elo 3000** -- see the caveat below. The withdrawn pre-fix
+figure was 90.30%; about nine points of it were the buggy termination erasing
+Stockfish's conversions, not engine strength.
 
 **Pawn odds (h2)** is the ACTIVE rung as of 2026-09-02, at **56.75% over 200
-games** (75W / 77D / 48L, +47.19 +/-49.4) at v62. All eight white pawns were
+games** (75W / 77D / 48L, +47.19 +/-38.0) at v62. All eight white pawns were
 measured that night: six of them cluster at 73.5-77.5% and are not separable
 from each other, f2 leads at 80.50%, and h2 alone sits near 50%. The switch is
 for resolution, not saturation -- an era gain of +35 Elo moves f2 by 3.0 score
@@ -122,13 +124,28 @@ the obvious candidate, that it hands SF an open file, was tested and rejected
 (SF advances a rook up the vacated file in 76% of a2 games and 72% of h2 ones).
 f2 and h2 numbers are different instruments and are never pooled.
 
+> **The whole ladder was played against a CAPPED Stockfish.** `odds.py`
+> resolved `STOCKFISH_ELO` into its own module globals and never applied it, so
+> `stockfish_engine.py`'s own default sent `UCI_LimitStrength` on every run made
+> after 2026-07-22: **UCI_Elo 2900** until 2026-08-07 and **3000** after. Fixed
+> 2026-09-05 (B-15), verified by logging Stockfish's stdin. Consequences: no
+> rung above is a full-strength figure; the f2 series spans two different
+> opponents and does not pool with itself; a single night at one cap is still
+> internally consistent, so the eight-pawn ranking and h2's separation stand.
+> `UCI_LimitStrength` injects errors at a fixed rate, which compresses real
+> gaps, so the ladder's sensitivity to an era gain is not what a full-strength
+> reading would give. Every margin here is also the corrected trinomial one
+> (T-22); the previously published ones were 1.3-1.7x too wide.
+
 Against its own Python engine (v30, ~2440-2450), v59 scored **195W / 5D / 0L
 over 200 games** (98.75%) at 50+0.50 on the corrected harness, 2026-08-12. No
 rating is quoted; the gap is past what Elo can express. This replaces the
 withdrawn 1,815-0-40, which was measured through the buggy termination.
 
-**Standing, with their vintage:** knight, rook and queen odds vs full-strength
-SF-18 are all saturated at 100%, measured at v53/v54 under 45+0.15. Those runs
+**Standing, with their vintage:** knight, rook and queen odds are all
+saturated at 100%, measured at v53/v54 under 45+0.15 (and, like every rung
+above, against a capped Stockfish -- saturation is the one claim a cap cannot
+weaken, since a stronger opponent could only score lower). Those runs
 contained **zero draws**, and the bug could only act by producing a draw, so
 the broken code path never executed in them -- the measurements are untouched
 by the fix. They have not been re-measured at the current era; the engine has
@@ -390,7 +407,9 @@ python3 match.py engine.py stockfish_engine.py 100 0 --sf-elo 2000   # 0 = full 
 **Material / time odds** are configured in `odds.py`'s `CONFIG` block (the
 default is pawn odds, `h2`). The opponent is **full-strength SF-18** -- that is
 what the ladder means, and a capped opponent measures something else that no
-recorded rung can be compared to. Each worker runs two engines, so `--workers 0`
+recorded rung can be compared to. This is true of the code only since
+2026-09-05: before B-15 the setting never reached Stockfish and every recorded
+rung was played capped. Each worker runs two engines, so `--workers 0`
 here means cores/2, not cores-1 -- a real clock TC gets starved by
 oversubscription, and a Stockfish opponent squeezed to 10k nps stops being the
 yardstick the run is quoting:

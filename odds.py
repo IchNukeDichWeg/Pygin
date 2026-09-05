@@ -112,7 +112,17 @@ ODDS_GIVEN_BY = "engine_2"
 # handicap makes it HARDER for us, so the win% drops and resolution comes back.
 #
 # MEASURED 2026-09-02, all eight white pawns, 200 games each, 50+0.50, 9
-# workers, full-strength SF, v62 + nnue_v12 (scripts/odds_pawn_sweep.sh):
+# workers, v62 + nnue_v12 (scripts/odds_pawn_sweep.sh).
+#
+# OPPONENT: Stockfish at UCI_Elo 3000, NOT full strength. B-15: odds.py never
+# applied STOCKFISH_ELO, so stockfish_engine.py's own SF_ELO sent
+# UCI_LimitStrength on every run made after 2026-07-22 (cap 2900 until
+# 2026-08-07, 3000 after). Fixed 2026-09-05; every rung below predates the fix
+# and carries the cap it was actually played at. One night at ONE cap is still
+# internally consistent, so this ranking stands -- but these numbers do not
+# pool across the two cap eras, and none of them is a full-strength figure.
+# The margins below are the corrected trinomial ones (T-22), not the coin-flip
+# values the sweep script originally printed:
 #
 #     f2  80.50% +/-2.17   136W  50D  14L
 #     e2  77.50% +/-2.17   123W  64D  13L
@@ -171,15 +181,17 @@ ODDS_SQUARES = ["h2"]                   # PAWN odds (h-pawn) -- the ACTIVE
                                         # games per run at f2 and 1,136 at h2:
                                         # 41% cheaper for the same answer.
                                         # 2026-09-02 @v62, 200g (a screen, not
-                                        # a published figure):
-                                        #   56.75% (+47.19 +/-49.4)
+                                        # a published figure), SF CAPPED at
+                                        # UCI_Elo 3000 (B-15):
+                                        #   56.75% (+47.19 +/-38.0)
                                         #   75W / 77D / 48L, 50+0.50, FULL
                                         #   strength, on the 18-core Mac.
 # ODDS_SQUARES = ["f2"]                 # PAWN odds (f-pawn) -- the FORMER
                                         # yardstick, retired 2026-09-02 for
                                         # resolution. Its clean series is:
                                         # 2026-09-02 @v62: 80.50% (200g,
-                                        #   +246.30 +/-79.5) 136W/50D/14L.
+                                        #   +246.30 +/-47.8) 136W/50D/14L,
+                                        #   SF CAPPED at UCI_Elo 3000.
                                         #   0.2 sigma from the v59 point, but
                                         #   a DIFFERENT MACHINE on a TIMED
                                         #   instrument, so this is not a delta
@@ -188,6 +200,7 @@ ODDS_SQUARES = ["h2"]                   # PAWN odds (h-pawn) -- the ACTIVE
                                         # 2026-08-13 @v59, CORRECTED harness
                                         # (fc82cb7) + SF respawn + native WDL:
                                         #   81.00% (1000g, +251.89 +/-35.2)
+                                        #   SF CAPPED at UCI_Elo 3000 (B-15)
                                         #   704W / 212D / 84L, 50+0.50, FULL
                                         #   strength. The pre-fix 90.30% below
                                         #   is NOT comparable: ~9 points of it
@@ -196,6 +209,8 @@ ODDS_SQUARES = ["h2"]                   # PAWN odds (h-pawn) -- the ACTIVE
                                         # 2026-08-05 @v58 (first hybrid,
                                         # PRE-FIX harness -- do not compare):
                                         #   90.30% (500g, +387.57 +/-93.0)
+                                        #   SF capped at UCI_Elo 2900 -- a
+                                        #   DIFFERENT opponent from v59/v62
                                         #   420W / 63D / 17L, 50+0.50
                                         #   NOT a clean delta on v54: the TC
                                         #   era moved (45+0.15 -> 50+0.50) and
@@ -204,6 +219,7 @@ ODDS_SQUARES = ["h2"]                   # PAWN odds (h-pawn) -- the ACTIVE
                                         #   baseline, not a continuation.
                                         # FIRST MEASUREMENT 2026-07-24 @v54:
                                         #   84.88% (2000g, +299.63 +/-29.8)
+                                        #   SF capped at UCI_Elo 2900
                                         #   1531W / 333D / 136L, 45+0.15
                                         # Confirms the rung has room: knight
                                         # and queen are at 100%, this is not.

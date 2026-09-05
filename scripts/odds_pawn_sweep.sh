@@ -20,8 +20,11 @@
 # and does NOT resolve neighbours (c2 vs b2 differing by 2-3% is noise). For a
 # publishable full ranking, re-run at 1000.
 #
-# Full-strength Stockfish, 50+0.50 from match.py, cores/2 workers -- the same
-# instrument as the v58 pawn-odds point so f2 here extends that series.
+# 50+0.50 from match.py, cores/2 workers. The opponent is whatever
+# odds.py's STOCKFISH_ELO resolves to; before the B-15 fix of 2026-09-05 that
+# was ALWAYS a capped Stockfish (UCI_Elo 2900 until 2026-08-07, 3000 after)
+# regardless of the setting, so the 2026-09-02 sweep is a cap-3000 measurement
+# and does NOT pool with the v58 f2 point, which was played at cap 2900.
 set -u
 cd "$(dirname "$0")/.."
 G="${1:-200}"
@@ -30,7 +33,7 @@ OUT="odds_sweep_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$OUT"
 say(){ echo "[$(TZ=Europe/Zurich date '+%H:%M:%S %Z')] $*" | tee -a "$OUT/sweep.log"; }
 
-say "pawn-odds sweep: $G games x 8 squares, $W workers, full-strength SF"
+say "pawn-odds sweep: $G games x 8 squares, $W workers, SF at odds.py's STOCKFISH_ELO"
 say "order: f2 a2 h2 then the middle four -- endpoints first on purpose"
 
 for sq in f2 a2 h2 g2 e2 d2 c2 b2; do
