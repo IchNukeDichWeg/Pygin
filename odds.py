@@ -515,19 +515,15 @@ def fmt_clock(ms):
     return f"{s:.1f}s"
 
 
-def elo(score, n):
-    """Elo difference for a match score in [0,1] over n games, with a rough
-    95% margin. Returns (elo, margin). Mirrors match.py exactly."""
-    score = min(max(score, 1e-9), 1 - 1e-9)
-    e = -400.0 * math.log10(1.0 / score - 1.0)
-    if n <= 0:
-        return e, 999.0
-    se = 0.5 / math.sqrt(n)
-    lo = min(max(score - 1.96 * se, 1e-9), 1 - 1e-9)
-    hi = min(max(score + 1.96 * se, 1e-9), 1 - 1e-9)
-    margin = (-400.0 * math.log10(1.0 / hi - 1.0)
-              - (-400.0 * math.log10(1.0 / lo - 1.0))) / 2.0
-    return e, margin
+# T-22: ONE estimator, not a local copy that drifted. This used the coin-flip
+# variance (se = 0.5/sqrt(n), i.e. Bernoulli 0.25) that match.py abandoned,
+# which is true only if every game were a 50/50 win-or-lose with no draws --
+# so every odds margin ever published here was 1.3-1.7x too wide. Same point
+# estimate, strictly tighter interval. Pass wdl, not penta: odds.py does not
+# currently PAIR its results. (Colour does alternate every game from one fixed
+# position, so a pentanomial is structurally available and would be tighter
+# still -- that is a separate item, not a correction to this one.)
+elo = _match_tc.elo                       # trinomial variance, match.py:606
 
 
 def fmt_duration(seconds):
@@ -831,7 +827,8 @@ def write_summary(fh, p1_name, desc1, p2_name, desc2, tally,
         lines.append(f"Errors (excluded): {tally['errors']:,}")
     if tally["completed"]:
         score = (tally["e1"] + 0.5 * tally["draws"]) / tally["completed"]
-        el, margin = elo(score, tally["completed"])
+        el, margin = elo(score, tally["completed"],
+                         wdl=(tally["e1"], tally["draws"], tally["e2"]))
         lines.append(
             f"Engine 1 score: {tally['e1'] + 0.5*tally['draws']:.2f}"
             f"/{tally['completed']} ({100*score:.2f}%)  =>  "
@@ -1105,7 +1102,8 @@ def main():
 
             if tally["completed"]:
                 sc = (tally["e1"] + 0.5 * tally["draws"]) / tally["completed"]
-                el, mar = elo(sc, tally["completed"])
+                el, mar = elo(sc, tally["completed"],
+                              wdl=(tally["e1"], tally["draws"], tally["e2"]))
                 run = (f"{p1_name} {tally['e1']:,}W | {tally['draws']:,} D | "
                        f"{p2_name} {tally['e2']:,}W "
                        f"({100*sc:.2f}%, {el:+.2f} +/-{mar:.1f} Elo)")
