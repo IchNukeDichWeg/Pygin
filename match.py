@@ -1737,6 +1737,21 @@ class _SPRTStop(Exception):
 _interrupted_by_signal = False
 
 
+def _sf_version_of(*paths):
+    """"Stockfish 18" if either side of this match IS Stockfish, else None.
+
+    Probed in the parent, once, before any game: the engine children do not
+    exist yet when the instrument record is written.
+    """
+    if not any("stockfish" in (p or "").lower() for p in paths):
+        return None
+    try:
+        import stockfish_engine
+        return stockfish_engine.sf_id_name()
+    except Exception:
+        return None            # provenance must never stop a run
+
+
 def run_stamp():
     """B-01: a campaign-state timestamp that survives crossing machines.
 
@@ -2348,6 +2363,12 @@ def main():
                 # 1,000 void pairs from a mis-capped bracket ended up poolable
                 # with a real campaign.
                 "sf_elo": int(stockfish_elo),
+                # The opponent's OWN version. SF19 shipped 2026-09-05 at up to
+                # +44 Elo over 18, so a `brew upgrade` silently swaps the
+                # yardstick for every Stockfish-referenced number, and until
+                # now nothing recorded which one played. Same class as the
+                # --sf-elo loss: an instrument that moved with no line saying so.
+                "sf_version": _sf_version_of(engine1, engine2),
                 "sf_our_clock": bool(sf_our_clock),
                 "adjudicate": bool(ADJUDICATE),
                 "book1": BOOK_ENGINE1, "book2": BOOK_ENGINE2,
@@ -2363,7 +2384,8 @@ def main():
     this_run["instrument_key"] = "k" + hashlib.sha256(json.dumps(
         {k: this_run[k] for k in ("engine1", "engine2", "mode", "smp",
                                   "seed", "fen_file", "sf_elo", "sf_our_clock",
-                                  "adjudicate", "book1", "book2", "workers")},
+                                  "adjudicate", "book1", "book2", "workers",
+                                  "sf_version")},
         sort_keys=True).encode()).hexdigest()[:8]
     # The gate is gone, so the CHECK has to be loud instead. Compare against
     # the last recorded run and say what moved. This is the part that used to
@@ -2379,7 +2401,8 @@ def main():
         moved = [(k, prev.get(k), this_run[k])
                  for k in ("engine1", "engine2", "mode", "smp", "seed",
                            "fen_file", "sf_elo", "sf_our_clock", "adjudicate",
-                           "book1", "book2", "workers", "instrument_key")
+                           "book1", "book2", "workers", "sf_version",
+                           "instrument_key")
                  if k in prev and prev.get(k) != this_run[k]]
         if moved:
             print("  ** CONFIG CHANGED since the last run in this file -- "
