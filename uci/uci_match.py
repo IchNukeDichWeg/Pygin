@@ -391,7 +391,9 @@ def main():
                 "offset": args.offset, "positions": len(fens),
                 "seed": args.seed, "fen_file": os.path.basename(args.openings),
                 "mode": mode_desc, "smp": int(pick(args, "threads", "1") or 1),
-                "started": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+                # B-01: zone-aware, same helper contract as match.run_stamp
+                "started": datetime.datetime.now().astimezone()
+                                    .isoformat(timespec="seconds")}
     prev = next((r for r in reversed(prior_runs) if "engine1" in r), None)
     if prev:
         moved = [(k, prev.get(k), this_run[k])
