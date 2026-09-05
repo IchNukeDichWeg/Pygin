@@ -785,11 +785,18 @@ def cmd_tune(a):
         # --- fit K (the cp -> win-probability scale) on the shipped eval --- #
         t0 = time.time()
         k, kloss = None, None
-        for cand in [round(0.6 + 0.1 * i, 1) for i in range(20)]:
+        # T-27: 21 full-corpus passes with NO output at all -- 13.5s of a
+        # silent script is indistinguishable from a hung one. The bar already
+        # exists and brings its own isatty guard and redirected fallback.
+        _cands = [round(0.6 + 0.1 * i, 1) for i in range(20)]
+        for _i, cand in enumerate(_cands):
+            _bar("fit K", _i + 1, len(_cands) + 1, t0, 0)
             L = _loss(pool, nchunks, base if k is None else None, cand)
             if kloss is None or L < kloss:
                 kloss, k = L, cand
+        _bar("fit K", len(_cands) + 1, len(_cands) + 1, t0, 0)
         base_val = _loss(pool, nchunks, base, k, val=True)
+        _bar_clear()
         print(f"K = {k}   shipped eval: train {kloss:.6f}  "
               f"validation {base_val:.6f}   ({time.time() - t0:.0f}s)")
 
