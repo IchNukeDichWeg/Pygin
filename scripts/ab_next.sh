@@ -24,7 +24,7 @@
 set -u
 cd "$(dirname "$0")/.."
 LOGDIR="${LOGDIR:-$PWD}"
-CORES=$(nproc); WORKERS=$((CORES / 2)); [ "$WORKERS" -lt 1 ] && WORKERS=1
+CORES=$(sysctl -n hw.ncpu 2>/dev/null || nproc); WORKERS=$((CORES / 2)); [ "$WORKERS" -lt 1 ] && WORKERS=1
 echo "workers: $WORKERS (cores $CORES / 2 -- one core per engine)"
 echo "NOTE: density is part of the instrument; these pool only with campaigns"
 echo "      run at the SAME density."

@@ -34,7 +34,7 @@ LOGDIR="${LOGDIR:-$PWD}"
 # anything else makes this a DIFFERENT instrument that cannot be compared.
 # Formula, not a literal, so it is right on any box -- but if this box is not
 # 96-core the density stops matching the screen, and that is the human's call.
-CORES=$(nproc)
+CORES=$(sysctl -n hw.ncpu 2>/dev/null || nproc)
 WORKERS=$((CORES / 2))
 [ "$WORKERS" -lt 1 ] && WORKERS=1
 echo "workers: $WORKERS  (cores $CORES / 2 -- a game runs TWO engines, so this"

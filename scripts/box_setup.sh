@@ -14,7 +14,7 @@ cd Pygin
 # NEVER a bare `git pull` here: it aborts on untracked files, twice now.
 git fetch origin -q && git reset --hard origin/main -q
 echo "### HEAD: $(git log --oneline -1)"
-CORES=$(nproc); echo "### CORES: $CORES  -> timed runs use $((CORES / 2)) workers"
+CORES=$(sysctl -n hw.ncpu 2>/dev/null || nproc); echo "### CORES: $CORES  -> timed runs use $((CORES / 2)) workers"
 
 echo ""
 echo "### BUILD + SELFTEST"

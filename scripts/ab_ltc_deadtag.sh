@@ -47,7 +47,7 @@ cd "$(dirname "$0")/.."
 LOGDIR="${LOGDIR:-$PWD}"
 POS="${1:-2500}"
 OFF="${2:-0}"
-CORES=$(nproc); WORKERS=$((CORES / 2)); [ "$WORKERS" -lt 1 ] && WORKERS=1
+CORES=$(sysctl -n hw.ncpu 2>/dev/null || nproc); WORKERS=$((CORES / 2)); [ "$WORKERS" -lt 1 ] && WORKERS=1
 
 A=NNUE/shims/engine_v61b_deadtag.py
 B=NNUE/shims/engine_nnue_v12.py
