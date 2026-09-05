@@ -1732,9 +1732,9 @@ class _SPRTStop(Exception):
     told to stop, joined, terminated). A conclusion, not an interruption."""
 
 
-# How the run ended, for the interrupt message. Set by the SIGTERM handler;
-# Ctrl-C leaves it None (Python raises KeyboardInterrupt on its own).
-_signal_name = None
+# T-16: set ONLY by the KeyboardInterrupt arm of main(), never by a shutdown
+# path that reached a real conclusion. Drives the process exit status.
+_interrupted_by_signal = False
 
 
 def _install_signal_handlers():
@@ -1743,15 +1743,15 @@ def _install_signal_handlers():
     writes the summary + Ptnml. Without this, `kill`/`pkill` (and any job
     scheduler that stops a run politely) hit Python's default SIGTERM handler,
     which exits immediately and silently -- losing the summary of a run that
-    may have taken hours."""
-    def _on_sigterm(signum, _frame):
-        global _signal_name
-        _signal_name = signal.Signals(signum).name
-        raise KeyboardInterrupt
-    try:
-        signal.signal(signal.SIGTERM, _on_sigterm)
-    except (ValueError, OSError):
-        pass                     # non-main thread / unsupported platform
+    may have taken hours.
+
+    T-16: the body was byte-for-byte lib/interruptible.install(). ONE copy, so
+    odds.py and match.py cannot drift on what a signal means -- and after the
+    swap the salvage message must come from interruptible.reason(), or every
+    SIGTERM would print "interrupted" and sf_bracket.sh's guard would stop
+    matching."""
+    import interruptible
+    interruptible.install()
 
 
 def _shutdown_workers(workers, in_q, out_q, graceful):
@@ -2777,8 +2777,16 @@ def main():
     except KeyboardInterrupt:
         stopped = True
         interrupted = True
+        # T-16: the EXIT STATUS must key off this arm alone. `stopped` and
+        # `interrupted` are shutdown-PATH flags also set by _TimeStop (a
+        # complete --total-time result) and _SPRTStop (a decided SPRT), so
+        # wiring the status to either would make every early-stopped SPRT exit
+        # non-zero and halt exactly the chains this is meant to protect.
+        global _interrupted_by_signal
+        _interrupted_by_signal = True
         _clear_status()
-        why = f"{_signal_name} received" if _signal_name else "interrupted"
+        import interruptible
+        why = interruptible.reason()
         print(f"\n[{why} -- writing summary so far]")
     except EngineError as ex:
         stopped = True
@@ -2868,3 +2876,10 @@ def main():
 if __name__ == "__main__":
     mp.freeze_support()
     main()
+    # T-16: 143 for SIGTERM (128+signum, so the signal survives), 130 for
+    # Ctrl-C, 0 for any run that reached a conclusion -- including an SPRT that
+    # stopped at a bound. match.py exited 0 on interrupt, which is why every
+    # chaining script grepped the log for wording instead of reading a status.
+    if _interrupted_by_signal:
+        import interruptible
+        _sys.exit(143 if interruptible.reason() != "interrupted" else 130)

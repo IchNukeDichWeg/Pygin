@@ -37,7 +37,13 @@ for sq in f2 a2 h2 g2 e2 d2 c2 b2; do
     L="$OUT/odds_$sq.log"
     say "=== $sq ($G games) ==="
     python3 odds.py --odds-squares "$sq" --num-games "$G" --workers "$W" 2>&1 | tee "$L"
-    if grep -qa "interrupted -- writing summary" "$L"; then
+    # T-16: the exit status is the reliable signal now that odds.py returns
+    # 130/143 on interrupt. `| tee` hides it in $?, so read PIPESTATUS; the
+    # wording grep stays as a fallback and now has to cover BOTH messages,
+    # since a SIGTERM prints "SIGTERM received" and only Ctrl-C prints
+    # "interrupted".
+    ST=${PIPESTATUS[0]}
+    if [ "$ST" -ne 0 ] || grep -qa "interrupted -- writing summary\|SIGTERM received" "$L"; then
         say "$sq was INTERRUPTED -- stopping the sweep here, not starting the next square"
         break
     fi

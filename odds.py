@@ -281,6 +281,7 @@ MAX_DEPTH_CAP         = 50              # safety cap on timed-search depth
 import datetime
 import importlib.util
 import io
+import signal
 import math
 import multiprocessing
 import os
@@ -905,6 +906,10 @@ def _play_one(round_no):
 # Main
 # ---------------------------------------------------------------------- #
 def main():
+    # T-16: SIGTERM must unwind through the same path Ctrl-C uses, or a polite
+    # `kill` exits immediately and silently and the summary of a multi-hour
+    # tranche is gone. match.py has had this since FB-51; odds.py never did.
+    interruptible.install()
     # Optional CLI overrides (used by the web dashboard). Each flag maps to an
     # env var so `spawn` workers re-importing this module pick it up too.
     import argparse
@@ -1017,6 +1022,7 @@ def main():
     tally = {"e1": 0, "e2": 0, "draws": 0, "errors": 0, "completed": 0}
     start_t = time.time()
     stopped = False
+    interrupted_by_signal = False   # T-16: ONLY the interrupt arm
     pool = None
 
     # --- live progress bar + ETA, pinned to the bottom of the terminal ---- #
@@ -1117,17 +1123,29 @@ def main():
             if not _is_tty and done % 20 == 0:
                 print(_status_text())  # redirected: drop a progress marker
     except KeyboardInterrupt:
-        stopped = True
+        stopped = interrupted_by_signal = True
         _clear_status()
-        print("\n[interrupted -- writing summary so far]")
+        print(f"\n[{interruptible.reason()} -- writing summary so far]")
     finally:
         _clear_status()
         if pool is not None:
             pool.terminate()
             pool.join()
 
-    write_summary(fh, p1_name, desc1, p2_name, desc2, tally,
-                  NUM_GAMES, start_t, stopped)
+    # T-16: the summary IS the point of the run. write_summary sits OUTSIDE the
+    # try/finally above, so a SECOND signal (or one arriving during
+    # pool.terminate/join) would destroy it after the first one was survived.
+    _prev = [(sig, signal.signal(sig, signal.SIG_IGN))
+             for sig in (signal.SIGINT, signal.SIGTERM)]
+    try:
+        write_summary(fh, p1_name, desc1, p2_name, desc2, tally,
+                      NUM_GAMES, start_t, stopped)
+    finally:
+        for sig, old in _prev:
+            try:
+                signal.signal(sig, old)
+            except (ValueError, OSError):
+                pass
     if fh is not None:
         try:
             fh.close()
@@ -1140,7 +1158,14 @@ def main():
             pass
     print(f"\nLog written to: {log_path}")
     print(f"PGN written to: {pgn_path}")
+    if interrupted_by_signal:
+        return 128 + signal.SIGTERM if interruptible.reason() != "interrupted" else 130
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    # T-16: 130 for Ctrl-C, 128+signum for a signal, 0 for a run that finished.
+    # A chaining script cannot otherwise tell a stopped tranche from a complete
+    # one -- odds.py exited 0 either way, which is why every chain script grepped
+    # the log for wording instead.
+    sys.exit(main() or 0)
