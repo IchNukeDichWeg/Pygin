@@ -7,7 +7,7 @@ spec (FROZEN)" at the end of this file for the locked architecture, and
 verified: architecture + weight format locked, data pipeline runs (smoke
 dataset generated), PyTorch trainer overfits and exports, C inference is
 bit-exact vs the trainer and incremental-exact vs full refresh, hybrid
-integration sits behind `g_use_nnue` / `cengine.USE_NNUE` (default 0 =
+integration sits behind `g_use_nnue` / `cengine.USE_NNUE`, **armed since v58 (2026-08-04); the default is now True**. With it off (which is the A/B control, not the shipping state) =
 v50+armed-defaults byte-exact). Phases 6-8 (real 50M-position data,
 bootstrap iterations, A/B, ship) remain open.
 
