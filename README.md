@@ -563,3 +563,199 @@ its [README](Old%20Engine/README.md).
   (GPL-3.0+), so the binary distribution is GPL-3.0 as a whole. Full text,
   source pointers and credits (Perfect2023 book -- Sedat Canbaz; UHO suites --
   Stefan Pohl) in [`THIRD_PARTY_LICENSES.md`](docs/THIRD_PARTY_LICENSES.md).
+
+---
+
+## Roadmap
+
+Written 2026-09-05, after a 121-item audit of the post-revert tree
+(`improvements_audit_v62.md`, gitignored). **97 items are open and every one of
+them is named below**, so nothing is unscheduled by silence. Ids are the
+audit's.
+
+### Decisions taken, so they stop being re-argued
+
+**The next A/B is SPRT at a 5,000-game cap, not a 10,000-game fixed budget.**
+50+0.5, seed 62, **48 workers** (a 96-core box; timed runs are cores/2 because
+a game runs two engines and NPS at a fixed clock *is* strength). The audit
+asked for a fixed budget so the ledger could advance. That is the wrong trade
+when the box bills by the hour: SPRT stops the moment a bound is crossed, and
+if it crosses we have the verdict that decides whether v63 ships. If it runs
+the full 5,000 without crossing, the point estimate at the cap is quotable and
+the ledger advances anyway. So the cheap path can produce the expensive answer,
+and never the reverse.
+
+The one thing it cannot do is give a quotable magnitude *and* stop early. A
+bound-stopped number stays a verdict, the ledger stays at ~+354, and this file
+says so rather than quietly banking it.
+
+**Stockfish 18 is pinned as the yardstick opponent.** Stockfish 19 shipped
+2026-09-05 at up to +44 Elo over 18. It is a **different instrument**: no
+figure measured against 18 pools with one measured against 19, and upgrading
+the binary on any box silently re-bases every odds rung and every strength
+figure. Until today nothing recorded which Stockfish played; the version now
+sits in the campaign state file and in the instrument key, so a swap fires the
+CONFIG-CHANGED diff. Move to SF19 only at a deliberate era boundary, and bridge
+it by re-measuring the active rung against both.
+
+### Phase 1 -- the number we do not have
+
+Everything else is measured against a baseline we cannot currently name.
+
+1. **X-01 / OPEN 1.** HEAD vs `Old Engine/61`, 50+0.5, seed 62, 48 workers,
+   `--sprt` capped at 5,000 games. Answers "is the v63 candidate better than
+   v61", prices the FI-21 aspiration window on a clean core, and is the v63
+   release number. ~3.2 box-hours at the cap, less if it stops early.
+2. **B-17.** Re-audit campaign provenance: seven tranches ran on an
+   unverifiable core. One header commit adding the `.so` md5.
+3. **D-18 (owner decision, not a task).** The ledger has no written provenance
+   rule and roughly 77 of its ~354 Elo is bound-stopped magnitude. Strict policy
+   reads about **+278**. Decide, then write the rule down.
+
+### Phase 2 -- free NPS, and none of it measured where it counts
+
+Zero game slots. Needs an **idle** box, not a match box. At the measured
+~1.16 Elo per 1% NPS this is the largest available gain on the board.
+
+4. **S-03** frontier `nn_push` skip: 31% of all pushes build an accumulator
+   nothing reads. Node-identical, +1.5-2.2%.
+5. **S-04** stack protector still on in the shipped `.so`: 15 guard sites
+   including `negamax`, `qsearch`, `see`, `nn_tail`.
+6. **S-08 + T-38** PGO: **+5.81% on arm64**, node-identical on all three
+   oracles, unmeasured on x86 -- which is where every timed confirm runs.
+   ~+6.7 Elo if it holds. **S-12**: do not batch LTO with it. **S-13**: IR-level
+   PGO trains faster but is not separable here. **T-31**: PGO retires `.so` md5
+   identity, so the snapshot oracle has to change with it.
+7. **S-09** history/LMR tables are int32, 48 KiB against a 64 KiB L1d.
+   **S-10** five dormant eval gates still inside `eval_white`'s loops, one
+   commit each. **S-05 / E-01** SIMD and arm64 kernel coverage, same idle box.
+8. Substrate readings, no change: **S-02** (the driver is not a speed problem),
+   **S-07** (TT saturation, recorded under a retired TC), **S-15** (no pawn
+   cache; ceiling ~1% of search time).
+9. Larger and later: **S-06** in-check `gen_legal` full-legality-tests
+   everything (~1 box-day of movegen work), **S-14** 24-byte TT entry into a
+   lossless 16-byte layout, **S-01** the `TT_EVAL_NONE` wipe (not
+   node-identical), **S-11** qsearch HCE stand-pat, **S-16** only if
+   `TT_PCSTAMP` ever ships.
+
+### Phase 3 -- the only search work that earned a slot
+
+10. **X-14 / FI-38** depth-scaled SEE margins. Two slots, not one: the k=25
+    selection argument is false in the arm config, so **k=25 and k=50 screen
+    separately** at 10+0.1, ~1.3 box-hours each.
+11. **X-06 + X-11 + D-22** first, not concurrently: 3 matetrack runs (~1
+    box-hour) close OPEN 6. The mate decline is the FI-21 window (-0.96 pp), not
+    the reverted core (+2.8 +/-3.1), and FI-38's gate depends on it.
+12. **X-13** `SOFT_STOP_STABLE_FRAC` governs 26 of 30 moves and is the most
+    interesting unexplored lever in the audit -- but ~30 box-hours with no sign
+    prior. Only if OPEN 1 finishes early.
+13. **X-17** `ASPIRATION_MATE_FLOOR`, 5 paired matetrack rounds, a kill filter
+    that cannot confirm its own estimate. After Phase 3's matetrack work.
+14. Closed pre-A/B on node oracles, recorded so they are not re-opened:
+    **X-04**, **X-08** (FI-37 ETC), **X-09** (FI-34), **X-12**, **X-15**
+    (FI-61), **B-16** (OPEN 5 stamping -- the fix makes its own oracle worse).
+    **X-18** WITHDRAWS FI-106's closure (stale evidence, sign flips with depth).
+    **X-19** FI-107's parameter neighbourhood is closed but its four mechanism
+    variants were never built. **X-05** needs a SEE-aware variant first.
+    **X-16** and **X-20** are NOT MEASURABLE as they stand. **X-07** is the
+    52-toggle census, already run. **X-10** is this plan.
+
+### Phase 4 -- correctness fixes that need measurement
+
+Zero **slot** is not zero **risk**. These change the search tree and are owed a
+screen, not a free commit: **B-03** (stager/order_moves SEE disagreement,
+breaks P-23 stream identity), **B-07** (unclamped ProbCut mate), **X-02**
+(P-04 futility sign inverted), **X-03** (improving stack mixes eval families).
+
+Node-identical or interface-only, so they are free once written: **B-02**
+(MultiPV collapses in a TB position), **B-05** (ProbCut child reads "parent was
+a null move"), **B-08** (`_clear_stale_abort` erases a host stop), **B-09**
+(`SyzygyPath` enables nothing), **B-10** (`_tb_probe_local` ignores the halfmove
+clock), **B-12** (`go depth 0` returns a random move), **B-13** (MultiPV lines
+in discovery order), **B-04** (`tt_r50_stale` exempts mate values).
+**B-11** (FB-24 setup floor, 11.4x overrun) needs its trigger proven first.
+**B-14** Syzygy-overridden labels carry no marker.
+
+### Phase 5 -- checks and tooling, all free
+
+15. Coverage pins, seconds of selftest each: **T-01** (fix the retained-TT
+    pin's contract comment), **T-02** (no check plays a game to termination),
+    **T-03** (the book path is never exercised), **T-06** (absolute movegen
+    oracle via python-chess), **T-28** (nothing plumbs a CLI option to an engine
+    child), **T-30** (three-oracle node-identity gate as a `setup.sh` acceptance
+    step), **T-32** and **T-33** (matetrack is blind to every TT rule, and
+    records one run per version with no spread). **T-04** lands opt-in, not as a
+    selftest default. **T-05** the fixed-trajectory replay tool, needed before
+    X-18 and X-19 can be quoted.
+16. **T-21** `--dry-run`: start one worker, print both engines' EFFECTIVE
+    options and net hash. This is the missing half of today's `--sf-elo` fix.
+17. **T-18** the queue's INT trap cannot stop one candidate. Its `| tee`
+    removal is **rejected as specified**: a plain redirect kills the live
+    progress bar, and a silent terminal for hours is a worse failure than the
+    one it fixes. Fix the trap, keep `tee`.
+18. Smaller: **T-07** (AspDelta inert across its range), **T-08** (two spellings
+    of the soft-stop fractions), **T-09** (Move Overhead / Hash / Contempt still
+    hardcoded), **T-10** (MultiPV movetime sawtooth), **T-11** (`setup.sh`'s
+    snapshot rebuild omits `NNUE/nnue.c`), **T-12**, **T-24** (one shim
+    registry), **T-34** (the dot-kernel name reaches no log), **T-35**
+    (cosmetic atexit traceback), **T-29** and **T-36** and **T-37** (the odds
+    yardstick: honest sample size, the h2 castling signature, and time odds).
+
+### Phase 6 -- documentation
+
+**D-08** two tracked SVGs still publish the withdrawn 90.30% figure. **D-09**
+the speed badge is on a retired NPS instrument. **D-10** the "biggest jumps"
+table is on a third, older one. **D-11** version count and chart alt-text.
+**D-12** the `--nodes` footnote is wrong for v48-v51 and v55 onward. **D-16**
+and **D-21** shim docstrings describe baselines the revert changed, and the b05
+figures look arm-swapped. **D-19** the dead-entry bullet describes an idealised
+rule, not the qsearch-only one that ships. **D-20** three toggles document
+"mechanism kept" over no-op C setters. **D-01** and **D-02** the net's NPS cost
+is quoted four different ways and the quantization text is stale.
+
+### Phase 7 -- the eval lane, and what Stockfish 19 says about it
+
+**The NNUE corpus lane stays closed.** Volume, schedule and label depth are all
+measured dead, fifteen consecutive nets have failed to beat v12, and held-out
+validation is 0-for-14 as an Elo predictor. **T-13** removes the *reason* it was
+last blocked -- nnue-labelled corpora now pass the `verify_labels` hard gate at
+HEAD across five independent runs, and the accumulator explanation was wrong --
+but a net-labelled corpus is still a corpus axis, and the measured teacher edge
+is small. The gate being gone does not move the prior.
+
+Stockfish 19's release notes touch this lane twice, and the honest reading is
+*inspiration, not evidence*:
+
+- **Quantization-Aware Training.** SF19 adds QAT. This project already has
+  **E-05** (straight-through fake-quant of the tail weights,
+  `NNUEModel.FAKE_QUANT`) scoped, with **E-03** showing the quantization MAE is
+  almost entirely int8 tail-weight rounding -- 43 cp of it in the shipped v12 --
+  and **E-02** correcting the premise the older estimate rested on. SF19 is
+  outside evidence that the lane is real. Cost: 4 slots plus a GPU.
+- **Rescoring with a strong external net.** SF19 rescored hundreds of billions
+  of positions with a Leela net. That is the **external**-teacher arm, which is
+  a different proposition from the self-teacher arm the audit closes: our net
+  as teacher measures +0.0009 to +0.0060 rank correlation, while an external
+  engine is a categorically larger delta. It is the one corpus variant with a
+  real prior, and it is still a corpus experiment in a lane that is 0-for-15.
+  Not scheduled; named so the option is not forgotten.
+- **Pawn-pair features and retiring the small net** are architecture changes to
+  SFNNv16 and do not transfer to a 6144-input king-bucketed net without a
+  rebuild.
+
+Also worth pricing before any SF19 move: **its strict position validation
+terminates the process** on an invalid FEN or UCI command. Our openings come
+from UHO and are legal, but the odds harness removes pieces from the start
+position, and that path deserves a check before SF19 is ever the opponent.
+
+Remaining eval items: **E-04** material-scaled output (one fixed-node screen),
+**E-06** the verified endgame gap -- 50 of 51 R+minor vs R positions score +400
+to +550 where the answer is a draw -- and **E-07** NNUE stand-pat in qsearch,
+which fails three free oracle steps before it earns its ~30 box-hours.
+
+### What this roadmap does not schedule
+
+**T-24** and the seven-script half of **T-27** are each about a day of
+mechanical edits across tools the earlier phases are actively using. Doing them
+mid-stream churns the same files. Week two at the earliest.
+
