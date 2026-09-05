@@ -573,6 +573,12 @@ Written 2026-09-05, after a 121-item audit of the post-revert tree
 them is named below**, so nothing is unscheduled by silence. Ids are the
 audit's.
 
+Each of the audit's 121 items opens with a fenced **how-to block** -- `EDIT`
+the files and line ranges it touches, `DO` the numbered steps of its fix,
+`VERIFY` the command that proves it -- derived from that item's own fields, so
+picking any id off this roadmap lands on something actionable rather than on
+nine thousand characters of prose.
+
 ### Decisions taken, so they stop being re-argued
 
 **The next A/B is SPRT at a 5,000-game cap, not a 10,000-game fixed budget.**
