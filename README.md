@@ -10,7 +10,7 @@ no borrowed data and no borrowed weights.<br/>
 [`python-chess`](https://pypi.org/project/chess/) is used *only* for board
 representation, move generation and legality.
 
-![Strength](https://img.shields.io/badge/strength-~2868_Elo-3fb950)
+![Strength](https://img.shields.io/badge/strength-retracted-8b949e)
 ![Speed](https://img.shields.io/badge/speed-5.6M_nps-58a6ff)
 ![Versions](https://img.shields.io/badge/versions-62-8b949e)
 ![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B354_Elo-f0883e)
@@ -22,7 +22,7 @@ representation, move generation and legality.
 ### At a glance
 
 <table>
-<tr><td><b>~2868 Elo</b></td><td>SF-18 UCI_Elo scale</td><td><b>5.6M nps</b></td><td>the net costs ~30% of it</td></tr>
+<tr><td><b>retracted</b></td><td>strength: see Measured strength</td><td><b>5.6M nps</b></td><td>the net costs ~30% of it</td></tr>
 <tr><td><b>~+354 Elo</b></td><td>A/B-confirmed, v31&rarr;v62</td><td><b>~18 ply</b></td><td>from startpos in 5 s</td></tr>
 <tr><td><b>+48.84 Elo</b></td><td>the NNUE era, v58&rarr;v62</td><td><b>1.11&times;</b></td><td>single-thread vs v31</td></tr>
 <tr><td><b>v53+v54</b> eval lane</td><td>+37.52 &amp; +31.20, the two biggest</td><td><b>1 dependency</b></td><td><code>python-chess</code> only</td></tr>
@@ -82,17 +82,27 @@ startup. The net's weights live in `NNUE/nets/` instead.
 
 ### Measured strength
 
-**~2868 Elo** on the SF-18 UCI_Elo scale, measured at v58 on 2026-08-08.
+**RETRACTED 2026-09-05. There is currently no strength figure for Pygin.**
+
+The ~2868 Elo published here was derived from a run launched against an
+explicit `--sf-elo 2900` cap. T-14 shows that override never survived the spawn
+boundary: `EngineProcess._spawn` read the module default, so every game was
+actually played at **UCI_Elo 3000**. The score below is real; the opponent it
+is attributed to is not.
 
 ```
-Score | 45.45% (454.5/1000)  ->  -31.70 +/- 21.7 vs the cap
+Score | 45.45% (454.5/1000)   <- real games
 Games | N: 1000  W: 235  L: 326  D: 439
 Penta | [30, 153, 212, 88, 17]   500 pairs
-Conf  | Stockfish 18 @ UCI_Elo 2900, 50+0.50, Threads=1, 4 workers
+Conf  | 50+0.50, Threads=1, 4 workers, Stockfish 18 at UCI_Elo 3000
+        (the run ASKED for 2900 and did not get it)
 ```
 
-Caveats: this extrapolates from a single cap rather than a two-cap bracket,
-and UCI_Elo is Stockfish's own limiter, not an external rating.
+It is retracted rather than recomputed: a result against a 3000 cap does not
+convert to a 2900 one by arithmetic, and the original was already an
+extrapolation from a single cap rather than a two-cap bracket. A replacement
+needs 2 x 1,000 games through the now-fixed harness. UCI_Elo is in any case
+Stockfish's own limiter and not an external rating.
 
 **This is the only strength figure on this page.** Everything previously
 published here -- ~3010 at v58, ~2885 at v51, the whole odds ladder -- was
