@@ -52,12 +52,20 @@ d = sys.argv[1]
 rows = []
 for f in glob.glob(os.path.join(d, "odds_*.log")):
     sq = os.path.basename(f)[5:-4]
-    m = re.findall(r"Engine 1 score:\s*[\d.]+/(\d+)\s*\(([\d.]+)%\)", open(f, errors="ignore").read())
-    if m:
+    txt = open(f, errors="ignore").read()
+    m = re.findall(r"Engine 1 score:\s*[\d.]+/(\d+)\s*\(([\d.]+)%\)", txt)
+    w = re.findall(r"Engine 1 Wins: (\d+)", txt)
+    d = re.findall(r"^Draws: (\d+)", txt, re.M)
+    l = re.findall(r"Engine 2 Wins: (\d+)", txt)
+    if m and w and d and l:
         n, pct = int(m[-1][0]), float(m[-1][1])
-        # binomial-ish interval on the score rate, enough to see whether two
-        # squares are actually separable at this sample size
-        se = 100 * (0.25 / n) ** 0.5
+        # T-22: the variance comes from the RESULTS, not a coin flip. The old
+        # se = sqrt(0.25/n) assumed every game was a 50/50 win-or-lose with no
+        # draws and printed the same +/-3.54% for all eight squares, which was
+        # 1.3-1.7x too wide and disagreed with odds.py's own margin.
+        W, D, L = int(w[-1]), int(d[-1]), int(l[-1])
+        mean = (W + 0.5 * D) / n
+        se = 100 * (((W + 0.25 * D) / n - mean * mean) / n) ** 0.5
         rows.append((pct, se, n, sq))
 if not rows:
     print("  no completed squares yet"); raise SystemExit
