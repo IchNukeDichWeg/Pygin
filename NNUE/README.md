@@ -2,9 +2,12 @@
 
 The complete NNUE infrastructure for Pygin: data generation, PyTorch
 trainer, quantized export, C inference (accumulator + NEON/scalar forward),
-and hybrid integration behind one master toggle. **Everything is dormant by
-default** -- with `cengine.USE_NNUE = False` the search is byte-exact vs
-the same build without any of this. The bench signature is NOT a fixed
+and hybrid integration behind one master toggle. **THE NET IS ARMED AND HAS
+BEEN SINCE v58 (2026-08-04): `cengine.USE_NNUE` defaults to True and the
+shipped engine plays with `nnue_v12_bf86c4ced057.nnue`.** The sentence that
+stood here said everything was dormant by default, which stopped being true
+seven releases ago. Turning the toggle OFF still gives a search byte-exact vs
+the same build without any of this, which is what makes it an A/B control. The bench signature is NOT a fixed
 number to quote: it re-baselines at every ship and every eval change, so
 verify by COMPARING (run `bench` before and after an NNUE-side change --
 it must not move), never against a number copied from a doc. Reference

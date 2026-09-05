@@ -60,6 +60,15 @@ staying at v53.
 Note that `REF_NODES` is the **Python** engine's node count and is not the right
 oracle for a C-era snapshot; the ladder is.
 
+**The ladder is NOT sufficient on its own (2026-09-05).** `CE_LADDER` resets the
+transposition table for every depth -- "cold TT => reproducible count" -- so it
+is structurally blind to any TT store or replacement rule. v62 shipped a core
+that had measured ACCEPT H0 with the ladder, the bench signature (1,203,792) and
+kiwipete d12 (670,778) all IDENTICAL on both cores. A snapshot must therefore
+also match the **retained-TT probe** now pinned in `selftest.py`: 28 plies at
+depth 10 with the table kept at 12 MiB. HEAD and `Old Engine/61` read 2,479,366;
+`Old Engine/62` reads 3,294,864, and that difference is the whole point.
+
 Per-version detail -- what changed, and the A/B that confirmed it -- lives in the
 version table in the top-level `README.md` and the ledger in
 `DESIGN_c_search_core.md`.
