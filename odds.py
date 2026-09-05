@@ -344,6 +344,25 @@ def _apply_config(cfg=None):
 # Engine loading
 # ---------------------------------------------------------------------- #
 def load_engine(path, tag):
+    """Load an engine module and construct it with THIS run's config applied.
+
+    B-15: STOCKFISH_ELO and ENGINE_SMP were resolved into odds.py's own module
+    globals and never reached the engine, so `--stockfish-elo` was inert at
+    every worker count and the shipped default 0 ("full strength") still let
+    stockfish_engine.py's own SF_ELO = 3000 send UCI_LimitStrength. Every odds
+    number measured after 2026-07-22 was played against a capped Stockfish
+    while the banner said full strength. The two knobs need DIFFERENT
+    mechanisms, which is why one loop does not cover both:
+
+      * SF_ELO is a stockfish_engine MODULE global read in __init__, so it has
+        to be set between exec_module and Engine().
+      * SMP_WORKERS is a cengine CLASS attribute, so hasattr(module, ...) is
+        False after exec_module and a module override silently does nothing
+        (measured: smp_workers stays 1). The INSTANCE assignment is what works.
+
+    Not replaced by battle_worker._load_engine, which would drop use_book,
+    pv_uci, _nnue_info and the per-(path, tag) spec name self-play needs.
+    """
     # Unique spec name per (path, tag) so both engines stay distinct even when
     # ENGINE_1_PATH == ENGINE_2_PATH (self-play).
     spec = importlib.util.spec_from_file_location(
@@ -354,6 +373,11 @@ def load_engine(path, tag):
     spec.loader.exec_module(module)
     if not hasattr(module, "Engine"):
         raise AttributeError(f"{path!r} does not define an `Engine` class")
+    # MODULE globals, before construction: stockfish_engine reads SF_ELO in
+    # __init__ and sends UCI_LimitStrength/UCI_Elo from it.
+    for name, val in (("SF_ELO", STOCKFISH_ELO),):
+        if hasattr(module, name) and val is not None:
+            setattr(module, name, val)
     eng = module.Engine()
     try:                       # what net, if any, this engine will play with
         from battle_worker import describe_nnue
@@ -367,6 +391,10 @@ def load_engine(path, tag):
     try:
         eng.pv_uci = False              # SAN PV is friendlier in the log
     except Exception:
+        pass
+    try:                        # INSTANCE attr: the class-attribute default
+        eng.smp_workers = min(512, max(1, int(ENGINE_SMP)))   # is not settable
+    except Exception:                                         # via the module
         pass
     return eng
 
