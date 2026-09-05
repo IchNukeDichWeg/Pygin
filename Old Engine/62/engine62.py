@@ -11,7 +11,13 @@ they are not separable toggles: the opening delta scales with the previous
 score (14 + prev^2/16384), a fail-low pulls beta to the midpoint before alpha
 drops (Stockfish's order), and growth is 1.5x.
 
-Driver-only. The C core is byte-identical to v61 and the CB-02/FB-23
+Driver-only in intent ONLY. CORRECTION 2026-09-05: the C core is NOT
+byte-identical to v61. This snapshot carries b4339ae+a1a31cd (the b05
+FI-115 completion), which had already measured ACCEPT H0 at LLR -5.98
+against v61 and was reverted from the live tree after this release. This
+file is the record of what SHIPPED and is deliberately left that way; the
+retained-TT probe reads 3,294,864 here and 2,479,366 at HEAD. The
+CB-02/FB-23
 provisional-move machinery is preserved verbatim.
 
 vs Old Engine/61, same nnue_v12 net on both arms so the window policy is the
