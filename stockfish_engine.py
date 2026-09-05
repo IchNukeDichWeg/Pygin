@@ -46,6 +46,31 @@ SF_THREADS = 1
 SF_HASH = 64
 
 
+def sf_id_name(timeout=10.0):
+    """The opponent's OWN version string, e.g. "Stockfish 18".
+
+    Recorded because NOTHING in this project used to record it. Stockfish 19
+    shipped 2026-09-05 at up to +44 Elo over 18, so a `brew upgrade` on any box
+    silently swaps the opponent for every odds rung and every strength figure,
+    with no line in any log or state file able to say the yardstick moved. That
+    is the same class of silent instrument drift as the --sf-elo loss, and it is
+    the one measurement error this project keeps paying for.
+
+    Returns the string, or None if the binary cannot be reached -- never raises,
+    because a provenance field must not be able to stop a run.
+    """
+    import subprocess
+    try:
+        p = subprocess.run([_find_sf()], input="uci\nquit\n", capture_output=True,
+                           text=True, timeout=timeout)
+        for line in p.stdout.splitlines():
+            if line.startswith("id name "):
+                return line[len("id name "):].strip()
+    except Exception:
+        pass
+    return None
+
+
 def _find_sf():
     import shutil
     for p in _SF_PATHS:
