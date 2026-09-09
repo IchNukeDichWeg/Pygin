@@ -513,6 +513,9 @@ class EngineProcess:
             # payload added later than the protocol; tolerate its absence so
             # an older battle_worker still loads
             self.nnue = msg[1] if len(msg) > 1 else None
+            # T-21: the child's EFFECTIVE options. Absent from an older worker,
+            # which the two-element contract above already tolerates.
+            self.opts = msg[2] if len(msg) > 2 else None
             return
         self.kill()
         if msg[0] == "fatal":
@@ -1748,9 +1751,16 @@ def _core_md5(engine_path):
     Python arm).
     """
     import hashlib
-    so = _os.path.join(_os.path.dirname(_os.path.abspath(engine_path)),
-                       "csearch.so")
+    d = _os.path.dirname(_os.path.abspath(engine_path))
+    so = _os.path.join(d, "csearch.so")
     try:
+        # An engine that does not USE the C core must not be credited with the
+        # one that happens to sit next to it: stockfish_engine.py lives in the
+        # repo root, so a bare directory scan reported OUR core as Stockfish's.
+        # Cheap and sufficient: the engine's own source names it.
+        with open(engine_path, "r", encoding="utf-8", errors="ignore") as fh:
+            if "csearch" not in fh.read():
+                return None
         with open(so, "rb") as fh:
             return hashlib.md5(fh.read()).hexdigest()
     except OSError:
@@ -1913,6 +1923,7 @@ def main():
     sprt_elo0, sprt_elo1 = 0.0, 4.0
     sprt_alpha, sprt_beta = 0.05, 0.05
     sprt_model = "normalized"
+    dry_run = False            # T-21: --dry-run, print the config and exit
     sprt_resume_path = None    # FI-82: pooled-tranche state file
     push_state = False         # --push-state
     force_nodes_1 = None       # --force-nodes-1/2: explicit per-side budgets,
@@ -1996,6 +2007,9 @@ def main():
             # clock. Results are NOT comparable to timed campaigns.
             nodes_budget = int(argv[i + 1])
             i += 2
+        elif argv[i] == "--dry-run":
+            dry_run = True                      # T-21: preflight, play nothing
+            i += 1
         elif argv[i] == "--sprt":
             sprt_enable = True
             i += 1
@@ -2437,6 +2451,52 @@ def main():
             print("     Different instruments must NOT be pooled. Use --tag "
                   "to give this campaign its own file if that is what you "
                   "meant.")
+    if dry_run:
+        # T-21: prove the campaign is configured the way you think BEFORE it
+        # spends box-hours. Both 2026-09-01 bracket runs burned ~8 box-hours at
+        # UCI_Elo 3000 while their command line said 2900, and nothing printed
+        # before the games started could have shown it.
+        #
+        # WHAT THIS PROVES: both engines load, which net each carries, and the
+        # options the CHILD resolved (not the parent's intention). WHAT IT DOES
+        # NOT: it spawns from the parent, so it exercises EngineProcess._spawn
+        # rather than _worker_loop's mode_cfg hand-off; mode_cfg's own values
+        # are printed beside them so a disagreement is visible.
+        print("\n=== DRY RUN -- no games will be played ===")
+        probes = []
+        try:
+            _ctx = mp.get_context("spawn")
+            for path, bk in ((engine1, BOOK_ENGINE1), (engine2, BOOK_ENGINE2)):
+                pr = EngineProcess(_ctx, path, bk)
+                pr.start()
+                probes.append(pr)
+                o = getattr(pr, "opts", None) or {}
+                print(f"  {pr.name}")
+                print(f"      net       {pr.nnue}")
+                print(f"      core md5  {_core_md5(path)}")
+                print(f"      sf_elo    {o.get('sf_elo')}"
+                      + ("   (this engine has no SF_ELO knob)"
+                         if o.get("sf_elo") is None else ""))
+                print(f"      smp       {o.get('smp')}")
+                print(f"      book      {o.get('use_book')}  {o.get('book_path') or ''}")
+        except Exception as ex:
+            print(f"  ENGINE FAILED TO LOAD: {ex}")
+        finally:
+            for pr in probes:
+                try:
+                    pr.kill()
+                except Exception:
+                    pass
+        print(f"\n  mode_cfg      sf_elo={mode_cfg.get('sf_elo')} "
+              f"engine_smp={mode_cfg.get('engine_smp')} "
+              f"mode={mode_cfg.get('mode')}")
+        print(f"  instrument    {this_run['instrument_key']}  "
+              f"workers={this_run['workers']} seed={this_run['seed']} "
+              f"sf_version={this_run['sf_version']}")
+        print(f"  state file    {sprt_resume_path}  (NOT written by a dry run)")
+        print("\n=== END DRY RUN ===")
+        return 0
+
     runs_log = list(prior_runs) + [this_run]
     # Create it NOW, before a single game is played. A file that only appears
     # at the end is not a crash-safety net -- it is a summary.
