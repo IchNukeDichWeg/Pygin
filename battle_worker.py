@@ -75,7 +75,15 @@ def _load_engine(path, module_overrides=None):
     for k, v in (module_overrides or {}).items():
         if v is not None and hasattr(module, k):
             setattr(module, k, v)
-    return module.Engine()
+    eng = module.Engine()
+    try:
+        # T-21: the module is never registered in sys.modules (every engine
+        # loads under the same spec name), so a caller cannot look it up to
+        # read back what it resolved. Hand it over with the instance.
+        eng._source_module = module
+    except Exception:
+        pass                    # engine with __slots__: the report degrades
+    return eng
 
 
 def _format_info(depth, score_cp, mate, nodes, nps, time_ms):
@@ -269,7 +277,21 @@ def engine_worker(conn, engine_path, use_book, pv_uci=False, book_path=None,
             engine.pv_uci = pv_uci      # PV log format (SAN vs UCI)
         except Exception:
             pass            # older engines may not expose it; fine
-        conn.send(("ready", describe_nnue(engine, engine_path)))
+        # T-21: report the EFFECTIVE options this child actually resolved, so
+        # --dry-run can prove the config crossed the spawn boundary instead of
+        # printing the parent's intention. Third element, because the "ready"
+        # payload was already documented as tolerating absence -- an older
+        # worker simply sends two and the reader falls back.
+        # smp is read from the INSTANCE, never the module: cengine carries
+        # SMP_WORKERS as a CLASS attribute, so a module override silently does
+        # nothing and would report a number the engine is not using.
+        eff = {"sf_elo": None, "smp": getattr(engine, "smp_workers", None),
+               "use_book": getattr(engine, "use_book", None),
+               "book_path": getattr(engine, "book_path", None)}
+        _mod = getattr(engine, "_source_module", None)
+        if _mod is not None and hasattr(_mod, "SF_ELO"):
+            eff["sf_elo"] = _mod.SF_ELO         # only Stockfish defines one
+        conn.send(("ready", describe_nnue(engine, engine_path), eff))
     except Exception:
         conn.send(("fatal", traceback.format_exc()))
         return
