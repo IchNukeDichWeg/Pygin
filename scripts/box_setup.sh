@@ -21,23 +21,22 @@ echo "### BUILD + SELFTEST"
 ./setup.sh 2>&1 | grep -aE '^  FAIL|ALL CHECKS|setup complete|FAILED' | tail -3
 
 echo ""
-echo "### SHIMS: each must find its net (the sha in the filename IS the check)"
+echo "### ARMS: each must find its net (the sha in the filename IS the check)"
 python3 - <<'PY'
 import os, sys
 sys.path.insert(0, ".")
 from battle_worker import describe_nnue_source, nnue_label
-# Exactly the arms ab_next.sh runs, no more: a preflight that checks things
+# Exactly the arms the campaign runs, no more: a preflight that checks things
 # the campaign never loads is noise that hides a real miss.
-# The 2026-08-30 queue: the baseline every arm is measured against, the six
-# runnable search shims, and the three v13 net seeds. p2_improving and
-# s14_repstrict are deliberately absent -- they are do-not-run.
-ARMS = ["engine_v61b_deadtag",
-        "engine_p1_corrhist", "engine_p3_cutlmr", "engine_p4_ttpvlmr",
-        "engine_s10_asp", "engine_s11_falleval", "engine_s6_lmrhist",
-        "engine_v13s1", "engine_v13s2", "engine_v13s3"]
+#
+# 2026-09-09, OPEN 1: the arms are two WHOLE ENGINES, not shims. HEAD is the
+# v63 candidate (v62's settings on v61's core after the b05 revert) and the
+# baseline is the frozen v61 snapshot. The 2026-08-30 shim queue is finished --
+# its corpus lane closed on measurement and its one accept became v62.
+ARMS = ["cengine.py", "Old Engine/61/engine61.py"]
 bad = 0
 for a in ARMS:
-    p = f"NNUE/shims/{a}.py"
+    p = a
     if not os.path.isfile(p):
         print(f"  MISSING FILE  {a}"); bad += 1; continue
     info = describe_nnue_source(p)
@@ -46,7 +45,7 @@ for a in ARMS:
     # does not match its filename means the wrong file was found.
     ok = info.get("on") and not info.get("missing") \
         and info.get("hash") and info["hash"] in info["net"]
-    print(f"  {'OK ' if ok else 'BAD'}  {a:22s} {lab}")
+    print(f"  {'OK ' if ok else 'BAD'}  {a:28s} {lab}")
     bad += 0 if ok else 1
 sys.exit(1 if bad else 0)
 PY
@@ -106,5 +105,6 @@ print(f'  UHO_4060_v4.epd: {n:,} positions (need >= 10,000 for offset 5000 + 500
 assert n >= 10000"
 
 echo ""
-[ "$SHIMS_OK" -eq 0 ] && echo "### READY -- run ./scripts/ab_queue_0830.sh" \
-                      || echo "### NOT READY -- a shim could not find its net"
+[ "$SHIMS_OK" -eq 0 ] && echo "### READY -- run ./scripts/ab_open1.sh" \
+                      || echo "### NOT READY -- an arm could not find its net"
+echo "###   preflights alone: ./scripts/ab_open1.sh --preflight-only"
