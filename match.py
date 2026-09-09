@@ -1737,6 +1737,26 @@ class _SPRTStop(Exception):
 _interrupted_by_signal = False
 
 
+def _core_md5(engine_path):
+    """md5 of the csearch.so the given engine will actually load.
+
+    B-17: seven tranches of the 2026-08-31 campaign ran on a core that could
+    not be identified afterwards, which is how a REJECTED core reached a
+    release. cengine loads ./csearch.so; a frozen snapshot loads the one beside
+    it. Recording the hash makes a pooled figure auditable without trusting a
+    comment. None when there is no .so beside the engine (Stockfish, a pure
+    Python arm).
+    """
+    import hashlib
+    so = _os.path.join(_os.path.dirname(_os.path.abspath(engine_path)),
+                       "csearch.so")
+    try:
+        with open(so, "rb") as fh:
+            return hashlib.md5(fh.read()).hexdigest()
+    except OSError:
+        return None
+
+
 def _sf_version_of(*paths):
     """"Stockfish 18" if either side of this match IS Stockfish, else None.
 
@@ -2369,6 +2389,11 @@ def main():
                 # now nothing recorded which one played. Same class as the
                 # --sf-elo loss: an instrument that moved with no line saying so.
                 "sf_version": _sf_version_of(engine1, engine2),
+                # B-17: which CORE each arm ran. Bench and CE_LADDER are blind
+                # to a TT replacement rule, so the binary is the only thing
+                # that identifies the tree a tranche was measured on.
+                "core1_md5": _core_md5(engine1),
+                "core2_md5": _core_md5(engine2),
                 "sf_our_clock": bool(sf_our_clock),
                 "adjudicate": bool(ADJUDICATE),
                 "book1": BOOK_ENGINE1, "book2": BOOK_ENGINE2,
