@@ -188,14 +188,26 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # claimed until 2026-08-05. setup.sh builds with -mcpu=native on arm64 and
 # -march=native on x86, so float contraction in the HCE differs between hosts
 # and a handful of near-equal orderings tie-break the other way. Measured
-# drift on rented x86 servers: +10 nodes at d10+ on the Intel Gold 6330,
-# +6 at d14 (and +20 on the bench signature) on a 2x EPYC 7443 -- SCORES
-# IDENTICAL in both cases, which is the part that matters.
+# drift on rented x86 servers, HCE era: +10 nodes at d10+ on the Intel Gold
+# 6330, +6 at d14 (and +20 on the bench signature) on a 2x EPYC 7443, scores
+# identical in both cases.
 #
-# So on a rented box: a few nodes' drift with unchanged scores is BENIGN and
-# A/B-safe. NEVER re-pin the table to a server -- that silently moves the
-# reference off the machine every prior verdict was measured on. A score
-# change, or a drift of more than a few dozen nodes, is a real regression.
+# SINCE THE NET IS ARMED (v58+) THE DRIFT IS NO LONGER SMALL. 2026-09-10, 2x
+# EPYC 7443 at d2788a4: exact through d7, -5 nodes at d8, then SCORES differ
+# from d10 (d13 944,062 nodes against 1,328,657); the retained-TT pin reads
+# 3,153,013 against 2,479,366 and the fortress 4 against 0. The net is NOT
+# the cause -- NNUE/verify_c.py forward on the shipped v12 net gives 0
+# mismatches in 5,000 positions on that box, same as here -- so it is floating
+# point in the C search (the LMR log() table, HCE contraction), which the lazy
+# NNUE threshold turns from a centipawn into a different eval at some nodes.
+#
+# So on a rented box these pins are NOT a regression detector, and a FAIL here
+# is expected. What proves a server sound is ab_open1.sh's preflight A (both
+# arms build the identical core) plus the verify_c forward gate (net kernel
+# exact). An A/B stays valid: both arms share the core and its rounding. NEVER
+# re-pin the table to a server -- that silently moves the reference off the
+# machine every prior verdict was measured on. On the Mac, a score change or a
+# drift of more than a few dozen nodes IS a real regression.
 # The best move is printed and legality-checked but NOT pinned: near-equal
 # quiet developing moves flip between depths without being a regression.
 # Skipped (not failed) if csearch.c is absent (pre-phase-3 checkouts).
