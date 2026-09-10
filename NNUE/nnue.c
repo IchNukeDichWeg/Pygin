@@ -77,6 +77,18 @@ static __thread NNAccum g_nn_acc[CS_MAXPLY + 62];   /* mirrors g_path sizing */
 static int g_nnue_verify = 0;
 static uint64_t g_nnv_pushes = 0, g_nnv_bad = 0;
 void set_nnue_verify(int v) { g_nnue_verify = v ? 1 : 0; }
+
+/* E-04 (2026-09-11): material-scaled NNUE output. The net's value is scaled
+ * by game phase, (NN_MS_BASE + ph) / NN_MS_DIV: 1.0 with full material,
+ * 0.8 in a bare endgame. Here the net shapes pruning decisions and TT evals,
+ * not leaf values (qsearch stands pat on the HCE), so the prior is +0-3.
+ * The constants were chosen to MOVE the tree, not tuned -- the retune is its
+ * own item, which is why they are compile-time and have no setters.
+ * 0 = off = node-exact. */
+#define NN_MS_BASE 96
+#define NN_MS_DIV  120
+static int g_nn_matscale = 0;
+void set_nn_matscale(int v) { g_nn_matscale = v ? 1 : 0; }
 void nnue_verify_stats(uint64_t* pushes, uint64_t* bad)
 {
     *pushes = g_nnv_pushes; *bad = g_nnv_bad;
@@ -665,6 +677,10 @@ static int nn_forward(const Board* b, const NNAccum* a)
 static int nn_eval(const Board* b, int ply)
 {
     int v = nn_forward(b, &g_nn_acc[ply]);
+    if (g_nn_matscale) {                            /* E-04 */
+        int ph = b->a_ph > 24 ? 24 : (b->a_ph < 0 ? 0 : b->a_ph);
+        v = v * (NN_MS_BASE + ph) / NN_MS_DIV;
+    }
     int w = (b->turn == WHITE) ? v : -v;
     w = cantwin_clamp(b, w);
     return (b->turn == WHITE) ? w : -w;

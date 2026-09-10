@@ -601,6 +601,20 @@ if os.path.exists("csearch.c"):
               f"{_seeq_n:,} nodes" + ("" if _seeq_n == 712_510 else
                   " != 712,510 -- the setter did not engage, or the hunk changed"))
 
+        # --- 5b-e04. E-04 material-scaled net output: engagement pin ---- #
+        # Off is proven node-exact by every pin above. On, kiwipete d12 reads
+        # 756,334 against 670,778 off -- identical, with startpos, bench and the
+        # retained probe, to the audit's scratch build of the same formula.
+        ce._lib.set_nn_matscale(1)
+        ce._lib.cs_tt_reset()
+        ce.get_best_move(chess.Board(_KIWI), 12)
+        _ms_n = ce.nodes_searched
+        ce._lib.set_nn_matscale(1 if getattr(ce, "NNUE_MATSCALE", False) else 0)
+        ce._lib.cs_tt_reset()
+        check("E-04 NNUE_MATSCALE engages (kiwipete d12)", _ms_n == 756_334,
+              f"{_ms_n:,} nodes" + ("" if _ms_n == 756_334 else
+                  " != 756,334 -- the setter did not engage, or the scale changed"))
+
         # --- 5c. NPS: 2s timed search, print throughput ------------------ #
         # Catches the two disasters a fixed-depth ladder can't: a slow/
         # unoptimized build and the pure-Python eval fallback. Absolute NPS
