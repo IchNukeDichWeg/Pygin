@@ -548,6 +548,14 @@ DORMANT (default OFF, mechanism kept for longer-TC re-tests):
     Mac: kiwipete d12 670,778 -> 712,510 (K2=24) / 916,514 (K2=50);
     retained-TT 2,479,366 -> 2,049,022 / 3,348,472. Pruning quiets can GROW
     the tree, which is why this is screened, not assumed.
+  * E-04 material-scaled NNUE output (set_nn_matscale; the net's value x
+    (96 + phase) / 120, 0.8 in a bare endgame; False = node-exact). PENDING
+    2026-09-11, fixed-node screen vs HEAD (NNUE/shims/engine_matscale.py).
+    Mac, off -> on: kiwipete d12 670,778 -> 756,334, startpos d12 551,685 ->
+    294,830, bench 1,203,792 -> 1,367,701, retained-TT 2,479,366 ->
+    2,050,728 -- every value identical to the audit's scratch build. Shapes
+    pruning and TT evals only (qsearch stands pat on the HCE), prior +0-3; a
+    verdict here does not transfer if E-07 ever puts the net at the leaves.
   * P-43 single-reply / forced-move extension (set_single_reply; +3.5
     +/-4.8 over 20k pooled games vs v34 -- positive-leaning on every
     signal but sub-significant, kept-marginal by user call; OFF = v34
@@ -1552,6 +1560,11 @@ class Engine:
     # bound-biased). The package numbers above priced NNUE+lazy together;
     # this is the toggle alone, and it pays. Flipped True as v59.
     LAZY_NNUE = True
+    # E-04 material-scaled net output: PENDING 2026-09-11. Scales the net's
+    # value by (96 + phase) / 120, so 0.8 in a bare endgame. Shapes pruning
+    # and TT evals only (qsearch stands pat on the HCE), prior +0-3. Screened on
+    # the fixed-node instrument. False = node-exact.
+    NNUE_MATSCALE = False
     LAZY_NNUE_MARGIN = 200
 
     # FI-105. Which shared object to load. Only an instrumented build has any
@@ -1657,8 +1670,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, self.CSEARCH_SO))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (abi 38 = FI-38 set_see_quiet; 37 = FI-38 set_see_scaled; 35 = FI-103/104/106/107 set_cutnode_lmr/ttpv_lmr/razor/probcut) -- bump with csearch_abi.
-        if lib.csearch_abi() < 38:
+        # (abi 39 = E-04 set_nn_matscale; 38 = FI-38 set_see_quiet; 37 = FI-38 set_see_scaled; 35 = FI-103/104/106/107 set_cutnode_lmr/ttpv_lmr/razor/probcut) -- bump with csearch_abi.
+        if lib.csearch_abi() < 39:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -1692,7 +1705,7 @@ class Engine:
               self.SIMPLIFY_THRESHOLD, self.CHECK_EXT_BUDGET, self.PV_EXACT,
               self.SCORE_HYGIENE, self.EP_FILTER, self.QS_EVICT_MAX,
               self.CB2, self.CANTWIN, self.NULL_VERIFY, self.LMR_HIST,
-              self.TT_EVAL_SHARPEN, self.SEE_PRUNE, self.SEE_SCALED_K, self.SEE_QUIET_K2, self.ROOT_ORDER,
+              self.TT_EVAL_SHARPEN, self.SEE_PRUNE, self.SEE_SCALED_K, self.SEE_QUIET_K2, self.NNUE_MATSCALE, self.ROOT_ORDER,
               self.TT_BITS, self.TT_KEEP_WARM, self.HIST_PRUNE,
               self.QS_TT_SHARPEN, self.QS_KEEP_MOVE, self.CYCLE_DETECT,
               self.QS_BETA_NARROW, self.QS_TTM_EXEMPT, self.QS_CHK_D1,
@@ -1783,6 +1796,7 @@ class Engine:
         lib.set_iir_weak(1 if self.IIR_WEAK else 0)              # FI-55
         lib.set_lmr_badcap(1 if self.LMR_BADCAP else 0)          # FI-64
         lib.set_lazy_nnue(1 if self.LAZY_NNUE else 0)            # FI-106
+        lib.set_nn_matscale(1 if self.NNUE_MATSCALE else 0)      # E-04
         lib.set_lazy_margin(int(self.LAZY_NNUE_MARGIN))          # FI-106
         # FI-15 NNUE (abi 19): load-then-arm. A load failure with USE_NNUE
         # on raises loudly -- a missing/corrupt net must never silently
