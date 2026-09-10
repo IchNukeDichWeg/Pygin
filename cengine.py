@@ -540,6 +540,14 @@ DORMANT (default OFF, mechanism kept for longer-TC re-tests):
     K=25 reproduces the audit's scratch build to the node. It is the last
     untried member of a family that went FI-18 NULL -1.25, FI-23 REJECTED,
     FI-64 SCREEN-KILLED -10.95; a flat screen closes the family for good.
+  * FI-38 depth-scaled SEE pruning, QUIETS half (set_see_quiet; K2 cp,
+    threshold -K2 * depth^2 at depth <= 4, 0 = node-exact). PENDING
+    2026-09-10, screened on top of whichever captures K confirms. Built on a
+    NEW see_quiet (eval_c.c): see() returns 0 for any non-capture, so the
+    audit's spec built on see() could never have fired. Engagement on the
+    Mac: kiwipete d12 670,778 -> 712,510 (K2=24) / 916,514 (K2=50);
+    retained-TT 2,479,366 -> 2,049,022 / 3,348,472. Pruning quiets can GROW
+    the tree, which is why this is screened, not assumed.
   * P-43 single-reply / forced-move extension (set_single_reply; +3.5
     +/-4.8 over 20k pooled games vs v34 -- positive-leaning on every
     signal but sub-significant, kept-marginal by user call; OFF = v34
@@ -788,6 +796,14 @@ class Engine:
     # at 10+0.1 against HEAD as K=25 and K=50, two slots, because the audit's
     # reason for preferring 25 did not survive its own config correction.
     SEE_SCALED_K = 0
+
+    # FI-38 QUIETS half: PENDING 2026-09-10. A quiet move at depth <= 4 is
+    # pruned when the mover would lose more than K2 * depth^2 on its square.
+    # Needed its own SEE (see_quiet): see() returns 0 for every non-capture,
+    # so the audit's spec built on see() would have been a silent no-op.
+    # Separate toggle and slot from SEE_SCALED_K; screened on top of whichever
+    # captures setting confirms. 0 = off = node-exact.
+    SEE_QUIET_K2 = 0
 
     # FI-06 root-move ordering: DORMANT (sixteenth 50+0.20-era campaign, A/B
     # vs Old Engine/45 2026-07-13: +2.26 +/-6.8 @10k, 50.32%, pair ratio
@@ -1641,8 +1657,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, self.CSEARCH_SO))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (abi 37 = FI-38 set_see_scaled; 35 = FI-103/104/106/107 set_cutnode_lmr/ttpv_lmr/razor/probcut) -- bump with csearch_abi.
-        if lib.csearch_abi() < 37:
+        # (abi 38 = FI-38 set_see_quiet; 37 = FI-38 set_see_scaled; 35 = FI-103/104/106/107 set_cutnode_lmr/ttpv_lmr/razor/probcut) -- bump with csearch_abi.
+        if lib.csearch_abi() < 38:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -1676,7 +1692,7 @@ class Engine:
               self.SIMPLIFY_THRESHOLD, self.CHECK_EXT_BUDGET, self.PV_EXACT,
               self.SCORE_HYGIENE, self.EP_FILTER, self.QS_EVICT_MAX,
               self.CB2, self.CANTWIN, self.NULL_VERIFY, self.LMR_HIST,
-              self.TT_EVAL_SHARPEN, self.SEE_PRUNE, self.SEE_SCALED_K, self.ROOT_ORDER,
+              self.TT_EVAL_SHARPEN, self.SEE_PRUNE, self.SEE_SCALED_K, self.SEE_QUIET_K2, self.ROOT_ORDER,
               self.TT_BITS, self.TT_KEEP_WARM, self.HIST_PRUNE,
               self.QS_TT_SHARPEN, self.QS_KEEP_MOVE, self.CYCLE_DETECT,
               self.QS_BETA_NARROW, self.QS_TTM_EXEMPT, self.QS_CHK_D1,
@@ -1736,6 +1752,7 @@ class Engine:
         lib.set_lmr_hist(int(self.LMR_HIST))                   # FI-04
         lib.set_tt_eval_sharpen(1 if self.TT_EVAL_SHARPEN else 0)  # FI-25
         lib.set_see_scaled(int(self.SEE_SCALED_K))              # FI-38 (FI-18's setter is a no-op)
+        lib.set_see_quiet(int(self.SEE_QUIET_K2))               # FI-38 quiets half
         lib.set_root_order(1 if self.ROOT_ORDER else 0)        # FI-06
         lib.set_null_verify(1 if self.NULL_VERIFY else 0)      # NV-01
         lib.set_tt_bits(int(self.TT_BITS))                     # FI-10 (Hash)
