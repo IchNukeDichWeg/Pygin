@@ -849,6 +849,59 @@ int see(uint64_t pawns, uint64_t knights, uint64_t bishops, uint64_t rooks,
  * exported signature or the semantics of an existing export change, so a
  * stale-but-loadable .so is rejected at load instead of silently
  * mis-evaluating. */
+/* FI-38 quiets half (2026-09-10): SEE of a NON-capture -- what the mover
+ * stands to lose by landing on to_sq. see() above returns 0 for every
+ * non-capture by design (move ordering only ever asks about captures), so a
+ * quiet-move SEE prune built on it could never fire. Same swap as see(),
+ * started from an empty target. Duplicated rather than refactored so see()
+ * stays byte-identical and every capture-path pin keeps proving it -- fold the
+ * two into one helper if the swap logic ever has to change. */
+int see_quiet(uint64_t pawns, uint64_t knights, uint64_t bishops, uint64_t rooks,
+              uint64_t queens, uint64_t kings, uint64_t occ_w, uint64_t occ_b,
+              int turn, int from_sq, int to_sq)
+{
+    uint64_t occupied = occ_w | occ_b;
+    uint64_t frombit = 1ULL << from_sq;
+    int attacker_pt = 0;
+    if      (pawns   & frombit) attacker_pt = 1;
+    else if (knights & frombit) attacker_pt = 2;
+    else if (bishops & frombit) attacker_pt = 3;
+    else if (rooks   & frombit) attacker_pt = 4;
+    else if (queens  & frombit) attacker_pt = 5;
+    else if (kings   & frombit) attacker_pt = 6;
+    if (attacker_pt == 0) return 0;
+    int attacker_value = SEE_VALUES[attacker_pt];
+    occupied &= ~frombit;
+    int side = !turn;    /* side to capture next: the non-mover */
+    uint64_t attackers = see_attackers(pawns, knights, bishops, rooks, queens,
+                                       kings, occ_w, occ_b, to_sq, occupied);
+    int gain[32];
+    gain[0] = 0;         /* nothing captured on arrival */
+    int d = 0;
+    while (1) {
+        d++;
+        gain[d] = attacker_value - gain[d - 1];
+        uint64_t side_occ = side ? occ_w : occ_b;
+        uint64_t side_attackers = attackers & side_occ & occupied;
+        if (!side_attackers) break;
+        int lva_value;
+        int lva_sq = see_lva(side_attackers, pawns, knights, bishops, rooks,
+                             queens, kings, &lva_value);
+        occupied &= ~(1ULL << lva_sq);
+        attackers = see_attackers(pawns, knights, bishops, rooks, queens,
+                                  kings, occ_w, occ_b, to_sq, occupied);
+        attacker_value = lva_value;
+        side = !side;
+        if (d >= 31) break;
+    }
+    while (d > 1) {
+        d--;
+        int neg = -gain[d - 1];
+        gain[d - 1] = -(neg > gain[d] ? neg : gain[d]);
+    }
+    return gain[0];
+}
+
 int abi_version(void) { return 6; }   /* 2: C-18 folded mopup into
                                        *    mobility_king_safety at phase <= 6
                                        * 3: U-04 mobility_king_safety takes a
