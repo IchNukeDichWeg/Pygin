@@ -556,6 +556,51 @@ if os.path.exists("csearch.c"):
               f"{_see_n:,} nodes" + ("" if _see_n == 508_689 else
                   " != 508,689 -- the setter did not engage, or the hunk changed"))
 
+        # --- 5b-seeq. FI-38 quiets half: see_quiet oracle + engagement -- #
+        # see() returns 0 for every non-capture by design, which is why the
+        # quiets half needed its own SEE. Hand-computed cases: an undefended
+        # knight onto a pawn-attacked square loses it (-320); a recapture
+        # halves the damage (-320 + 100); a safe square costs nothing; a rook
+        # onto a square its unanswered rival sees loses it outright (-500).
+        import ctypes as _ct
+        _L = ce._lib
+        _L.see_quiet.argtypes = [_ct.c_uint64] * 8 + [_ct.c_int] * 3
+        _L.see_quiet.restype = _ct.c_int
+        def _seeq(fen, uci):
+            _b = chess.Board(fen); _mv = chess.Move.from_uci(uci)
+            _bb = lambda pt: int(_b.pieces_mask(pt, chess.WHITE)
+                                 | _b.pieces_mask(pt, chess.BLACK))
+            return _L.see_quiet(_bb(chess.PAWN), _bb(chess.KNIGHT),
+                                _bb(chess.BISHOP), _bb(chess.ROOK),
+                                _bb(chess.QUEEN), _bb(chess.KING),
+                                int(_b.occupied_co[chess.WHITE]),
+                                int(_b.occupied_co[chess.BLACK]),
+                                1 if _b.turn == chess.WHITE else 0,
+                                _mv.from_square, _mv.to_square)
+        _seeq_cases = [
+            ("4k3/8/8/8/4p3/8/8/4K1N1 w - - 0 1", "g1f3", -320),
+            ("4k3/8/8/8/4p3/8/8/4K1N1 w - - 0 1", "g1h3", 0),
+            ("4k3/8/8/8/4p3/8/6P1/4K1N1 w - - 0 1", "g1f3", -220),
+            ("4k3/8/8/8/8/8/3n4/4K3 w - - 0 1", "e1f2", 0),
+            ("r3k3/8/8/8/8/8/8/R3K3 b - - 0 1", "a8a2", -500),
+        ]
+        _bad = [(f, u, w, _seeq(f, u)) for f, u, w in _seeq_cases
+                if _seeq(f, u) != w]
+        check("FI-38 see_quiet: hand-computed quiet-move SEE (5 cases)",
+              not _bad, "all match" if not _bad else
+              "; ".join(f"{u} got {g} want {w}" for f, u, w, g in _bad))
+        # Engagement: K2=24 kiwipete d12 reads 712,510 against 670,778 off.
+        ce._lib.set_see_quiet(24)
+        ce._lib.cs_tt_reset()
+        ce.get_best_move(chess.Board(_KIWI), 12)
+        _seeq_n = ce.nodes_searched
+        ce._lib.set_see_quiet(int(getattr(ce, "SEE_QUIET_K2", 0)))
+        ce._lib.cs_tt_reset()
+        check("FI-38 SEE_QUIET_K2 engages (K2=24 kiwipete d12)",
+              _seeq_n == 712_510,
+              f"{_seeq_n:,} nodes" + ("" if _seeq_n == 712_510 else
+                  " != 712,510 -- the setter did not engage, or the hunk changed"))
+
         # --- 5c. NPS: 2s timed search, print throughput ------------------ #
         # Catches the two disasters a fixed-depth ladder can't: a slow/
         # unoptimized build and the pure-Python eval fallback. Absolute NPS

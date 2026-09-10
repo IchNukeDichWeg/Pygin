@@ -1653,6 +1653,10 @@ static __thread uint64_t g_nodes;   /* per-thread; helpers aggregate on exit */
 extern int see(uint64_t pawns, uint64_t knights, uint64_t bishops, uint64_t rooks,
                uint64_t queens, uint64_t kings, uint64_t occ_w, uint64_t occ_b,
                int turn, int from_sq, int to_sq, int is_ep);
+extern int see_quiet(uint64_t pawns, uint64_t knights, uint64_t bishops,
+                     uint64_t rooks, uint64_t queens, uint64_t kings,
+                     uint64_t occ_w, uint64_t occ_b, int turn, int from_sq,
+                     int to_sq);                  /* FI-38 quiets half */
 
 /* Phase-3 step 1: move-ordering state (reset per search). history is
  * [color][from<<6|to]; killers[ply] and counter[prev_from<<6|prev_to] hold a
@@ -3352,6 +3356,14 @@ void set_see_prune(int v) { (void)v; }
 static int g_see_scaled = 0;
 void set_see_scaled(int k) { g_see_scaled = k > 0 ? k : 0; }
 
+/* FI-38 QUIETS half: a quiet move at depth <= 4 is pruned when the mover
+ * would lose more than K2 * depth^2 by landing on its square (see_quiet --
+ * see() itself returns 0 for any non-capture, which is why this half needed
+ * its own SEE). Separate toggle and separate slot from the captures half.
+ * 0 = off = node-exact. */
+static int g_see_quiet = 0;
+void set_see_quiet(int k2) { g_see_quiet = k2 > 0 ? k2 : 0; }
+
 /* FI-06 (armed for the sixteenth 50+0.20 A/B, vs Old Engine/45): root-move
  * ordering by prior-iteration subtree node counts + warm-TT seed for
  * iteration 1. Root-only bookkeeping, zero per-node cost: after a
@@ -4438,6 +4450,16 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                        (m & MV_BIT_EP) ? 1 : 0) < -g_see_scaled * depth)
             continue;
 
+        /* FI-38 quiets half: prune a quiet move that hangs more than
+         * K2 * depth^2 on its destination square. */
+        if (g_see_quiet && quiet && !is_pv && !in_chk && !gives_check
+                && depth <= 4 && best > -MATE_THRESH
+                && see_quiet(b->pawns, b->knights, b->bishops, b->rooks,
+                             b->queens, b->kings, b->occ[WHITE], b->occ[BLACK],
+                             b->turn, m & 63, (m >> 6) & 63)
+                   < -g_see_quiet * depth * depth)
+            continue;
+
         if (g_prune && quiet && !is_pv && !in_chk && !gives_check && depth == 1
                 && best > -MATE_THRESH
                 && prune_eval + g_fut_margin
@@ -5126,7 +5148,8 @@ int cs_rep_probe(const uint64_t* path, int ply, const uint64_t* hist,
     return r;
 }
 
-int csearch_abi(void) { return 37; }  /* 37 = FI-38 set_see_scaled;
+int csearch_abi(void) { return 38; }  /* 38 = FI-38 set_see_quiet;
+                                       * 37 = FI-38 set_see_scaled;
                                        * 36 = FI-109 set_corr_hist
                                        *      (correction history);
                                        * 35 = FI-103/104/106/107
