@@ -532,6 +532,14 @@ ON by default (A/B-confirmed, or free by construction):
     225/1100/2056/1299/320, pair ratio 1.22, norm +28.34).
 
 DORMANT (default OFF, mechanism kept for longer-TC re-tests):
+  * FI-38 depth-scaled SEE pruning, CAPTURES half (set_see_scaled; K cp
+    per ply of depth, 0 = node-exact). PENDING 2026-09-10: two 10+0.1
+    screens against HEAD, K=25 and K=50 (NNUE/shims/engine_see25/50.py).
+    Engagement on the Mac at HEAD defaults: kiwipete d12 670,778 -> 508,689
+    (K=25) / 675,783 (K=50); retained-TT 2,479,366 -> 1,926,993 / 2,840,988.
+    K=25 reproduces the audit's scratch build to the node. It is the last
+    untried member of a family that went FI-18 NULL -1.25, FI-23 REJECTED,
+    FI-64 SCREEN-KILLED -10.95; a flat screen closes the family for good.
   * P-43 single-reply / forced-move extension (set_single_reply; +3.5
     +/-4.8 over 20k pooled games vs v34 -- positive-leaning on every
     signal but sub-significant, kept-marginal by user call; OFF = v34
@@ -769,6 +777,17 @@ class Engine:
     # getting most of the skip for free. matetrack stayed clean (913/783),
     # the Elo just wasn't there. False = v45 node-exact.
     SEE_PRUNE = False
+
+    # FI-38 depth-scaled SEE pruning, CAPTURES half only: PENDING 2026-09-10.
+    # A SEE-losing capture at depth <= 6, non-PV, not in check and not giving
+    # check is pruned when see < -K * depth (K in cp per ply: 25 prunes a d6
+    # capture below -150). It differs from FI-18 above -- sign-only, -1.25,
+    # deleted -- by the depth-scaled margin, which keeps shallow tactical
+    # sacrifices alive. Audit scratch build, d12 at HEAD defaults: K=25 saves
+    # 19.4% of nodes cold and 22.3% retained. 0 = off = node-exact. Screened
+    # at 10+0.1 against HEAD as K=25 and K=50, two slots, because the audit's
+    # reason for preferring 25 did not survive its own config correction.
+    SEE_SCALED_K = 0
 
     # FI-06 root-move ordering: DORMANT (sixteenth 50+0.20-era campaign, A/B
     # vs Old Engine/45 2026-07-13: +2.26 +/-6.8 @10k, 50.32%, pair ratio
@@ -1622,8 +1641,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, self.CSEARCH_SO))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (abi 35 = FI-103/104/106/107 set_cutnode_lmr/ttpv_lmr/razor/probcut) -- bump with csearch_abi.
-        if lib.csearch_abi() < 36:
+        # (abi 37 = FI-38 set_see_scaled; 35 = FI-103/104/106/107 set_cutnode_lmr/ttpv_lmr/razor/probcut) -- bump with csearch_abi.
+        if lib.csearch_abi() < 37:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -1657,7 +1676,7 @@ class Engine:
               self.SIMPLIFY_THRESHOLD, self.CHECK_EXT_BUDGET, self.PV_EXACT,
               self.SCORE_HYGIENE, self.EP_FILTER, self.QS_EVICT_MAX,
               self.CB2, self.CANTWIN, self.NULL_VERIFY, self.LMR_HIST,
-              self.TT_EVAL_SHARPEN, self.SEE_PRUNE, self.ROOT_ORDER,
+              self.TT_EVAL_SHARPEN, self.SEE_PRUNE, self.SEE_SCALED_K, self.ROOT_ORDER,
               self.TT_BITS, self.TT_KEEP_WARM, self.HIST_PRUNE,
               self.QS_TT_SHARPEN, self.QS_KEEP_MOVE, self.CYCLE_DETECT,
               self.QS_BETA_NARROW, self.QS_TTM_EXEMPT, self.QS_CHK_D1,
@@ -1716,7 +1735,7 @@ class Engine:
         lib.set_cantwin(1 if self.CANTWIN else 0)              # CW-01
         lib.set_lmr_hist(int(self.LMR_HIST))                   # FI-04
         lib.set_tt_eval_sharpen(1 if self.TT_EVAL_SHARPEN else 0)  # FI-25
-        lib.set_see_prune(1 if self.SEE_PRUNE else 0)          # FI-18
+        lib.set_see_scaled(int(self.SEE_SCALED_K))              # FI-38 (FI-18's setter is a no-op)
         lib.set_root_order(1 if self.ROOT_ORDER else 0)        # FI-06
         lib.set_null_verify(1 if self.NULL_VERIFY else 0)      # NV-01
         lib.set_tt_bits(int(self.TT_BITS))                     # FI-10 (Hash)
