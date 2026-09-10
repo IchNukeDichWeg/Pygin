@@ -1751,16 +1751,32 @@ def _core_md5(engine_path):
     Python arm).
     """
     import hashlib
-    d = _os.path.dirname(_os.path.abspath(engine_path))
-    so = _os.path.join(d, "csearch.so")
     try:
-        # An engine that does not USE the C core must not be credited with the
-        # one that happens to sit next to it: stockfish_engine.py lives in the
-        # repo root, so a bare directory scan reported OUR core as Stockfish's.
-        # Cheap and sufficient: the engine's own source names it.
         with open(engine_path, "r", encoding="utf-8", errors="ignore") as fh:
-            if "csearch" not in fh.read():
-                return None
+            src = fh.read()
+    except OSError:
+        return None
+    # An engine that does not USE the C core must not be credited with the one
+    # that happens to sit next to it: stockfish_engine.py lives in the repo
+    # root, so a bare directory scan reported OUR core as Stockfish's.
+    # A frozen snapshot loads the csearch.so beside it. A campaign SHIM lives in
+    # NNUE/shims/ with no .so beside it and loads the repo root's core through
+    # `import cengine` -- the first version returned None for every shim arm,
+    # which is most arms (found on the 2026-09-10 FI-38 K=25 screen).
+    # Decide on whether a .so EXISTS beside the file, not on the source text
+    # alone: a shim's docstring mentions csearch.so too, which sent the
+    # previous version down the snapshot branch to look for a file that is
+    # not there.
+    beside = _os.path.join(_os.path.dirname(_os.path.abspath(engine_path)),
+                           "csearch.so")
+    if _os.path.exists(beside) and "csearch" in src:
+        so = beside
+    elif "import cengine" in src:
+        so = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                           "csearch.so")
+    else:
+        return None
+    try:
         with open(so, "rb") as fh:
             return hashlib.md5(fh.read()).hexdigest()
     except OSError:
