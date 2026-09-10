@@ -3342,6 +3342,16 @@ void set_qs_keep_move(int v) { g_qs_keep_move = v; }
  * accepted no-op; the mechanism is in git history. */
 void set_see_prune(int v) { (void)v; }
 
+/* FI-38, CAPTURES half (2026-09-10): depth-scaled SEE pruning. Where FI-18
+ * pruned every SEE-losing capture on the sign alone and lost, this prunes
+ * one only when the loss exceeds K cp per ply of remaining depth, and only at
+ * depth <= 6 -- a shallow sacrifice survives, a hopeless one does not.
+ * Audit scratch build, d12 at HEAD defaults: K=25 -19.4% nodes cold, -22.3%
+ * retained. The quiets half is a separate toggle and a separate slot.
+ * 0 = off = node-exact. */
+static int g_see_scaled = 0;
+void set_see_scaled(int k) { g_see_scaled = k > 0 ? k : 0; }
+
 /* FI-06 (armed for the sixteenth 50+0.20 A/B, vs Old Engine/45): root-move
  * ordering by prior-iteration subtree node counts + warm-TT seed for
  * iteration 1. Root-only bookkeeping, zero per-node cost: after a
@@ -4418,6 +4428,16 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         TT_PREFETCH(c.key);                          /* FI-17 */
         int gives_check = in_check(&c);
 
+        /* FI-38: prune a SEE-losing capture whose loss exceeds K per ply of
+         * depth. Re-SEE'd here because the stager/tag only records the sign. */
+        if (g_see_scaled && badcap && !is_pv && !in_chk && !gives_check
+                && depth <= 6 && best > -MATE_THRESH
+                && see(b->pawns, b->knights, b->bishops, b->rooks,
+                       b->queens, b->kings, b->occ[WHITE], b->occ[BLACK],
+                       b->turn, m & 63, (m >> 6) & 63,
+                       (m & MV_BIT_EP) ? 1 : 0) < -g_see_scaled * depth)
+            continue;
+
         if (g_prune && quiet && !is_pv && !in_chk && !gives_check && depth == 1
                 && best > -MATE_THRESH
                 && prune_eval + g_fut_margin
@@ -5106,7 +5126,8 @@ int cs_rep_probe(const uint64_t* path, int ply, const uint64_t* hist,
     return r;
 }
 
-int csearch_abi(void) { return 36; }  /* 36 = FI-109 set_corr_hist
+int csearch_abi(void) { return 37; }  /* 37 = FI-38 set_see_scaled;
+                                       * 36 = FI-109 set_corr_hist
                                        *      (correction history);
                                        * 35 = FI-103/104/106/107
                                        *      set_cutnode_lmr / set_ttpv_lmr /

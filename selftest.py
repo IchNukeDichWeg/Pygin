@@ -538,6 +538,24 @@ if os.path.exists("csearch.c"):
                  f" != pinned {TT_RETAINED_NODES:,} -- a TT store/replacement "
                  "path changed; confirmed? re-pin. else regression"))
 
+        # --- 5b-see. FI-38 engagement pin ------------------------------ #
+        # K=0 is proven node-exact by every pin above: the ladder, bench and
+        # retained-TT all run with it off. This proves the switch ENGAGES --
+        # a build whose set_see_scaled is a silent no-op would pass all of
+        # them and screen a null. K=25 kiwipete d12 reads 508,689 against
+        # 670,778 off, node-identical to the audit's scratch build.
+        _KIWI = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
+        ce._lib.set_see_scaled(25)
+        ce._lib.cs_tt_reset()
+        ce.get_best_move(chess.Board(_KIWI), 12)
+        _see_n = ce.nodes_searched
+        ce._lib.set_see_scaled(int(getattr(ce, "SEE_SCALED_K", 0)))
+        ce._lib.cs_tt_reset()
+        check("FI-38 SEE_SCALED_K engages (K=25 kiwipete d12)",
+              _see_n == 508_689,
+              f"{_see_n:,} nodes" + ("" if _see_n == 508_689 else
+                  " != 508,689 -- the setter did not engage, or the hunk changed"))
+
         # --- 5c. NPS: 2s timed search, print throughput ------------------ #
         # Catches the two disasters a fixed-depth ladder can't: a slow/
         # unoptimized build and the pure-Python eval fallback. Absolute NPS
