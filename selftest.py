@@ -215,18 +215,18 @@ CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3
 CE_LADDER = {
     1: (94, 111),
     2: (201, 111),
-    3: (368, 111),
-    4: (1604, 90),
-    5: (5295, 135),
-    6: (9449, 106),
-    7: (22271, 131),
-    8: (85052, 73),
-    9: (136797, 80),
-    10: (194234, 74),
-    11: (346628, 85),
-    12: (598363, 78),
-    13: (1328657, 82),
-    14: (1821242, 83),
+    3: (359, 111),
+    4: (1509, 90),
+    5: (5043, 135),
+    6: (8856, 106),
+    7: (16742, 133),
+    8: (53803, 92),
+    9: (98743, 79),
+    10: (260112, 72),
+    11: (342249, 78),
+    12: (482585, 80),
+    13: (788744, 92),
+    14: (1326666, 78),
 }
 if os.path.exists("csearch.c"):
     try:
@@ -521,6 +521,11 @@ if os.path.exists("csearch.c"):
         # Old Engine/62 (the b05 core) reads 3,294,864 here; v61's core and
         # HEAD both read the pinned value.
         TT_RETAINED_NODES = 2_479_366
+        # Measured with FI-38 OFF: this pin guards the TT store/replacement
+        # path, and since K=50 became the default (2026-09-11) the shipped tree
+        # reads 2,840,988 here. Isolating keeps the number the snapshot docs
+        # quote and keeps the pin about the TT rule, not the SEE prune.
+        ce._lib.set_see_scaled(0)
         ce._lib.set_tt_bits(19)            # 12 MiB: real replacement pressure
         ce._lib.cs_tt_reset()
         _b, _tot = chess.Board(), 0
@@ -528,6 +533,7 @@ if os.path.exists("csearch.c"):
             _b.push(ce.get_best_move(_b, 10))
             _tot += ce.nodes_searched
         ce._lib.set_tt_bits(int(ce.TT_BITS))   # restore, and it re-callocs
+        ce._lib.set_see_scaled(int(getattr(ce, "SEE_SCALED_K", 0)))
         ce._lib.cs_tt_reset()
         print(f"\nC core retained-TT probe (28 plies, d10, 12 MiB kept): "
               f"{_tot:,} nodes")
@@ -590,11 +596,13 @@ if os.path.exists("csearch.c"):
               not _bad, "all match" if not _bad else
               "; ".join(f"{u} got {g} want {w}" for f, u, w, g in _bad))
         # Engagement: K2=24 kiwipete d12 reads 712,510 against 670,778 off.
+        ce._lib.set_see_scaled(0)          # isolate: measured with captures off
         ce._lib.set_see_quiet(24)
         ce._lib.cs_tt_reset()
         ce.get_best_move(chess.Board(_KIWI), 12)
         _seeq_n = ce.nodes_searched
         ce._lib.set_see_quiet(int(getattr(ce, "SEE_QUIET_K2", 0)))
+        ce._lib.set_see_scaled(int(getattr(ce, "SEE_SCALED_K", 0)))
         ce._lib.cs_tt_reset()
         check("FI-38 SEE_QUIET_K2 engages (K2=24 kiwipete d12)",
               _seeq_n == 712_510,
@@ -605,11 +613,13 @@ if os.path.exists("csearch.c"):
         # Off is proven node-exact by every pin above. On, kiwipete d12 reads
         # 756,334 against 670,778 off -- identical, with startpos, bench and the
         # retained probe, to the audit's scratch build of the same formula.
+        ce._lib.set_see_scaled(0)          # isolate: measured with FI-38 off
         ce._lib.set_nn_matscale(1)
         ce._lib.cs_tt_reset()
         ce.get_best_move(chess.Board(_KIWI), 12)
         _ms_n = ce.nodes_searched
         ce._lib.set_nn_matscale(1 if getattr(ce, "NNUE_MATSCALE", False) else 0)
+        ce._lib.set_see_scaled(int(getattr(ce, "SEE_SCALED_K", 0)))
         ce._lib.cs_tt_reset()
         check("E-04 NNUE_MATSCALE engages (kiwipete d12)", _ms_n == 756_334,
               f"{_ms_n:,} nodes" + ("" if _ms_n == 756_334 else
