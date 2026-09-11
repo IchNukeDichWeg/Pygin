@@ -638,13 +638,24 @@ Zero game slots. Needs an **idle** box, not a match box. At the measured
 
 4. **S-03** frontier `nn_push` skip: 31% of all pushes build an accumulator
    nothing reads. Node-identical, +1.5-2.2%.
-5. **S-04** stack protector still on in the shipped `.so`: 15 guard sites
-   including `negamax`, `qsearch`, `see`, `nn_tail`.
-6. **S-08 + T-38** PGO: **+5.81% on arm64**, node-identical on all three
-   oracles, unmeasured on x86 -- which is where every timed confirm runs.
-   ~+6.7 Elo if it holds. **S-12**: do not batch LTO with it. **S-13**: IR-level
-   PGO trains faster but is not separable here. **T-31**: PGO retires `.so` md5
-   identity, so the snapshot oracle has to change with it.
+5. **S-04** stack protector, **MEASURED 2026-09-11 on x86: below the
+   instrument's floor.** Ubuntu's gcc puts 39 guard sites in the shipped `.so`
+   (the Mac's clang, 16). Turning them off is node-identical and leans faster in
+   all six paired runs, by ~+0.4%, but the null arm's run-to-run spread was
+   0.76 points, so the gain cannot be distinguished from noise. Worth about +0.5
+   Elo if real; not a reason to change the build on its own.
+6. **S-08 + T-38** PGO, **MEASURED 2026-09-11 on x86: +3.9% NPS, resolved.**
+   2x EPYC 7443, gcc 13.3, pinned, idle box: +3.89 / +3.89 / +3.98% one way and
+   +3.89 / +3.56 / +3.92% reversed, against a null-arm floor of 0.76 points --
+   five times the noise, the same sign in every run. Node-identical to the plain
+   build on the box's own kiwipete, bench and retained-TT oracles, and the binary
+   verifiably used its profiles. Smaller than arm64's +5.81% but it TRANSFERS,
+   unlike FI-11. Worth about **+4.5 Elo** at the measured 1.16 Elo per 1% --
+   inferred through that calibration, not played -- for zero game slots.
+   Shipping it is an owner decision: it means `setup.sh --pgo` on every build,
+   and it retires `.so` md5 identity (**T-31**), so the snapshot oracle has to
+   change with it. **S-12**: do not batch LTO with it. **S-13**: IR-level PGO
+   trains faster but is not separable here.
 7. **S-09** history/LMR tables are int32, 48 KiB against a 64 KiB L1d.
    **S-10** five dormant eval gates still inside `eval_white`'s loops, one
    commit each. **S-05 / E-01** SIMD and arm64 kernel coverage, same idle box.
