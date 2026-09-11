@@ -546,13 +546,13 @@ ON by default (A/B-confirmed, or free by construction):
 
 DORMANT (default OFF, mechanism kept for longer-TC re-tests):
   * FI-38 depth-scaled SEE pruning, QUIETS half (set_see_quiet; K2 cp,
-    threshold -K2 * depth^2 at depth <= 4, 0 = node-exact). PENDING
-    2026-09-10, screened on top of whichever captures K confirms. Built on a
-    NEW see_quiet (eval_c.c): see() returns 0 for any non-capture, so the
-    audit's spec built on see() could never have fired. Engagement on the
-    Mac: kiwipete d12 670,778 -> 712,510 (K2=24) / 916,514 (K2=50);
-    retained-TT 2,479,366 -> 2,049,022 / 3,348,472. Pruning quiets can GROW
-    the tree, which is why this is screened, not assumed.
+    threshold -K2 * depth^2 at depth <= 4, 0 = node-exact). REJECTED
+    2026-09-11 at both settings on top of the K=50 captures default, 10+0.1:
+    K2=24 ACCEPT H0 (LLR -2.966, -19.32 +/- 8.5), K2=50 ACCEPT H0 (LLR
+    -2.951, -15.89 +/- 7.8), both bound-stopped. Pruning quiets costs strength
+    here; do not retry at this TC. Built on a NEW see_quiet (eval_c.c): see()
+    returns 0 for any non-capture, so the audit's spec built on see() could
+    never have fired. Engagement pin kept (kiwipete d12 712,510 at K2=24).
   * E-04 material-scaled NNUE output (set_nn_matscale; the net's value x
     (96 + phase) / 120, 0.8 in a bare endgame; False = node-exact). PENDING
     2026-09-11, fixed-node screen vs HEAD (NNUE/shims/engine_matscale.py).
@@ -815,7 +815,10 @@ class Engine:
     # reason for preferring 25 did not survive its own config correction.
     SEE_SCALED_K = 50                      # 0 = off = the pre-FI-38 tree, node-exact
 
-    # FI-38 QUIETS half: PENDING 2026-09-10. A quiet move at depth <= 4 is
+    # FI-38 QUIETS half: REJECTED 2026-09-11 at both settings, screened on top
+    # of K=50 at 10+0.1: K2=24 ACCEPT H0 (LLR -2.966, 3,043 games, -19.32 +/-
+    # 8.5) and K2=50 ACCEPT H0 (LLR -2.951, 3,588 games, -15.89 +/- 7.8).
+    # Mechanism kept, default 0. A quiet move at depth <= 4 is
     # pruned when the mover would lose more than K2 * depth^2 on its square.
     # Needed its own SEE (see_quiet): see() returns 0 for every non-capture,
     # so the audit's spec built on see() would have been a silent no-op.
