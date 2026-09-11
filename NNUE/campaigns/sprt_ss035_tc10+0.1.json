@@ -1,0 +1,37 @@
+{
+ "decision": "H0",
+ "llr": -2.9694905602822605,
+ "next_offset": 3690,
+ "pairs": 3680,
+ "penta": [
+  250,
+  907,
+  1446,
+  896,
+  181
+ ],
+ "runs": [
+  {
+   "adjudicate": true,
+   "book1": null,
+   "book2": null,
+   "core1_md5": "b26c028b07cfec2220422c769c53b59e",
+   "core2_md5": "b26c028b07cfec2220422c769c53b59e",
+   "engine1": "engine_ss035",
+   "engine2": "cengine",
+   "fen_file": "UHO_4060_v4.epd",
+   "instrument_key": "kd100443f",
+   "mode": "clock 10.00+0.10",
+   "offset": 0,
+   "positions": 5000,
+   "positions_played": 3690,
+   "seed": 62,
+   "sf_elo": 3000,
+   "sf_our_clock": false,
+   "sf_version": null,
+   "smp": 1,
+   "started": "2026-09-11T13:41:05+00:00",
+   "workers": 48
+  }
+ ]
+}
