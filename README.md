@@ -787,9 +787,9 @@ terminates the process** on an invalid FEN or UCI command. Our openings come
 from UHO and are legal, but the odds harness removes pieces from the start
 position, and that path deserves a check before SF19 is ever the opponent.
 
-Remaining eval items: **E-04** material-scaled output -- built 2026-09-11,
-node-exact when off, reproduces the audit's scratch build on four oracles,
-fixed-node screen against the K=50 tree under way,
+Remaining eval items: **E-04** material-scaled output -- **REJECTED
+2026-09-11** on the fixed-node screen against the K=50 tree (LLR -2.955,
+-10.64 +/- 6.3 over 4,932 games); it closes only the HCE-leaf variant,
 **E-06** the verified endgame gap -- 50 of 51 R+minor vs R positions score +400
 to +550 where the answer is a draw -- and **E-07** NNUE stand-pat in qsearch,
 which fails three free oracle steps before it earns its ~30 box-hours.
