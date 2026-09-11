@@ -9,15 +9,15 @@ transposition table, pruning, quiescence and the full static eval
 positions). Born as phase-3 step 6 of the C-core plan; the shipped engine
 since Old Engine/31.
 
-ITS DEFAULTS ARE A v63 CANDIDATE (2026-09-11), NOT v62 as released: v62's
-settings on v61's C core, plus FI-38 depth-scaled SEE pruning of losing
-captures at K=50 (SEE_SCALED_K = 50). OPEN 1 accepted the core-and-window
-candidate over v61 (LLR +3.049 at 50+0.5); FI-38 K=50 then accepted over that
-at 10+0.1 and at 50+0.5 (LLR +2.946 / +2.961), both bound-stopped, so the
-ledger does not move on either. The FI-38 C code means csearch.so is no longer
-byte-identical to Old Engine/61's; with SEE_SCALED_K = 0 it is node-exact to
-it, and the retained-TT probe reads 2,479,366 there against the shipped v62's
-3,294,864.
+ITS DEFAULTS ARE v63 (2026-09-11, frozen as Old Engine/63): v62's settings on
+v61's C core, plus FI-38 depth-scaled SEE pruning of losing captures at K=50
+(SEE_SCALED_K = 50). OPEN 1 accepted the core-and-window candidate over v61
+(LLR +3.049 at 50+0.5); FI-38 K=50 then accepted over that at 10+0.1 and at
+50+0.5 (LLR +2.946 / +2.961), both bound-stopped, so the ledger does not move
+on either. Bench signature 1,123,567. The FI-38 C code means csearch.so is no
+longer byte-identical to Old Engine/61's; with SEE_SCALED_K = 0 it is
+node-exact to it, and the retained-TT probe reads 2,479,366 there against the
+shipped v62's 3,294,864.
 
 WHY THE CORE MOVED. v62 shipped carrying b4339ae + a1a31cd, the b05 FI-115
 completion, which had ALREADY measured ACCEPT H0 (LLR -5.98, 1,500 pairs) as
@@ -375,6 +375,28 @@ at 10+0.1 over a full 10,000 games, GSPRT[0,4] ACCEPT H0 pooled at 6,725 pairs.
 The no-rehash variant drops every entry wanting the newly-exposed bit, and at
 10+0.1 the window widens TWICE mid-game -- it throws away half the live table
 while the game is still being decided. The copy-on-grow version is untested.
+
+v63 = v62's settings on v61's C core + **FI-38 depth-scaled SEE pruning of
+losing captures** (SEE_SCALED_K = 50): a capture that loses material by SEE, at
+depth <= 6, off the PV, not in or giving check, is skipped when see < -50 *
+depth. The b05 FI-115 completion v62 shipped by mistake is reverted, so the
+core is v61's plus the FI-38 setter.
+
+Measured in two steps, both against a clean core. OPEN 1, HEAD (v62 settings,
+v61 core) vs Old Engine/61 at 50+0.5: ACCEPT H1, LLR +3.049 at 3,006 games,
++20.95 +/- 7.9 (ptnml 49/309/620/453/69, nElo +33.53). FI-38 K=50 over that:
+10+0.1 ACCEPT H1, LLR +2.946 at 7,813 games (+9.34 +/- 5.3), then 50+0.5 ACCEPT
+H1, LLR +2.961 at 6,802 games over two tranches (+9.50 +/- 6.0, ptnml
+121/759/1491/860/165, nElo +15.19). K=25 read +6.15 at the 10k cap (called
+accept by the near-bound rule); K=75 and K=100 were NULL at the full budget
+(+2.74 / +0.63), so 50 is the setting. Every verdict here stopped at a bound, so
+none of the magnitudes is a ledger number and the ledger STAYS at ~+354; a
+fixed-budget 50+0.5 run of v63 vs Old Engine/61 is owed for the size.
+
+Rejected on the way, recorded so they are not re-minted: the FI-38 QUIETS half
+(see_quiet, K2=24 and K2=50, both ACCEPT H0 on top of K=50) and E-04
+material-scaled net output (fixed-node, -10.64 +/- 6.3). Bench signature
+1,203,792 -> 1,123,567.
 
 Python keeps only what needs game/host state -- exactly the phase-3 plan:
   * the iterative-deepening loop with v30's aspiration windows,
