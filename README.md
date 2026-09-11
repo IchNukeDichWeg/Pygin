@@ -670,9 +670,18 @@ Zero game slots. Needs an **idle** box, not a match box. At the measured
 
 ### Phase 3 -- the only search work that earned a slot
 
-10. **X-14 / FI-38** depth-scaled SEE margins. Two slots, not one: the k=25
-    selection argument is false in the arm config, so **k=25 and k=50 screen
-    separately** at 10+0.1, ~1.3 box-hours each.
+10. **X-14 / FI-38 -- DONE 2026-09-11.** The captures half (prune a SEE-losing
+    capture at depth <= 6 when see < -K*depth) is **CONFIRMED and is now the
+    tree default at K=50**: 10+0.1 screen ACCEPT H1 (LLR +2.946, 7,813 games),
+    then 50+0.5 confirm against HEAD ACCEPT H1 (LLR +2.961, 6,802 games over two
+    tranches). Both stopped at a bound, so the ledger does not move on them.
+    K=25 ended undecided at its 10,000-game cap (+6.15 +/- 4.8). The **quiets
+    half is REJECTED** at both settings on top of K=50 (K2=24 LLR -2.966, K2=50
+    LLR -2.951). Building it exposed that `see()` returns 0 for every
+    non-capture, so the audit's spec could never have fired; it runs on a new
+    `see_quiet`. Lesson for every confirm from here: at a 47% draw rate a
+    5,000-game 50+0.5 cap resolves only about +15 Elo, and `match.py`'s own
+    startup budget table says so -- read it before launching.
 11. **X-06 + X-11 + D-22** first, not concurrently: 3 matetrack runs (~1
     box-hour) close OPEN 6. The mate decline is the FI-21 window (-0.96 pp), not
     the reverted core (+2.8 +/-3.1), and FI-38's gate depends on it.
@@ -778,7 +787,9 @@ terminates the process** on an invalid FEN or UCI command. Our openings come
 from UHO and are legal, but the odds harness removes pieces from the start
 position, and that path deserves a check before SF19 is ever the opponent.
 
-Remaining eval items: **E-04** material-scaled output (one fixed-node screen),
+Remaining eval items: **E-04** material-scaled output -- built 2026-09-11,
+node-exact when off, reproduces the audit's scratch build on four oracles,
+fixed-node screen against the K=50 tree under way,
 **E-06** the verified endgame gap -- 50 of 51 R+minor vs R positions score +400
 to +550 where the answer is a draw -- and **E-07** NNUE stand-pat in qsearch,
 which fails three free oracle steps before it earns its ~30 box-hours.
