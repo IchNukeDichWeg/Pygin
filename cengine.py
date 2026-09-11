@@ -554,13 +554,13 @@ DORMANT (default OFF, mechanism kept for longer-TC re-tests):
     returns 0 for any non-capture, so the audit's spec built on see() could
     never have fired. Engagement pin kept (kiwipete d12 712,510 at K2=24).
   * E-04 material-scaled NNUE output (set_nn_matscale; the net's value x
-    (96 + phase) / 120, 0.8 in a bare endgame; False = node-exact). PENDING
-    2026-09-11, fixed-node screen vs HEAD (NNUE/shims/engine_matscale.py).
-    Mac, off -> on: kiwipete d12 670,778 -> 756,334, startpos d12 551,685 ->
-    294,830, bench 1,203,792 -> 1,367,701, retained-TT 2,479,366 ->
-    2,050,728 -- every value identical to the audit's scratch build. Shapes
-    pruning and TT evals only (qsearch stands pat on the HCE), prior +0-3; a
-    verdict here does not transfer if E-07 ever puts the net at the leaves.
+    (96 + phase) / 120, 0.8 in a bare endgame; False = node-exact). REJECTED
+    2026-09-11: fixed-node 1.75M screen against the K=50 tree, ACCEPT H0,
+    LLR -2.955 over 4,932 games (-10.64 +/- 6.3, bound-stopped). Mac, off ->
+    on: kiwipete d12 670,778 -> 756,334, startpos 551,685 -> 294,830, bench
+    1,203,792 -> 1,367,701, retained-TT 2,479,366 -> 2,050,728, identical to the
+    audit's scratch build. Closes only the HCE-leaf variant: it does not
+    transfer if E-07 ever puts the net at the qsearch leaves.
   * P-43 single-reply / forced-move extension (set_single_reply; +3.5
     +/-4.8 over 20k pooled games vs v34 -- positive-leaning on every
     signal but sub-significant, kept-marginal by user call; OFF = v34
@@ -1573,7 +1573,9 @@ class Engine:
     # bound-biased). The package numbers above priced NNUE+lazy together;
     # this is the toggle alone, and it pays. Flipped True as v59.
     LAZY_NNUE = True
-    # E-04 material-scaled net output: PENDING 2026-09-11. Scales the net's
+    # E-04 material-scaled net output: REJECTED 2026-09-11 on the fixed-node
+    # screen against the K=50 tree: ACCEPT H0, LLR -2.955, 4,932 games,
+    # -10.64 +/- 6.3 (bound-stopped). Mechanism kept, default False. Scales the net's
     # value by (96 + phase) / 120, so 0.8 in a bare endgame. Shapes pruning
     # and TT evals only (qsearch stands pat on the HCE), prior +0-3. Screened on
     # the fixed-node instrument. False = node-exact.
