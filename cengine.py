@@ -9,10 +9,15 @@ transposition table, pruning, quiescence and the full static eval
 positions). Born as phase-3 step 6 of the C-core plan; the shipped engine
 since Old Engine/31.
 
-ITS DEFAULTS ARE A v63 CANDIDATE (2026-09-02), NOT v62 as released. The tree
-is v62's settings on v61's C core: csearch.so here is byte-identical to
-Old Engine/61/csearch.so, and the retained-TT probe reads 2,479,366 against
-the shipped v62's 3,294,864.
+ITS DEFAULTS ARE A v63 CANDIDATE (2026-09-11), NOT v62 as released: v62's
+settings on v61's C core, plus FI-38 depth-scaled SEE pruning of losing
+captures at K=50 (SEE_SCALED_K = 50). OPEN 1 accepted the core-and-window
+candidate over v61 (LLR +3.049 at 50+0.5); FI-38 K=50 then accepted over that
+at 10+0.1 and at 50+0.5 (LLR +2.946 / +2.961), both bound-stopped, so the
+ledger does not move on either. The FI-38 C code means csearch.so is no longer
+byte-identical to Old Engine/61's; with SEE_SCALED_K = 0 it is node-exact to
+it, and the retained-TT probe reads 2,479,366 there against the shipped v62's
+3,294,864.
 
 WHY THE CORE MOVED. v62 shipped carrying b4339ae + a1a31cd, the b05 FI-115
 completion, which had ALREADY measured ACCEPT H0 (LLR -5.98, 1,500 pairs) as
@@ -398,6 +403,14 @@ Eval-side toggles (USE_KING_SHELTER / USE_OUTPOST / USE_SIMPLIFY) live on
 the class attrs below with their own verdicts.
 
 ON by default (A/B-confirmed, or free by construction):
+  * FI-38 depth-scaled SEE pruning, CAPTURES half (set_see_scaled; K cp
+    per ply, prune a SEE-losing capture at depth <= 6 when see < -K*depth;
+    0 = the pre-FI-38 tree, node-exact). CONFIRMED 2026-09-11, default K=50:
+    10+0.1 screen vs HEAD ACCEPT H1 (LLR +2.946, 7,813 games); 50+0.5 confirm
+    vs HEAD ACCEPT H1 (LLR +2.961, 6,802 games over two tranches, +9.50 +/-
+    6.0, bound-stopped). K=25 ended undecided at 10k (+6.15 +/- 4.8). Mac
+    oracles K=0 -> K=50: kiwipete d12 670,778 -> 675,783, bench 1,203,792 ->
+    1,123,567, retained-TT 2,479,366 -> 2,840,988; CE_LADDER re-pinned.
   * P-01 check extensions (set_check_ext; +6.81 +/-6.8 vs v33 ->
     snapshotted Old Engine/34; OFF = v33 node-exact). P-47 made the
     per-line budget runtime-settable (set_check_ext_budget; 5 = v36
@@ -532,14 +545,6 @@ ON by default (A/B-confirmed, or free by construction):
     225/1100/2056/1299/320, pair ratio 1.22, norm +28.34).
 
 DORMANT (default OFF, mechanism kept for longer-TC re-tests):
-  * FI-38 depth-scaled SEE pruning, CAPTURES half (set_see_scaled; K cp
-    per ply of depth, 0 = node-exact). PENDING 2026-09-10: two 10+0.1
-    screens against HEAD, K=25 and K=50 (NNUE/shims/engine_see25/50.py).
-    Engagement on the Mac at HEAD defaults: kiwipete d12 670,778 -> 508,689
-    (K=25) / 675,783 (K=50); retained-TT 2,479,366 -> 1,926,993 / 2,840,988.
-    K=25 reproduces the audit's scratch build to the node. It is the last
-    untried member of a family that went FI-18 NULL -1.25, FI-23 REJECTED,
-    FI-64 SCREEN-KILLED -10.95; a flat screen closes the family for good.
   * FI-38 depth-scaled SEE pruning, QUIETS half (set_see_quiet; K2 cp,
     threshold -K2 * depth^2 at depth <= 4, 0 = node-exact). PENDING
     2026-09-10, screened on top of whichever captures K confirms. Built on a
@@ -794,7 +799,12 @@ class Engine:
     # the Elo just wasn't there. False = v45 node-exact.
     SEE_PRUNE = False
 
-    # FI-38 depth-scaled SEE pruning, CAPTURES half only: PENDING 2026-09-10.
+    # FI-38 depth-scaled SEE pruning, CAPTURES half only: CONFIRMED 2026-09-11,
+    # SHIPPED DEFAULT K=50. 10+0.1 screen vs HEAD: ACCEPT H1, LLR +2.946 at
+    # 7,813 games. 50+0.5 confirm vs HEAD: ACCEPT H1, LLR +2.961 over 6,802
+    # games in two tranches (+9.50 +/- 6.0, bound-stopped, not a ledger number).
+    # K=25 screened too and ended undecided at 10k (+6.15 +/- 4.8).
+    # Originally PENDING 2026-09-10.
     # A SEE-losing capture at depth <= 6, non-PV, not in check and not giving
     # check is pruned when see < -K * depth (K in cp per ply: 25 prunes a d6
     # capture below -150). It differs from FI-18 above -- sign-only, -1.25,
@@ -803,7 +813,7 @@ class Engine:
     # 19.4% of nodes cold and 22.3% retained. 0 = off = node-exact. Screened
     # at 10+0.1 against HEAD as K=25 and K=50, two slots, because the audit's
     # reason for preferring 25 did not survive its own config correction.
-    SEE_SCALED_K = 0
+    SEE_SCALED_K = 50                      # 0 = off = the pre-FI-38 tree, node-exact
 
     # FI-38 QUIETS half: PENDING 2026-09-10. A quiet move at depth <= 4 is
     # pruned when the mover would lose more than K2 * depth^2 on its square.
