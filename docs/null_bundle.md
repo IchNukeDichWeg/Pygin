@@ -32,8 +32,13 @@ thousands of further games -- so none qualified for the extension.
 
 - `SEE_SCALED_K` 100 (+0.63 +/- 4.8): contradicts the K=75 entry. One K per
   bundle, and 75 is the stronger reading.
-- `SOFT_STOP_UNSTABLE_FRAC` 0.70 (+1.22 +/- 4.6): the same knob accepted at
-  0.90 in the other direction, so 0.70 is settled as the wrong side.
+- `SOFT_STOP_UNSTABLE_FRAC` 0.70 (+1.22 +/- 4.6): the same knob screened
+  positive at 0.90 in the other direction, so 0.70 is settled as the wrong side.
+- `SOFT_STOP_UNSTABLE_FRAC` 0.90: NOT a bundle candidate. It screened +6.95 +/-
+  4.7 at 10+0.1 (near-bound accept) and then read +2.15 +/- 4.3 over a full
+  10,000 games at the SHIPPING instrument, LLR +0.47. It already had its run at
+  50+0.5 and the shipping instrument decided; a screen gain that does not
+  survive the longer clock is not evidence to re-bundle, it is the answer.
 
 ## The other bundle: several screens accept at once
 
