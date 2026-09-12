@@ -1,9 +1,12 @@
 # The NULL bundle
 
 Settings that screened POSITIVE but did not cross a bound at the 10,000-game
-cap. House rule (owner call 2026-09-12): **one screen per idea**. A run that
-does not cross is a NULL, it is not re-run at a longer budget, and it is not
-swept across more points -- it lands here instead. When the list is long
+cap. House rule (owner call 2026-09-12): **one screen per idea, plus at most
+one extension when the bound is close.** At the cap, read match.py's own
+"approx. N more games to accept/reject" line: if N <= 4,000 (about 14,000 games
+total), run ONE extension tranche and let it decide; if N is larger, the screen
+is a NULL. A NULL is not swept across more points and never gets a second
+extension -- it lands here instead. When the list is long
 enough, every independent entry is armed together as ONE arm and measured in a
 single run that goes all the way.
 
@@ -21,6 +24,9 @@ full 10,000-game budget, no bound crossed.
 | `SEE_SCALED_K` | 50 | 75 | +2.74 +/- 4.7 | +0.656 | `NNUE/campaigns/sprt_see75_tc10+0.1.json` |
 | `SOFT_STOP_STABLE_FRAC` | 0.40 | 0.45 | +2.54 +/- 4.7 | +0.547 | `NNUE/campaigns/sprt_ss045_tc10+0.1.json` |
 | `SOFT_STOP_STABLE_ITERS` | 2 | 3 | +1.01 +/- 4.7 | -0.180 | `NNUE/campaigns/sprt_ssi3_tc10+0.1.json` |
+
+None of the three was near its bound at the cap -- each was estimating tens of
+thousands of further games -- so none qualified for the extension.
 
 ## Excluded, and why
 
