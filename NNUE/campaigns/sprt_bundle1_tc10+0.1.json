@@ -1,14 +1,14 @@
 {
- "decision": null,
- "llr": 1.3402000861542862,
- "next_offset": 5000,
- "pairs": 5000,
+ "decision": "H1",
+ "llr": 2.948700471756232,
+ "next_offset": 6696,
+ "pairs": 6685,
  "penta": [
-  279,
-  1205,
-  1949,
-  1250,
-  317
+  371,
+  1577,
+  2624,
+  1675,
+  438
  ],
  "runs": [
   {
@@ -31,6 +31,28 @@
    "sf_version": null,
    "smp": 1,
    "started": "2026-09-12T13:27:12+00:00",
+   "workers": 48
+  },
+  {
+   "adjudicate": true,
+   "book1": null,
+   "book2": null,
+   "core1_md5": "b26c028b07cfec2220422c769c53b59e",
+   "core2_md5": "b26c028b07cfec2220422c769c53b59e",
+   "engine1": "engine_bundle1",
+   "engine2": "cengine",
+   "fen_file": "UHO_4060_v4.epd",
+   "instrument_key": "k9d32ef64",
+   "mode": "clock 10.00+0.10",
+   "offset": 5000,
+   "positions": 3000,
+   "positions_played": 1696,
+   "seed": 62,
+   "sf_elo": 3000,
+   "sf_our_clock": false,
+   "sf_version": null,
+   "smp": 1,
+   "started": "2026-09-12T14:47:35+00:00",
    "workers": 48
   }
  ]
