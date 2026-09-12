@@ -22,8 +22,15 @@ cd "$(dirname "$0")"
 # selftest and a match between two CURRENT engines are unaffected.
 BUILD_OLD=1
 OLD_ONLY=""                       # empty = every snapshot
+# --pgo rebuilds csearch.so profile-guided: measured +5.81% NPS on arm64 (M2)
+# and +3.9% on x86 (EPYC 7443), both against a 0.76 pp null floor. OFF by
+# default because it changes the binary's md5, which is the identity two A/B
+# arms are checked against -- turn it on for a release build or a machine that
+# only plays, never for one arm of a comparison.
+PGO=0
 while [ $# -gt 0 ]; do
     case "$1" in
+        --pgo) PGO=1 ;;
         --no-old-engines) BUILD_OLD=0 ;;
         --old)
             shift
@@ -283,6 +290,51 @@ if [ -f csearch.c ]; then
     else
         "$CC" $CFLAGS -o csearch.so csearch.c eval_c.c Constants.c -lm -lpthread
         echo "   built csearch.so"
+    fi
+fi
+
+# --- 6a. optional PGO rebuild of csearch.so (--pgo) -------------------- #
+# Two extra compiles around one real search: instrument, play the bench, then
+# rebuild using what that run measured about the branches. Only csearch.so is
+# worth it -- it is the entire per-node search loop, and eval_c.c is linked
+# into it. The training workload is `bench` on purpose: it is the same mixed
+# position set the NPS instrument uses, so the profile matches how the engine
+# is actually exercised rather than one opening.
+if [ "$PGO" -eq 1 ] && [ -f csearch.c ]; then
+    PROF_DIR="$(pwd)/.pgo"
+    rm -rf "$PROF_DIR"; mkdir -p "$PROF_DIR"
+    if "$CC" --version 2>&1 | grep -qi clang; then
+        GEN="-fprofile-instr-generate"; USE_FLAG="-fprofile-instr-use=$PROF_DIR/pygin.profdata"
+    else
+        GEN="-fprofile-generate=$PROF_DIR"; USE_FLAG="-fprofile-use=$PROF_DIR -fprofile-correction"
+    fi
+    echo "-> PGO pass 1/2: instrumented build ..."
+    "$CC" $CFLAGS $GEN -o csearch.so csearch.c eval_c.c Constants.c -lm -lpthread
+    echo "-> PGO training run (bench) ..."
+    # LLVM_PROFILE_FILE must be EXPORTED: `VAR=x printf ... | python3` sets it
+    # for printf, not for the process that loads the instrumented library, and
+    # the merge then finds nothing (caught by running it, 2026-09-12).
+    ( export LLVM_PROFILE_FILE="$PROF_DIR/pygin-%p.profraw"
+      printf 'bench\nquit\n' | python3 cuci.py >/dev/null 2>&1 ) || true
+    if "$CC" --version 2>&1 | grep -qi clang; then
+        # macOS ships llvm-profdata behind xcrun; a bare one may not be on PATH.
+        PROFDATA="$(command -v llvm-profdata || true)"
+        [ -n "$PROFDATA" ] || PROFDATA="xcrun llvm-profdata"
+        $PROFDATA merge -output="$PROF_DIR/pygin.profdata" "$PROF_DIR"/*.profraw 2>/dev/null \
+            || { echo "   !! no profile data -- restoring the plain build"; PGO=0; }
+    fi
+    # An instrumented csearch.so is ~2.4x SLOWER than the plain one, so a
+    # failed profile must never be left on disk: rebuild plain before exiting.
+    if [ "$PGO" -eq 0 ]; then
+        "$CC" $CFLAGS -o csearch.so csearch.c eval_c.c Constants.c -lm -lpthread
+        echo "   rebuilt csearch.so (plain)"
+    fi
+    if [ "$PGO" -eq 1 ]; then
+        echo "-> PGO pass 2/2: rebuilding with the profile ..."
+        "$CC" $CFLAGS $USE_FLAG -o csearch.so csearch.c eval_c.c Constants.c -lm -lpthread \
+            && echo "   built csearch.so (PGO)" \
+            || { echo "   !! PGO rebuild failed -- restoring the plain build";
+                 "$CC" $CFLAGS -o csearch.so csearch.c eval_c.c Constants.c -lm -lpthread; }
     fi
 fi
 
