@@ -156,6 +156,9 @@ dist/
 !/tuning/
 !/scripts/
 !/uci/
+# opponents/: the rating anchors (binary path, published rating, WHICH list
+# it came from). They are the method, not local config, so they are tracked.
+!/opponents/
 !/data/
 # .githooks/ holds the commit-msg format gate. It was swallowed by /*/ for
 # months, which is how the hook came to exist only on a stale branch while
