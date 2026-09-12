@@ -35,6 +35,29 @@ thousands of further games -- so none qualified for the extension.
 - `SOFT_STOP_UNSTABLE_FRAC` 0.70 (+1.22 +/- 4.6): the same knob accepted at
   0.90 in the other direction, so 0.70 is settled as the wrong side.
 
+## The other bundle: several screens accept at once
+
+Owner call 2026-09-12. A 50+0.5 confirm costs 6-10 box-hours, so confirming
+four winners one at a time is a day and a half of billing. When more than one
+screen accepts in the same batch:
+
+1. **Cut anything mutually exclusive.** Two points of the SAME knob (LMR 230 vs
+   LMR 170) cannot both ride; only the stronger one continues, and two opposite
+   directions both "accepting" is evidence the screen is noisy, not that both
+   help.
+2. **Arm every survivor in ONE shim and run a single 50+0.5 confirm.** The
+   shipping instrument decides, once.
+3. **Bundle confirms -> it ships as one version, one ledger line**, and the
+   notes say the bundle was measured rather than implying each member was.
+4. **Bundle fails -> spend ONE confirm on the strongest single member**, and the
+   rest join the NULL list above. A gain at 10+0.1 that dies at 50+0.5 usually
+   means the change buys shallow-search speed that a deeper search does not
+   need, which is worth writing down when it happens.
+
+Members that are not independent (ProbCut margin and the lazy-NNUE margin both
+change how far the static eval is trusted) are reported as ONE policy change,
+not as several.
+
 ## The bundled run, when it happens
 
 The three entries above are independent knobs -- one prunes captures, two shape
