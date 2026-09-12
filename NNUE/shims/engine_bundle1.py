@@ -12,7 +12,10 @@ One reduces late moves, one prunes captures, two shape the clock, so they do not
 confound each other. Their point estimates sum to about +11, which a 10,000-game
 screen can resolve if the effect is additive -- no single one can be resolved at
 any budget worth buying. LMR 170 carries the most weight: its opposite direction
-(LMR_DIV 230) was REJECTED at -7.94 +/- 5.8, so its sign is a measured slope. A verdict here prices the BUNDLE, never its members (FI-24 precedent):
+(LMR_DIV 230) was REJECTED at -7.94 +/- 5.8, so its sign is a measured slope.
+
+Mac kiwipete d12: 481,166 nodes against HEAD's 675,783 -- the tree is much
+smaller, as four selectivity/clock settings arming together should make it. A verdict here prices the BUNDLE, never its members (FI-24 precedent):
 if it accepts it ships as one change and takes one ledger line.
 
     python3 match.py NNUE/shims/engine_bundle1.py cengine.py 5000 0 \
