@@ -24,9 +24,13 @@ full 10,000-game budget, no bound crossed.
 | `SEE_SCALED_K` | 50 | 75 | +2.74 +/- 4.7 | +0.656 | `NNUE/campaigns/sprt_see75_tc10+0.1.json` |
 | `SOFT_STOP_STABLE_FRAC` | 0.40 | 0.45 | +2.54 +/- 4.7 | +0.547 | `NNUE/campaigns/sprt_ss045_tc10+0.1.json` |
 | `SOFT_STOP_STABLE_ITERS` | 2 | 3 | +1.01 +/- 4.7 | -0.180 | `NNUE/campaigns/sprt_ssi3_tc10+0.1.json` |
+| `LMR_DIV` | 200 | 170 | +4.66 +/- 4.7 | +1.573 | `NNUE/campaigns/sprt_lmr170_tc10+0.1.json` |
 
-None of the three was near its bound at the cap -- each was estimating tens of
-thousands of further games -- so none qualified for the extension.
+None qualified for the extension: LMR 170 was the closest and still estimated
+8,721 more games to accept at the cap, and the other three were estimating tens
+of thousands. LMR 170 is the strongest entry here and the only one with a
+mechanism behind it -- its opposite direction (230, less reduction) was REJECTED
+at -7.94 +/- 5.8, so the sign is corroborated rather than a lone positive draw.
 
 ## Excluded, and why
 
