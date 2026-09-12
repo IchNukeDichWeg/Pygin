@@ -305,6 +305,19 @@ def main():
                          "footprint of the WHOLE train split in RAM (~250-300 "
                          "bytes/record, so ~18 GB at 64M records) -- for the "
                          "96-core boxes, not the 16 GB Mac.")
+    ap.add_argument("--init", metavar="CHECKPOINT.pt",
+                    help="WARM START: begin from an existing net's float "
+                         "weights instead of random init (LLM-style "
+                         "post-training). Takes a checkpoint written by an "
+                         "earlier run, e.g. "
+                         "NNUE/checkpoints/nnue_v12_<hash>_best.pt -- NOT a "
+                         ".nnue, which is quantized and would come back lossy. "
+                         "Pair it with a LOW --lr: the point is to nudge a net "
+                         "that already plays, not to overwrite it. Distinct "
+                         "from --resume, which continues an interrupted run of "
+                         "THIS recipe and restores the optimiser state and the "
+                         "LR schedule position; --init takes weights only and "
+                         "starts a fresh schedule.")
     ap.add_argument("--resume", action="store_true",
                     help="continue an interrupted run instead of starting "
                          "over. Reads how many epochs finished from "
@@ -390,7 +403,28 @@ def main():
 
     global DEVICE
     DEVICE = torch.device(args.device)
+    _init_sd = None
+    if args.init:
+        # The checkpoint's own tail width wins unless --d2 says otherwise: v12
+        # ships d2=16 while the current default is 32, and loading one into the
+        # other dies on a shape mismatch. Inferring it means --init works on any
+        # net this repo ever exported, and it keeps the warm-started net
+        # ARCHITECTURALLY identical to the one it started from -- which a
+        # comparison against that net needs.
+        _init_sd = torch.load(args.init, weights_only=True)
+        _init_sd = _init_sd.get("model", _init_sd)   # last.pt wraps, best.pt does not
+        if args.d2 is None:
+            args.d2 = int(_init_sd["l2.weight"].shape[0])
+            print(f"warm start: tail width d2={args.d2} taken from the checkpoint",
+                  flush=True)
     model = NNUEModel(d2=args.d2 or D2).to(DEVICE)
+    if args.init:
+        # Weights only, no optimiser state: a warm start is a new run with a
+        # head start, not the continuation of an old one. Loud about what it
+        # loaded -- a silently-ignored --init would look exactly like a
+        # from-scratch run and quietly answer a different question.
+        model.load_state_dict(_init_sd)
+        print(f"warm start: loaded weights from {args.init}", flush=True)
     # --wd: decoupled weight decay (AdamW) to fight int8 saturation. Measured
     # on the gen200m nets 2026-08-26: 7.3% of feature-transformer weights
     # pinned at the int8 clip against v12's 0.02% -- clip_weights() pins
