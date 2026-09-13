@@ -403,29 +403,21 @@ GUI options:
 | `SoftStopStableIters` | spin | 3 | 1–20 | Iterations the best move must hold before "stable" applies |
 
 **On `Skill Level` and the missing `UCI_Elo`.** The weakening scheme is
-Stockfish's -- search at least four root candidates, then add a randomised
-bias to each score that grows with how far it trails the best -- on a 0–40
-scale instead of 0–20, which halves the step size without moving the
-endpoints (weakness `120 - level`, depth cap `1 + level // 2`).
+Stockfish's -- search at least four root candidates, then bias each score by how
+far it trails the best -- on a 0-40 scale, which halves the step size without
+moving the endpoints (weakness `120 - level`, depth cap `1 + level // 2`).
 
-`UCI_Elo` and `UCI_LimitStrength` are **deliberately not implemented**, and
-setting them returns an `info string` saying so rather than silently doing
-nothing. `UCI_Elo` is a calibrated claim in Elo units, and no campaign has
-fitted that curve for this engine -- there is no published strength figure to
-fit it against (see Measured strength) -- so adopting it would assert a number
-nobody here has measured. `Skill Level` promises
-only a relative ordering, which is a promise the code can keep.
+`UCI_Elo` and `UCI_LimitStrength` are **deliberately not implemented** and say so
+in an `info string` rather than silently doing nothing. `UCI_Elo` is a claim in
+Elo units and nobody has fitted that curve for this engine; `Skill Level`
+promises only a relative ordering, which the code can keep. It also needs no
+upkeep: levels are defined against the engine they sit in, so a stronger release
+lifts all of them and 40 stays full strength. `scripts/calibrate_skill.py`
+measures what each level is currently worth.
 
-That relativity is also why the scale needs no upkeep: a level is defined
-against the engine it sits in, so a stronger release lifts every level with
-it and 40 remains exactly full strength. An `UCI_Elo` mapping would instead
-need re-fitting on every release. `scripts/calibrate_skill.py` measures what
-each level is currently worth if you want the table.
-
-⚠️ **Do not measure engine progress against a skill-limited engine.** A
-limiter injects errors at a fixed *rate*, and exploiting them is nearly
-fixed-yield, so real differences compress: a version pair measured at +119
-Elo directly read as ~22 against an Elo-limited opponent.
+⚠️ **Never measure engine progress against a skill-limited opponent.** A limiter
+injects errors at a fixed *rate*, so real differences compress: a version pair
+worth +119 Elo read as ~22 against an Elo-limited one.
 
 ---
 
