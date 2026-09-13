@@ -4,9 +4,9 @@
 
 **A from-scratch chess engine in Python + C.** The search is hand-written.
 Since v58 the evaluation is an HCE/NNUE hybrid: the neural net scores positions
-inside the main search, and the hand-crafted eval keeps quiescence. There is no
-external engine, and the net learned from Pygin's own self-play games only, with
-no borrowed data and no borrowed weights.<br/>
+inside the main search, and the hand-crafted eval keeps quiescence. Nothing
+calls out to another engine at runtime: the search, the eval and the net all run
+in this repo's own code.<br/>
 [`python-chess`](https://pypi.org/project/chess/) is used *only* for board
 representation, move generation and legality.
 
@@ -276,8 +276,8 @@ sorting.
   decides the node -- the gain is in the nodes that buys.
 - SIMD kernels (NEON+dotprod / AVX2) with a hard guard that refuses to arm the
   net on scalar builds, where the ~3× slower tail makes the engine *worse*.
-- Trained on positions labelled by real search, blended cp + game result
-  (`LAMBDA 0.75`), cosine LR schedule -- the schedule alone was worth +19 Elo.
+- Trained on positions labelled by search, with a cosine LR schedule -- the
+  schedule alone was worth +19 Elo.
 
 **Evaluation -- hand-crafted (the qsearch stand-pat, and the whole eval on
 non-SIMD hosts)**
