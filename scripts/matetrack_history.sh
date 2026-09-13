@@ -2,12 +2,13 @@
 # Mate-finding across releases: run matetrack on every C-era snapshot and
 # write ONE clean TSV, so mating efficiency can be tracked version by version.
 #
-#   ./scripts/matetrack_history.sh                       # v31..v60, mates2000
+#   ./scripts/matetrack_history.sh                       # every snapshot, mates2000
 #   ./scripts/matetrack_history.sh --versions "55 57 60" # a subset
 #   ./scripts/matetrack_history.sh --epd matetrack.epd --time 500
 #
 # C-ERA ONLY (v31+): earlier snapshots predate the C search core, so cuci.py
-# has no csearch.so to drive. v60 is the live tree, driven by cuci.py itself.
+# has no csearch.so to drive. Any version ABOVE the newest snapshot is the live
+# tree, driven by cuci.py itself.
 #
 # Each version runs in its OWN process (uci/cuci_old.py): the snapshots carry
 # their own .so files and the loader hands back whichever image it saw first,
@@ -25,7 +26,7 @@ EPD="mates2000.epd"; TIME_S=0.2; CONC=6      # seconds per position (matecheck -
 # EVERY version. Three front ends, picked per release below:
 #   v1-v30   uci/uci_legacy.py  -- pre-C, no protocol of their own
 #   v31-v59  uci/cuci_old.py    -- C era, modern cuci.py + compatibility layer
-#   v60+     cuci.py            -- the live tree
+#   no snapshot yet  cuci.py    -- the live tree (the version being built)
 # New releases need no change here: anything above the newest snapshot falls
 # through to the live engine, and a new snapshot is picked up by the glob.
 #
@@ -59,11 +60,14 @@ for v in $VERSIONS; do
   i=$((i+1))
   # a tiny exec wrapper per version: matecheck's --engine wants a program
   W="$(mktemp -t pygin-v$v)"
-  if [ "$v" = "60" ]; then
-      # the live tree IS v60; there is no snapshot .so to load
-      printf '#!/bin/sh\nexec python3 %s/cuci.py "$@"\n' "$REPO" > "$W"
-  elif [ -f "Old Engine/$v/csearch.so" ]; then
+  if [ -f "Old Engine/$v/csearch.so" ]; then
       printf '#!/bin/sh\nexec python3 %s/uci/cuci_old.py %s "$@"\n' "$REPO" "$v" > "$W"
+  elif [ ! -d "Old Engine/$v" ]; then
+      # above the newest snapshot: the live tree is that version. This used to
+      # be hardcoded to v60, so once v61..v64 were frozen the v60 row silently
+      # ran the LIVE engine and reported it as v60 -- 43.00/37.30 where the
+      # real v60 reads 40.45/35.75, i.e. v64's number under a v60 label.
+      printf '#!/bin/sh\nexec python3 %s/cuci.py "$@"\n' "$REPO" > "$W"
   else
       # pre-C era (v1-v30): the pure-Python wrapper. The old fallback sent
       # these to the LIVE cuci.py, which would have silently measured v60
