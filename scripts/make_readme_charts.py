@@ -19,14 +19,15 @@ import os
 # v31 is the C-era baseline (delta 0); its +215 vs v30 is odds-derived, not an
 # A/B, so it does not enter the cumulative line.
 DATA = {
-    31: (0.00, 5.34), 32: (7.30, 5.33), 33: (23.52, 5.31), 34: (6.81, 5.18),
-    35: (72.00, 6.25), 36: (24.67, 7.49), 37: (0.17, 7.32), 38: (1.36, 7.05),
-    39: (8.86, 7.89), 40: (4.31, 7.91), 41: (-2.88, 7.62), 42: (3.27, 8.09),
-    43: (5.18, 8.25), 44: (13.31, 8.57), 45: (13.52, 8.07), 46: (5.94, 7.56),
-    47: (3.16, 7.15), 48: (4.73, 7.19), 49: (0.97, 7.07), 50: (1.60, 7.17),
-    51: (11.12, 7.18), 52: (6.63, 7.18), 53: (37.52, 7.23), 54: (31.20, 7.06),
-    55: (9.66, 7.26), 56: (11.44, 7.44), 57: (0.00, 7.40), 58: (19.11, 5.32),
-    59: (13.84, 5.89), 60: (0.00, 5.84), 61: (15.89, 5.91), 62: (0.00, 5.94),
+    31: (0.00, 2.49), 32: (7.30, 2.49), 33: (23.52, 2.37), 34: (6.81, 2.43),
+    35: (72.00, 3.10), 36: (24.67, 3.64), 37: (0.17, 3.77), 38: (1.36, 3.67),
+    39: (8.86, 3.92), 40: (4.31, 3.96), 41: (-2.88, 3.97), 42: (3.27, 3.94),
+    43: (5.18, 3.89), 44: (13.31, 4.02), 45: (13.52, 4.04), 46: (5.94, 3.97),
+    47: (3.16, 3.98), 48: (4.73, 3.82), 49: (0.97, 3.83), 50: (1.60, 3.88),
+    51: (11.12, 3.86), 52: (6.63, 3.78), 53: (37.52, 3.67), 54: (31.20, 3.59),
+    55: (9.66, 3.87), 56: (11.44, 4.03), 57: (0.00, 4.04), 58: (19.11, 3.02),
+    59: (13.84, 3.34), 60: (0.00, 3.28), 61: (15.89, 3.54), 62: (0.00, 3.38),
+    63: (0.00, 3.53), 64: (5.94, 3.32),
 }
 
 # EVERY NPS FIGURE ABOVE IS FROM ONE MACHINE and one instrument:
@@ -65,6 +66,7 @@ MATETRACK = [
     # reproducible decline deserves weight, so re-measure it next release.
     (62, 40.40, 36.10),
 
+    (63, 41.0, 36.75), (64, 43.2, 37.5),
 ]
 
 # Knight odds win% vs FULL-STRENGTH Stockfish 18 -- the external yardstick.
@@ -81,11 +83,14 @@ ODDS_KNIGHT = [(31, 76.75), (49, 79.05), (52, 81.65), (54, 100.0)]
 # 84.88% over 2,000 games, when OUR time_manager budgeted SF's moves -- that
 # turned out to OVER-feed it (~926ms/move where SF gives itself 549ms median),
 # so the old figure UNDERSTATED us by +2.78% +/-2.16 (z=2.53).
-# v58 2026-08-05: 90.30% over 500 games (420W/63D/17L). NOT a clean
-# continuation of the v54 dot -- the TC era moved 45+0.15 -> 50+0.50 AND the
-# worker count halved to cores/2 so SF is never starved. Both points are real
-# measurements of the same rung; the line between them crosses an era change.
-ODDS_PAWN = [(54, 87.66), (58, 90.30)]
+# v59 2026-08-13: 81.00% over 1,000 games (704W/212D/84L) on the CORRECTED
+# harness. The 90.30% read at v58 is WITHDRAWN: it came from the termination bug
+# that erased Stockfish's won endgames (fixed fc82cb7), and about nine points of
+# it were that bug rather than strength. The v54 dot predates the fix too and is
+# kept only because it is the other side of an era change (45+0.15 -> 50+0.50,
+# workers halved to cores/2); treat the line between the points as crossing two
+# instrument changes, not as a trend.
+ODDS_PAWN = [(54, 87.66), (59, 81.00)]
 # The odds LADDER vs full-strength SF: how big a material handicap the engine
 # can spot it and still win. Latest measurement of each. Queen, rook and
 # knight are all SATURATED at v54 -- rook was re-measured 2026-07-24 (106
@@ -93,7 +98,7 @@ ODDS_PAWN = [(54, 87.66), (58, 90.30)]
 # stale v49 number, not a real inversion under knight. Pawn is the only rung
 # with headroom left, which is why it is the active yardstick.
 ODDS_LADDER = [("Queen", 100.0, "v-"), ("Rook", 100.0, "v54"),
-               ("Knight", 100.0, "v54"), ("Pawn", 90.30, "v58")]
+               ("Knight", 100.0, "v54"), ("Pawn", 81.00, "v59")]
 
 W, H = 760, 300
 ML, MR, MT, MB = 58, 22, 44, 34          # margins

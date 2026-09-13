@@ -13,7 +13,7 @@ representation, move generation and legality.
 ![Strength](https://img.shields.io/badge/strength-retracted-8b949e)
 ![Speed](https://img.shields.io/badge/speed-5.6M_nps-58a6ff)
 ![Versions](https://img.shields.io/badge/versions-64-8b949e)
-![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B354_Elo-f0883e)
+![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B360_Elo-f0883e)
 ![Source](https://img.shields.io/badge/source-MIT-green)
 &nbsp;·&nbsp; Built with **[Claude Code](https://claude.com/claude-code)**
 
@@ -23,26 +23,26 @@ representation, move generation and legality.
 
 <table>
 <tr><td><b>retracted</b></td><td>strength: see Measured strength</td><td><b>5.6M nps</b></td><td>the net costs ~30% of it</td></tr>
-<tr><td><b>~+354 Elo</b></td><td>A/B-confirmed, v31&rarr;v64</td><td><b>~18 ply</b></td><td>from startpos in 5 s</td></tr>
-<tr><td><b>+48.84 Elo</b></td><td>the NNUE era, v58&rarr;v64</td><td><b>1.11&times;</b></td><td>single-thread vs v31</td></tr>
+<tr><td><b>~+360 Elo</b></td><td>A/B-confirmed, v31&rarr;v64</td><td><b>~18 ply</b></td><td>from startpos in 5 s</td></tr>
+<tr><td><b>+93.87 Elo</b></td><td>v58&rarr;v64, measured directly</td><td><b>1.33&times;</b></td><td>single-thread vs v31</td></tr>
 <tr><td><b>v53+v54</b> eval lane</td><td>+37.52 &amp; +31.20, the two biggest</td><td><b>1 dependency</b></td><td><code>python-chess</code> only</td></tr>
 </table>
 
 <table>
 <tr>
-<td><img src="docs/elo_progression.svg?v=62" width="100%" alt="Cumulative A/B Elo across the C era, v31=0 climbing to +354 at v61"/></td>
-<td><img src="docs/speed_progression.svg?v=62" width="100%" alt="Single-thread speed as a multiple of v31, peaking at 1.60x and ending at 1.11x once the net is armed"/></td>
+<td><img src="docs/elo_progression.svg?v=64" width="100%" alt="Cumulative A/B Elo across the C era, v31=0 climbing to +360 at v64"/></td>
+<td><img src="docs/speed_progression.svg?v=64" width="100%" alt="Single-thread speed as a multiple of v31, peaking at 1.62x and ending at 1.33x"/></td>
 </tr>
 </table>
 
 <table>
 <tr>
-<td><img src="docs/mate_progression.svg?v=62" width="100%" alt="Mate-finding on mates2000.epd across the C era, rising from 23.4% at v31 to a 51.6% plateau, then falling back to 40.4% at v62 as the net arms"/></td>
+<td><img src="docs/mate_progression.svg?v=64" width="100%" alt="Mate-finding on mates2000.epd across the C era, rising from 23.4% at v31 to a 51.6% plateau, then settling at 43.2% at v64"/></td>
 </tr>
 </table>
 
 All three charts are self-play. Every C-era version (v31 and up) is A/B-tested
-against the one before it, and the gains stack to about **+354 Elo**.
+against the one before it, and the gains stack to about **+360 Elo**.
 Single-thread speed peaked at 1.60× and sits at 1.11× today: v58 hands about
 30% of it to the net and still comes out +19.11 ahead. The v30→v31 C rewrite
 (~34× faster) is off the left edge, so v31 is the honest zero.
@@ -116,7 +116,7 @@ them.
 
 63 versions, each A/B-tested against the one before it. Speed is nodes/s,
 depth is from startpos in 5 s (book off, best-of-N), and `Elo Δ` is the A/B
-result against the previous version. Cumulatively that is ≈ +354 over v31.
+result against the previous version. Cumulatively that is ≈ +360 over v31.
 
 The list below has the full per-version speed, depth and Elo, and the charts
 above summarise it. Regenerate both with `bench/bench_progress.py` and
