@@ -82,89 +82,33 @@ startup. The net's weights live in `NNUE/nets/` instead.
 
 ### Measured strength
 
-**RETRACTED 2026-09-05. There is currently no strength figure for Pygin.**
+**No external strength figure is published.** The old ~2868 Elo was retracted
+2026-09-05: the run's Elo cap never reached the engine subprocess (T-14), and
+everything before 2026-08-13 came from a harness that mis-scored repetitions in
+Stockfish's favour (fixed in `fc82cb7`). Retracted numbers were deleted rather
+than footnoted. A replacement needs matches against engines with published
+ratings; `opponents/` and `scripts/rating_ladder.py` are built for it and no
+ladder has been run yet.
 
-The ~2868 Elo published here was derived from a run launched against an
-explicit `--sf-elo 2900` cap. T-14 shows that override never survived the spawn
-boundary: `EngineProcess._spawn` read the module default, so every game was
-actually played at **UCI_Elo 3000**. The score below is real; the opponent it
-is attributed to is not.
+**Odds ladder -- every rung was played against a CAPPED Stockfish** (`odds.py`
+never applied `STOCKFISH_ELO`; UCI_Elo 2900 before 2026-08-07, 3000 after, fixed
+under B-15). A cap compresses real gaps, so none of these is a full-strength
+reading and the f2 series spans two opponents.
 
-```
-Score | 45.45% (454.5/1000)   <- real games
-Games | N: 1000  W: 235  L: 326  D: 439
-Penta | [30, 153, 212, 88, 17]   500 pairs
-Conf  | 50+0.50, Threads=1, 4 workers, Stockfish 18 at UCI_Elo 3000
-        (the run ASKED for 2900 and did not get it)
-```
+| Rung | Result | Vintage |
+|---|---|---|
+| Pawn odds f2 | 81.00% / 1,000 games (704W/212D/84L, +251.89 ±35.2) | v59, 2026-08-13 |
+| **Pawn odds h2** (active) | 56.75% / 200 games (75W/77D/48L, +47.19 ±38.0) | v62, 2026-09-02 |
+| Knight, rook, queen odds | 100%, saturated | v53/v54 |
+| vs the Python engine v30 | 195W / 5D / 0L over 200 games | v59, 2026-08-12 |
 
-It is retracted rather than recomputed: a result against a 3000 cap does not
-convert to a 2900 one by arithmetic, and the original was already an
-extrapolation from a single cap rather than a two-cap bracket. A replacement
-needs 2 x 1,000 games through the now-fixed harness. UCI_Elo is in any case
-Stockfish's own limiter and not an external rating.
+h2 is active for resolution: it answers the same question as f2 with 41% fewer
+games. Why h2 costs Stockfish so much less than the other seven pawns is **not
+explained** -- the open-file hypothesis was tested and rejected.
 
-**This is the only strength figure on this page.** Everything previously
-published here -- ~3010 at v58, ~2885 at v51, the whole odds ladder -- was
-measured on a harness that accepted a threefold repetition that was merely
-*available* rather than one that had occurred, and claimed the draw for
-whichever side was about to convert. Against Stockfish that bias runs one way,
-because Stockfish is the side with won endgames to grind. Fixed in `fc82cb7`.
-Re-adjudicating the old games by evaluation predicted 46.0%; the re-run
-measured 45.45%.
-
-Those numbers have been removed rather than annotated. A retracted measurement
-kept on the page with a footnote still gets quoted.
-
-**Pawn odds (f2)** -- the published rung, and the one handicap Stockfish still
-scores against: **81.00% over 1,000 games** (704W / 212D / 84L, +251.89
-+/-35.2) at v59, 50+0.50, corrected harness, 2026-08-13, against Stockfish
-**capped at UCI_Elo 3000** -- see the caveat below. The withdrawn pre-fix
-figure was 90.30%; about nine points of it were the buggy termination erasing
-Stockfish's conversions, not engine strength.
-
-**Pawn odds (h2)** is the ACTIVE rung as of 2026-09-02, at **56.75% over 200
-games** (75W / 77D / 48L, +47.19 +/-38.0) at v62. All eight white pawns were
-measured that night: six of them cluster at 73.5-77.5% and are not separable
-from each other, f2 leads at 80.50%, and h2 alone sits near 50%. The switch is
-for resolution, not saturation -- an era gain of +35 Elo moves f2 by 3.0 score
-points and h2 by 4.9, so h2 answers the same question with 41% fewer games.
-Why h2 costs Stockfish so much less than the other seven is **not explained**;
-the obvious candidate, that it hands SF an open file, was tested and rejected
-(SF advances a rook up the vacated file in 76% of a2 games and 72% of h2 ones).
-f2 and h2 numbers are different instruments and are never pooled.
-
-> **The whole ladder was played against a CAPPED Stockfish.** `odds.py`
-> resolved `STOCKFISH_ELO` into its own module globals and never applied it, so
-> `stockfish_engine.py`'s own default sent `UCI_LimitStrength` on every run made
-> after 2026-07-22: **UCI_Elo 2900** until 2026-08-07 and **3000** after. Fixed
-> 2026-09-05 (B-15), verified by logging Stockfish's stdin. Consequences: no
-> rung above is a full-strength figure; the f2 series spans two different
-> opponents and does not pool with itself; a single night at one cap is still
-> internally consistent, so the eight-pawn ranking and h2's separation stand.
-> `UCI_LimitStrength` injects errors at a fixed rate, which compresses real
-> gaps, so the ladder's sensitivity to an era gain is not what a full-strength
-> reading would give. Every margin here is also the corrected trinomial one
-> (T-22); the previously published ones were 1.3-1.7x too wide.
-
-Against its own Python engine (v30, ~2440-2450), v59 scored **195W / 5D / 0L
-over 200 games** (98.75%) at 50+0.50 on the corrected harness, 2026-08-12. No
-rating is quoted; the gap is past what Elo can express. This replaces the
-withdrawn 1,815-0-40, which was measured through the buggy termination.
-
-**Standing, with their vintage:** knight, rook and queen odds are all
-saturated at 100%, measured at v53/v54 under 45+0.15 (and, like every rung
-above, against a capped Stockfish -- saturation is the one claim a cap cannot
-weaken, since a stronger opponent could only score lower). Those runs
-contained **zero draws**, and the bug could only act by producing a draw, so
-the broken code path never executed in them -- the measurements are untouched
-by the fix. They have not been re-measured at the current era; the engine has
-only gotten stronger since, so saturation is asserted a fortiori, not
-re-measured.
-
-The internal A/B ledger is not affected in the same way. Between two Pygins the
-bug is near-symmetric, so it inflated draws and compressed effect sizes toward
-zero: those numbers read low, not high.
+The internal A/B ledger is unaffected: between two Pygins the repetition bug was
+near-symmetric, so it compressed effect sizes toward zero rather than inflating
+them.
 
 ---
 
