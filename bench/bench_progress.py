@@ -34,6 +34,11 @@ JOBS = 8          # concurrent version subprocesses (1 thread each)
 CHILD = r'''
 import importlib.util, json, os, sys, time
 os.chdir(%r)
+# lib/ holds the shared modules since the 2026-07-24 reshuffle, and a CHILD is a
+# fresh interpreter: the parent's sys.path insert does not reach it. Without this
+# every child died on `import interruptible` and the sweep printed an empty dict
+# per version -- silently, because the parent only reads the child's stdout.
+sys.path[:0] = [os.getcwd(), os.path.join(os.getcwd(), "lib")]
 import chess
 
 import interruptible
