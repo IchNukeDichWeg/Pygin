@@ -835,7 +835,9 @@ class Engine:
     # 19.4% of nodes cold and 22.3% retained. 0 = off = node-exact. Screened
     # at 10+0.1 against HEAD as K=25 and K=50, two slots, because the audit's
     # reason for preferring 25 did not survive its own config correction.
-    SEE_SCALED_K = 50                      # 0 = off = the pre-FI-38 tree, node-exact
+    SEE_SCALED_K = 75      # v64 bundle member. K=50 was confirmed alone into
+                           # v63; 75 alone read +2.74 (NULL) and only pays
+                           # inside the bundle.                      # 0 = off = the pre-FI-38 tree, node-exact
 
     # FI-38 QUIETS half: REJECTED 2026-09-11 at both settings, screened on top
     # of K=50 at 10+0.1: K2=24 ACCEPT H0 (LLR -2.966, 3,043 games, -19.32 +/-
@@ -1181,7 +1183,11 @@ class Engine:
     # resolution; reverted to 200, sweep advances to the next lever.
     NULL_BASE = 2
     NULL_DIV = 6
-    LMR_DIV = 200
+    LMR_DIV = 170          # v64 bundle: 170 CONFIRMED 2026-09-13 as part of the
+                           # four-setting bundle (+6.19 +/- 4.1 at 50+0.5 over
+                           # 11,896 games). 230 (less reduction) was REJECTED at
+                           # -7.94 in the same batch, so the sign is a measured
+                           # slope. Alone, 170 read only +4.66 +/- 4.7 (NULL).
 
     # FI-24(a)+(b): the null-move refinement batch, ARMED 2026-07-21 for
     # the thirty-first campaign vs Old Engine/51 (nodes@1.75M standard).
@@ -1618,7 +1624,8 @@ class Engine:
                                              # OFF restores the v61 window
                                              # (flat delta, 2x growth, no
                                              # midpoint pull) for A/B only.
-    SOFT_STOP_STABLE_FRAC = 0.40
+    SOFT_STOP_STABLE_FRAC = 0.45   # v64 bundle member; 0.45 alone was +2.54 NULL,
+                                   # 0.35 was REJECTED at -7.03.
     # How long a PV may get. The EXACT prefix -- the line the search actually
     # proved, from the C triangular table -- is always emitted in full, past
     # this and past any cap (a mate PV must reach the mate). This bounds only
@@ -1631,7 +1638,8 @@ class Engine:
     PV_MAX_LEN = 128
 
     SOFT_STOP_UNSTABLE_FRAC = 0.80
-    SOFT_STOP_STABLE_ITERS = 2
+    SOFT_STOP_STABLE_ITERS = 3     # v64 bundle member; 3 alone was +1.01 NULL,
+                                   # 1 was REJECTED at -4.52.
     MAX_DEPTH_CAP = 245                       # ID-loop ceiling only. The REAL
                                              # depth limit is the C core's
                                              # CS_MAXPLY=64: negamax returns the
