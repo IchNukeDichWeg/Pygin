@@ -3120,7 +3120,7 @@ static __thread int g_seval[CS_MAXPLY + 8];            /* FB-26 headroom */
 #define P26_LMP3         14
 #define P26_NULL_BASE     2
 #define P26_NULL_DIV      6
-#define P26_LMR_DIV_X100 200            /* g_lmr_div * 100, integer transport */
+#define P26_LMR_DIV_X100 170            /* g_lmr_div * 100, integer transport */
 
 static int g_rfp_margin   = P26_RFP_MARGIN;   /* per ply, reverse-futility */
 static int g_rfp_depth    = P26_RFP_DEPTH;    /* RFP fires at depth <= this */
