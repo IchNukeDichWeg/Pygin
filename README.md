@@ -306,9 +306,8 @@ non-SIMD hosts)**
 
 **Built, measured, and deliberately OFF** -- kept because the mechanism is
 sound and the verdict is recorded: singular extensions, outpost and king-shelter
-eval terms, SEE pruning of losing captures, root-move ordering by subtree count,
-history-driven quiet pruning, several qsearch-TT variants, and a growing
-transposition table. Each was A/B'd, measured null or negative, and left in the
+eval terms, root-move ordering by subtree count, history-driven quiet pruning,
+several qsearch-TT variants, and a growing transposition table. Each was A/B'd, measured null or negative, and left in the
 tree at its default rather than deleted.
 
 ## Setup
@@ -412,9 +411,9 @@ endpoints (weakness `120 - level`, depth cap `1 + level // 2`).
 `UCI_Elo` and `UCI_LimitStrength` are **deliberately not implemented**, and
 setting them returns an `info string` saying so rather than silently doing
 nothing. `UCI_Elo` is a calibrated claim in Elo units, and no campaign has
-fitted that curve for this engine; Stockfish's is fitted to Stockfish and
-tops out around 700 Elo above this engine's own measured class, so adopting
-it would assert a number nobody here has measured. `Skill Level` promises
+fitted that curve for this engine -- there is no published strength figure to
+fit it against (see Measured strength) -- so adopting it would assert a number
+nobody here has measured. `Skill Level` promises
 only a relative ordering, which is a promise the code can keep.
 
 That relativity is also why the scale needs no upkeep: a level is defined
