@@ -22,35 +22,35 @@ representation, move generation and legality.
 ### At a glance
 
 <table>
-<tr><td><b>retracted</b></td><td>strength: see Measured strength</td><td><b>3.4M nps</b></td><td>the net costs ~23% of it</td></tr>
+<tr><td><b>retracted</b></td><td>strength: see Measured strength</td><td><b>5.65M nps</b></td><td>the net costs ~28% of it</td></tr>
 <tr><td><b>~+360 Elo</b></td><td>A/B-confirmed, v31&rarr;v64</td><td><b>~18 ply</b></td><td>from startpos in 5 s</td></tr>
-<tr><td><b>+93.87 Elo</b></td><td>v58&rarr;v64, measured directly</td><td><b>1.33&times;</b></td><td>single-thread vs v31</td></tr>
+<tr><td><b>+93.87 Elo</b></td><td>v58&rarr;v64, measured directly</td><td><b>1.09&times;</b></td><td>single-thread vs v31</td></tr>
 <tr><td><b>v53+v54</b> eval lane</td><td>+37.52 &amp; +31.20, the two biggest</td><td><b>1 dependency</b></td><td><code>python-chess</code> only</td></tr>
 </table>
 
 <table>
 <tr>
-<td><img src="docs/elo_progression.svg?v=64" width="100%" alt="Cumulative A/B Elo across the C era, v31=0 climbing to +360 at v64"/></td>
-<td><img src="docs/speed_progression.svg?v=64" width="100%" alt="Single-thread speed as a multiple of v31, peaking at 1.62x and ending at 1.33x"/></td>
+<td><img src="docs/elo_progression.svg?v=64b" width="100%" alt="Cumulative A/B Elo across the C era, v31=0 climbing to +360 at v64"/></td>
+<td><img src="docs/speed_progression.svg?v=64b" width="100%" alt="Single-thread speed as a multiple of v31, peaking at 1.55x and ending at 1.09x"/></td>
 </tr>
 </table>
 
 <table>
 <tr>
-<td><img src="docs/mate_progression.svg?v=64" width="100%" alt="Mate-finding on mates2000.epd across the C era, rising from 23.4% at v31 to a 51.6% plateau, then settling at 43.2% at v64"/></td>
+<td><img src="docs/mate_progression.svg?v=64b" width="100%" alt="Mate-finding on mates2000.epd across the C era, rising from 24.0% at v31 to a 52.1% plateau, then settling at 43.0% at v64"/></td>
 </tr>
 </table>
 
 All three charts are self-play. Every C-era version (v31 and up) is A/B-tested
 against the one before it, and the gains stack to about **+360 Elo**.
-Single-thread speed peaked at 1.60× and sits at 1.11× today: v58 hands about
-30% of it to the net and still comes out +19.11 ahead. The v30→v31 C rewrite
+Single-thread speed peaked at 1.55× and sits at 1.09× today: v58 hands about
+28% of it to the net and still comes out +19.11 ahead. The v30→v31 C rewrite
 (~34× faster) is off the left edge, so v31 is the honest zero.
 
 Mate-finding is the one curve that does **not** track Elo, and it is left in
 because of that. It climbs to a ~51% plateau by v39, then falls away as the
-search gets more selective and the net arms — v62 finds 40.4% of
-`mates2000.epd` at 0.25s where v49 found 51.6%. Forward pruning and a net that
+search gets more selective and the net arms — v62 finds 39.9% of
+`mates2000.epd` at 0.25s where v51 found 52.1%. Forward pruning and a net that
 values position over forced sequences both cost mate speed, and every one of
 those releases still measured POSITIVE in games. A tactical-suite score is a
 different instrument from an A/B, and where they disagree the A/B is the one
