@@ -9,7 +9,11 @@ transposition table, pruning, quiescence and the full static eval
 positions). Born as phase-3 step 6 of the C-core plan; the shipped engine
 since Old Engine/31.
 
-ITS DEFAULTS ARE v63 (2026-09-11, frozen as Old Engine/63): v62's settings on
+ITS DEFAULTS ARE v64 (2026-09-13, frozen as Old Engine/64): v63 plus the
+four-setting bundle (LMR_DIV 170, SEE_SCALED_K 75, SOFT_STOP_STABLE_FRAC 0.45,
+SOFT_STOP_STABLE_ITERS 3, +6.19 +/- 4.1 over 11,896 games at 50+0.5) and the
+v14 net (+78.82 +/- 8.3 over 3,004 games at 50+0.5, measured on top of that
+bundle so the two are known to work together). v63 was: v62's settings on
 v61's C core, plus FI-38 depth-scaled SEE pruning of losing captures at K=50
 (SEE_SCALED_K = 50). OPEN 1 accepted the core-and-window candidate over v61
 (LLR +3.049 at 50+0.5); FI-38 K=50 then accepted over that at 10+0.1 and at
@@ -1571,7 +1575,7 @@ class Engine:
     # not exist -- no silent HCE fallback).
     USE_NNUE = True
     NNUE_FILE = os.path.join("NNUE", "nets",
-                             "nnue_v12_bf86c4ced057.nnue")   # v60
+                             "nnue_v14_959f679e272e.nnue")   # v64
     # FI-104. The net's value is a RACE between its better judgement and the
     # nodes that judgement costs: v3 measured +5.70 +/- 4.6 while conceding
     # 30.6% of its nodes to a SIMD build. On a CPU with neither NEON nor AVX2
