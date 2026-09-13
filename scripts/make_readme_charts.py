@@ -19,23 +19,26 @@ import os
 # v31 is the C-era baseline (delta 0); its +215 vs v30 is odds-derived, not an
 # A/B, so it does not enter the cumulative line.
 DATA = {
-    31: (0.00, 2.49), 32: (7.30, 2.49), 33: (23.52, 2.37), 34: (6.81, 2.43),
-    35: (72.00, 3.10), 36: (24.67, 3.64), 37: (0.17, 3.77), 38: (1.36, 3.67),
-    39: (8.86, 3.92), 40: (4.31, 3.96), 41: (-2.88, 3.97), 42: (3.27, 3.94),
-    43: (5.18, 3.89), 44: (13.31, 4.02), 45: (13.52, 4.04), 46: (5.94, 3.97),
-    47: (3.16, 3.98), 48: (4.73, 3.82), 49: (0.97, 3.83), 50: (1.60, 3.88),
-    51: (11.12, 3.86), 52: (6.63, 3.78), 53: (37.52, 3.67), 54: (31.20, 3.59),
-    55: (9.66, 3.87), 56: (11.44, 4.03), 57: (0.00, 4.04), 58: (19.11, 3.02),
-    59: (13.84, 3.34), 60: (0.00, 3.28), 61: (15.89, 3.54), 62: (0.00, 3.38),
-    63: (0.00, 3.53), 64: (5.94, 3.32),
+    31: (0.00, 5.20), 32: (7.30, 5.20), 33: (23.52, 5.21), 34: (6.81, 5.24),
+    35: (72.00, 6.23), 36: (24.67, 7.09), 37: (0.17, 6.92), 38: (1.36, 6.60),
+    39: (8.86, 7.34), 40: (4.31, 7.42), 41: (-2.88, 7.30), 42: (3.27, 7.68),
+    43: (5.18, 7.75), 44: (13.31, 8.06), 45: (13.52, 7.60), 46: (5.94, 7.30),
+    47: (3.16, 7.04), 48: (4.73, 6.94), 49: (0.97, 6.98), 50: (1.60, 6.93),
+    51: (11.12, 6.96), 52: (6.63, 6.99), 53: (37.52, 6.99), 54: (31.20, 6.85),
+    55: (9.66, 7.04), 56: (11.44, 7.22), 57: (0.00, 7.17), 58: (19.11, 5.18),
+    59: (13.84, 5.74), 60: (0.00, 5.68), 61: (15.89, 5.76), 62: (0.00, 5.78),
+    63: (0.00, 5.73), 64: (5.94, 5.65),
 }
 
 # EVERY NPS FIGURE ABOVE IS FROM ONE MACHINE and one instrument:
 # nps_history_bench.py's trimmed mean across 10 positions, 3 runs x 4s,
-# --workers 1, swept v31-v62 in ONE session on a Mac17,8 (Apple M5 Pro),
-# 2026-08-31. Re-swept WHOLE rather than appending v62: two measurements
-# of v61 the same day differed by ~7%, so a spliced column would have
-# plotted session variance as an engine trend right at the seam. The column used to mix
+# --workers 1, swept v31-v64 in ONE session on a Mac17,8 (Apple M5 Pro),
+# 2026-09-13 22:00 CEST on an IDLE machine. The whole column is re-swept every
+# time, never appended to: the previous column was taken earlier the same day
+# while the machine was loaded and read 3.32M at v64 where the idle machine
+# reads 5.65M, a 70% understatement that the 2026-08-31 sweep (v31 5.34, v62
+# 5.94, within 3% of this one) exposes as load and not engine. Sweep on an idle
+# machine or the column measures the machine's other work. The column used to mix
 # a per-version bench-signature NPS taken on older hardware, which made the
 # multiplier chart read 1.43x at v58 where one consistent machine reads
 # 0.99x -- a hardware artefact plotted as an engine trend. NPS is
@@ -45,28 +48,35 @@ DATA = {
 # append a single version measured somewhere else.
 
 # Mate-finding across the C era: matetrack on mates2000.epd @ 0.25s,
-# concurrency 6, one machine. (version, found%, best%) -- "found" is any
-# mate, "best" is the SHORTEST mate. v1-v30 predate the C core and are not
-# runnable through cuci_old, so the series starts at v31.
+# concurrency 6. (version, found%, best%) -- "found" is any mate, "best" is
+# the SHORTEST mate. v1-v30 predate the C core and are not runnable through
+# cuci_old, so the series starts at v31.
+#
+# WHOLE SERIES re-run in ONE session, 2026-09-13 22:16-22:50 CEST, Mac17,8,
+# idle, 59s per version. It replaces a column assembled over several days: the
+# two agree to within ~1 point almost everywhere, which is the reassuring part,
+# but a one-session column is the only one whose version-to-version steps are
+# not partly session noise. v60 is the exception and was WRONG before in a way
+# worth naming: matetrack_history.sh hardcoded v60 as "the live tree", so from
+# v61 on the v60 row ran the CURRENT engine (43.00/37.30 = v64's number under a
+# v60 label). Fixed to key on whether a snapshot exists; v60 re-measured
+# through its own snapshot reads 41.40/36.60.
 MATETRACK = [
-    (31, 23.4, 21.1), (32, 26.2, 23.3), (33, 26.1, 23.3), (34, 26.9, 23.9),
-    (35, 40.5, 35.4), (36, 43.35, 37.6), (37, 43.3, 38.0), (38, 50.55, 44.15),
-    (39, 51.55, 45.2), (40, 51.35, 44.95), (41, 50.75, 44.2), (42, 51.05, 44.6),
-    (43, 51.05, 44.85), (44, 51.45, 45.15), (45, 51.55, 44.5), (46, 51.1, 44.0),
-    (47, 50.2, 43.15), (48, 50.35, 43.05), (49, 51.6, 44.15), (50, 51.15, 44.55),
-    (51, 51.4, 44.35), (52, 47.7, 41.0), (53, 48.75, 41.45), (54, 48.45, 41.05),
-    (55, 48.25, 41.0), (56, 42.75, 36.2), (57, 43.25, 36.6), (58, 37.15, 33.1),
-    (59, 39.95, 35.8), (60, 40.45, 35.75), (61, 41.0, 36.35),
-    # v62 measured 2026-08-31. A DECLINE, and recorded as one: v61 re-run the
-    # same day read 41.35/36.60 at load 5.49 while v62 read 40.40/36.10 at the
-    # LIGHTER load 3.97, so the gap is not the machine. Plausible mechanism:
-    # the FI-21 window opens tighter on a balanced score, and a mate found
-    # outside that window costs a re-search the 0.25s budget may not afford.
-    # Per this file's own rule a single reading is not a verdict -- but a
-    # reproducible decline deserves weight, so re-measure it next release.
-    (62, 40.40, 36.10),
-
-    (63, 41.0, 36.75), (64, 43.2, 37.5),
+    (31, 24.00, 21.50), (32, 26.50, 23.60), (33, 26.65, 23.75), (34, 27.60, 24.45),
+    (35, 41.90, 36.30), (36, 44.00, 38.20), (37, 44.05, 38.55), (38, 50.35, 43.95),
+    (39, 51.20, 44.90), (40, 51.00, 44.60), (41, 50.80, 44.25), (42, 50.65, 44.10),
+    (43, 50.75, 44.55), (44, 51.30, 45.05), (45, 51.10, 44.20), (46, 50.80, 43.75),
+    (47, 49.85, 42.75), (48, 50.45, 43.10), (49, 51.05, 43.80), (50, 50.90, 44.25),
+    (51, 52.05, 44.95), (52, 48.05, 41.25), (53, 48.45, 41.15), (54, 48.45, 41.10),
+    (55, 48.35, 41.10), (56, 43.35, 36.70), (57, 43.45, 36.75), (58, 37.55, 33.40),
+    (59, 40.35, 36.00), (60, 41.40, 36.60),
+    # The v62 decline HELD on the clean re-run: v61 40.65/35.95 -> v62
+    # 39.85/35.65, same session, same machine, so it is not load. Same
+    # plausible mechanism as before -- the FI-21 window opens tighter on a
+    # balanced score and a mate found outside it costs a re-search the 0.25s
+    # budget may not afford. v63 is flat on v62 and v64 recovers to 42.95,
+    # the best reading since v57, so the dip did not compound.
+    (61, 40.65, 35.95), (62, 39.85, 35.65), (63, 40.20, 35.95), (64, 42.95, 37.25),
 ]
 
 # Knight odds win% vs FULL-STRENGTH Stockfish 18 -- the external yardstick.
