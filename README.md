@@ -12,7 +12,7 @@ representation, move generation and legality.
 
 ![Strength](https://img.shields.io/badge/strength-retracted-8b949e)
 ![Speed](https://img.shields.io/badge/speed-5.6M_nps-58a6ff)
-![Versions](https://img.shields.io/badge/versions-63-8b949e)
+![Versions](https://img.shields.io/badge/versions-64-8b949e)
 ![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B354_Elo-f0883e)
 ![Source](https://img.shields.io/badge/source-MIT-green)
 &nbsp;·&nbsp; Built with **[Claude Code](https://claude.com/claude-code)**
@@ -23,8 +23,8 @@ representation, move generation and legality.
 
 <table>
 <tr><td><b>retracted</b></td><td>strength: see Measured strength</td><td><b>5.6M nps</b></td><td>the net costs ~30% of it</td></tr>
-<tr><td><b>~+354 Elo</b></td><td>A/B-confirmed, v31&rarr;v63</td><td><b>~18 ply</b></td><td>from startpos in 5 s</td></tr>
-<tr><td><b>+48.84 Elo</b></td><td>the NNUE era, v58&rarr;v63</td><td><b>1.11&times;</b></td><td>single-thread vs v31</td></tr>
+<tr><td><b>~+354 Elo</b></td><td>A/B-confirmed, v31&rarr;v64</td><td><b>~18 ply</b></td><td>from startpos in 5 s</td></tr>
+<tr><td><b>+48.84 Elo</b></td><td>the NNUE era, v58&rarr;v64</td><td><b>1.11&times;</b></td><td>single-thread vs v31</td></tr>
 <tr><td><b>v53+v54</b> eval lane</td><td>+37.52 &amp; +31.20, the two biggest</td><td><b>1 dependency</b></td><td><code>python-chess</code> only</td></tr>
 </table>
 
@@ -170,7 +170,7 @@ zero: those numbers read low, not high.
 
 ## Version progression
 
-62 versions, each A/B-tested against the one before it. Speed is nodes/s,
+63 versions, each A/B-tested against the one before it. Speed is nodes/s,
 depth is from startpos in 5 s (book off, best-of-N), and `Elo Δ` is the A/B
 result against the previous version. Cumulatively that is ≈ +354 over v31.
 
@@ -181,6 +181,7 @@ above summarise it. Regenerate both with `bench/bench_progress.py` and
 <details>
 <summary><b>Every version in full</b> -- complete milestone + Elo list</summary>
 
+- **v64** -- **a new net, and four settings that only pay together.** The evaluation network is replaced, and four search parameters that each measured as nothing on their own cross the accept bound when armed as one change: less late-move reduction (`LMR_DIV` 170), a sharper capture-pruning threshold (`SEE_SCALED_K` 75), and two clock settings that let a stable move think slightly longer. *(Bundle: **+6.19 ±4.1** over 11,896 games at 50+0.5, SPRT[0,4] LLR +2.969 **ACCEPT H1** -- its first tranche ran a **full** 10,000 games at +5.94 ±4.4 with no early stop. Net, measured **on top of** that bundle so the two are known to work together: **+78.82 ±8.3** over 3,004 games at 50+0.5, LLR +9.264 **ACCEPT H1** at the minimum, nElo +121.86, pair ratio 3.37. Also carried: a profile-guided build, **+4.7%** speed on the reference machine, node-identical. Bench 1,123,567 -> 785,901.)*
 - **v63** -- **losing captures near the leaves are no longer searched, and v62's rejected TT rule is gone.** FI-38 skips a capture that loses material by SEE when it loses more than 50cp per remaining ply, at depth 6 or less, off the PV, and never in or into check. The core under it is v61's again: the b05 FI-115 completion v62 shipped after it had been rejected is reverted, and a retained-TT probe in `selftest.py` now pins that rule. *(HEAD vs v61 at 50+0.5: **+20.95 ±7.9** over 3,006 games, SPRT[0,4] LLR +3.049 **ACCEPT H1**. FI-38 K=50 on top: **+9.50 ±6.0** at 50+0.5 over 6,802 games, LLR +2.961 **ACCEPT H1**, after +9.34 ±5.3 / LLR +2.946 on the 10+0.1 screen. K=75 and K=100 were NULL at the full budget, so 50 is the setting. Every run **stopped early, so the ledger is not advanced**; a fixed-budget 50+0.5 run of v63 vs v61 is owed. Bench 1,203,792 -> 1,123,567.)*
 - **v62** -- **the aspiration window stopped fighting itself.** The root window opened flat at 30cp whatever the position and widened 2&times; per failure, and a fail-low left `beta` untouched -- so a position could oscillate low/high and pay the whole ladder out to the 1920 fallback. Three riders replace that as one policy: the opening delta scales with the previous score, a fail-low pulls `beta` to the midpoint before `alpha` drops, and growth is 1.5&times;. Driver-only, but the C core is **not** byte-identical to v61 as released: v62 also carried `b4339ae`+`a1a31cd`, the b05 FI-115 completion, which had already measured ACCEPT H0 (LLR -5.98) and was reverted after the release. Both arms of the A/B below shared that core, so the +18.40 measures the window honestly; v62-as-released vs v61-as-released was never measured. *(**+18.40 ±7.6** at 50+0.5 over 3,439 games, 52.65%, ptnml 62/361/735/450/109, nElo +28.25, SPRT[0,4] LLR +2.959 **ACCEPT H1** -- and **+2.969 ACCEPT** on the 10+0.1 screen before it. Both **stopped early, so the magnitude is bound-biased and the ledger is not advanced on it**; a fixed-budget 50+0.5 run is owed. Bench 1,140,099 -> 1,203,792 -- unlike v61 this one does move the signature, because the window shapes the root search from the first iteration.)*
 - **v61** -- **dead entries in the transposition table are now evicted first.** Material is irreversible, so an entry whose stored piece count *exceeds* the current root's can never occur again -- garbage with certainty, not a guess. v61 stamps that count into 6 spare bits and takes those first, depth-protecting a still-reachable old entry instead of clobbering it on age. Nothing is swept; it is a better choice of victim, made at store time. Also carried: FI-113's two-cache-line TT prefetch, node-identical, +1.09% NPS. *(**+15.89 ±4.2** over a **fixed** 10,000-game budget at 50+0.5, 192 MiB both sides, 52.29%, ptnml 146/1044/2226/1375/209, ratio 1.33, nElo +25.77. No early stop, so the ledger advances: +338 -> **+354**. Measured at the shipped table size deliberately -- the 10+0.1 screen ran 24 MiB to force replacement pressure -- and a cold-TT bench cannot see this rule at all, so the signature stays 1,140,099.)*
