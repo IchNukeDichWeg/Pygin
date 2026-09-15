@@ -23,7 +23,7 @@ representation, move generation and legality.
 
 <table>
 <tr><td><b>retracted</b></td><td>strength: see Measured strength</td><td><b>5.65M nps</b></td><td>the net costs ~28% of it</td></tr>
-<tr><td><b>~+360 Elo</b></td><td>A/B-confirmed, v31&rarr;v64</td><td><b>~18 ply</b></td><td>from startpos in 5 s</td></tr>
+<tr><td><b>~+360 Elo</b></td><td>A/B-confirmed, v31&rarr;v64</td><td><b>~19 ply</b></td><td>from startpos in 5 s</td></tr>
 <tr><td><b>+93.87 Elo</b></td><td>v58&rarr;v64, measured directly</td><td><b>1.09&times;</b></td><td>single-thread vs v31</td></tr>
 <tr><td><b>v53+v54</b> eval lane</td><td>+37.52 &amp; +31.20, the two biggest</td><td><b>1 dependency</b></td><td><code>python-chess</code> only</td></tr>
 </table>
