@@ -293,6 +293,9 @@ bench_bmm/
 pygin_export_*.tar.gz
 puzzles_tactics.json
 puzzles_tactics_by_fen.csv
+# and any future scrape variant (puzzles_sample, ...) -- same data, same reason
+puzzles_*.json
+puzzles_*.csv
 *.tmp
 PUZZLES_README.md
 puzzles-json.zip
