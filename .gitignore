@@ -305,6 +305,11 @@ puzzles-csv.zip
 # Upstream code + its venv + 63MB checkpoints -- not ours to vendor.
 searchless_chess/
 make_release.py
+# rating-ladder placements: owner's call to keep them out. They are
+# placements on someone else's scale under our conditions, not A/B
+# verdicts, and every run overwrites the file.
+data/rating_ladder.json
+
 matetrack_history_*.tsv
 matetrack_history_*.svg
 .pgo/
