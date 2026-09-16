@@ -309,6 +309,10 @@ make_release.py
 # placements on someone else's scale under our conditions, not A/B
 # verdicts, and every run overwrites the file.
 data/rating_ladder.json
+# and the per-anchor match state those runs leave in the repo root.
+# Scoped to _vs_anchor_ on purpose: plain sprt_*.json is A/B campaign
+# state, which MUST stay tracked.
+sprt_*_vs_anchor_*.json
 
 matetrack_history_*.tsv
 matetrack_history_*.svg
