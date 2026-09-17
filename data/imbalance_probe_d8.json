@@ -5,7 +5,7 @@
   "reference": "/opt/homebrew/bin/stockfish",
   "pgn": "New logs/*.pgn",
   "settle": 4,
-  "when": "2026-09-17T20:46:18+0200"
+  "when": "2026-09-17T21:09:50+0200"
  },
  "summary": {
   "balanced": {
@@ -14,7 +14,14 @@
    "margin95": 8.537075701798924,
    "median": -9,
    "vs_control": null,
-   "vs_control_margin95": null
+   "vs_control_margin95": null,
+   "regret": {
+    "n": 400,
+    "mean": 33.1375,
+    "margin95": 5.205906598581835,
+    "median": 14,
+    "over_150cp": 12
+   }
   },
   "exchange_down": {
    "n": 400,
@@ -22,7 +29,14 @@
    "margin95": 13.19925655779887,
    "median": 61,
    "vs_control": 76.66,
-   "vs_control_margin95": 15.719479483012218
+   "vs_control_margin95": 15.719479483012218,
+   "regret": {
+    "n": 400,
+    "mean": 42.43,
+    "margin95": 6.80386867103059,
+    "median": 12,
+    "over_150cp": 29
+   }
   },
   "exchange_up": {
    "n": 400,
@@ -30,7 +44,14 @@
    "margin95": 14.312784415468718,
    "median": -94,
    "vs_control": -70.5575,
-   "vs_control_margin95": 16.665457067297307
+   "vs_control_margin95": 16.665457067297307,
+   "regret": {
+    "n": 400,
+    "mean": 45.2825,
+    "margin95": 7.033327986607263,
+    "median": 17,
+    "over_150cp": 29
+   }
   }
  },
  "rows": {

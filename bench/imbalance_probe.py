@@ -11,19 +11,41 @@ engine played Rxe4 in
 `1r1q1rk1/p3p2p/2p2bp1/3p4/N3bP2/7P/PPPQ1BP1/1K1RR3 w - - 0 1`,
 a 2.7-pawn error, and the post-capture position read +7 at depth 6 where the
 reference read -216. That is one position. This probe asks whether the pattern
-holds across many. IT DOES, and symmetrically -- 400 positions per bucket from
-the A/B game logs, 2026-09-17 on a Mac17,8:
+holds across many.
 
-    depth  exchange-down vs control   exchange-up vs control
-      8        +76.7 +/- 15.7            -70.6 +/- 16.7
-     12        +81.6 +/- 15.2            -72.6 +/- 14.9
+FIRST ANSWER, 2026-09-17, AND ITS CORRECTION. The eval pass found a large
+signed error on imbalance buckets (down +81.6 +/- 15.2, up -72.6 +/- 14.9 at
+depth 12) and that was first read as "the net halves the value of the
+exchange". THAT READING WAS WRONG, and the same data refutes it: pooling every
+position and binning by |reference eval| shows our eval keeps only ~0.60-0.65
+of the reference's magnitude ABOVE ~150cp regardless of bucket, while the
+imbalance buckets keep 0.68-0.71, i.e. slightly MORE than average. The
+compression is general, not about material at all. The control was balanced
+positions, which are overwhelmingly small-eval, so the comparison crossed two
+magnitude regimes and attributed a scale effect to imbalance.
 
-Down the exchange we think it is ~80cp less bad than it is; up the exchange we
-think it is ~70cp less good. One coherent error, not two: the net COMPRESSES
-the rook-versus-minor difference to roughly half its real value. The symmetry
-is what rules out the obvious confound -- if this were "lost positions are
-simply harder to judge", the exchange-up bucket would not mirror it. It does
-not shrink with depth, so it is the evaluation and not the horizon.
+AND A SCALE DIFFERENCE CANNOT CAUSE A BLUNDER. Multiplying an eval by a
+constant is monotone: it preserves every move ordering, so it cannot change
+which move is played. Mean signed error is therefore the WRONG instrument for
+"does the engine play worse here". Regret is the right one -- how much the
+reference says our CHOSEN move loses -- which is why --regret exists.
+
+REGRET, depth 8, 400 positions per bucket:
+
+    bucket           mean regret      moves losing >150cp
+    balanced        33.1 +/- 5.2 cp        12/400  (3.0%)
+    exchange_down   42.4 +/- 6.8 cp        29/400  (7.2%)
+    exchange_up     45.3 +/- 7.0 cp        29/400  (7.2%)
+
+The mean difference is marginal at this sample size. The BLUNDER RATE is not:
+material imbalance roughly doubles how often we pick a move that throws away
+more than 150cp. That is a real weakness, and it is about move choice rather
+than eval scale. Repeat runs of the regret pass drift a few cp (48.2 +/- 6.9
+against 42.4 +/- 6.8 on one repeat, consistent within margins), so treat small
+differences between runs as noise.
+
+STILL A PROXY. None of this is Elo. Use it as a screen to kill bad candidate
+nets cheaply; a candidate that improves here still owes an A/B.
 
 THE CONTROL IS THE WHOLE DESIGN. Our eval carries a general offset against the
 reference (the root position above reads -41 for us and 0.00 for it), so a raw
@@ -98,6 +120,30 @@ class Uci:
                 t = line.split()
                 si = t.index("score")
                 cp = int(t[si + 2]) if t[si + 1] == "cp" else None
+            if line.startswith("bestmove"):
+                break
+        return cp
+
+    def best(self, fen, depth):
+        """The move this engine would actually play."""
+        self._send("position fen " + fen)
+        self._send(f"go depth {depth}")
+        for line in self.p.stdout:
+            if line.startswith("bestmove"):
+                return line.split()[1]
+        return None
+
+    def score_move(self, fen, depth, mv):
+        """This engine's score for ONE specific move (searchmoves)."""
+        self._send("position fen " + fen)
+        self._send(f"go depth {depth} searchmoves {mv}")
+        cp = None
+        for line in self.p.stdout:
+            if line.startswith("info ") and " score " in line:
+                t = line.split()
+                si = t.index("score")
+                if t[si + 1] == "cp":
+                    cp = int(t[si + 2])
             if line.startswith("bestmove"):
                 break
         return cp
@@ -205,6 +251,11 @@ def main():
     ap.add_argument("--min-fullmove", type=int, default=10)
     ap.add_argument("--settle", type=int, default=4,
                     help="plies the signature must have held")
+    ap.add_argument("--regret", action="store_true",
+                    help="also measure REGRET: how much the reference says "
+                         "our CHOSEN move loses. This is the metric that "
+                         "matters -- a pure eval-scale difference is monotone "
+                         "and cannot change which move is played.")
     ap.add_argument("--out", default="data/imbalance_probe.json")
     a = ap.parse_args()
 
@@ -291,6 +342,43 @@ def main():
     print("\n   The 'vs control' column is the result. A raw mean carries our "
           "eval's\n   general offset against the reference; only the "
           "difference from the\n   balanced bucket is specific to imbalance.")
+
+    if a.regret:
+        print(f"\n-> regret pass at depth {a.depth}")
+        ours = Uci([sys.executable, a.ours], "ours")
+        ref = Uci([a.sf], "reference")
+        t0, done = time.time(), 0
+        try:
+            for b, fens in by.items():
+                regs = []
+                for fen in fens:
+                    mv = ours.best(fen, a.depth)
+                    rb = ref.score(fen, a.depth)
+                    rm = ref.score_move(fen, a.depth, mv) if mv else None
+                    if rb is not None and rm is not None:
+                        regs.append(max(0, rb - rm))
+                    done += 1
+                    bar(done, total, t0, "regret " + b)
+                summary.setdefault(b, {})["regret"] = {
+                    "n": len(regs),
+                    "mean": mean(regs),
+                    "margin95": 1.96 * sem(regs),
+                    "median": sorted(regs)[len(regs) // 2] if regs else None,
+                    "over_150cp": sum(1 for x in regs if x > 150)}
+            if sys.stdout.isatty():
+                print()
+        finally:
+            ours.close()
+            ref.close()
+        print("\n== regret of OUR chosen move, judged by the reference ==")
+        for b in ("balanced", "exchange_down", "exchange_up"):
+            r = summary.get(b, {}).get("regret")
+            if not r:
+                continue
+            print(f"   {b:<14} n={r['n']:<4} mean {r['mean']:5.1f} "
+                  f"+/- {r['margin95']:4.1f} cp   median {r['median']:5.1f}"
+                  f"   >150cp {r['over_150cp']}/{r['n']}"
+                  f" ({100 * r['over_150cp'] / r['n']:.1f}%)")
 
     out = os.path.join(ROOT, a.out)
     os.makedirs(os.path.dirname(out), exist_ok=True)
