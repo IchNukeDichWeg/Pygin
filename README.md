@@ -10,7 +10,7 @@ in this repo's own code.<br/>
 [`python-chess`](https://pypi.org/project/chess/) is used *only* for board
 representation, move generation and legality.
 
-![Strength](https://img.shields.io/badge/strength-retracted-8b949e)
+![Strength](https://img.shields.io/badge/placement-~3164_CCRL_Blitz-58a6ff)
 ![Speed](https://img.shields.io/badge/speed-5.6M_nps-58a6ff)
 ![Versions](https://img.shields.io/badge/versions-64-8b949e)
 ![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B360_Elo-f0883e)
@@ -22,7 +22,7 @@ representation, move generation and legality.
 ### At a glance
 
 <table>
-<tr><td><b>retracted</b></td><td>strength: see Measured strength</td><td><b>5.65M nps</b></td><td>the net costs ~28% of it</td></tr>
+<tr><td><b>~3164</b></td><td>CCRL Blitz placement, &plusmn;15</td><td><b>5.65M nps</b></td><td>the net costs ~28% of it</td></tr>
 <tr><td><b>~+360 Elo</b></td><td>A/B-confirmed, v31&rarr;v64</td><td><b>~19 ply</b></td><td>from startpos in 5 s</td></tr>
 <tr><td><b>+93.87 Elo</b></td><td>v58&rarr;v64, measured directly</td><td><b>1.09&times;</b></td><td>single-thread vs v31</td></tr>
 <tr><td><b>v53+v54</b> eval lane</td><td>+37.52 &amp; +31.20, the two biggest</td><td><b>1 dependency</b></td><td><code>python-chess</code> only</td></tr>
@@ -82,13 +82,26 @@ startup. The net's weights live in `NNUE/nets/` instead.
 
 ### Measured strength
 
-**No external strength figure is published.** The old ~2868 Elo was retracted
-2026-09-05: the run's Elo cap never reached the engine subprocess (T-14), and
-everything before 2026-08-13 came from a harness that mis-scored repetitions in
-Stockfish's favour (fixed in `fc82cb7`). Retracted numbers were deleted rather
-than footnoted. A replacement needs matches against engines with published
-ratings; `opponents/` and `scripts/rating_ladder.py` are built for it and no
-ladder has been run yet.
+**~3164 ±15 on the CCRL Blitz scale**, from 960 games at 2'+1" on 2026-09-17
+against two opponents carrying published ratings on that list.
+
+| Opponent | Games | Score | Result | Places us at |
+|---|---|---|---|---|
+| rated 2986 | 480 | 73.54% (274W/158D/48L) | **+177.59 ±24.3** | 3163.59 |
+| rated 3254 | 480 | 37.29% (68W/222D/190L) | **-90.29 ±18.7** | 3163.71 |
+
+Both ran a full 480-game budget with no early stop, so neither magnitude is
+bound-biased. The two placements were computed independently from opponents 268
+points apart, one we beat and one that beat us, and they agree to **0.12 Elo**.
+
+This is a **placement on that list's scale under our conditions, not a rating
+from it**: the list runs its own hardware, book and tablebases, while these
+games used our openings, our machine and opponents built from source at the
+rated versions. Reproduce with `scripts/rating_ladder.py`.
+
+The old ~2868 Elo was retracted 2026-09-05: the run's Elo cap never reached the
+engine subprocess (T-14), and everything before 2026-08-13 came from a harness
+that mis-scored repetitions in Stockfish's favour (fixed in `fc82cb7`).
 
 **Odds ladder -- every rung was played against a CAPPED Stockfish** (`odds.py`
 never applied `STOCKFISH_ELO`; UCI_Elo 2900 before 2026-08-07, 3000 after, fixed
