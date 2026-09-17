@@ -44,6 +44,14 @@ than eval scale. Repeat runs of the regret pass drift a few cp (48.2 +/- 6.9
 against 42.4 +/- 6.8 on one repeat, consistent within margins), so treat small
 differences between runs as noise.
 
+HOW MUCH IS THIS WORTH? Measured over 3,328,681 positions past move 10 from
+12 game logs: exchange-down 1.32%, exchange-up 1.21%, balanced 26.16%, other
+71.31%. So a standing exchange imbalance covers ~2.5% of real play, and the
+excess blunder rate over balanced (4.2pp) works out to roughly ONE extra
+>150cp error per 950 moves. The weakness is real and it is small. Do not build
+an imbalance-specific corpus expecting Elo from it; the 3.0% baseline blunder
+rate on the other 26% of positions is a far bigger pool.
+
 STILL A PROXY. None of this is Elo. Use it as a screen to kill bad candidate
 nets cheaply; a candidate that improves here still owes an A/B.
 
