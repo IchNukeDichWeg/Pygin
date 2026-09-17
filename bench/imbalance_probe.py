@@ -11,7 +11,19 @@ engine played Rxe4 in
 `1r1q1rk1/p3p2p/2p2bp1/3p4/N3bP2/7P/PPPQ1BP1/1K1RR3 w - - 0 1`,
 a 2.7-pawn error, and the post-capture position read +7 at depth 6 where the
 reference read -216. That is one position. This probe asks whether the pattern
-holds across many.
+holds across many. IT DOES, and symmetrically -- 400 positions per bucket from
+the A/B game logs, 2026-09-17 on a Mac17,8:
+
+    depth  exchange-down vs control   exchange-up vs control
+      8        +76.7 +/- 15.7            -70.6 +/- 16.7
+     12        +81.6 +/- 15.2            -72.6 +/- 14.9
+
+Down the exchange we think it is ~80cp less bad than it is; up the exchange we
+think it is ~70cp less good. One coherent error, not two: the net COMPRESSES
+the rook-versus-minor difference to roughly half its real value. The symmetry
+is what rules out the obvious confound -- if this were "lost positions are
+simply harder to judge", the exchange-up bucket would not mirror it. It does
+not shrink with depth, so it is the evaluation and not the horizon.
 
 THE CONTROL IS THE WHOLE DESIGN. Our eval carries a general offset against the
 reference (the root position above reads -41 for us and 0.00 for it), so a raw
