@@ -52,8 +52,25 @@ excess blunder rate over balanced (4.2pp) works out to roughly ONE extra
 an imbalance-specific corpus expecting Elo from it; the 3.0% baseline blunder
 rate on the other 26% of positions is a far bigger pool.
 
-STILL A PROXY. None of this is Elo. Use it as a screen to kill bad candidate
-nets cheaply; a candidate that improves here still owes an A/B.
+CALIBRATED 2026-09-26, AND IT FAILS AS A NET GATE. Regret was scored for 17
+nets whose Elo is on record, each paired position by position against v12
+(uci/module_uci.py runs any shim). Thirteen of them were A/B'd directly
+against v12 on one instrument (10+0.1), spanning -58 to -4 Elo:
+
+    depth 8, 1,200 positions:  every net within +/-2.7cp of v12, every margin
+                               (+/-4.2..4.8) includes zero. Spearman vs Elo
+                               +0.43 over 13 nets -- not significant.
+    depth 12, the extremes:    v14 (+65.66)  -2.51 +/- 3.5
+                               m3  (-58.45)  +2.27 +/- 3.4
+                               right ORDER, but a 124-Elo span barely clears
+                               the noise.
+
+That is roughly 0.04cp of regret per Elo. Resolving a 20-Elo candidate, the
+size of decision the net lane actually faces, would need ~20x the positions,
+at which point it costs about what a real screen costs and is still only
+weakly correlated. SCREEN-KILLED as a gate: do not use it to accept or reject
+nets. What survives is the diagnostic use it was built for -- explaining a
+specific blunder class after the fact.
 
 THE CONTROL IS THE WHOLE DESIGN. Our eval carries a general offset against the
 reference (the root position above reads -41 for us and 0.00 for it), so a raw
@@ -75,6 +92,7 @@ import argparse
 import glob
 import json
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -252,7 +270,10 @@ def main():
     ap.add_argument("--n", type=int, default=150, help="positions per bucket")
     ap.add_argument("--sf", default="/opt/homebrew/bin/stockfish",
                     help="reference engine binary")
-    ap.add_argument("--ours", default="cuci.py")
+    ap.add_argument("--ours", default="cuci.py",
+                    help="our UCI front end plus its args, e.g. "
+                         "'uci/module_uci.py NNUE/shims/engine_v13s1.py' to "
+                         "score a specific net rather than the shipped one")
     ap.add_argument("--per-game", type=int, default=2)
     ap.add_argument("--max-files", type=int, default=0,
                     help="cap how many PGNs are opened (0 = all)")
@@ -291,7 +312,7 @@ def main():
 
     total = sum(len(v) for v in by.values())
     print(f"-> scoring {total} positions x 2 engines at depth {a.depth}")
-    ours = Uci([sys.executable, a.ours], "ours")
+    ours = Uci([sys.executable] + shlex.split(a.ours), "ours")
     ref = Uci([a.sf], "reference")
     rows, done, t0 = {}, 0, time.time()
     try:
@@ -351,22 +372,26 @@ def main():
           "eval's\n   general offset against the reference; only the "
           "difference from the\n   balanced bucket is specific to imbalance.")
 
+    regret_rows = {}
     if a.regret:
         print(f"\n-> regret pass at depth {a.depth}")
-        ours = Uci([sys.executable, a.ours], "ours")
+        ours = Uci([sys.executable] + shlex.split(a.ours), "ours")
         ref = Uci([a.sf], "reference")
         t0, done = time.time(), 0
         try:
             for b, fens in by.items():
-                regs = []
+                regs, per = [], []
                 for fen in fens:
                     mv = ours.best(fen, a.depth)
                     rb = ref.score(fen, a.depth)
                     rm = ref.score_move(fen, a.depth, mv) if mv else None
                     if rb is not None and rm is not None:
                         regs.append(max(0, rb - rm))
+                        per.append({"fen": fen, "move": mv,
+                                    "regret": max(0, rb - rm)})
                     done += 1
                     bar(done, total, t0, "regret " + b)
+                regret_rows[b] = per
                 summary.setdefault(b, {})["regret"] = {
                     "n": len(regs),
                     "mean": mean(regs),
@@ -395,7 +420,8 @@ def main():
                                   "reference": a.sf, "pgn": a.pgn,
                                   "settle": a.settle,
                                   "when": time.strftime("%Y-%m-%dT%H:%M:%S%z")},
-                   "summary": summary, "rows": rows}, fh, indent=1)
+                   "summary": summary, "rows": rows,
+                   "regret_rows": regret_rows}, fh, indent=1)
     print(f"\n-> wrote {a.out}")
     return 0
 
