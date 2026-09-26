@@ -16,6 +16,14 @@ Several independent ones together are a larger target that one run can resolve.
 
 ## The list
 
+**EMPTY -- all four entries below were spent in v64.** Armed together as
+`bundle1`, the bundle accepted at both clocks: +6.03 +/- 4.1 at 10+0.1 (13,370
+games, LLR +2.949) and +6.19 +/- 4.1 at 50+0.5 (11,896 games, LLR +2.969). The
+first 50+0.5 tranche ran its full budget at +5.94 +/- 4.4, and that unbiased
+figure is what the ledger banked. They are now the shipped defaults; the table
+is kept as the record of what the bundle contained. New positive NULLs start a
+fresh list.
+
 Every entry measured at 10+0.1, 48 workers, 2x EPYC 7443, against the v63 tree,
 full 10,000-game budget, no bound crossed.
 
