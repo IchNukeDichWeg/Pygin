@@ -726,6 +726,14 @@ def main():
     # fresh thread object).
     swap_lock = threading.Lock()
     pending_hash_mb = None                   # FB-25: Hash sent mid-search
+    pending_contempt = None                  # Contempt sent mid-search: since
+                                             # 892ce3e a real change resets the
+                                             # TT, which must not run under a
+                                             # live search -- deferred like Hash
+
+    def apply_contempt(v):
+        engine.contempt = v
+        engine._lib.csearch_set_draw(v, engine._py.DRAW_AVOID_MARGIN)
     engine.show_wdl = True                   # FI-45: UCI_ShowWDL default
     dbg = {"on": False}                      # FI-45: `debug on` channels
     hf_ring = []                             # FI-45: hashfull trajectory
@@ -1228,11 +1236,12 @@ def main():
                     if not searching():                 # button; ignored
                         engine._lib.cs_tt_reset()       # mid-search
                 elif name == "contempt":                # FI-45: C support
-                    engine.contempt = max(-100, min(100, int(value)))
-                    engine._lib.csearch_set_draw(       # FB-34: margin stays
-                        engine.contempt,                # authoritative in
-                        engine._py.DRAW_AVOID_MARGIN)   # engine.py -- never
-                                                        # hardcode 200 here
+                    v = max(-100, min(100, int(value)))  # FB-34: the margin
+                    if not searching():                 # stays authoritative
+                        apply_contempt(v)               # in engine.py
+                        pending_contempt = None
+                    else:                               # defer: a change now
+                        pending_contempt = v            # clears the TT
                 elif name == "moveoverhead":            # FI-13b
                     engine.move_overhead_ms = max(0, int(value))
                 elif name == "softstop":                # P-35 base fraction;
@@ -1277,6 +1286,9 @@ def main():
                     apply_hash(engine, pending_hash_mb)   # reset, so the new
                     pending_hash_mb = None                # game starts at the
                                                           # requested size
+                if pending_contempt is not None:
+                    apply_contempt(pending_contempt)
+                    pending_contempt = None
                 engine._lib.cs_tt_reset()
                 engine.last_score = 0        # reset the TB difficulty gate
                 board = chess.Board()
@@ -1337,6 +1349,9 @@ def main():
                         search_thread.join()
                     else:
                         continue             # actively searching; ignore
+                if pending_contempt is not None:     # idle here, as below
+                    apply_contempt(pending_contempt)
+                    pending_contempt = None
                 if pending_hash_mb is not None:      # FB-25/FB-35: apply the
                     apply_hash(engine, pending_hash_mb)   # deferred Hash AFTER
                     pending_hash_mb = None                # the holding release
