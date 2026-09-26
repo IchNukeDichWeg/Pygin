@@ -617,7 +617,7 @@ static inline int32_t nn_dot_row(const int8_t* w, const int8_t* x, int n)
 /* FI-110: the x4 entry point exists on every path so the layer loops below
  * are uniform. This scalar fallback is four plain row calls. The claim that
  * used to sit here -- NEON has nothing to amortise because it reduces a row in
- * one vaddvq_s32 -- was REFUTED by 0e1e713: reusing each 16-byte slice of x
+ * one vaddvq_s32 -- was REFUTED by 526fa4e: reusing each 16-byte slice of x
  * across four rows cut search cycles 4.5% on arm64, and NEON+dotprod now has
  * its own x4 kernel above. */
 static inline void nn_dot_row_x4(const int8_t* w, size_t stride,

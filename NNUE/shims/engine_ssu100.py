@@ -2,7 +2,7 @@
 
 A/B arm against cengine.py (v63). An iteration where the best move just changed
 never soft-stops at all: the hard time limit is the only thing that ends it.
-0.90 screened +6.95 +/- 4.7 (near-bound accept, f9272d5) and 0.70 was flat, so
+0.90 screened +6.95 +/- 4.7 (near-bound accept, 9a7f50e) and 0.70 was flat, so
 this is the far end of the direction that pays. Clock-shaped: TIMED only.
 
     python3 match.py NNUE/shims/engine_ssu100.py cengine.py 5000 0 \

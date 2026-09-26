@@ -193,7 +193,7 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # identical in both cases.
 #
 # SINCE THE NET IS ARMED (v58+) THE DRIFT IS NO LONGER SMALL. 2026-09-10, 2x
-# EPYC 7443 at d2788a4: exact through d7, -5 nodes at d8, then SCORES differ
+# EPYC 7443 at 0cc9272: exact through d7, -5 nodes at d8, then SCORES differ
 # from d10 (d13 944,062 nodes against 1,328,657); the retained-TT pin reads
 # 3,153,013 against the v12-era 2,479,366 and the fortress 4 against 0. That
 # pin has since moved with the v14 net; the SHAPE is what this note is about.
