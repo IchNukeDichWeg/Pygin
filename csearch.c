@@ -2222,6 +2222,14 @@ static inline uint32_t pick_next(uint32_t* mv, int* sc, int i, int n)
 static inline void hist_update(int color, int fromto, int bonus)
 {
     int *h = &g_history[color][fromto];
+    /* The gravity formula stays bounded only while |bonus| <= HIST_MAX. The
+     * callers pass depth*depth, which crosses that at depth 128 and makes
+     * (*h) * ab signed-overflow UB from depth ~216 -- reachable with
+     * `go depth 245` or near-free iterations at a high halfmove clock.
+     * Clamped HERE so every caller is covered; below depth 128 it never
+     * fires, so search is unchanged. */
+    if (bonus > HIST_MAX) bonus = HIST_MAX;
+    else if (bonus < -HIST_MAX) bonus = -HIST_MAX;
     int ab = bonus < 0 ? -bonus : bonus;
     *h += bonus - (*h) * ab / HIST_MAX;
 }
