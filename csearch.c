@@ -2505,6 +2505,13 @@ static int g_nhist = 0;
 static int g_contempt = 50, g_draw_margin = 200;
 void csearch_set_draw(int contempt, int margin)
 {
+    /* Stalemates are stored at depth 200 EXACT with draw_score() -- i.e. with
+     * the CURRENT contempt baked in -- and same-key replacement needs a depth
+     * >= 200, so nothing ever refreshes them. A mid-session Contempt change
+     * without ucinewgame kept scoring old stalemates at the old value. Wipe
+     * the table only when the value actually changes, so repeated syncs of
+     * the same setting (every Engine init, every bench FEN) cost nothing. */
+    if (contempt != g_contempt) cs_tt_reset();
     g_contempt = contempt; g_draw_margin = margin;
 }
 
