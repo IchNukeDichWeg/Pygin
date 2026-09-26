@@ -27,7 +27,10 @@ SEED="${1:-1}"
 D=NNUE/datasets/gen25k.pygdata
 say() { echo "[$(TZ=Europe/Zurich date '+%H:%M:%S %Z')] $*"; }
 
-[ -f "$D" ] || { echo "missing $D -- fetch the nnue-gen25k release first"; exit 1; }
+# The corpus is kept zstd-compressed at rest since 2026-09-16 (27G -> 12G), so
+# "missing" usually means "not decompressed yet", not "never downloaded".
+[ -f "$D" ] || { echo "missing $D -- decompress it first: zstd -d $D.zst (~9 s),"
+                 echo "  or fetch the nnue-gen25k release if there is no .zst either"; exit 1; }
 
 # --cache-chunks needs ~0.8 GB per million records (MEASURED on the 5090 box,
 # not the ~250-300 B/record the trainer's help estimates). Refuse rather than
