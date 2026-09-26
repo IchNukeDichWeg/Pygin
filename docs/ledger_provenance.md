@@ -44,9 +44,12 @@ bound-stopped magnitudes accumulate to when they are banked one after another.
   question. What inflates is the SIZE, and only the size.
 - It does not transfer to another span without measuring it. The inflation
   depends on how many links stopped early and how close each ran to its bound.
-- It is one measurement of one chain. A second jump (v64 vs v61) is running and
-  will say whether the shortfall is spread evenly or concentrated in particular
-  releases.
+- It is not spread evenly. The second jump, v64 vs v61 on the same fixed
+  10,000-game budget, measured **+34.82 +/- 4.4** against ~+115.5 claimed across
+  v63 and v64: only **30%** survives, against 64% for the longer v58 span. The
+  shortfall concentrates in the newest links, and above all in the net's +78.82,
+  which stopped at the 1,500-pair minimum -- the earliest any test can stop, and
+  so the most favourable fluctuation a verdict can be taken at.
 
 ## The options, for the owner to choose
 
