@@ -727,7 +727,7 @@ def main():
     swap_lock = threading.Lock()
     pending_hash_mb = None                   # FB-25: Hash sent mid-search
     pending_contempt = None                  # Contempt sent mid-search: since
-                                             # 892ce3e a real change resets the
+                                             # 0927704 a real change resets the
                                              # TT, which must not run under a
                                              # live search -- deferred like Hash
 
