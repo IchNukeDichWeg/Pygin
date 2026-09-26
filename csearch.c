@@ -4650,7 +4650,11 @@ void cs_search_begin(const uint64_t* hist, int nhist, double budget_sec)
 {
     g_nodes = 0;
     ABORT_SET(0);
-    g_deadline = (budget_sec > 0.0)
+    /* A budget past ~1.8e10 s overflows the uint64 conversion (UB); arm64
+     * saturates it and now + UINT64_MAX wraps to the past, so
+     * `go movetime 20000000000000` aborted at the first time check and played
+     * a depth-1 move. Anything over 1e9 s (31 years) now means no deadline. */
+    g_deadline = (budget_sec > 0.0 && budget_sec < 1e9)
                ? now_ns() + (uint64_t)(budget_sec * 1e9) : 0;
     g_nhist = 0;
     if (hist) {
