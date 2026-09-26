@@ -371,16 +371,56 @@ static inline int32_t nn_dot_row(const int8_t* w, const int8_t* x, int n)
     return vaddvq_s32(vaddq_s32(vaddq_s32(a0, a1), vaddq_s32(a2, a3)));
 }
 
-/* FI-110: the x4 entry point exists on every path so the layer loops below
- * are uniform. Only AVX2 needs a real implementation -- NEON already reduces
- * a row in ONE instruction (vaddvq_s32), so there is nothing to amortise and
- * four calls compile to exactly what the old loop did. Byte-identical on
- * arm64 by construction, which the ladder then re-proves. */
+/* FI-110 on NEON (2026-09-26). The old comment here said NEON had "nothing
+ * to amortise" because vaddvq_s32 already reduces a row in one instruction.
+ * That covered the reduction and missed the loads: four separate row calls
+ * reload the whole activation vector x four times, so every SDOT paid two
+ * 16-byte loads and the kernel was load-bound. This loads each 16-byte slice
+ * of x ONCE and feeds it to four weight rows, with two accumulators per row
+ * so the SDOT latency stays covered, then reduces all four rows into one
+ * vector with a vpaddq tree.
+ *
+ * Priced before it was built: running the whole tail twice (node-identical)
+ * added 8.2% cycles to a depth-13 bench, i.e. the tail is ~10% of search.
+ *
+ * Bit-identical by construction: int32 sums of int8 x int8 products, so the
+ * regrouping is exact and 528 x 127 x 128 cannot overflow int32. The bench
+ * signature proves it on every build. Same n % 16 == 0 contract as
+ * nn_dot_row's remainder loop. */
 static inline void nn_dot_row_x4(const int8_t* w, size_t stride,
                                  const int8_t* x, int n, int32_t out[4])
 {
+#if defined(__ARM_FEATURE_DOTPROD)
+    const int8_t *w0 = w, *w1 = w + stride, *w2 = w + 2 * stride,
+                 *w3 = w + 3 * stride;
+    int32x4_t a0 = vdupq_n_s32(0), a1 = a0, a2 = a0, a3 = a0;
+    int32x4_t b0 = a0, b1 = a0, b2 = a0, b3 = a0;
+    int i = 0;
+    for (; i + 32 <= n; i += 32) {
+        int8x16_t x0 = vld1q_s8(x + i), x1 = vld1q_s8(x + i + 16);
+        a0 = vdotq_s32(a0, x0, vld1q_s8(w0 + i));
+        b0 = vdotq_s32(b0, x1, vld1q_s8(w0 + i + 16));
+        a1 = vdotq_s32(a1, x0, vld1q_s8(w1 + i));
+        b1 = vdotq_s32(b1, x1, vld1q_s8(w1 + i + 16));
+        a2 = vdotq_s32(a2, x0, vld1q_s8(w2 + i));
+        b2 = vdotq_s32(b2, x1, vld1q_s8(w2 + i + 16));
+        a3 = vdotq_s32(a3, x0, vld1q_s8(w3 + i));
+        b3 = vdotq_s32(b3, x1, vld1q_s8(w3 + i + 16));
+    }
+    for (; i < n; i += 16) {
+        int8x16_t x0 = vld1q_s8(x + i);
+        a0 = vdotq_s32(a0, x0, vld1q_s8(w0 + i));
+        a1 = vdotq_s32(a1, x0, vld1q_s8(w1 + i));
+        a2 = vdotq_s32(a2, x0, vld1q_s8(w2 + i));
+        a3 = vdotq_s32(a3, x0, vld1q_s8(w3 + i));
+    }
+    int32x4_t r0 = vaddq_s32(a0, b0), r1 = vaddq_s32(a1, b1);
+    int32x4_t r2 = vaddq_s32(a2, b2), r3 = vaddq_s32(a3, b3);
+    vst1q_s32(out, vpaddq_s32(vpaddq_s32(r0, r1), vpaddq_s32(r2, r3)));
+#else
     for (int k = 0; k < 4; k++)
         out[k] = nn_dot_row(w + (size_t)k * stride, x, n);
+#endif
 }
 
 #elif defined(__AVX2__)
