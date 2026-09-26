@@ -2713,7 +2713,13 @@ static void cuckoo_build(void)
                     pt == PT_BISHOP ? bishop_attacks(s1, 0) :
                     pt == PT_ROOK   ? rook_attacks(s1, 0)   :
                     bishop_attacks(s1, 0) | rook_attacks(s1, 0);
-                for (uint64_t t = att & ~((1ULL << (s1 + 1)) - 1); t; t &= t - 1) {
+                /* s1 == 63 has no higher square; the old mask evaluated
+                 * 1ULL << 64 (UB), which arm64/x86 happen to wrap into
+                 * an all-ones mask that re-inserted the h8 moves as
+                 * duplicate keys. Presence, not slots, is what probes
+                 * read, so the fix is search-neutral. */
+                uint64_t above = s1 < 63 ? ~((1ULL << (s1 + 1)) - 1) : 0;
+                for (uint64_t t = att & above; t; t &= t - 1) {
                     int s2 = __builtin_ctzll(t);
                     uint64_t key = Z_PSQ[c][pt][s1] ^ Z_PSQ[c][pt][s2] ^ Z_TURN;
                     uint16_t mv = (uint16_t)(s1 | (s2 << 6) | (pt << 12));
