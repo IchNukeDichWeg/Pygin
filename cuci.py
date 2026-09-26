@@ -328,6 +328,7 @@ def _search_multipv(engine, board, k, budget, max_depth, white_to_move,
     engine.use_book = False          # a book reply has no PV to show
     engine.on_depth = engine.on_final = None   # we emit; no per-depth spam
     best_first, best_state, total_nodes = None, None, 0
+    partial_first = None   # last resort only: no depth ever completed
     try:
         for d in range(1, max(1, top) + 1):
             if stop_evt.is_set() or engine._abort:
@@ -337,7 +338,7 @@ def _search_multipv(engine, board, k, budget, max_depth, white_to_move,
             # and overrunning `movetime` is a protocol violation.
             if deadline is not None and _t.perf_counter() - t0 > 0.45 * budget:
                 break
-            lines, excl, depth_state = [], [], None
+            lines, excl, depth_state, depth_first = [], [], None, None
             cut = False          # depth abandoned mid-way, vs finished
             for i in range(k):
                 if stop_evt.is_set() or engine._abort:
@@ -364,7 +365,13 @@ def _search_multipv(engine, board, k, budget, max_depth, white_to_move,
                               engine.last_depth or d))
                 excl.append(mv)
                 if i == 0:
-                    best_first = mv
+                    # Not best_first yet: this depth may still be cut, and a
+                    # bestmove from an abandoned depth disagrees with the
+                    # line-1 PV the GUI was last shown (and drops its ponder
+                    # token). Promoted only when the depth completes, below.
+                    depth_first = mv
+                    if partial_first is None:
+                        partial_first = mv
                     depth_state = (engine.last_score, engine.last_pv,
                                    engine.last_depth, engine.nodes_searched)
             lib.root_exclude_clear()
@@ -382,6 +389,7 @@ def _search_multipv(engine, board, k, budget, max_depth, white_to_move,
             # nothing; a timed search leaked its final part-depth to the GUI.)
             if not cut and depth_state is not None:
                 best_state = depth_state
+                best_first = depth_first
                 el = max(1, int((_t.perf_counter() - t0) * 1000))
                 for i, (score, pv, dd) in enumerate(lines, 1):
                     out(info_line({"depth": dd, "score": score, "pv": pv,
@@ -394,7 +402,7 @@ def _search_multipv(engine, board, k, budget, max_depth, white_to_move,
         if best_state is not None:   # leave line 1 as the visible state
             (engine.last_score, engine.last_pv, engine.last_depth,
              engine.nodes_searched) = best_state
-    return best_first
+    return best_first if best_first is not None else partial_first
 
 
 # --------------------------------------------------------------------------- #
