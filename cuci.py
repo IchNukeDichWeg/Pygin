@@ -1173,7 +1173,15 @@ def main():
                     engine.syzygy_path = p or None
                     if getattr(engine, "_py", None) is not None:
                         engine._py.syzygy_path = p or None
+                        old_tb = getattr(engine._py, "_syzygy", None)
+                        if old_tb is not None and hasattr(old_tb, "close"):
+                            old_tb.close()                 # was leaked before
                         engine._py._syzygy = None          # drop a cached handle
+                        # The piece-count cap is detected from the OLD folder
+                        # and cengine gates the local probe on it, so moving
+                        # from a 3-man to a 5-man set kept skipping 4-5 piece
+                        # positions until a 3-piece one re-triggered detection.
+                        engine._py.TB_LOCAL_MAX_PIECES = None
                     if p and not os.path.isdir(p):
                         out(f"info string SyzygyPath {p!r} is not a directory "
                             f"-- local probing stays OFF")
