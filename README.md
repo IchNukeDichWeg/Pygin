@@ -12,8 +12,8 @@ representation, move generation and legality.
 
 ![Strength](https://img.shields.io/badge/placement-~3164_CCRL_Blitz-58a6ff)
 ![Speed](https://img.shields.io/badge/speed-5.6M_nps-58a6ff)
-![Versions](https://img.shields.io/badge/versions-64-8b949e)
-![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B360_Elo-f0883e)
+![Versions](https://img.shields.io/badge/versions-65-8b949e)
+![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B422_Elo-f0883e)
 ![Source](https://img.shields.io/badge/source-MIT-green)
 &nbsp;·&nbsp; Built with **[Claude Code](https://claude.com/claude-code)**
 
@@ -22,8 +22,8 @@ representation, move generation and legality.
 ### At a glance
 
 <table>
-<tr><td><b>~3164</b></td><td>CCRL Blitz placement, &plusmn;15</td><td><b>5.65M nps</b></td><td>the net costs ~28% of it</td></tr>
-<tr><td><b>~+360 Elo</b></td><td>A/B-confirmed, v31&rarr;v64</td><td><b>~19 ply</b></td><td>from startpos in 5 s</td></tr>
+<tr><td><b>~3164</b></td><td>CCRL Blitz placement of v64, &plusmn;15</td><td><b>5.65M nps</b></td><td>the net costs ~28% of it</td></tr>
+<tr><td><b>~+422 Elo</b></td><td>A/B-confirmed, v31&rarr;v65</td><td><b>~19 ply</b></td><td>from startpos in 5 s</td></tr>
 <tr><td><b>+93.87 Elo</b></td><td>v58&rarr;v64, measured directly</td><td><b>1.09&times;</b></td><td>single-thread vs v31</td></tr>
 <tr><td><b>v53+v54</b> eval lane</td><td>+37.52 &amp; +31.20, the two biggest</td><td><b>1 dependency</b></td><td><code>python-chess</code> only</td></tr>
 </table>
@@ -99,6 +99,10 @@ from it**: the list runs its own hardware, book and tablebases, while these
 games used our openings, our machine and opponents built from source at the
 rated versions. Reproduce with `scripts/rating_ladder.py`.
 
+The placement was measured with **v64**. v65 has not been placed yet: its
++61.91 over v64 is a self-play A/B, and gains between two versions of one
+engine do not carry one to one onto another engine's scale.
+
 The old ~2868 Elo was retracted 2026-09-05: the run's Elo cap never reached the
 engine subprocess (T-14), and everything before 2026-08-13 came from a harness
 that mis-scored repetitions in Stockfish's favour (fixed in `fc82cb7`).
@@ -127,9 +131,9 @@ them.
 
 ## Version progression
 
-64 versions, each A/B-tested against the one before it. Speed is nodes/s,
+65 versions, each A/B-tested against the one before it. Speed is nodes/s,
 depth is from startpos in 5 s (book off, best-of-N), and `Elo Δ` is the A/B
-result against the previous version. Cumulatively that is ≈ +360 over v31.
+result against the previous version. Cumulatively that is ≈ +422 over v31.
 
 The list below has the full per-version speed, depth and Elo, and the charts
 above summarise it. Regenerate both with `bench/bench_progress.py` and
@@ -138,6 +142,7 @@ above summarise it. Regenerate both with `bench/bench_progress.py` and
 <details>
 <summary><b>Every version in full</b> -- complete milestone + Elo list</summary>
 
+- **v65** -- **a new evaluation network.** Same architecture and the same search as v64; `NNUE_FILE` moves to `nnue_v15_4f85b4f247cd.nnue`. Also carried, none of them moving the bench signature: a history-bonus clamp so deep iterations cannot overflow, a shift past the h8 square in the cuckoo table, a deadline that no longer wraps on an absurd time budget, a `Contempt` change that clears the TT between searches instead of mid-search, MultiPV `bestmove` from the last completed depth, and `SyzygyPath` re-detecting the table piece count, plus a real 4-row NEON dot kernel (4.5% fewer search cycles on arm64, node-identical). *(**+61.91 ±4.3** over a **fixed** 9,976-game budget at 50+0.5 on x86, ptnml 65/722/1975/1841/385, nElo +100.02, pair ratio 2.83. No early stop, so the ledger advances: +360 -> **+422**. The 10+0.1 screen on arm64 read +60.46 ±8.5, ACCEPT H1 at the 1,500-pair minimum, so the longer control did not shrink it. Bench 785,901 -> 672,025.)*
 - **v64** -- **a new net, and four settings that only pay together.** The evaluation network is replaced, and four search parameters that each measured as nothing on their own cross the accept bound when armed as one change: less late-move reduction (`LMR_DIV` 170), a sharper capture-pruning threshold (`SEE_SCALED_K` 75), and two clock settings that let a stable move think slightly longer. *(Bundle: **+6.19 ±4.1** over 11,896 games at 50+0.5, SPRT[0,4] LLR +2.969 **ACCEPT H1** -- its first tranche ran a **full** 10,000 games at +5.94 ±4.4 with no early stop. Net, measured **on top of** that bundle so the two are known to work together: **+78.82 ±8.3** over 3,004 games at 50+0.5, LLR +9.264 **ACCEPT H1** at the minimum, nElo +121.86, pair ratio 3.37. Also carried: a profile-guided build, **+4.7%** speed on the reference machine, node-identical. Bench 1,123,567 -> 785,901.)*
 - **v63** -- **losing captures near the leaves are no longer searched, and v62's rejected TT rule is gone.** FI-38 skips a capture that loses material by SEE when it loses more than 50cp per remaining ply, at depth 6 or less, off the PV, and never in or into check. The core under it is v61's again: the b05 FI-115 completion v62 shipped after it had been rejected is reverted, and a retained-TT probe in `selftest.py` now pins that rule. *(HEAD vs v61 at 50+0.5: **+20.95 ±7.9** over 3,006 games, SPRT[0,4] LLR +3.049 **ACCEPT H1**. FI-38 K=50 on top: **+9.50 ±6.0** at 50+0.5 over 6,802 games, LLR +2.961 **ACCEPT H1**, after +9.34 ±5.3 / LLR +2.946 on the 10+0.1 screen. K=75 and K=100 were NULL at the full budget, so 50 is the setting. Every run **stopped early, so the ledger is not advanced**; a fixed-budget 50+0.5 run of v63 vs v61 is owed. Bench 1,203,792 -> 1,123,567.)*
 - **v62** -- **the aspiration window stopped fighting itself.** The root window opened flat at 30cp whatever the position and widened 2&times; per failure, and a fail-low left `beta` untouched -- so a position could oscillate low/high and pay the whole ladder out to the 1920 fallback. Three riders replace that as one policy: the opening delta scales with the previous score, a fail-low pulls `beta` to the midpoint before `alpha` drops, and growth is 1.5&times;. Driver-only, but the C core is **not** byte-identical to v61 as released: v62 also carried `b4339ae`+`a1a31cd`, the b05 FI-115 completion, which had already measured ACCEPT H0 (LLR -5.98) and was reverted after the release. Both arms of the A/B below shared that core, so the +18.40 measures the window honestly; v62-as-released vs v61-as-released was never measured. *(**+18.40 ±7.6** at 50+0.5 over 3,439 games, 52.65%, ptnml 62/361/735/450/109, nElo +28.25, SPRT[0,4] LLR +2.959 **ACCEPT H1** -- and **+2.969 ACCEPT** on the 10+0.1 screen before it. Both **stopped early, so the magnitude is bound-biased and the ledger is not advanced on it**; a fixed-budget 50+0.5 run is owed. Bench 1,140,099 -> 1,203,792 -- unlike v61 this one does move the signature, because the window shapes the root search from the first iteration.)*
