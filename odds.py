@@ -198,7 +198,7 @@ ODDS_SQUARES = ["h2"]                   # PAWN odds (h-pawn) -- the ACTIVE
                                         #   on v59 -- it is a fresh reading
                                         #   that happens to agree.
                                         # 2026-08-13 @v59, CORRECTED harness
-                                        # (fc82cb7) + SF respawn + native WDL:
+                                        # (45dd989) + SF respawn + native WDL:
                                         #   81.00% (1000g, +251.89 +/-35.2)
                                         #   SF CAPPED at UCI_Elo 3000 (B-15)
                                         #   704W / 212D / 84L, 50+0.50, FULL

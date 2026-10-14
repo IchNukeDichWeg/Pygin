@@ -278,7 +278,7 @@ NNUE_DEFAULT_VERSION = 58        # numbered snapshots switch family by NUMBER,
 GLOBAL_SINCE = None              # --since: refuse EVERY log dated before this,
                                  # snapshots included. Exists for instrument
                                  # breaks: the 2026-08-07 phantom-repetition
-                                 # fix (fc82cb7) changed game RESULTS, so all
+                                 # fix (45dd989) changed game RESULTS, so all
                                  # earlier logs carry draw-biased outcomes and
                                  # a fit over them learns the bug.
 EVAL_FAMILY = "hce"              # "hce" | "nnue" | None = don't filter,

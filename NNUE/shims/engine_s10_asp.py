@@ -8,7 +8,7 @@ v61 exactly, with _root_aspiration overridden to carry the three FI-21 riders
      oscillation that pays the full ladder to the 1920 fallback
   3. growth 1.5x instead of 2x
 Driver-only; C untouched; the CB2/FB-23 provisional-move machinery is copied
-verbatim from cengine.py @ cd046c6 -- if cengine's _root_aspiration changes,
+verbatim from cengine.py @ bc2487b -- if cengine's _root_aspiration changes,
 RE-DIFF THIS SHIM before trusting it.
 
     python3 match.py NNUE/shims/engine_s10_asp.py NNUE/shims/engine_v61b_deadtag.py \

@@ -5,7 +5,7 @@ seen>=2 for pre-root positions + the repeats_further_back rider).
 
 PREMISE-BROKEN, run last if at all (agent-verified 2026-08-29): the audit's
 reset argument claimed the rider was not in the killed screen's build; it WAS
-(same commit 31a36d4, 2026-07-27). FI-89 screen-killed at -20.17 +/-15.3 --
+(same commit 10f5e64, 2026-07-27). FI-89 screen-killed at -20.17 +/-15.3 --
 the worst screen on the books -- measuring the exact rule this shim arms.
 The only remaining argument is the NNUE-regime one, standing against an
 explicit 'do-not-retry without a different rule'. If run: screen only, kill

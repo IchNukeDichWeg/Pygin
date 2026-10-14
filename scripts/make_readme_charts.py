@@ -95,7 +95,7 @@ ODDS_KNIGHT = [(31, 76.75), (49, 79.05), (52, 81.65), (54, 100.0)]
 # so the old figure UNDERSTATED us by +2.78% +/-2.16 (z=2.53).
 # v59 2026-08-13: 81.00% over 1,000 games (704W/212D/84L) on the CORRECTED
 # harness. The 90.30% read at v58 is WITHDRAWN: it came from the termination bug
-# that erased Stockfish's won endgames (fixed fc82cb7), and about nine points of
+# that erased Stockfish's won endgames (fixed 45dd989), and about nine points of
 # it were that bug rather than strength. The v54 dot predates the fix too and is
 # kept only because it is the other side of an era change (45+0.15 -> 50+0.50,
 # workers halved to cores/2); treat the line between the points as crossing two

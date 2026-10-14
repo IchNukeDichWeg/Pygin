@@ -12,7 +12,7 @@ and 10,000-node (v11) labels everything else on this ladder used.
 
 TRAINED AT LAMBDA 1.0 -- search scores alone, game result unused -- and
 that is not a tuning choice, it is a correctness one. These logs predate
-the phantom-repetition fix (fc82cb7), which ended a game the moment a
+the phantom-repetition fix (45dd989), which ended a game the moment a
 repetition became AVAILABLE rather than reached. Replay says 1,479/1,479
 and 2,215/2,215 of the repetition draws in two sampled logs were phantom,
 zero genuine, and it shows in the distribution: W/D/L 39.0/41.9/19.1

@@ -27,9 +27,9 @@ longer byte-identical to Old Engine/61's; with SEE_SCALED_K = 0 it is
 node-exact to it, and the retained-TT probe reads 2,479,366 there against the
 shipped v62's 3,294,864.
 
-WHY THE CORE MOVED. v62 shipped carrying b4339ae + a1a31cd, the b05 FI-115
+WHY THE CORE MOVED. v62 shipped carrying bd101fd + 7c490f0, the b05 FI-115
 completion, which had ALREADY measured ACCEPT H0 (LLR -5.98, 1,500 pairs) as
-its own arm against Old Engine/61. The verdict was committed (0edfa68, 15:38
+its own arm against Old Engine/61. The verdict was committed (b0e5575, 15:38
 on 08-31); the code was not reverted, and the release froze it four hours
 later. Reverting is not a new bet, it restores a measured decision.
 
@@ -277,7 +277,7 @@ v59 = v58 + **FI-106 lazy NNUE eval armed** (LAZY_NNUE True): skip the net
 where a cheap bound already decides the node. The FIRST release measured as
 exactly the config that ships -- the candidate (engine_nnue_v4.py) was
 byte-equivalent to this file plus the flip, vs Old Engine/58 on the
-corrected (post-fc82cb7) harness: GSPRT[0,4] **ACCEPT** at 2,264 pooled
+corrected (post-45dd989) harness: GSPRT[0,4] **ACCEPT** at 2,264 pooled
 pairs, LLR +2.950, TIMED 50+0.5 x86, ptnml 69/509/975/595/116, pooled
 51.99% -> **+13.84 +/- 6.4** (stopped early: magnitude bound-biased; the
 verdict is the result). W/D/L 1,292/2,138/1,107 over 4,537 games. Ledger
@@ -2235,7 +2235,7 @@ class Engine:
         # which hosts tables we do not carry, and keep the gate.
         tb = None
         # TB_LOCAL_MAX_PIECES is None until the first probe detects it from
-        # disk (dddb68a made the pin lazy); comparing against None raised
+        # disk (66a53a8 made the pin lazy); comparing against None raised
         # TypeError and turned EVERY UseTB search into bestmove 0000. None
         # means "unknown yet" and must fall through to the probe, which does
         # its own detection and its own piece-count gate (engine.py:2476).

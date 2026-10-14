@@ -76,7 +76,7 @@ static int MOB_AREA_ON = 1;
  * gating it left in all six slider loops was pure cost: nps13.py measured
  * the dormant trio (this, FI-76, FI-86) at -0.5% NPS vs v54 on two idle
  * servers, node-identical. set_xray_mob is kept as an accepted no-op so a
- * stale caller cannot crash; the mechanism is in git history (285654c).
+ * stale caller cannot crash; the mechanism is in git history (4b8717b).
  */
 void set_xray_mob(int on) { (void)on; }
 

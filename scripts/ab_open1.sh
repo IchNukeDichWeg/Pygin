@@ -8,7 +8,7 @@
 # games. Answers "is the v63 candidate better than v61", prices the FI-21
 # aspiration window on a CLEAN core, and is the v63 release number.
 #
-# WHY THIS RUN EXISTS. v62 shipped carrying b4339ae+a1a31cd (the b05 FI-115
+# WHY THIS RUN EXISTS. v62 shipped carrying bd101fd+7c490f0 (the b05 FI-115
 # completion), which had already measured ACCEPT H0 at LLR -5.98 against v61.
 # It was reverted 2026-09-04, so HEAD is v62's SETTINGS on v61's CORE -- an
 # engine that has never been measured against anything. The ledger has been

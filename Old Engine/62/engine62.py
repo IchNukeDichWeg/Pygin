@@ -12,7 +12,7 @@ score (14 + prev^2/16384), a fail-low pulls beta to the midpoint before alpha
 drops (Stockfish's order), and growth is 1.5x.
 
 Driver-only in intent ONLY. CORRECTION 2026-09-05: the C core is NOT
-byte-identical to v61. This snapshot carries b4339ae+a1a31cd (the b05
+byte-identical to v61. This snapshot carries bd101fd+7c490f0 (the b05
 FI-115 completion), which had already measured ACCEPT H0 at LLR -5.98
 against v61 and was reverted from the live tree after this release. This
 file is the record of what SHIPPED and is deliberately left that way; the
@@ -1587,7 +1587,7 @@ class Engine:
         # which hosts tables we do not carry, and keep the gate.
         tb = None
         # TB_LOCAL_MAX_PIECES is None until the first probe detects it from
-        # disk (dddb68a made the pin lazy); comparing against None raised
+        # disk (66a53a8 made the pin lazy); comparing against None raised
         # TypeError and turned EVERY UseTB search into bestmove 0000. None
         # means "unknown yet" and must fall through to the probe, which does
         # its own detection and its own piece-count gate (engine.py:2476).

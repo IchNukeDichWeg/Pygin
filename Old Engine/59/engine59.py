@@ -250,7 +250,7 @@ v59 = v58 + **FI-106 lazy NNUE eval armed** (LAZY_NNUE True): skip the net
 where a cheap bound already decides the node. The FIRST release measured as
 exactly the config that ships -- the candidate (engine_nnue_v4.py) was
 byte-equivalent to this file plus the flip, vs Old Engine/58 on the
-corrected (post-fc82cb7) harness: GSPRT[0,4] **ACCEPT** at 2,264 pooled
+corrected (post-45dd989) harness: GSPRT[0,4] **ACCEPT** at 2,264 pooled
 pairs, LLR +2.950, TIMED 50+0.5 x86, ptnml 69/509/975/595/116, pooled
 51.99% -> **+13.84 +/- 6.4** (stopped early: magnitude bound-biased; the
 verdict is the result). W/D/L 1,292/2,138/1,107 over 4,537 games. Ledger

@@ -1213,7 +1213,7 @@ static inline int cantwin_clamp(const Board* b, int s)
  * could not deliver CW-01's practical payoff. Leaving it gated cost per-node
  * work at both eval return sites for nothing (nps13.py: the dormant trio
  * measured -0.5% NPS vs v54). set_wrongbishop is kept as an accepted no-op;
- * the mechanism and its FEN gate are in git history (285654c).
+ * the mechanism and its FEN gate are in git history (4b8717b).
  *
  * DO NOT RE-ADD without a condition that fires BEFORE the ending is already
  * on the board -- CW-01 works because its condition is king-position

@@ -29,7 +29,7 @@ but do not mount this shim behind a UCI host that tunes SoftStable.
 import cengine
 
 _FALLING_DROP_CP = 25    # SF's fallingEval threshold neighborhood
-_STABLE_BASE = cengine.Engine.SOFT_STOP_STABLE_FRAC   # 0.40 at cd046c6
+_STABLE_BASE = cengine.Engine.SOFT_STOP_STABLE_FRAC   # 0.40 at bc2487b
 
 
 class Engine(cengine.Engine):

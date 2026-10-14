@@ -2,7 +2,7 @@
 # Stage a buildable engine directory from any git ref, for A/B against HEAD.
 #
 #   ./testing/stage_ref.sh <git-ref> [dir]
-#   ./testing/stage_ref.sh fba8748 Base
+#   ./testing/stage_ref.sh 509965b Base
 #   python3 bench/nps13.py Base/cengine.py cengine.py --rounds 32 ...
 #
 # WHY. Comparing HEAD against `Old Engine/NN` measures everything since that

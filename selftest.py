@@ -193,7 +193,7 @@ check("timed search returns in budget", mv2 is not None and dt < 2.0,
 # identical in both cases.
 #
 # SINCE THE NET IS ARMED (v58+) THE DRIFT IS NO LONGER SMALL. 2026-09-10, 2x
-# EPYC 7443 at 0cc9272: exact through d7, -5 nodes at d8, then SCORES differ
+# EPYC 7443 at ff90148: exact through d7, -5 nodes at d8, then SCORES differ
 # from d10 (d13 944,062 nodes against 1,328,657); the retained-TT pin reads
 # 3,153,013 against the v12-era 2,479,366 and the fortress 4 against 0. That
 # pin has since moved with the v14 net; the SHAPE is what this note is about.
@@ -512,7 +512,7 @@ if os.path.exists("csearch.c"):
         # carried across moves, so from a cold table its code never executes
         # and the ladder, the bench signature and REF_NODES are all
         # structurally blind to it. That blindness shipped a rejected change:
-        # the b05 FI-115 completion (b4339ae + a1a31cd) measured H0 at
+        # the b05 FI-115 completion (bd101fd + 7c490f0) measured H0 at
         # LLR -5.98, was never reverted, and rode into v62 with bench
         # (1,203,792) and kiwipete d12 (670,778) IDENTICAL on both cores.
         # Playing a game with the table kept is what exposes it.
@@ -1580,7 +1580,7 @@ try:
               (_six is not None) if _max_men >= 6 else (_six is None),
               detail=repr(_six))
 
-    # dddb68a regression pin: cengine's pre-gate read TB_LOCAL_MAX_PIECES
+    # 66a53a8 regression pin: cengine's pre-gate read TB_LOCAL_MAX_PIECES
     # (None until first detection) with <= and raised TypeError, turning
     # EVERY UseTB search into bestmove 0000 -- tables present or not. The
     # contract: a fresh engine with use_tb on must SEARCH, not crash. The
@@ -1594,10 +1594,10 @@ try:
         _c._py.syzygy_path = "syzygy" if _has_syzygy() else None
         _c._py._syzygy = None
         _pmv = _c.get_best_move(chess.Board("7k/8/8/8/8/8/8/KR6 w - - 0 1"), 3)
-        check("local TB: UseTB survives the undetected None cap (dddb68a pin)",
+        check("local TB: UseTB survives the undetected None cap (66a53a8 pin)",
               _pmv is not None, detail=f"mv={_pmv}")
     except Exception as _px:
-        check("local TB: UseTB survives the undetected None cap (dddb68a pin)",
+        check("local TB: UseTB survives the undetected None cap (66a53a8 pin)",
               False, f"{type(_px).__name__}: {_px}")
 
     if _has_syzygy() and not _has_syzygy_dtz():

@@ -13,8 +13,8 @@ Old Engine/59 cannot move.
     python3 match.py NNUE/shims/engine_nnue_v6.py "Old Engine/59/engine59.py" 5000 0 \
         --workers 48 --tc 50+0.5 --seed 59 --sprt
 
-v6 = the first net trained after the phantom-repetition fix (fc82cb7 /
-550a9e0), on gen10k: 800,000 self-play games relabelled at 10,000 nodes
+v6 = the first net trained after the phantom-repetition fix (45dd989 /
+67676fd), on gen10k: 800,000 self-play games relabelled at 10,000 nodes
 (double v4's 5,000) with correct WDL targets. Same dimensions as v4
 (6144-256-16-32, d2 16), same 8-epoch cosine recipe, so NPS is unchanged
 and a timed run is fair. Held-out val 0.064895 -- NOT comparable to v4's

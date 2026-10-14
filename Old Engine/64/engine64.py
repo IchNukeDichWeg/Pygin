@@ -1616,7 +1616,7 @@ class Engine:
         # which hosts tables we do not carry, and keep the gate.
         tb = None
         # TB_LOCAL_MAX_PIECES is None until the first probe detects it from
-        # disk (dddb68a made the pin lazy); comparing against None raised
+        # disk (66a53a8 made the pin lazy); comparing against None raised
         # TypeError and turned EVERY UseTB search into bestmove 0000. None
         # means "unknown yet" and must fall through to the probe, which does
         # its own detection and its own piece-count gate (engine.py:2476).
