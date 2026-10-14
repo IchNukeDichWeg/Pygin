@@ -19,21 +19,26 @@ import os
 # v31 is the C-era baseline (delta 0); its +215 vs v30 is odds-derived, not an
 # A/B, so it does not enter the cumulative line.
 DATA = {
-    31: (0.00, 5.20), 32: (7.30, 5.20), 33: (23.52, 5.21), 34: (6.81, 5.24),
-    35: (72.00, 6.23), 36: (24.67, 7.09), 37: (0.17, 6.92), 38: (1.36, 6.60),
-    39: (8.86, 7.34), 40: (4.31, 7.42), 41: (-2.88, 7.30), 42: (3.27, 7.68),
-    43: (5.18, 7.75), 44: (13.31, 8.06), 45: (13.52, 7.60), 46: (5.94, 7.30),
-    47: (3.16, 7.04), 48: (4.73, 6.94), 49: (0.97, 6.98), 50: (1.60, 6.93),
-    51: (11.12, 6.96), 52: (6.63, 6.99), 53: (37.52, 6.99), 54: (31.20, 6.85),
-    55: (9.66, 7.04), 56: (11.44, 7.22), 57: (0.00, 7.17), 58: (19.11, 5.18),
-    59: (13.84, 5.74), 60: (0.00, 5.68), 61: (15.89, 5.76), 62: (0.00, 5.78),
-    63: (0.00, 5.73), 64: (5.94, 5.65),
+    31: (0.00, 4.93), 32: (7.30, 5.02), 33: (23.52, 5.05), 34: (6.81, 5.18),
+    35: (72.00, 5.87), 36: (24.67, 6.39), 37: (0.17, 6.42), 38: (1.36, 5.96),
+    39: (8.86, 6.99), 40: (4.31, 6.91), 41: (-2.88, 6.61), 42: (3.27, 6.89),
+    43: (5.18, 6.78), 44: (13.31, 7.95), 45: (13.52, 7.72), 46: (5.94, 7.33),
+    47: (3.16, 6.96), 48: (4.73, 7.02), 49: (0.97, 6.94), 50: (1.60, 6.94),
+    51: (11.12, 6.98), 52: (6.63, 6.96), 53: (37.52, 6.97), 54: (31.20, 6.72),
+    55: (9.66, 7.06), 56: (11.44, 7.14), 57: (0.00, 7.16), 58: (19.11, 5.17),
+    59: (13.84, 5.73), 60: (0.00, 5.57), 61: (15.89, 5.61), 62: (0.00, 5.78),
+    63: (0.00, 5.63), 64: (5.94, 5.66), 65: (61.91, 5.84),
 }
 
 # EVERY NPS FIGURE ABOVE IS FROM ONE MACHINE and one instrument:
 # nps_history_bench.py's trimmed mean across 10 positions, 3 runs x 4s,
-# --workers 1, swept v31-v64 in ONE session on a Mac17,8 (Apple M5 Pro),
-# 2026-09-13 22:00 CEST on an IDLE machine. The whole column is re-swept every
+# --workers 1, swept v31-v65 in ONE session on a Mac17,8 (Apple M5 Pro),
+# 2026-10-14 22:20-23:35 CEST on a lightly loaded machine (load ~2-5: the
+# sweep itself plus a browser). Against the 2026-09-13 idle sweep the median
+# version moved -1.3%, the range -12.5% (v43) to +1.6% (v45) -- so a single
+# version's step is only good to ~10% between sessions. v31 itself read 5%
+# lower (4.93 vs 5.20), which alone moves v64's multiplier 1.09x -> 1.15x:
+# the baseline moved, not v64 (5.66 vs 5.65). The whole column is re-swept every
 # time, never appended to: the previous column was taken earlier the same day
 # while the machine was loaded and read 3.32M at v64 where the idle machine
 # reads 5.65M, a 70% understatement that the 2026-08-31 sweep (v31 5.34, v62

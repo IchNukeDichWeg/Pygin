@@ -11,7 +11,7 @@ in this repo's own code.<br/>
 representation, move generation and legality.
 
 ![Strength](https://img.shields.io/badge/placement-~3164_CCRL_Blitz-58a6ff)
-![Speed](https://img.shields.io/badge/speed-5.6M_nps-58a6ff)
+![Speed](https://img.shields.io/badge/speed-5.8M_nps-58a6ff)
 ![Versions](https://img.shields.io/badge/versions-65-8b949e)
 ![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B422_Elo-f0883e)
 ![Source](https://img.shields.io/badge/source-MIT-green)
@@ -22,16 +22,16 @@ representation, move generation and legality.
 ### At a glance
 
 <table>
-<tr><td><b>~3164</b></td><td>CCRL Blitz placement of v64, &plusmn;15</td><td><b>5.65M nps</b></td><td>the net costs ~28% of it</td></tr>
+<tr><td><b>~3164</b></td><td>CCRL Blitz placement of v64, &plusmn;15</td><td><b>5.84M nps</b></td><td>the net costs ~28% of it</td></tr>
 <tr><td><b>~+422 Elo</b></td><td>A/B-confirmed, v31&rarr;v65</td><td><b>~19 ply</b></td><td>from startpos in 5 s</td></tr>
-<tr><td><b>+93.87 Elo</b></td><td>v58&rarr;v64, measured directly</td><td><b>1.09&times;</b></td><td>single-thread vs v31</td></tr>
+<tr><td><b>+93.87 Elo</b></td><td>v58&rarr;v64, measured directly</td><td><b>1.18&times;</b></td><td>single-thread vs v31</td></tr>
 <tr><td><b>v53+v54</b> eval lane</td><td>+37.52 &amp; +31.20, the two biggest</td><td><b>1 dependency</b></td><td><code>python-chess</code> only</td></tr>
 </table>
 
 <table>
 <tr>
-<td><img src="docs/elo_progression.svg?v=64b" width="100%" alt="Cumulative A/B Elo across the C era, v31=0 climbing to +360 at v64"/></td>
-<td><img src="docs/speed_progression.svg?v=64b" width="100%" alt="Single-thread speed as a multiple of v31, peaking at 1.55x and ending at 1.09x"/></td>
+<td><img src="docs/elo_progression.svg?v=65" width="100%" alt="Cumulative A/B Elo across the C era, v31=0 climbing to +422 at v65"/></td>
+<td><img src="docs/speed_progression.svg?v=65" width="100%" alt="Single-thread speed as a multiple of v31, peaking at 1.61x and ending at 1.18x"/></td>
 </tr>
 </table>
 
