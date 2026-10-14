@@ -9,7 +9,11 @@ transposition table, pruning, quiescence and the full static eval
 positions). Born as phase-3 step 6 of the C-core plan; the shipped engine
 since Old Engine/31.
 
-ITS DEFAULTS ARE v64 (2026-09-13, frozen as Old Engine/64): v63 plus the
+ITS DEFAULTS ARE v65 (2026-10-14, frozen as Old Engine/65): v64 with the v15
+net (+61.91 +/- 4.3 over 9,976 games at 50+0.5 on a fixed budget, x86, so the
+ledger advances on it) and the post-v64 correctness fixes (history-bonus clamp,
+cuckoo h8 shift, deadline overflow, Contempt TT handling, MultiPV bestmove,
+SyzygyPath re-detect), none of which moves the bench signature. v64 was: v63 plus the
 four-setting bundle (LMR_DIV 170, SEE_SCALED_K 75, SOFT_STOP_STABLE_FRAC 0.45,
 SOFT_STOP_STABLE_ITERS 3, +6.19 +/- 4.1 over 11,896 games at 50+0.5) and the
 v14 net (+78.82 +/- 8.3 over 3,004 games at 50+0.5, measured on top of that
@@ -1575,7 +1579,7 @@ class Engine:
     # not exist -- no silent HCE fallback).
     USE_NNUE = True
     NNUE_FILE = os.path.join("NNUE", "nets",
-                             "nnue_v14_959f679e272e.nnue")   # v64
+                             "nnue_v15_4f85b4f247cd.nnue")   # v65
     # FI-104. The net's value is a RACE between its better judgement and the
     # nodes that judgement costs: v3 measured +5.70 +/- 4.6 while conceding
     # 30.6% of its nodes to a SIMD build. On a CPU with neither NEON nor AVX2

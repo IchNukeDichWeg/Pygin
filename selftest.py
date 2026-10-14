@@ -217,18 +217,18 @@ CE_LADDER_FEN = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3
 CE_LADDER = {
     1: (94, 111),
     2: (201, 111),
-    3: (354, 111),
-    4: (1992, 91),
-    5: (5895, 122),
-    6: (9425, 100),
-    7: (24405, 112),
-    8: (55125, 79),
-    9: (78265, 88),
-    10: (153352, 77),
-    11: (472307, 77),
-    12: (853734, 69),
-    13: (1198740, 100),
-    14: (1582249, 92),
+    3: (367, 111),
+    4: (1993, 91),
+    5: (5181, 122),
+    6: (12833, 105),
+    7: (21624, 97),
+    8: (41457, 85),
+    9: (65698, 112),
+    10: (162117, 112),
+    11: (373070, 77),
+    12: (638276, 95),
+    13: (819160, 91),
+    14: (1237139, 102),
 }
 if os.path.exists("csearch.c"):
     try:
@@ -522,7 +522,7 @@ if os.path.exists("csearch.c"):
         # with no such change in the diff is the regression this exists for.
         # Old Engine/62 (the b05 core) reads 3,294,864 here; v61's core and
         # HEAD both read the pinned value.
-        TT_RETAINED_NODES = 2_033_121
+        TT_RETAINED_NODES = 2_197_716
         # Measured with FI-38 OFF: this pin guards the TT store/replacement
         # path, and since K=50 became the default (2026-09-11) the shipped tree
         # reads 2,840,988 here. Isolating keeps the number the snapshot docs
@@ -550,8 +550,9 @@ if os.path.exists("csearch.c"):
         # K=0 is proven node-exact by every pin above: the ladder, bench and
         # retained-TT all run with it off. This proves the switch ENGAGES --
         # a build whose set_see_scaled is a silent no-op would pass all of
-        # them and screen a null. K=25 kiwipete d12 reads 335,677 against
-        # 670,778 off, node-identical to the audit's scratch build.
+        # them and screen a null. K=25 kiwipete d12 reads 294,962 here (history
+        # from the checks above carries in); in a fresh process it reads
+        # 249,734 against 371,398 off (v15 net, 2026-10-14).
         _KIWI = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
         ce._lib.set_see_scaled(25)
         ce._lib.cs_tt_reset()
@@ -560,9 +561,9 @@ if os.path.exists("csearch.c"):
         ce._lib.set_see_scaled(int(getattr(ce, "SEE_SCALED_K", 0)))
         ce._lib.cs_tt_reset()
         check("FI-38 SEE_SCALED_K engages (K=25 kiwipete d12)",
-              _see_n == 335_677,
-              f"{_see_n:,} nodes" + ("" if _see_n == 335_677 else
-                  " != 335,677 -- the setter did not engage, or the hunk changed"))
+              _see_n == 294_962,
+              f"{_see_n:,} nodes" + ("" if _see_n == 294_962 else
+                  " != 294,962 -- the setter did not engage, or the hunk changed"))
 
         # --- 5b-seeq. FI-38 quiets half: see_quiet oracle + engagement -- #
         # see() returns 0 for every non-capture by design, which is why the
@@ -597,7 +598,8 @@ if os.path.exists("csearch.c"):
         check("FI-38 see_quiet: hand-computed quiet-move SEE (5 cases)",
               not _bad, "all match" if not _bad else
               "; ".join(f"{u} got {g} want {w}" for f, u, w, g in _bad))
-        # Engagement: K2=24 kiwipete d12 reads 502,880 against 670,778 off.
+        # Engagement: K2=24 kiwipete d12 reads 358,492 here; fresh process 331,861
+        # against 371,398 off (v15 net, 2026-10-14).
         ce._lib.set_see_scaled(0)          # isolate: measured with captures off
         ce._lib.set_see_quiet(24)
         ce._lib.cs_tt_reset()
@@ -607,14 +609,15 @@ if os.path.exists("csearch.c"):
         ce._lib.set_see_scaled(int(getattr(ce, "SEE_SCALED_K", 0)))
         ce._lib.cs_tt_reset()
         check("FI-38 SEE_QUIET_K2 engages (K2=24 kiwipete d12)",
-              _seeq_n == 502_880,
-              f"{_seeq_n:,} nodes" + ("" if _seeq_n == 502_880 else
-                  " != 502,880 -- the setter did not engage, or the hunk changed"))
+              _seeq_n == 358_492,
+              f"{_seeq_n:,} nodes" + ("" if _seeq_n == 358_492 else
+                  " != 358,492 -- the setter did not engage, or the hunk changed"))
 
         # --- 5b-e04. E-04 material-scaled net output: engagement pin ---- #
         # Off is proven node-exact by every pin above. On, kiwipete d12 reads
-        # 439,343 against 670,778 off -- identical, with startpos, bench and the
-        # retained probe, to the audit's scratch build of the same formula.
+        # 464,599 here; fresh process 460,322 against 371,398 off (v15 net,
+        # 2026-10-14). The v14-era 439,343 matched the audit's scratch build of
+        # the same formula, with startpos, bench and the retained probe.
         ce._lib.set_see_scaled(0)          # isolate: measured with FI-38 off
         ce._lib.set_nn_matscale(1)
         ce._lib.cs_tt_reset()
@@ -623,9 +626,9 @@ if os.path.exists("csearch.c"):
         ce._lib.set_nn_matscale(1 if getattr(ce, "NNUE_MATSCALE", False) else 0)
         ce._lib.set_see_scaled(int(getattr(ce, "SEE_SCALED_K", 0)))
         ce._lib.cs_tt_reset()
-        check("E-04 NNUE_MATSCALE engages (kiwipete d12)", _ms_n == 439_343,
-              f"{_ms_n:,} nodes" + ("" if _ms_n == 439_343 else
-                  " != 439,343 -- the setter did not engage, or the scale changed"))
+        check("E-04 NNUE_MATSCALE engages (kiwipete d12)", _ms_n == 464_599,
+              f"{_ms_n:,} nodes" + ("" if _ms_n == 464_599 else
+                  " != 464,599 -- the setter did not engage, or the scale changed"))
 
         # --- 5c. NPS: 2s timed search, print throughput ------------------ #
         # Catches the two disasters a fixed-depth ladder can't: a slow/
