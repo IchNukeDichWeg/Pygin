@@ -57,31 +57,25 @@ DATA = {
 # the SHORTEST mate. v1-v30 predate the C core and are not runnable through
 # cuci_old, so the series starts at v31.
 #
-# WHOLE SERIES re-run in ONE session, 2026-09-13 22:16-22:50 CEST, Mac17,8,
-# idle, 59s per version. It replaces a column assembled over several days: the
-# two agree to within ~1 point almost everywhere, which is the reassuring part,
-# but a one-session column is the only one whose version-to-version steps are
-# not partly session noise. v60 is the exception and was WRONG before in a way
-# worth naming: matetrack_history.sh hardcoded v60 as "the live tree", so from
-# v61 on the v60 row ran the CURRENT engine (43.00/37.30 = v64's number under a
-# v60 label). Fixed to key on whether a snapshot exists; v60 re-measured
-# through its own snapshot reads 41.40/36.60.
+# WHOLE SERIES re-run in ONE session, 2026-10-14 23:16-23:58 CEST, Mac17,8,
+# lightly loaded (load ~3-5), ~70s per version. Against the 2026-09-13 idle
+# re-run the median version reads ~0.6 points LOWER (range -1.65 at v64 to
+# +0.35 at v40) -- a near-uniform session offset, so steps between versions
+# are what to read, not the level. v64 -> v65 is flat (41.30 -> 41.35 found):
+# the new net neither costs nor buys mate-finding at 0.25s. The v61 -> v62 dip
+# (FI-21's tighter window) held a third time, 39.85 -> 39.45. v60 runs through
+# its own snapshot (matetrack_history.sh used to hardcode it as the live tree,
+# which put v64's number under a v60 label).
 MATETRACK = [
-    (31, 24.00, 21.50), (32, 26.50, 23.60), (33, 26.65, 23.75), (34, 27.60, 24.45),
-    (35, 41.90, 36.30), (36, 44.00, 38.20), (37, 44.05, 38.55), (38, 50.35, 43.95),
-    (39, 51.20, 44.90), (40, 51.00, 44.60), (41, 50.80, 44.25), (42, 50.65, 44.10),
-    (43, 50.75, 44.55), (44, 51.30, 45.05), (45, 51.10, 44.20), (46, 50.80, 43.75),
-    (47, 49.85, 42.75), (48, 50.45, 43.10), (49, 51.05, 43.80), (50, 50.90, 44.25),
-    (51, 52.05, 44.95), (52, 48.05, 41.25), (53, 48.45, 41.15), (54, 48.45, 41.10),
-    (55, 48.35, 41.10), (56, 43.35, 36.70), (57, 43.45, 36.75), (58, 37.55, 33.40),
-    (59, 40.35, 36.00), (60, 41.40, 36.60),
-    # The v62 decline HELD on the clean re-run: v61 40.65/35.95 -> v62
-    # 39.85/35.65, same session, same machine, so it is not load. Same
-    # plausible mechanism as before -- the FI-21 window opens tighter on a
-    # balanced score and a mate found outside it costs a re-search the 0.25s
-    # budget may not afford. v63 is flat on v62 and v64 recovers to 42.95,
-    # the best reading since v57, so the dip did not compound.
-    (61, 40.65, 35.95), (62, 39.85, 35.65), (63, 40.20, 35.95), (64, 42.95, 37.25),
+    (31, 23.25, 20.90), (32, 25.45, 22.70), (33, 25.25, 22.55), (34, 26.60, 23.60),
+    (35, 40.70, 35.25), (36, 44.05, 38.25), (37, 44.30, 38.75), (38, 50.40, 44.00),
+    (39, 51.30, 44.90), (40, 51.35, 44.85), (41, 51.10, 44.60), (42, 50.50, 44.10),
+    (43, 50.40, 44.20), (44, 51.15, 44.90), (45, 50.15, 43.45), (46, 50.15, 43.20),
+    (47, 49.50, 42.55), (48, 49.90, 42.70), (49, 50.65, 43.40), (50, 50.70, 44.10),
+    (51, 51.20, 44.25), (52, 47.25, 40.60), (53, 47.90, 40.75), (54, 47.60, 40.45),
+    (55, 47.45, 40.40), (56, 42.55, 35.95), (57, 42.65, 36.10), (58, 36.25, 32.30),
+    (59, 39.50, 35.40), (60, 40.25, 35.55), (61, 39.85, 35.25), (62, 39.45, 35.25),
+    (63, 39.40, 35.25), (64, 41.30, 35.85), (65, 41.35, 36.00),
 ]
 
 # Knight odds win% vs FULL-STRENGTH Stockfish 18 -- the external yardstick.

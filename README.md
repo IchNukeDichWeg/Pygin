@@ -37,7 +37,7 @@ representation, move generation and legality.
 
 <table>
 <tr>
-<td><img src="docs/mate_progression.svg?v=64b" width="100%" alt="Mate-finding on mates2000.epd across the C era, rising from 24.0% at v31 to a 52.1% plateau, then settling at 43.0% at v64"/></td>
+<td><img src="docs/mate_progression.svg?v=65" width="100%" alt="Mate-finding on mates2000.epd across the C era, rising from 23.2% at v31 to a 51.4% plateau, then settling at 41.4% at v65"/></td>
 </tr>
 </table>
 
