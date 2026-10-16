@@ -89,6 +89,15 @@ void set_nnue_verify(int v) { g_nnue_verify = v ? 1 : 0; }
 #define NN_MS_DIV  120
 static int g_nn_matscale = 0;
 void set_nn_matscale(int v) { g_nn_matscale = v ? 1 : 0; }
+
+/* E-05 (2026-10-16): NNUE tempo, centipawns added to the net's stm-POV
+ * value. The HCE paths add g_tempo; the net path added nothing. v15's
+ * export carried a +29 cp stm offset from rounding l2.weight, and removing
+ * it cost ~55 Elo (v15b +5.80 vs v15a +60.46 @10+0.1), so the offset acts as
+ * a tempo term and its size is untuned. Same effect as shifting b4 by
+ * cp*NN_ACT_MAX/400, without exporting a new net. 0 = off = node-exact. */
+static int g_nn_tempo = 0;
+void set_nn_tempo(int cp) { g_nn_tempo = cp; }
 void nnue_verify_stats(uint64_t* pushes, uint64_t* bad)
 {
     *pushes = g_nnv_pushes; *bad = g_nnv_bad;
@@ -722,6 +731,7 @@ static int nn_eval(const Board* b, int ply)
         int ph = b->a_ph > 24 ? 24 : (b->a_ph < 0 ? 0 : b->a_ph);
         v = v * (NN_MS_BASE + ph) / NN_MS_DIV;
     }
+    v += g_nn_tempo;                                /* E-05 */
     int w = (b->turn == WHITE) ? v : -v;
     w = cantwin_clamp(b, w);
     return (b->turn == WHITE) ? w : -w;

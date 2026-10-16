@@ -591,6 +591,10 @@ DORMANT (default OFF, mechanism kept for longer-TC re-tests):
     1,203,792 -> 1,367,701, retained-TT 2,479,366 -> 2,050,728, identical to the
     audit's scratch build. Closes only the HCE-leaf variant: it does not
     transfer if E-07 ever puts the net at the qsearch leaves.
+  * E-05 NNUE tempo (set_nn_tempo; NNUE_TEMPO cp added to the net's stm-POV
+    value; 0 = node-exact). PENDING, one 10+0.1 screen on top of v65. v15's
+    export carries a +29 cp stm offset (l2.weight rounding) worth ~55 Elo,
+    so the net path's missing tempo term is real and its size untuned.
   * P-43 single-reply / forced-move extension (set_single_reply; +3.5
     +/-4.8 over 20k pooled games vs v34 -- positive-leaning on every
     signal but sub-significant, kept-marginal by user call; OFF = v34
@@ -1616,6 +1620,12 @@ class Engine:
     # and TT evals only (qsearch stands pat on the HCE), prior +0-3. Screened on
     # the fixed-node instrument. False = node-exact.
     NNUE_MATSCALE = False
+    # E-05 NNUE tempo, cp added to the net's stm-POV value (the HCE paths
+    # already add TEMPO; the net path added nothing). PENDING: v15's export
+    # carries a +29 cp stm offset from rounding l2.weight, and removing it
+    # cost ~55 Elo (v15b +5.80 vs v15a +60.46 @10+0.1), so the size of this
+    # term is untuned. 0 = node-exact.
+    NNUE_TEMPO = 0
     LAZY_NNUE_MARGIN = 200
 
     # FI-105. Which shared object to load. Only an instrumented build has any
@@ -1723,8 +1733,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, self.CSEARCH_SO))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (abi 39 = E-04 set_nn_matscale; 38 = FI-38 set_see_quiet; 37 = FI-38 set_see_scaled; 35 = FI-103/104/106/107 set_cutnode_lmr/ttpv_lmr/razor/probcut) -- bump with csearch_abi.
-        if lib.csearch_abi() < 39:
+        # (abi 40 = E-05 set_nn_tempo; 39 = E-04 set_nn_matscale; 38 = FI-38 set_see_quiet; 37 = FI-38 set_see_scaled; 35 = FI-103/104/106/107 set_cutnode_lmr/ttpv_lmr/razor/probcut) -- bump with csearch_abi.
+        if lib.csearch_abi() < 40:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -1758,7 +1768,7 @@ class Engine:
               self.SIMPLIFY_THRESHOLD, self.CHECK_EXT_BUDGET, self.PV_EXACT,
               self.SCORE_HYGIENE, self.EP_FILTER, self.QS_EVICT_MAX,
               self.CB2, self.CANTWIN, self.NULL_VERIFY, self.LMR_HIST,
-              self.TT_EVAL_SHARPEN, self.SEE_PRUNE, self.SEE_SCALED_K, self.SEE_QUIET_K2, self.NNUE_MATSCALE, self.ROOT_ORDER,
+              self.TT_EVAL_SHARPEN, self.SEE_PRUNE, self.SEE_SCALED_K, self.SEE_QUIET_K2, self.NNUE_MATSCALE, self.NNUE_TEMPO, self.ROOT_ORDER,
               self.TT_BITS, self.TT_KEEP_WARM, self.HIST_PRUNE,
               self.QS_TT_SHARPEN, self.QS_KEEP_MOVE, self.CYCLE_DETECT,
               self.QS_BETA_NARROW, self.QS_TTM_EXEMPT, self.QS_CHK_D1,
@@ -1850,6 +1860,7 @@ class Engine:
         lib.set_lmr_badcap(1 if self.LMR_BADCAP else 0)          # FI-64
         lib.set_lazy_nnue(1 if self.LAZY_NNUE else 0)            # FI-106
         lib.set_nn_matscale(1 if self.NNUE_MATSCALE else 0)      # E-04
+        lib.set_nn_tempo(int(self.NNUE_TEMPO))                   # E-05
         lib.set_lazy_margin(int(self.LAZY_NNUE_MARGIN))          # FI-106
         # FI-15 NNUE (abi 19): load-then-arm. A load failure with USE_NNUE
         # on raises loudly -- a missing/corrupt net must never silently

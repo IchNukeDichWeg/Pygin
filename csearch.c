@@ -5173,7 +5173,8 @@ int cs_rep_probe(const uint64_t* path, int ply, const uint64_t* hist,
     return r;
 }
 
-int csearch_abi(void) { return 39; }  /* 39 = E-04 set_nn_matscale;
+int csearch_abi(void) { return 40; }  /* 40 = E-05 set_nn_tempo;
+                                       * 39 = E-04 set_nn_matscale;
                                        * 38 = FI-38 set_see_quiet;
                                        * 37 = FI-38 set_see_scaled;
                                        * 36 = FI-109 set_corr_hist

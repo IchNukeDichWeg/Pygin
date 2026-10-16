@@ -630,6 +630,21 @@ if os.path.exists("csearch.c"):
               f"{_ms_n:,} nodes" + ("" if _ms_n == 464_599 else
                   " != 464,599 -- the setter did not engage, or the scale changed"))
 
+        # --- 5b-e05. E-05 NNUE tempo: engagement pin ---------------------- #
+        # Off (0) is proven node-exact by every pin above. +15 cp, kiwipete d12
+        # in this suite: 422,891 (2026-10-16, v15 net).
+        ce._lib.set_see_scaled(0)          # isolate: measured with FI-38 off
+        ce._lib.set_nn_tempo(15)
+        ce._lib.cs_tt_reset()
+        ce.get_best_move(chess.Board(_KIWI), 12)
+        _tp_n = ce.nodes_searched
+        ce._lib.set_nn_tempo(int(getattr(ce, "NNUE_TEMPO", 0)))
+        ce._lib.set_see_scaled(int(getattr(ce, "SEE_SCALED_K", 0)))
+        ce._lib.cs_tt_reset()
+        check("E-05 NNUE_TEMPO engages (+15 kiwipete d12)", _tp_n == 422_891,
+              f"{_tp_n:,} nodes" + ("" if _tp_n == 422_891 else
+                  " != 422,891 -- the setter did not engage, or the term changed"))
+
         # --- 5c. NPS: 2s timed search, print throughput ------------------ #
         # Catches the two disasters a fixed-depth ladder can't: a slow/
         # unoptimized build and the pure-Python eval fallback. Absolute NPS
