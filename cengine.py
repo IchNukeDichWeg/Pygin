@@ -679,6 +679,10 @@ _SYNCED_FINGERPRINT = None
 class Engine:
     MATE_SCORE = 1_000_000
     MATE_THRESHOLD = MATE_SCORE - 1_000
+    # Chess960: castling is king-takes-own-rook on a chess960 board, all the
+    # way down (cs_set_chess960); battle_worker refuses 960 games to engines
+    # without this marker, i.e. every snapshot that predates it.
+    SUPPORTS_CHESS960 = True
 
     # P-20a king shelter: REJECTED at C-core depth (A/B vs v32, 2026-07-08:
     # 10k games @ 45+0.1, 49.38% = -4.27 +/-6.8, norm -7.98). The depth-8
@@ -1733,8 +1737,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, self.CSEARCH_SO))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (abi 40 = E-05 set_nn_tempo; 39 = E-04 set_nn_matscale; 38 = FI-38 set_see_quiet; 37 = FI-38 set_see_scaled; 35 = FI-103/104/106/107 set_cutnode_lmr/ttpv_lmr/razor/probcut) -- bump with csearch_abi.
-        if lib.csearch_abi() < 40:
+        # (abi 41 = cs_set_chess960; 40 = E-05 set_nn_tempo; 39 = E-04 set_nn_matscale; 38 = FI-38 set_see_quiet; 37 = FI-38 set_see_scaled; 35 = FI-103/104/106/107 set_cutnode_lmr/ttpv_lmr/razor/probcut) -- bump with csearch_abi.
+        if lib.csearch_abi() < 41:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -2189,6 +2193,14 @@ class Engine:
         self.last_pv = ""
         self.search_log = []
 
+        # Chess960: the C core encodes castling exactly as this board does --
+        # king-takes-own-rook on a chess960 board, e1g1 on a standard one --
+        # so the 15-bit keys it hands back ARE python-chess moves either way.
+        # Set per search, before any C call: the flag is process-wide and a
+        # host may alternate standard and 960 games between searches.
+        chess960 = bool(board.chess960)
+        self._lib.cs_set_chess960(1 if chess960 else 0)
+
         legal = list(board.legal_moves)
         if not legal:
             return None
@@ -2209,8 +2221,11 @@ class Engine:
             self._emit(dict(record, final=True), final=True)
             return only
 
-        # Opening book (delegated; instant when it hits, like v30).
-        if self.use_book:
+        # Opening book (delegated; instant when it hits, like v30). Never in
+        # Chess960: a Polyglot book is a standard-chess object -- its keys
+        # only encode corner-rook castling rights, so a 960 position would
+        # either miss or alias a standard one it merely resembles.
+        if self.use_book and not chess960:
             self._py.use_book = True
             book = self._py._book_move(board)
             if (book is not None and self.search_moves is not None

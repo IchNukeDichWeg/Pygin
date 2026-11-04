@@ -1064,8 +1064,9 @@ try:
     _mg_lib.generate_captures.restype = ctypes.c_int
     _MG_BUF = (ctypes.c_uint32 * 256)()
     # P-12: ABI handshake -- see the eval_c.so block above, same rules.
-    _MOVEGEN_C_ABI = 1
+    _MOVEGEN_C_ABI = 2          # 2 = set_chess960
     _mg_lib.abi_version.restype = ctypes.c_int
+    _mg_lib.set_chess960.argtypes = [ctypes.c_int]
     if _mg_lib.abi_version() != _MOVEGEN_C_ABI:
         raise OSError(f"movegen.so ABI {_mg_lib.abi_version()} != expected "
                       f"{_MOVEGEN_C_ABI} (rebuild: python3 scripts/movegen_build.py)")
@@ -1216,6 +1217,24 @@ def _build_zobrist():
 _ZOB_PSQ, _ZOB_CASTLE, _ZOB_EP, _ZOB_SIDE = _build_zobrist()
 # castling_rights bitboard squares -> castle-table index (standard chess)
 _ZOB_CR_BITS = ((chess.H1, 0), (chess.A1, 1), (chess.H8, 2), (chess.A8, 3))
+# Chess960: a right can sit on any back-rank rook square. The four corners keep
+# their standard keys (so every standard-chess hash is unchanged) and the other
+# twelve back-rank squares get their own, from a SEPARATE stream so the
+# standard tables above are not re-drawn.
+_ZOB_CR_SQ = [0] * 64
+for _sq, _idx in _ZOB_CR_BITS:
+    _ZOB_CR_SQ[_sq] = _ZOB_CASTLE[_idx]
+_rng960 = random.Random(0x960C0FFE)
+for _sq in list(range(1, 7)) + list(range(57, 63)):
+    _ZOB_CR_SQ[_sq] = _rng960.getrandbits(64)
+del _sq, _idx, _rng960
+
+
+def _castle_squares(color, king_sq, rook_sq):
+    """Chess960 castle (king takes own rook) -> (king_to, rook_to)."""
+    r0 = 0 if color == chess.WHITE else 56
+    a_side = rook_sq < king_sq
+    return r0 + (2 if a_side else 6), r0 + (3 if a_side else 5)
 
 
 # --- #13: Lazy SMP worker count for HEADLESS use -------------------------- #
@@ -1411,6 +1430,8 @@ class Engine:
     MATE_SCORE = 1_000_000
     MATE_THRESHOLD = MATE_SCORE - 1_000     # scores above this represent mate
     MAX_PLY = 100                            # hard recursion safety cap
+    SUPPORTS_CHESS960 = True                 # movegen.so set_chess960 + the
+                                             # king-takes-rook Zobrist/acc path
     TT_MAX_ENTRIES = 1_500_000               # cap persisted TT memory (~few hundred MB)
     INF = 10_000_000                         # finite "infinity" for windows
 
@@ -2681,6 +2702,10 @@ class Engine:
     @staticmethod
     def _zob_castle(cr):
         z = 0
+        if cr & ~0x8100000000000081:        # a non-corner right: Chess960
+            for sq in chess.scan_forward(cr):
+                z ^= _ZOB_CR_SQ[sq]
+            return z
         for sq, idx in _ZOB_CR_BITS:
             if cr & (1 << sq):
                 z ^= _ZOB_CASTLE[idx]
@@ -2782,6 +2807,20 @@ class Engine:
             if victim_pt:
                 a, b, c = self._contrib[not color][victim_pt][to]
                 mg -= a; eg -= b; phase -= c
+
+        # Chess960 castle: the king "captures" its own rook, so `to` is the
+        # ROOK's square. Tested before the two-file rule below, which Kc1/Ra1
+        # and Ke1/Rg1 would otherwise satisfy with the wrong (corner) rook.
+        if mover_pt == chess.KING and board.occupied_co[color] & (1 << to):
+            k_to, r_to = _castle_squares(color, frm, to)
+            a, b, c = ctab[chess.KING][k_to]
+            mg += a; eg += b; phase += c
+            a, b, c = ctab[chess.ROOK][to]
+            mg -= a; eg -= b; phase -= c
+            a, b, c = ctab[chess.ROOK][r_to]
+            mg += a; eg += b; phase += c
+            acc[0] = mg; acc[1] = eg; acc[2] = phase
+            return
 
         # Mover (or the promoted piece) arrives on `to`.
         promo_pt = (raw >> 12) & 7
@@ -2915,6 +2954,11 @@ class Engine:
         psq_us = _ZOB_PSQ[us]
         mover_pt = board.piece_type_at(frm)
         z ^= psq_us[mover_pt][frm]
+        if mover_pt == chess.KING and board.occupied_co[us] & (1 << to):
+            k_to, r_to = _castle_squares(us, frm, to)   # Chess960 castle
+            z ^= psq_us[chess.KING][k_to]
+            z ^= psq_us[chess.ROOK][to] ^ psq_us[chess.ROOK][r_to]
+            return z ^ _ZOB_SIDE
         if board.is_en_passant(move):
             cap_sq = to - 8 if us == chess.WHITE else to + 8
             z ^= _ZOB_PSQ[not us][chess.PAWN][cap_sq]
@@ -4015,6 +4059,11 @@ class Engine:
         return self._search(board, max_depth=max_depth, time_limit=time_limit)
 
     def _search(self, board, max_depth, time_limit):
+        # Chess960: movegen.so emits castling in THIS board's encoding (king
+        # takes own rook on a chess960 board). The flag is process-wide, so
+        # it is set per search, before the first generate_legal.
+        if _USE_C_MOVEGEN:
+            _mg_lib.set_chess960(1 if board.chess960 else 0)
         # Reset per-move statistics and tables.
         self.nodes = 0
         # NPS: bind _tt_get/_tt_store to this instance's one active TT

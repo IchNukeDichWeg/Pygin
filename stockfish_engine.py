@@ -104,6 +104,7 @@ class Engine:
 
     MATE_SCORE = 1_000_000
     MATE_THRESHOLD = MATE_SCORE - 1_000
+    SUPPORTS_CHESS960 = True     # UCI_Chess960, toggled per position in _go
 
     def __init__(self):
         # Attributes the runners read.
@@ -123,6 +124,7 @@ class Engine:
         self._proc = subprocess.Popen(
             [_find_sf()], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL, text=True, bufsize=1)
+        self._chess960 = False       # a fresh process starts in standard mode
         self._uci_handshake()
 
     def _ensure_alive(self):
@@ -211,6 +213,14 @@ class Engine:
     def _go(self, board, limit):
         white_to_move = board.turn == chess.WHITE
         self._ensure_alive()
+        # Chess960: SF reads castling rights from the FEN either way, but
+        # prints (and parses) castles as king-takes-rook only with
+        # UCI_Chess960 on -- the encoding a chess960 board expects back.
+        want960 = bool(board.chess960)
+        if want960 != self._chess960:
+            self._send("setoption name UCI_Chess960 value "
+                       + ("true" if want960 else "false"))
+            self._chess960 = want960
         try:
             self._send(f"position fen {board.fen()}")
         except BrokenPipeError:

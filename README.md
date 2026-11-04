@@ -367,7 +367,7 @@ python3 match.py cengine.py "Old Engine/60/engine60.py" 100 0 --workers 0
 - Positional args are `engine1 engine2 NUM_POSITIONS OFFSET`. Each position is
   played both colours, so games = `NUM_POSITIONS × 2`.
 - Flags: `--workers 0` = cores-1, `--adj on|off` adjudication, `--sf-elo N`,
-  `--smp N`, `--book1/--book2 PATH`, `--start-pos True`.
+  `--smp N`, `--book1/--book2 PATH`, `--start-pos True`, `--chess960`.
 - Openings default to the bundled `UHO_4060_v4.epd`. Larger sets are in the
   [Stockfish books repo](https://github.com/official-stockfish/books); point
   `FEN_FILE` at one.
@@ -412,6 +412,7 @@ GUI options:
 | `Premove` | check | false | -- | Emit certified instant-reply premoves (opt-in) |
 | `UCI_ShowWDL` | check | true | -- | Emit `wdl` on info lines (opt-out for strict arenas) |
 | `Clear Hash` | button | -- | -- | Wipe the transposition table without `ucinewgame` |
+| `UCI_Chess960` | check | false | -- | Chess960 / Fischer random. Castles are read and printed as king-takes-rook (`e1h1`, `b1a1`), FENs take X-FEN or Shredder-FEN rights, and the book is skipped. See [Chess960](#chess960) |
 | `Contempt` | spin | 50 | -100–100 | Draw score bias (cp) when ahead/behind |
 | `SyzygyPath` | string |  | -- | Folder of local Syzygy `.rtbw`/`.rtbz` tables. The man-count is **detected from what is on disk**, so 6- and 7-man sets are used locally if you have them; the online probe is only a fallback for what you do not |
 | `Ponder` | check | false | -- | Think on the opponent's clock. A ponderhit honours the soft-stop rather than spending the full fresh budget |
@@ -437,13 +438,49 @@ measures what each level is currently worth.
 injects errors at a fixed *rate*, so real differences compress: a version pair
 worth +119 Elo read as ~22 against an Elo-limited one.
 
+### Chess960
+
+`setoption name UCI_Chess960 value true` switches the whole engine to
+Fischer-random rules. Castles are encoded as **king takes own rook**, which is
+the UCI_Chess960 wire format and python-chess's own representation, so no
+layer translates moves:
+
+| Layer | What changes in 960 mode |
+|---|---|
+| `cuci.py` | the board is built with `chess960=True`; X-FEN and Shredder-FEN rights both parse |
+| `cengine.py` | sets `cs_set_chess960` per search from `board.chess960`; the Polyglot book is skipped |
+| `csearch.c` | castling generation, `move_from_key`, `apply_move`, the cuckoo rights mask and `has_legal_quiet` |
+| `NNUE/nnue.c` | the incremental push moves the king to c/g and the rook to d/f |
+| `movegen.c`, `engine.py` | the same rules for the Python engine and `perft.py` |
+
+**Standard chess is node-identical.** Every 960 path is behind the flag, and
+the bench signature (672,025) and the pinned d14 ladder are unchanged.
+
+Correctness is gated rather than assumed:
+
+| Gate | Coverage |
+|---|---|
+| `testing/perft.py` | the 10-position chessprogramming Chess960 perft table to depth 5, on both C generators |
+| `selftest.py` | Zobrist, eval-accumulator and five-generator walks over every castle shape: the king stays, the rook stays, the two swap, and a two-file encoding (`c1a1`) the standard test would misread |
+| NNUE verify mode | every incremental push in a 960 search equals a full refresh |
+| fuzzing (during development) | 20,000 random back-rank positions with 11,554 legal castles against python-chess, 0 mismatches |
+
+`match.py --chess960` plays the 960 start positions as openings, both colours
+each, and writes PGN with `Variant "Chess960"`. Both engines must declare
+`SUPPORTS_CHESS960`, so a pre-960 `Old Engine/` snapshot is refused instead of
+quietly playing without castling.
+
+**Limits:** the net and the hand-crafted eval were trained and tuned on
+standard chess only, and no Chess960 strength has been measured against an
+outside engine.
+
 ---
 
 ## Tooling
 
 | Script | Purpose |
 |---|---|
-| `testing/perft.py` | Move-generator correctness gate vs the published Perft results (`--deep` for the full 1.5 B-node suite). |
+| `testing/perft.py` | Move-generator correctness gate vs the published Perft results, standard and Chess960 (`--deep` for the full 1.8 B-node suite). |
 | `bench/profile_bench.py` | Real NPS + a per-function bottleneck breakdown in one pass (`--graph` for an HTML report). |
 | `bench/nps_history_bench.py` | NPS / depth benchmark across the `Old Engine/` snapshots. |
 | `bench/benchmark.py` | NPS / depth / nodes benchmark for the C search core (`--type`, `--threads`, `--hash`, averaged over `--runs`). |
@@ -463,7 +500,7 @@ cengine.py             root driver for the C search core -- THE SHIPPED ENGINE.
 csearch.c              the whole per-node search loop in C (built to .so)
 eval_c.c / movegen.c   C evaluation and move generation (built to .so)
 Constants.c/.h         magic-bitboard + attack tables (linked into the .so files)
-cuci.py                UCI host for the C search core (17 options)
+cuci.py                UCI host for the C search core (19 options)
 match.py               headless engine-vs-engine match runner (SPRT, pentanomial)
 battle_worker.py       per-game worker process used by match.py
 stockfish_engine.py    UCI adapter exposing Stockfish through the same API

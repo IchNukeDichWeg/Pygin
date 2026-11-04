@@ -269,9 +269,20 @@ static void nn_push(int ply, const Board* parent, const Board* child,
     const int h = g_net.h;
     int capsq = to;
     if (m & MV_BIT_EP) capsq = (us == WHITE) ? to - 8 : to + 8;
-    int castle = (mover == PT_KING) && (to - from == 2 || from - to == 2);
-    int rf = 0, rt = 0;
-    if (castle) {
+    int castle = 0, rf = 0, rt = 0;
+    int kto = to;                 /* where the king really lands */
+    if (mover == PT_KING && (parent->occ[us] & (1ULL << to))) {
+        /* Chess960 castle, king takes own rook: `to` is the ROOK's square.
+         * Tested FIRST, as apply_move does: Kc1/Ra1 and Ke1/Rg1 are two-file
+         * king moves that the standard test below would misread as e1c1 /
+         * e1g1 with a corner rook. The four terms are additive, so
+         * coinciding squares (king or rook standing still, or the two
+         * swapping) cancel on their own. */
+        castle = 1;
+        rf = to;
+        castle960_dest(us, from, to, &kto, &rt);
+    } else if (mover == PT_KING && (to - from == 2 || from - to == 2)) {
+        castle = 1;
         if (to > from) { rf = (us == WHITE) ? 7 : 63; rt = (us == WHITE) ? 5 : 61; }
         else           { rf = (us == WHITE) ? 0 : 56; rt = (us == WHITE) ? 3 : 59; }
     }
@@ -301,7 +312,7 @@ static void nn_push(int ply, const Board* parent, const Board* child,
         const int16_t* s1 = nn_col(bkt, nn_plane(persp, us, mover),
                                    nn_osq(persp, mir, from));
         const int16_t* a1 = nn_col(bkt, nn_plane(persp, us, finalpt),
-                                   nn_osq(persp, mir, to));
+                                   nn_osq(persp, mir, kto));
         if (castle) {
             const int16_t* s2 = nn_col(bkt, nn_plane(persp, us, PT_ROOK),
                                        nn_osq(persp, mir, rf));

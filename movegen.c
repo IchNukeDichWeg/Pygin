@@ -227,6 +227,73 @@ static int in_check(const Board* b)
     return sq_attacked_by_them(b, ksq);
 }
 
+/* ---------- Chess960 castling ------------------------------------------- *
+ * Same rules and encoding as csearch.c's 960 block (king takes own rook,
+ * python-chess's generate_castling_moves line for line); this file keeps its
+ * own copy because it is an independent generator by design. OFF = standard
+ * chess, byte-identical to before: every standard path is untouched. */
+static int g_chess960 = 0;
+void set_chess960(int on) { g_chess960 = on ? 1 : 0; }
+int get_chess960(void) { return g_chess960; }
+
+static uint64_t rank_span(int a, int b)
+{
+    int lo = a < b ? a : b, hi = a < b ? b : a;
+    if (hi - lo < 2) return 0;
+    return ((1ULL << hi) - 1) & ~((2ULL << lo) - 1);
+}
+
+static void castle960_dest(int us, int ksq, int rsq, int* kto, int* rto)
+{
+    int r0 = (us == WHITE) ? 0 : 56;
+    int a_side = rsq < ksq;
+    *kto = r0 + (a_side ? 2 : 6);
+    *rto = r0 + (a_side ? 3 : 5);
+}
+
+static int sq_attacked_occ(const Board* b, int sq, uint64_t occ)
+{
+    int us = b->turn, them = us ^ 1;
+    uint64_t to = b->occ[them];
+    return attacked(sq, occ, us, b->pawns & to, b->knights & to,
+                    (b->bishops | b->queens) & to,
+                    (b->rooks | b->queens) & to, b->kings & to);
+}
+
+static int castle960_legal(const Board* b, int ksq, int rsq)
+{
+    int us = b->turn, kto, rto;
+    castle960_dest(us, ksq, rsq, &kto, &rto);
+    uint64_t occ = b->occ[0] | b->occ[1];
+    uint64_t kb = 1ULL << ksq, rb = 1ULL << rsq;
+    uint64_t ktb = 1ULL << kto, rtb = 1ULL << rto;
+    uint64_t kpath = rank_span(ksq, kto);
+    uint64_t rpath = rank_span(rsq, rto);
+    if ((occ ^ kb ^ rb) & (kpath | rpath | ktb | rtb)) return 0;
+    uint64_t occ_nok = occ ^ kb;
+    for (uint64_t t = kpath | kb; t; t &= t - 1)
+        if (sq_attacked_occ(b, __builtin_ctzll(t), occ_nok)) return 0;
+    return !sq_attacked_occ(b, kto, occ ^ kb ^ rb ^ rtb);
+}
+
+static int gen_castle960(const Board* b, uint32_t* out)
+{
+    int us = b->turn, cnt = 0;
+    uint64_t back = (us == WHITE) ? RANK_1 : RANK_8;
+    uint64_t cand = b->castling & back & b->rooks & b->occ[us];
+    if (!cand) return 0;
+    uint64_t kbb = b->kings & b->occ[us] & back;
+    if (!kbb) return 0;
+    int ksq = __builtin_ctzll(kbb);
+    while (cand) {
+        int rsq = 63 - __builtin_clzll(cand);
+        cand &= ~(1ULL << rsq);
+        if (castle960_legal(b, ksq, rsq))
+            out[cnt++] = MOVE_TAG(ksq, rsq, 0, PT_KING, 0, 0);
+    }
+    return cnt;
+}
+
 /* ---------- legal move generation (python-chess pseudo-legal order) ------- */
 /* Emits in exactly generate_pseudo_legal_moves order, minus illegal moves.
  * Correct SET in every position; correct ORDER when not in check. */
@@ -264,7 +331,9 @@ static int gen_legal(const Board* b, uint32_t* out)
 
     /* 2. castling: descending rook-square => king side before queen side.
      *    Mover is the king; never a capture. */
-    {
+    if (g_chess960) {
+        cnt += gen_castle960(b, out + cnt);
+    } else {
         int e = (us == WHITE) ? 4 : 60;
         int ks_rook = (us == WHITE) ? 7 : 63;
         int qs_rook = (us == WHITE) ? 0 : 56;
@@ -474,6 +543,19 @@ static void apply_move(Board* b, uint32_t mv)
     else if (b->queens  & fb) movpt = 5;
     else                      movpt = 6;
 
+    if (movpt == 6 && (b->occ[us] & tb)) {     /* Chess960: king takes rook */
+        int kto, rto;
+        castle960_dest(us, from, to, &kto, &rto);
+        uint64_t ktb = 1ULL << kto, rtb = 1ULL << rto;
+        b->kings = (b->kings & ~fb) | ktb;
+        b->rooks = (b->rooks & ~tb) | rtb;
+        b->occ[us] = (b->occ[us] & ~(fb | tb)) | ktb | rtb;
+        b->castling &= (us == WHITE) ? ~RANK_1 : ~RANK_8;
+        b->ep = -1;
+        b->turn = them;
+        return;
+    }
+
     uint64_t capmask = tb;
     if (movpt == 1 && to == b->ep && !(b->occ[them] & tb))
         capmask = 1ULL << ((us == WHITE) ? to - 8 : to + 8);
@@ -508,9 +590,8 @@ static void apply_move(Board* b, uint32_t mv)
     }
 
     uint64_t cr = b->castling;
-    if (movpt == 6)
-        cr &= (us == WHITE) ? ~((1ULL << 0) | (1ULL << 7))
-                            : ~((1ULL << 56) | (1ULL << 63));
+    if (movpt == 6)              /* whole back rank: corners in standard chess */
+        cr &= (us == WHITE) ? ~RANK_1 : ~RANK_8;
     cr &= ~fb;
     cr &= ~capmask;
     b->castling = cr;
@@ -550,4 +631,4 @@ uint64_t perft(uint64_t pawns, uint64_t knights, uint64_t bishops,
  * exported signature or the packed move-tag layout changes, so a
  * stale-but-loadable .so is rejected at load instead of silently emitting
  * wrong moves. */
-int abi_version(void) { return 1; }
+int abi_version(void) { return 2; }   /* 2 = set_chess960 */

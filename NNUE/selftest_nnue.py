@@ -88,6 +88,15 @@ for fen in (chess.STARTING_FEN,
             "8/P5k1/8/8/8/8/1p4K1/8 w - - 0 1"):
     lib.cs_tt_reset()
     eng.get_best_move(chess.Board(fen), 6)
+# Chess960 castles (king takes own rook): the king may stay put, the rook may
+# stay put, the two may swap, and Kc1/Ra1 is a two-file move the standard
+# e1g1 test once misread -- every shape is a different nn_push delta.
+for fen in ("r1kb1qbr/pppp1ppp/2nn4/4p3/4PP2/2NN4/PPPP2PP/R1KB1QBR w HAha - 2 5",
+            "4k1r1/8/8/8/8/8/8/R1K5 w Ag - 0 1",
+            "1r4kr/8/8/8/8/8/8/1R4KR w HBhb - 0 1",
+            "r4k2/8/8/8/8/8/8/R4KR1 w GAa - 0 1"):
+    lib.cs_tt_reset()
+    eng.get_best_move(chess.Board(fen, chess960=True), 6)
 lib.set_nnue_verify(0)
 p = ctypes.c_uint64(0)
 bad = ctypes.c_uint64(0)
