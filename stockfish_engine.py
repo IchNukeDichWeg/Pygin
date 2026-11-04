@@ -104,7 +104,15 @@ class Engine:
 
     MATE_SCORE = 1_000_000
     MATE_THRESHOLD = MATE_SCORE - 1_000
-    SUPPORTS_CHESS960 = True     # UCI_Chess960, toggled per position in _go
+
+    @property
+    def SUPPORTS_CHESS960(self):
+        """True only when the binary ADVERTISED UCI_Chess960 in its handshake.
+        A UCI engine without it prints castles as e1g1, which a chess960
+        board either rejects or reads as a plain king step -- so
+        battle_worker refuses a 960 game to it instead. Instance-level, not a
+        class constant: uci_engine subclasses drive arbitrary binaries."""
+        return bool(getattr(self, "_has_960", False))
 
     def __init__(self):
         # Attributes the runners read.
@@ -124,7 +132,6 @@ class Engine:
         self._proc = subprocess.Popen(
             [_find_sf()], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL, text=True, bufsize=1)
-        self._chess960 = False       # a fresh process starts in standard mode
         self._uci_handshake()
 
     def _ensure_alive(self):
@@ -167,6 +174,7 @@ class Engine:
         # any curve fitted here. Guarded on the option list: sending an
         # unknown setoption makes some engines print noise.
         self._has_wdl = any("UCI_ShowWDL" in ln for ln in opts)
+        self._has_960 = any("UCI_Chess960" in ln for ln in opts)
         if self._has_wdl:
             self._send("setoption name UCI_ShowWDL value true")
         self._send(f"setoption name Threads value {SF_THREADS}")
@@ -210,22 +218,46 @@ class Engine:
                                f"winc {max(0, int(winc_ms))} "
                                f"binc {max(0, int(binc_ms))}")
 
+    def _sync_chess960(self, want960):
+        """Put the engine PROCESS in the rule set this position needs.
+
+        SF reads castling rights from the FEN either way, but prints (and
+        parses) castles as king-takes-rook only with UCI_Chess960 on -- the
+        encoding a chess960 board expects back. The known mode is keyed on the
+        Popen object rather than kept in a plain flag, so EVERY way a process
+        is (re)started -- this class's _spawn, a uci_engine override that
+        knows nothing about 960, the crash respawn in _ensure_alive or the
+        BrokenPipe retry below -- reads as a fresh process in standard mode.
+        Standard chess on a fresh process therefore sends nothing at all,
+        exactly as before 960 support existed."""
+        if getattr(self, "_c960_proc", None) is not self._proc:
+            self._c960_proc, self._c960_mode = self._proc, False
+        if want960 == self._c960_mode:
+            return
+        if want960 and not self.SUPPORTS_CHESS960:
+            raise RuntimeError("this UCI engine does not advertise "
+                               "UCI_Chess960; it cannot play a 960 position")
+        self._send("setoption name UCI_Chess960 value "
+                   + ("true" if want960 else "false"))
+        self._c960_mode = want960
+
     def _go(self, board, limit):
         white_to_move = board.turn == chess.WHITE
         self._ensure_alive()
-        # Chess960: SF reads castling rights from the FEN either way, but
-        # prints (and parses) castles as king-takes-rook only with
-        # UCI_Chess960 on -- the encoding a chess960 board expects back.
         want960 = bool(board.chess960)
-        if want960 != self._chess960:
-            self._send("setoption name UCI_Chess960 value "
-                       + ("true" if want960 else "false"))
-            self._chess960 = want960
         try:
+            self._sync_chess960(want960)
             self._send(f"position fen {board.fen()}")
         except BrokenPipeError:
-            # Died between poll() and the write: respawn once and retry.
+            # Died between poll() and the write: respawn once and retry. The
+            # fresh process needs its rule set again (_sync_chess960 sees the
+            # new Popen and starts from standard mode).
+            try:
+                self._proc.stdin.close()     # drop the dead pipe's unsent
+            except (BrokenPipeError, OSError):   # bytes now, not as noise
+                pass                             # when GC flushes them later
             self._spawn()
+            self._sync_chess960(want960)
             self._send(f"position fen {board.fen()}")
         self._send(f"go {limit}")
         last_info = None

@@ -470,9 +470,19 @@ each, and writes PGN with `Variant "Chess960"`. Both engines must declare
 `SUPPORTS_CHESS960`, so a pre-960 `Old Engine/` snapshot is refused instead of
 quietly playing without castling.
 
-**Limits:** the net and the hand-crafted eval were trained and tuned on
-standard chess only, and no Chess960 strength has been measured against an
-outside engine.
+**Does the net still pay in 960?** The net was trained on standard chess
+only, so this was measured rather than assumed: the shipped engine against
+itself with the net off, 5+0.05, 200 games per arm on 2026-11-04.
+
+| Openings | Score | Net over HCE |
+|---|---|---|
+| Chess960 start positions | 77.50% (132W/46D/22L) | **+214.85 ±47.1** |
+| Standard (UHO) | 73.50% (125W/44D/31L) | **+177.22 ±39.8** |
+
+The gap between the two lies well inside the error bars, so there is no sign
+the net's edge shrinks in 960. Both evals are standard-tuned, so this is
+relative strength only: no Chess960 strength has been measured against an
+outside engine, and no net has been trained on 960 positions yet.
 
 ---
 
