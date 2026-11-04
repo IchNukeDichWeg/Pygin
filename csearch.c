@@ -4306,7 +4306,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             if (g_use_nnue)                  /* FI-15: null moves no pieces --
                                               * propagate the slot; nn_eval
                                               * swaps perspectives via turn */
-                g_nn_acc[ply + 1] = g_nn_acc[ply];
+                nn_push_null(ply);           /* (lazy: copied on first read) */
             int ns = -negamax(&c, depth - 1 - R, -beta, -beta + 1, ply + 1,
                               0xFFFFFFFF, 0, 0, chk, srb, 1);   /* FI-103 */
             if (CS_UNWINDING()) return 0;            /* ns is garbage */
