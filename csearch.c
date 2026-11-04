@@ -3285,7 +3285,11 @@ static inline int has_non_pawn(const Board* b, int side)
  * cross-inlining; snapshots' csearch.c predates the include and is
  * untouched). Everything is behind g_use_nnue (set_use_nnue, default 0 =
  * v50 byte-exact; the driver attr is cengine.USE_NNUE). Hybrid rules and
- * the frozen architecture: DESIGN_nnue.md "Phase 1 spec". */
+ * the frozen architecture: DESIGN_nnue.md "Phase 1 spec".
+ * The two opt-ins below select code the Old Engine snapshots (which include
+ * this same file) must NOT get: the lazy accumulator and the huge-page w1. */
+#define NN_LAZY_ACC 1
+#define NN_HP_ALLOC 1
 #include "NNUE/nnue.c"
 
 /* --- Phase-3 step 4: quiescence --------------------------------------- *
