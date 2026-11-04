@@ -122,6 +122,48 @@ check("reference search move", str(mv) == REF_MOVE, f"{mv} (expected {REF_MOVE})
 check("reference search node-exact", e.nodes_searched == REF_NODES,
       f"{e.nodes_searched:,} nodes (expected {REF_NODES:,}; see REF_NODES note)")
 
+# --- 4b. engine.py Chess960: incremental Zobrist + accumulator ---------- #
+# The Python engine's 960 castle (king takes own rook) has its own branch in
+# _zob_delta and _move_delta, and nothing else reaches them: perft counts
+# moves, the reference search is standard chess. Every move of castling-biased
+# 960 playouts is made and unmade against the from-scratch oracles. Deleting
+# the rook terms fails it: 53 bad of 32,482 in _zob_delta, 58 in _move_delta.
+if engine._USE_C_MOVEGEN:
+    e960 = engine.Engine()
+    rng960 = random.Random(960)
+    py960_bad, py960_n, py960_castles = [], 0, 0
+    try:
+        engine._mg_lib.set_chess960(1)
+        for _g in range(40):
+            bd = chess.Board.from_chess960_pos(rng960.randrange(960))
+            for _p in range(30):
+                if bd.is_game_over():
+                    break
+                mvs, raws = engine._c_legal_moves(bd)
+                if mvs is None:                       # in check: no castles
+                    bd.push(rng960.choice(list(bd.legal_moves)))
+                    continue
+                e960._acc = list(e960._compute_acc(bd))
+                e960._zob = e960._compute_zobrist(bd)
+                e960._acc_stack, e960._zob_stack = [], []
+                for m, raw in zip(mvs, raws):
+                    e960._make_zob(bd, m, raw)
+                    py960_n += 1
+                    if (e960._zob != e960._compute_zobrist(bd)
+                            or list(e960._acc) != list(e960._compute_acc(bd))):
+                        py960_bad.append(f"{m.uci()} from {bd.root().fen()}")
+                    e960._unmake_zob(bd)
+                cm = [m for m in mvs if bd.is_castling(m)]
+                py960_castles += len(cm)
+                bd.push(rng960.choice(cm) if cm and rng960.random() < 0.7
+                        else rng960.choice(mvs))
+    finally:
+        engine._mg_lib.set_chess960(0)
+    check("engine.py Chess960: incremental Zobrist + accumulator exact",
+          not py960_bad and py960_castles > 30,
+          f"{py960_n:,} make/unmakes, {py960_castles} castles"
+          if not py960_bad else f"{len(py960_bad)} bad, e.g. {py960_bad[0]}")
+
 # --- 5. timed path (time_manager + soft-stop machinery) ------------------ #
 # FB-58: this header claimed coverage the suite did not have -- until
 # 2026-07-26, calculate_move_time had NO assertion anywhere in the tree, while
