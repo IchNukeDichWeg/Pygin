@@ -6,7 +6,8 @@ https://www.chessprogramming.org/Perft_Results and compares every node count
 against the published values. Any mismatch = move generation is broken.
 
 Chess960 rides along: ten positions from the chessprogramming Chess960 perft
-table (king-takes-rook castling, X-FEN/Shredder rights), counted by BOTH
+table (king-takes-rook castling, X-FEN/Shredder rights) plus one crafted
+castle shape the table never exercises (python-chess counts), counted by BOTH
 movegen.so and csearch.so's own generator (cs_perft) -- the two are separate
 copies, and the 960 castle is where they first had to be written twice.
 
@@ -96,6 +97,12 @@ POSITIONS_960 = [
      {1: 24, 2: 572, 3: 15_243, 4: 384_260, 5: 11_110_203}),
     ("960 #10", "qn1rbbkr/ppp2p1p/1n1pp1p1/8/3P4/P6P/1PP1PPPK/QNNRBB1R w hd - 2 9",
      {1: 28, 2: 811, 3: 23_175, 4: 679_699, 5: 19_836_606}),
+    # Not from the table: counts are python-chess's. f1b1 is illegal because
+    # the rook leaving b1 opens a1-c1; a generator that scans the king's
+    # destination with the rook still on b1 passes all ten rows above, even
+    # at --deep, and fails this one at d1.
+    ("960 rook-behind", "4k3/8/8/8/8/8/8/rR3K2 w B - 0 1",
+     {1: 9, 2: 102, 3: 1_501, 4: 22_885, 5: 375_633}),
 ]
 
 

@@ -929,6 +929,10 @@ if os.path.exists("csearch.c"):
             "4k1r1/8/8/8/8/8/8/R1K5 w Ag - 0 1",         # c1a1 / e8g8 at root
             "rk5r/8/8/8/8/8/8/RK5R w KQkq - 0 1",        # X-FEN rights
             "3rk3/8/8/8/8/8/8/4KR2 w Fd - 0 1",          # rook stays (f1, d8)
+            # f1b1 is ILLEGAL: the rook leaving b1 opens a1-c1, so the king's
+            # destination must be scanned with the rook already moved. Perft
+            # --deep and every other fixture pass if it is scanned as-is.
+            "4k3/8/8/8/8/8/8/rR3K2 w B - 0 1",
             "k7/8/b7/8/8/5ppp/5PPP/6KR w H - 0 1",       # castle = ONLY quiet
         )
         bad960 = []
