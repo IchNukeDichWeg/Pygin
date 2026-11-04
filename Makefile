@@ -17,7 +17,13 @@
 # the selftest ladder shows across machines). Run an OpenBench fleet on
 # homogeneous workers and measure the registered bench value THERE, not
 # on the dev machine.
-CC  ?= clang
+# `CC ?= clang` would never fire: make predefines CC=cc (gcc on most Linux
+# boxes), so a bare `make` silently built with gcc -- ~9% slower search than
+# clang on an x86 Linux VM. Only replace make's own default; an explicit
+# CC=... on the command line or in the environment still wins.
+ifeq ($(origin CC),default)
+CC = clang
+endif
 PY  ?= python3
 EXE ?= pygin
 
