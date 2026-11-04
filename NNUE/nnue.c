@@ -277,10 +277,16 @@ static void nn_push(int ply, const Board* parent, const Board* child,
          * king moves that the standard test below would misread as e1c1 /
          * e1g1 with a corner rook. The four terms are additive, so
          * coinciding squares (king or rook standing still, or the two
-         * swapping) cancel on their own. */
+         * swapping) cancel on their own.
+         * King to c/g, rook to d/f, computed HERE rather than through
+         * csearch.c's castle960_dest: every Old Engine snapshot from 51 on
+         * compiles this file into its own csearch.c, which has no such
+         * helper (selftest section 7 syntax-checks all of them). */
         castle = 1;
         rf = to;
-        castle960_dest(us, from, to, &kto, &rt);
+        int r0 = (us == WHITE) ? 0 : 56;
+        kto = r0 + (to < from ? 2 : 6);
+        rt  = r0 + (to < from ? 3 : 5);
     } else if (mover == PT_KING && (to - from == 2 || from - to == 2)) {
         castle = 1;
         if (to > from) { rf = (us == WHITE) ? 7 : 63; rt = (us == WHITE) ? 5 : 61; }

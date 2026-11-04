@@ -1437,6 +1437,42 @@ if os.path.isdir("Old Engine"):
     else:
         print("  ok    all Old Engine snapshots with C sources have built .so")
 
+    # Snapshots 51+ single-TU-include the LIVE NNUE/nnue.c, so an edit there
+    # that calls into the current csearch.c stops every one of them building.
+    # setup.sh swallows that ("skip ... did not compile") and a machine with
+    # stale .so files never notices -- only a fresh box does, at A/B load
+    # time. Chess960 did exactly this. A syntax-only pass costs ~1s for all.
+    # KNOWN: 51-54 predate the FI-42 Board.a_ph field that nnue.c has read
+    # since E-04 (683c2aa), so they have not built on a fresh box since
+    # 2026-09-11. Pinned as the expected set, so a NEW breakage fails here
+    # and a repair of these four does too (drop them from the set then).
+    _NN_SNAPS_KNOWN_BROKEN = {"51", "52", "53", "54"}
+    import shutil
+    _cc = shutil.which("clang") or shutil.which("cc") or shutil.which("gcc")
+    _nn_snaps = []
+    for d in sorted(os.listdir("Old Engine"), key=lambda s: (len(s), s)):
+        _cs = os.path.join("Old Engine", d, "csearch.c")
+        if os.path.isfile(_cs):
+            with open(_cs, encoding="utf-8", errors="replace") as fh:
+                if '#include "NNUE/nnue.c"' in fh.read():
+                    _nn_snaps.append((d, _cs))
+    if not _cc:
+        skip("no C compiler -- snapshot vs live NNUE/nnue.c compile check")
+    elif _nn_snaps:
+        _broken = [d for d, _cs in _nn_snaps
+                   if subprocess.run([_cc, "-fsyntax-only", "-I.", "-w", _cs],
+                                     capture_output=True).returncode != 0]
+        _new = [d for d in _broken if d not in _NN_SNAPS_KNOWN_BROKEN]
+        _fixed = sorted(_NN_SNAPS_KNOWN_BROKEN
+                        & {d for d, _cs in _nn_snaps} - set(_broken))
+        check("Old Engine snapshots compile against the live NNUE/nnue.c",
+              not _new and not _fixed,
+              (f"{len(_nn_snaps) - len(_broken)} of {len(_nn_snaps)} build; "
+               f"known broken: {', '.join(_broken)}")
+              if not _new and not _fixed
+              else (f"NEWLY BROKEN: {', '.join(_new)}" if _new
+                    else f"now build, unpin: {', '.join(_fixed)}"))
+
 # --- no personal paths in a public repo ---------------------------------- #
 # scripts/pygin_server.py shipped a hardcoded /Users/<name>/... for both the engine path and the
 # working directory. It is a public repo, so that is a personal detail nobody meant to publish -- and
