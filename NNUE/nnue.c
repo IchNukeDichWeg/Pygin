@@ -728,7 +728,16 @@ static int nn_eval(const Board* b, int ply)
 {
     int v = nn_forward(b, &g_nn_acc[ply]);
     if (g_nn_matscale) {                            /* E-04 */
+#ifdef ACC_ADD
         int ph = b->a_ph > 24 ? 24 : (b->a_ph < 0 ? 0 : b->a_ph);
+#else
+        /* Old Engine/51-54 compile this file too and predate FI-42's Board
+         * accumulator (ACC_ADD and a_ph arrive together, in 55). Their
+         * drivers never arm E-04, so this branch is dead there; it exists
+         * so the snapshots build at all -- E-04 had broken them since
+         * 683c2aa. game_phase is in every snapshot. */
+        int ph = game_phase(b);
+#endif
         v = v * (NN_MS_BASE + ph) / NN_MS_DIV;
     }
     v += g_nn_tempo;                                /* E-05 */
