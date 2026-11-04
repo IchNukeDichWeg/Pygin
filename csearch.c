@@ -1781,6 +1781,26 @@ static void tt_window_reset(void)
     g_tt_mask = (uint64_t)n - 1;
 }
 
+/* Child Zobrist key from the move word alone, so the child's TT line can be
+ * prefetched BEFORE apply_move instead of after it -- the probe sits at the
+ * very top of the child, and apply_move's own work is the only thing that
+ * can still overlap the miss. Exact for ordinary moves, captures and
+ * promotions; castling-right, new-ep and ep-capture changes are ignored (a
+ * prefetch is only a hint), and the call sites re-prefetch c.key in the rare
+ * case it differs. Node-identical by construction. Measured +3.2% +/- 1.3%
+ * bench search-only NPS (40 concurrent pairs, x86 Linux VM). */
+static inline uint64_t key_after_approx(const Board* b, uint32_t m)
+{
+    int from = m & 63, to = (m >> 6) & 63, promo = (m >> 12) & 7;
+    int us = b->turn;
+    int mov = (m >> MV_SHIFT_MOVER) & 7, vic = (m >> MV_SHIFT_VICTIM) & 7;
+    uint64_t k = b->key ^ Z_TURN ^ Z_PSQ[us][mov][from]
+               ^ Z_PSQ[us][promo ? promo : mov][to]
+               ^ Z_EP[b->ep + 1] ^ Z_EP[0];
+    if (vic) k ^= Z_PSQ[us ^ 1][vic][to];
+    return k;
+}
+
 void set_tt_grow(int v) { g_tt_grow = v ? 1 : 0; tt_window_reset(); }
 /* FI-17/FI-26a (P-45 re-arm, ADOPTED 2026-07-12): prefetch the child's TT
  * line right after apply_move. P-45 measured null because computing the
@@ -4023,9 +4043,11 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
                     continue;                        /* delta pruning */
             }
         }
+        uint64_t pk = key_after_approx(b, m);        /* see negamax */
+        TT_PREFETCH(pk);
         Board c = *b;
         apply_move(&c, m);
-        TT_PREFETCH(c.key);                          /* FI-17 */
+        if (c.key != pk) TT_PREFETCH(c.key);         /* FI-17 */
         int child_hmc = (victim || ((m >> MV_SHIFT_MOVER) & 7) == PT_PAWN
                          || is_promo) ? 0 : hmc + 1;
         int v = -qsearch(&c, -beta, -alpha, ply + 1, in_check(&c), child_hmc);
@@ -4486,9 +4508,11 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
          * SEE-negative captures; array path: FI-02.3 tag 2 = SEE < 0) */
         int badcap = staged ? (st.stage == 6) : (((m >> 22) & 3) == 2);
 
+        uint64_t pk = key_after_approx(b, m);        /* prefetch before the */
+        TT_PREFETCH(pk);                             /* make, not after it  */
         Board c = *b;
         apply_move(&c, m);
-        TT_PREFETCH(c.key);                          /* FI-17 */
+        if (c.key != pk) TT_PREFETCH(c.key);         /* FI-17 */
         int gives_check = in_check(&c);
 
         /* FI-38: prune a SEE-losing capture whose loss exceeds K per ply of
