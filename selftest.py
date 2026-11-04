@@ -990,6 +990,10 @@ if os.path.exists("csearch.c"):
         ce._lib.set_nnue_verify(1)
         p0, b0n = _ct.c_uint64(0), _ct.c_uint64(0)
         ce._lib.nnue_verify_stats(_ct.byref(p0), _ct.byref(b0n))
+        # "legal" alone proves nothing: cengine swaps a missing or illegal
+        # root key for legal[0], so the C core's OWN answer must have been
+        # legal -- the safety net must not have fired.
+        net0 = ce.safety_net_hits
         legal960 = True
         try:
             for f960 in FENS_960[:5]:
@@ -1004,11 +1008,20 @@ if os.path.exists("csearch.c"):
         ce._lib.cs_tt_reset()
         ce.get_best_move(chess.Board(), 1)          # flips the flag back off
         flag_off = ce._lib.cs_get_chess960() == 0
+        net_fired = ce.safety_net_hits - net0
+        pushes960 = p1.value - p0.value
+        # An armed net must actually have been exercised: 0 pushes with 0
+        # mismatches is a vacuous pass. Unarmed (no SIMD) is said out loud.
+        nnue_ok = b1n.value == b0n.value and (pushes960 > 0
+                                              or not ce.USE_NNUE)
         check("Chess960: searches play legal moves, NNUE pushes exact",
-              legal960 and flag_off and b1n.value == b0n.value,
-              f"{p1.value - p0.value:,} NNUE pushes, "
+              legal960 and not net_fired and flag_off and nnue_ok,
+              f"{pushes960:,} NNUE pushes, "
               f"{b1n.value - b0n.value} mismatches"
+              + ("" if ce.USE_NNUE else " (net not armed: NNUE half NOT run)")
               + ("" if legal960 else ", ILLEGAL MOVE")
+              + (f", C root move illegal {net_fired}x (safety net)"
+                 if net_fired else "")
               + ("" if flag_off else ", flag left ON"))
 
         # --- 5g2. PM-01 certification honours its wall-clock contract ---- #
@@ -1153,6 +1166,56 @@ if os.path.exists("cuci.py"):
         ok960 = False
     check("cuci UCI_Chess960 round-trip (king-takes-rook castles)", ok960,
           bm if bm else "no bestmove line")
+
+    # UCI ADAPTERS (stockfish_engine / uci_engine) drive outside binaries this
+    # box may not have, so they run here against testing/fake_uci_engine.py,
+    # whose answers reveal whether the PROCESS has UCI_Chess960 armed. Pins a
+    # real regression: 960 support once read a flag only stockfish_engine's
+    # _spawn set, so every uci_engine anchor crashed on its first STANDARD
+    # move. Every (re)spawn path must re-arm the rule set, and a binary that
+    # never advertised UCI_Chess960 must not claim to support it.
+    try:
+        import uci_engine                                   # noqa: E402
+
+        class _FakeUci(uci_engine.Engine):
+            BINARY = os.path.join(HERE, "testing", "fake_uci_engine.py")
+            THREADS, HASH_MB = 1, 16
+
+        b_rk = chess.Board("rk5r/pppppppp/8/8/8/8/PPPPPPPP/RK5R w KQkq - 0 1",
+                           chess960=True)
+        fu = _FakeUci()
+        got = [fu.get_best_move(chess.Board(), 1),      # standard: e2e4
+               fu.get_best_move(b_rk, 1)]               # 960 castle: b1a1
+        fu._proc.kill(); fu._proc.wait()                # crash -> respawn
+        got.append(fu.get_best_move(b_rk, 1))
+        fu._proc.kill(); fu._proc.wait()                # BrokenPipe retry
+        fu._ensure_alive = lambda: None
+        got.append(fu.get_best_move(b_rk, 1))
+        del fu._ensure_alive
+        got.append(fu.get_best_move(chess.Board(), 1))  # back to standard
+        want = ["e2e4", "b1a1", "b1a1", "b1a1", "e2e4"]
+        got = [m.uci() if m else None for m in got]
+        adapter_ok = got == want and fu.SUPPORTS_CHESS960
+        del fu
+        os.environ["FAKE_UCI_NO960"] = "1"
+        try:
+            fu2 = _FakeUci()
+            refused = False
+            try:
+                fu2.get_best_move(b_rk, 1)
+            except RuntimeError:
+                refused = True
+            adapter_ok = (adapter_ok and not fu2.SUPPORTS_CHESS960 and refused
+                          and fu2.get_best_move(chess.Board(), 1).uci()
+                          == "e2e4")
+            del fu2
+        finally:
+            os.environ.pop("FAKE_UCI_NO960", None)
+        check("UCI adapters: 960 rule set follows the process (respawns)",
+              adapter_ok, f"{got} (want {want})")
+    except Exception as ex:
+        check("UCI adapters: 960 rule set follows the process (respawns)",
+              False, f"{type(ex).__name__}: {ex}")
 
     # FB-44: real ponder round-trip, and the release watcher must leave the
     # NEXT search alone. Must be PACED (Popen, not run(input=...)): a batch

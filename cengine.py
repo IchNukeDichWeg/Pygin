@@ -683,6 +683,7 @@ class Engine:
     # way down (cs_set_chess960); battle_worker refuses 960 games to engines
     # without this marker, i.e. every snapshot that predates it.
     SUPPORTS_CHESS960 = True
+    safety_net_hits = 0          # root key missing/illegal -> legal[0] played
 
     # P-20a king shelter: REJECTED at C-core depth (A/B vs v32, 2026-07-08:
     # 10k games @ 45+0.1, 49.38% = -4.27 +/-6.8, norm -7.98). The depth-8
@@ -2420,6 +2421,10 @@ class Engine:
         move = self._key_to_move(best_key)
         if move is None or move not in board.legal_moves:
             move = legal[0]                  # safety net; must never trigger
+            # Counted, not silent: the net makes every returned move legal by
+            # construction, so a test asserting "the search played a legal
+            # move" proves nothing unless it also asserts this stayed put.
+            self.safety_net_hits += 1
 
         # --- stats in v30 conventions (battle_worker reads these) -------- #
         self.nodes_searched = nodes

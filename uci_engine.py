@@ -107,6 +107,7 @@ class Engine(stockfish_engine.Engine):
                       for ln in opts if ln.startswith("option name ")
                       and " type " in ln}
         self._has_wdl = "UCI_ShowWDL" in advertised
+        self._has_960 = "UCI_Chess960" in advertised   # SUPPORTS_CHESS960
         if self._has_wdl:
             self._send("setoption name UCI_ShowWDL value true")
         if "Threads" in advertised:
