@@ -1488,11 +1488,11 @@ if os.path.isdir("Old Engine"):
     # setup.sh swallows that ("skip ... did not compile") and a machine with
     # stale .so files never notices -- only a fresh box does, at A/B load
     # time. Chess960 did exactly this. A syntax-only pass costs ~1s for all.
-    # KNOWN: 51-54 predate the FI-42 Board.a_ph field that nnue.c has read
-    # since E-04 (683c2aa), so they have not built on a fresh box since
-    # 2026-09-11. Pinned as the expected set, so a NEW breakage fails here
-    # and a repair of these four does too (drop them from the set then).
-    _NN_SNAPS_KNOWN_BROKEN = {"51", "52", "53", "54"}
+    # KNOWN broken: none. 51-54 failed from E-04 (683c2aa, 2026-09-11) until
+    # nnue.c stopped reading Board.a_ph where the Board lacks it (e8072ee).
+    # A snapshot listed here is expected to fail, so a NEW breakage fails the
+    # check and so does a repair (drop it from the set then).
+    _NN_SNAPS_KNOWN_BROKEN = set()
     import shutil
     _cc = shutil.which("clang") or shutil.which("cc") or shutil.which("gcc")
     _nn_snaps = []
@@ -1513,8 +1513,8 @@ if os.path.isdir("Old Engine"):
                         & {d for d, _cs in _nn_snaps} - set(_broken))
         check("Old Engine snapshots compile against the live NNUE/nnue.c",
               not _new and not _fixed,
-              (f"{len(_nn_snaps) - len(_broken)} of {len(_nn_snaps)} build; "
-               f"known broken: {', '.join(_broken)}")
+              (f"{len(_nn_snaps) - len(_broken)} of {len(_nn_snaps)} build"
+               + (f"; known broken: {', '.join(_broken)}" if _broken else ""))
               if not _new and not _fixed
               else (f"NEWLY BROKEN: {', '.join(_new)}" if _new
                     else f"now build, unpin: {', '.join(_fixed)}"))
