@@ -47,12 +47,21 @@ def _wire_board(board):
     board.fen(): no stack means the engine's _path repetition tracking never
     sees game history, so every SMP search was threefold-blind (the exact
     bug battle_worker.py's protocol note describes -- won positions can
-    shuffle into arbiter draws the engine can't see coming)."""
-    return board.root().fen(), [m.uci() for m in board.move_stack]
+    shuffle into arbiter draws the engine can't see coming).
+
+    Chess960 rides as a "960:" prefix on the FEN: a bare FEN cannot say which
+    rules it is under, and rebuilding a 960 game as standard chess drops its
+    castling rights and misreads every king-takes-rook castle in the stack.
+    Every caller treats the FEN as opaque, so the tuple shape is unchanged."""
+    fen = board.root().fen()
+    if board.chess960:
+        fen = "960:" + fen
+    return fen, [m.uci() for m in board.move_stack]
 
 
 def _unwire_board(fen, ucis):
-    board = chess.Board(fen)
+    chess960 = fen.startswith("960:")
+    board = chess.Board(fen[4:] if chess960 else fen, chess960=chess960)
     for u in ucis:
         board.push(chess.Move.from_uci(u))
     return board

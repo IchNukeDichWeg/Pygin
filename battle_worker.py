@@ -36,6 +36,10 @@ parent -> worker:
                                             the engine's repetition detection
                                             works (a bare FEN leaves it blind
                                             to game-level threefolds)
+                                            A "960:" prefix on the FEN marks a
+                                            Chess960 game (board_from_fen);
+                                            an engine without
+                                            SUPPORTS_CHESS960 refuses it
     ("quit",)
 worker -> parent:
     ("ready",)                  sent once, after the engine loads successfully
@@ -55,6 +59,26 @@ import re
 import importlib.util
 import time
 import traceback
+
+
+# Chess960 travels WITH the opening FEN as a "960:" prefix, so every message
+# shape (schedule tuples, move requests, result dicts) stays what it was and
+# no hop can drop the rule set on the way: a 960 FEN rebuilt as standard chess
+# loses its castling rights and misreads every king-takes-rook castle.
+CHESS960_PREFIX = "960:"
+
+
+def board_from_fen(fen):
+    """chess.Board for an opening FEN, honouring the "960:" marker."""
+    import chess
+    if fen.startswith(CHESS960_PREFIX):
+        return chess.Board(fen[len(CHESS960_PREFIX):], chess960=True)
+    return chess.Board(fen)
+
+
+def plain_fen(fen):
+    """The FEN with any Chess960 marker stripped (PGN headers, logs)."""
+    return fen[len(CHESS960_PREFIX):] if fen.startswith(CHESS960_PREFIX) else fen
 
 
 def _load_engine(path, module_overrides=None):
@@ -362,11 +386,18 @@ def engine_worker(conn, engine_path, use_book, pv_uci=False, book_path=None,
                 # bare-FEN requests left engines threefold-blind in matches
                 # (won positions could shuffle into arbiter draws).
                 _start_fen, _ucis = fen
-                board = chess.Board(_start_fen)
+                board = board_from_fen(_start_fen)
                 for _u in _ucis:
                     board.push(chess.Move.from_uci(_u))
             else:
-                board = chess.Board(fen)
+                board = board_from_fen(fen)
+            if board.chess960 and not getattr(engine, "SUPPORTS_CHESS960",
+                                              False):
+                # A pre-960 engine would not crash -- it would search with
+                # standard castling and lose its rights, or hand back an
+                # e1g1 the board rejects. Refuse loudly instead.
+                raise RuntimeError(f"{engine_path} does not support Chess960 "
+                                   "(no SUPPORTS_CHESS960)")
             white_to_move = board.turn == chess.WHITE
 
             # perf_counter, not time.time(): this elapsed feeds match.py's

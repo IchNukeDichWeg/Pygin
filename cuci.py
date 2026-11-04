@@ -715,6 +715,11 @@ def main():
     engine._null_div = int(engine.NULL_DIV)     # armed/swept value
     engine._lib.set_rfp(engine._rfp_margin, engine._rfp_depth)
     engine._lib.set_null_move(engine._null_base, engine._null_div)
+    # UCI_Chess960: the board carries the rule set, so every later step --
+    # FEN castling (X-FEN or Shredder), move parsing, the C core's encoding
+    # and the bestmove/pv strings -- follows from python-chess's chess960
+    # flag. Castles read and print as king-takes-rook (e1h1), per the spec.
+    chess960 = False
     board = chess.Board()
     search_thread = None
     # FB-44: the ponderhit release watcher wakes up to `budget` seconds later
@@ -1036,6 +1041,7 @@ def main():
                 out("option name UCI_ShowWDL type check default true")
                 out("option name Ponder type check default false")
                 out("option name Clear Hash type button")
+                out("option name UCI_Chess960 type check default false")
                 out("option name Skill Level type spin default 40 min 0 max 40")
                 out("option name Contempt type spin default 50 min -100 max 100")
                 out("option name Move Overhead type spin default 40 min 0 max 5000")
@@ -1229,6 +1235,10 @@ def main():
                     engine.SOFT_STOP_UNSTABLE_FRAC = int(value) / 100.0
                 elif name == "premove":                 # PM-01
                     engine.premove_on = value.lower() == "true"
+                elif name == "uci_chess960":
+                    chess960 = value.lower() == "true"
+                    if not searching():          # GUIs send `position` next;
+                        board.chess960 = chess960   # keep the idle board in step
                 elif name == "uci_showwdl":             # FI-45: some arenas
                     engine.show_wdl = value.lower() == "true"   # reject
                                                         # unknown info fields
@@ -1291,7 +1301,7 @@ def main():
                     pending_contempt = None
                 engine._lib.cs_tt_reset()
                 engine.last_score = 0        # reset the TB difficulty gate
-                board = chess.Board()
+                board = chess.Board(chess960=chess960)
             elif cmd == "position":
                 # BUG-02 + B-08: ALL-OR-NOTHING. Build on a scratch board;
                 # a bad FEN or an unparseable/illegal move token rejects the
@@ -1303,9 +1313,10 @@ def main():
                     if "fen" in tokens:
                         i = tokens.index("fen")
                         j = tokens.index("moves") if "moves" in tokens else len(tokens)
-                        nb = chess.Board(" ".join(tokens[i + 1:j]))
+                        nb = chess.Board(" ".join(tokens[i + 1:j]),
+                                         chess960=chess960)
                     else:                    # startpos
-                        nb = chess.Board()
+                        nb = chess.Board(chess960=chess960)
                     # FB-36: trust-boundary gate -- python-chess parses
                     # structurally-legal-but-illegal FENs (opponent in check,
                     # missing king); csearch.c ctzll's the king bitboard, so

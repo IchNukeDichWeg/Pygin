@@ -5,6 +5,11 @@ Runs the C perft() exported by movegen.so over the 6 standard positions from
 https://www.chessprogramming.org/Perft_Results and compares every node count
 against the published values. Any mismatch = move generation is broken.
 
+Chess960 rides along: ten positions from the chessprogramming Chess960 perft
+table (king-takes-rook castling, X-FEN/Shredder rights), counted by BOTH
+movegen.so and csearch.so's own generator (cs_perft) -- the two are separate
+copies, and the 960 castle is where they first had to be written twice.
+
     python3 perft.py            # quick suite (~16M nodes, a few seconds)
     python3 perft.py --deep     # full suite  (~600M nodes, ~1-2 minutes)
 
@@ -33,6 +38,16 @@ _lib.perft.restype = ctypes.c_uint64
 _lib.perft.argtypes = [ctypes.c_uint64] * 8 + [ctypes.c_int, ctypes.c_int,
                                                ctypes.c_uint64, ctypes.c_int]
 _lib.abi_version.restype = ctypes.c_int
+_lib.set_chess960.argtypes = [ctypes.c_int]
+# csearch.so is optional here: perft.py must still gate movegen.so on a
+# checkout where only movegen has been built.
+try:
+    _cs = ctypes.CDLL(os.path.join(HERE, "csearch.so"))
+    _cs.cs_perft.restype = ctypes.c_uint64
+    _cs.cs_perft.argtypes = _lib.perft.argtypes
+    _cs.cs_set_chess960.argtypes = [ctypes.c_int]
+except (OSError, AttributeError):
+    _cs = None
 
 # (name, fen, {depth: published nodes})  -- chessprogramming.org/Perft_Results
 POSITIONS = [
@@ -55,6 +70,42 @@ POSITIONS = [
      "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
      {1: 46, 2: 2_079, 3: 89_890, 4: 3_894_594, 5: 164_075_551}),
 ]
+
+
+# Chess960 -- chessprogramming.org/Chess960_Perft_Results, the first ten rows
+# (python-chess agrees on every count). Depth 6 is in the table but omitted:
+# up to 1.25B nodes per position is past even --deep's budget.
+POSITIONS_960 = [
+    ("960 #1", "bqnb1rkr/pp3ppp/3ppn2/2p5/5P2/P2P4/NPP1P1PP/BQ1BNRKR w HFhf - 2 9",
+     {1: 21, 2: 528, 3: 12_189, 4: 326_672, 5: 8_146_062}),
+    ("960 #2", "2nnrbkr/p1qppppp/8/1ppb4/6PP/3PP3/PPP2P2/BQNNRBKR w HEhe - 1 9",
+     {1: 21, 2: 807, 3: 18_002, 4: 667_366, 5: 16_253_601}),
+    ("960 #3", "b1q1rrkb/pppppppp/3nn3/8/P7/1PPP4/4PPPP/BQNNRKRB w GE - 1 9",
+     {1: 20, 2: 479, 3: 10_471, 4: 273_318, 5: 6_417_013}),
+    ("960 #4", "qbbnnrkr/2pp2pp/p7/1p2pp2/8/P3PP2/1PPP1KPP/QBBNNR1R w hf - 0 9",
+     {1: 22, 2: 593, 3: 13_440, 4: 382_958, 5: 9_183_776}),
+    ("960 #5", "1nbbnrkr/p1p1ppp1/3p4/1p3P1p/3Pq2P/8/PPP1P1P1/QNBBNRKR w HFhf - 0 9",
+     {1: 28, 2: 1_120, 3: 31_058, 4: 1_171_749, 5: 34_030_312}),
+    ("960 #6", "qnbnr1kr/ppp1b1pp/4p3/3p1p2/8/2NPP3/PPP1BPPP/QNB1R1KR w HEhe - 1 9",
+     {1: 29, 2: 899, 3: 26_578, 4: 824_055, 5: 24_851_983}),
+    ("960 #7", "q1bnrkr1/ppppp2p/2n2p2/4b1p1/2NP4/8/PPP1PPPP/QNB1RRKB w ge - 1 9",
+     {1: 30, 2: 860, 3: 24_566, 4: 732_757, 5: 21_093_346}),
+    ("960 #8", "qbn1brkr/ppp1p1p1/2n4p/3p1p2/P7/6PP/QPPPPP2/1BNNBRKR w HFhf - 0 9",
+     {1: 25, 2: 635, 3: 17_054, 4: 465_806, 5: 13_203_304}),
+    ("960 #9", "qnnbbrkr/1p2ppp1/2pp3p/p7/1P5P/2NP4/P1P1PPP1/Q1NBBRKR w HFhf - 0 9",
+     {1: 24, 2: 572, 3: 15_243, 4: 384_260, 5: 11_110_203}),
+    ("960 #10", "qn1rbbkr/ppp2p1p/1n1pp1p1/8/3P4/P6P/1PP1PPPK/QNNRBB1R w hd - 2 9",
+     {1: 28, 2: 811, 3: 23_175, 4: 679_699, 5: 19_836_606}),
+]
+
+
+def _args(board):
+    return (board.pawns, board.knights, board.bishops, board.rooks,
+            board.queens, board.kings,
+            board.occupied_co[chess.WHITE], board.occupied_co[chess.BLACK],
+            1 if board.turn == chess.WHITE else 0,
+            board.ep_square if board.ep_square is not None else -1,
+            board.clean_castling_rights())
 
 
 def c_perft(board, depth):
@@ -96,6 +147,38 @@ def main():
             print(f"  {mark} {name:<22} d{depth}  {got:>13,}"
                   + ("" if ok else f"  (expected {expected:,})")
                   + (f"  [{dt:.2f}s]" if dt >= 0.1 else ""))
+    # Chess960: both generators flip to king-takes-rook castling for these
+    # rows only, and back afterwards -- the flags are process-wide.
+    gens = [("movegen.so", _lib.set_chess960, lambda b, d: _lib.perft(*_args(b), d))]
+    if _cs is not None:
+        gens.append(("csearch.so", _cs.cs_set_chess960,
+                     lambda b, d: _cs.cs_perft(*_args(b), d)))
+    else:
+        print("\n  note csearch.so not built -- 960 rows counted on movegen.so only")
+    print()
+    for gname, set960, count in gens:
+        set960(1)
+        try:
+            for name, fen, table in POSITIONS_960:
+                board = chess.Board(fen, chess960=True)
+                for depth in sorted(table):
+                    expected = table[depth]
+                    if cap is not None and expected > cap:
+                        continue
+                    t0 = time.perf_counter()
+                    got = count(board, depth)
+                    dt = time.perf_counter() - t0
+                    total_nodes += got
+                    total_t += dt
+                    ok = got == expected
+                    failed += not ok
+                    mark = "ok  " if ok else "FAIL"
+                    print(f"  {mark} {name:<9} {gname:<11} d{depth}  {got:>13,}"
+                          + ("" if ok else f"  (expected {expected:,})")
+                          + (f"  [{dt:.2f}s]" if dt >= 0.1 else ""))
+        finally:
+            set960(0)
+
     nps = total_nodes / total_t if total_t > 0 else 0
     print(f"\n{'ALL PASS' if not failed else f'{failed} FAILURE(S)'} -- "
           f"{total_nodes:,} nodes in {total_t:.2f}s ({nps/1e6:.2f}M nps)")

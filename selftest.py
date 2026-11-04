@@ -878,6 +878,139 @@ if os.path.exists("csearch.c"):
                   f"{split_n} positions agree" if split_ok
                   else f"DIVERGED on {split_fen}")
 
+        # --- 5g1c. Chess960: castling as king-takes-rook ------------------ #
+        # UCI_Chess960 reaches the C core as one process-wide flag
+        # (cs_set_chess960), set per search from python-chess's
+        # board.chess960. Everything here runs with it ON and puts it back
+        # OFF -- the pinned checks are standard chess. testing/perft.py
+        # counts the published 960 perft table on both generators; this
+        # covers what perft cannot see: the incremental Zobrist, the FI-42
+        # accumulator and the NNUE push under every castle SHAPE (king
+        # stays, rook stays, the two swap, a two-file castle the standard
+        # e1g1 test would misread), the five-generator split, and the case
+        # where a castle is the ONLY quiet move, which breaks FI-87's
+        # standard-chess subsumption argument outright.
+        A960 = [_ct.c_uint64] * 8 + [_ct.c_int, _ct.c_int, _ct.c_uint64,
+                                     _ct.c_int]
+        for _fn in ("cs_perft", "cs_zkey_walk"):
+            getattr(ce._lib, _fn).restype = _ct.c_uint64
+            getattr(ce._lib, _fn).argtypes = A960
+        ce._lib.cs_set_chess960.argtypes = [_ct.c_int]
+        ce._lib.cs_gen_legal_list.restype = _ct.c_int
+        ce._lib.cs_gen_legal_list.argtypes = [_ct.c_uint64] * 8 + [
+            _ct.c_int, _ct.c_int, _ct.c_uint64, _ct.POINTER(_ct.c_uint32 * 256)]
+
+        def _ba960(bd):
+            return (bd.pawns, bd.knights, bd.bishops, bd.rooks, bd.queens,
+                    bd.kings, bd.occupied_co[chess.WHITE],
+                    bd.occupied_co[chess.BLACK],
+                    1 if bd.turn == chess.WHITE else 0,
+                    bd.ep_square if bd.ep_square is not None else -1,
+                    bd.clean_castling_rights())
+
+        def _pyperft(bd, d):
+            if d == 1:
+                return bd.legal_moves.count()
+            n_p = 0
+            for m_p in bd.legal_moves:
+                bd.push(m_p)
+                n_p += _pyperft(bd, d - 1)
+                bd.pop()
+            return n_p
+
+        FENS_960 = (
+            # chessprogramming Chess960 perft #1 (Shredder-FEN rights)
+            "bqnb1rkr/pp3ppp/3ppn2/2p5/5P2/P2P4/NPP1P1PP/BQ1BNRKR w HFhf - 2 9",
+            # Kc1/Ra1: c1a1 is a TWO-FILE king move -- the shape the
+            # standard castle test misread in nn_push before it was fixed
+            "r1kb1qbr/pppp1ppp/2nn4/4p3/4PP2/2NN4/PPPP2PP/R1KB1QBR w HAha - 2 5",
+            "1r4kr/8/8/8/8/8/8/1R4KR w HBhb - 0 1",      # h-side: king stays
+            "r4k2/8/8/8/8/8/8/R4KR1 w GAa - 0 1",        # h-side: K/R swap
+            "4k1r1/8/8/8/8/8/8/R1K5 w Ag - 0 1",         # c1a1 / e8g8 at root
+            "rk5r/8/8/8/8/8/8/RK5R w KQkq - 0 1",        # X-FEN rights
+            "3rk3/8/8/8/8/8/8/4KR2 w Fd - 0 1",          # rook stays (f1, d8)
+            "k7/8/b7/8/8/5ppp/5PPP/6KR w H - 0 1",       # castle = ONLY quiet
+        )
+        bad960 = []
+        try:
+            ce._lib.cs_set_chess960(1)
+            zk960 = ac960 = mg960 = 0
+            for f960 in FENS_960:
+                bd = chess.Board(f960, chess960=True)
+                a960 = _ba960(bd)
+                if ce._lib.cs_perft(*a960, 3) != _pyperft(bd, 3):
+                    bad960.append(f"perft {f960}")
+                zk960 += ce._lib.cs_zkey_walk(*a960, 3)
+                ac960 += ce._lib.cs_acc_walk(*a960, 3)
+                mg960 += ce._lib.cs_movegen_walk(*a960, 3) & 0xFFFFFFFF
+            if zk960 or ac960 or mg960:
+                bad960.append(f"walks: zkey {zk960} acc {ac960} split {mg960}")
+            # the "only quiet" position must really be that (else the
+            # MGC_QUIET_FLAG walk above proves nothing)
+            bq960 = chess.Board(FENS_960[-1], chess960=True)
+            q960 = [m for m in bq960.legal_moves if not bq960.is_capture(m)]
+            if len(q960) != 1 or not bq960.is_castling(q960[0]):
+                bad960.append("only-quiet fixture drifted")
+            # generated move SET vs python-chess over castling-biased 960
+            # playouts (castles chosen whenever legal, most of the time)
+            random.seed(960)
+            buf960 = (_ct.c_uint32 * 256)()
+            n960 = castles960 = 0
+            for _g in range(40):
+                bd = chess.Board.from_chess960_pos(random.randrange(960))
+                for _p in range(30):
+                    if bd.is_game_over():
+                        break
+                    n_c = ce._lib.cs_gen_legal_list(*_ba960(bd),
+                                                    _ct.byref(buf960))
+                    want = sorted(m.from_square | (m.to_square << 6)
+                                  | ((m.promotion or 0) << 12)
+                                  for m in bd.legal_moves)
+                    if sorted(buf960[i] for i in range(n_c)) != want:
+                        bad960.append(f"moveset {bd.fen()}")
+                        break
+                    n960 += 1
+                    lm = list(bd.legal_moves)
+                    cm = [m for m in lm if bd.is_castling(m)]
+                    castles960 += len(cm)
+                    bd.push(random.choice(cm) if cm and random.random() < 0.7
+                            else random.choice(lm))
+        finally:
+            ce._lib.cs_set_chess960(0)
+        check("Chess960: perft, Zobrist, accumulator, split + move set",
+              not bad960 and n960 > 800 and castles960 > 30,
+              f"{len(FENS_960)} castle shapes at d3, {n960} playout positions,"
+              f" {castles960} legal castles" if not bad960
+              else "; ".join(bad960[:3]))
+
+        # The search end to end on 960 boards: a legal move every time, the
+        # flag restored for the next standard search, and -- when the net is
+        # armed -- every incremental NNUE push equal to a full refresh.
+        ce._lib.nnue_verify_stats.argtypes = [_ct.POINTER(_ct.c_uint64)] * 2
+        ce._lib.set_nnue_verify(1)
+        p0, b0n = _ct.c_uint64(0), _ct.c_uint64(0)
+        ce._lib.nnue_verify_stats(_ct.byref(p0), _ct.byref(b0n))
+        legal960 = True
+        try:
+            for f960 in FENS_960[:5]:
+                ce._lib.cs_tt_reset()
+                bd = chess.Board(f960, chess960=True)
+                mv960 = ce.get_best_move(bd, 6)
+                legal960 = legal960 and mv960 in bd.legal_moves
+        finally:
+            ce._lib.set_nnue_verify(0)
+        p1, b1n = _ct.c_uint64(0), _ct.c_uint64(0)
+        ce._lib.nnue_verify_stats(_ct.byref(p1), _ct.byref(b1n))
+        ce._lib.cs_tt_reset()
+        ce.get_best_move(chess.Board(), 1)          # flips the flag back off
+        flag_off = ce._lib.cs_get_chess960() == 0
+        check("Chess960: searches play legal moves, NNUE pushes exact",
+              legal960 and flag_off and b1n.value == b0n.value,
+              f"{p1.value - p0.value:,} NNUE pushes, "
+              f"{b1n.value - b0n.value} mismatches"
+              + ("" if legal960 else ", ILLEGAL MOVE")
+              + ("" if flag_off else ", flag left ON"))
+
         # --- 5g2. PM-01 certification honours its wall-clock contract ---- #
         # FB-45: PREMOVE_CAP_S only blocks NEW sub-searches, so the true
         # bound is CAP_S + one (now capped) sub-search. Assert the bound and
@@ -924,6 +1057,9 @@ if os.path.exists("csearch.c"):
 #   * the CASTLING half is over-determined and cannot be stressed randomly:
 #     O-O legal requires f1/g1 empty and f1 unattacked, so Kf1 AND Rf1/Rg1
 #     are legal quiets too. Crafted positions pin it; the argument carries it.
+#     STANDARD CHESS ONLY: in Chess960 the argument is false (Kg1/Rh1 castles
+#     without the king stepping, and f1 is never checked), so has_legal_quiet
+#     scans 960 castles explicitly -- pinned by the 5g1c Chess960 fixture.
 random.seed(87)
 pos_checked, subsumption_ok, bad_fen = 0, True, ""
 CRAFTED = [
@@ -995,6 +1131,28 @@ if os.path.exists("cuci.py"):
         uci_ok = False
     check("cuci UCI round-trip (uciok/readyok/legal bestmove)", uci_ok,
           bm if bm else "no bestmove line -- see `python3 cuci.py` by hand")
+
+    # UCI_Chess960: the option is advertised, castles arrive from the GUI as
+    # king-takes-rook (c1a1 here keeps the king on c1; e8h8 lands it on g8),
+    # and the bestmove is legal on the 960 board.
+    fen960 = "r3k2r/8/8/8/8/8/8/R1K4R w HAha - 0 1"
+    r = subprocess.run(
+        [sys.executable, "cuci.py"],
+        input=("uci\nsetoption name UCI_Chess960 value true\nisready\n"
+               f"position fen {fen960} moves c1a1 e8h8\ngo depth 6\nquit\n"),
+        capture_output=True, text=True, timeout=120)
+    out = r.stdout
+    bm = next((l for l in out.splitlines() if l.startswith("bestmove ")), "")
+    try:
+        bd = chess.Board(fen960, chess960=True)
+        bd.push_uci("c1a1"); bd.push_uci("e8h8")
+        ok960 = ("option name UCI_Chess960" in out and bool(bm)
+                 and chess.Move.from_uci(bm.split()[1]) in bd.legal_moves
+                 and "rejected" not in r.stderr)
+    except Exception:
+        ok960 = False
+    check("cuci UCI_Chess960 round-trip (king-takes-rook castles)", ok960,
+          bm if bm else "no bestmove line")
 
     # FB-44: real ponder round-trip, and the release watcher must leave the
     # NEXT search alone. Must be PACED (Popen, not run(input=...)): a batch

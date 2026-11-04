@@ -48,6 +48,9 @@ Usage::
                                                                its own --mode, like --nodes does)
                      [--book1 book.bin] [--book2 book.bin]   (per-engine opening books; book testing)
                      [--start-pos True]                       (all games from startpos, ignore the FEN file)
+                     [--chess960]                             (Chess960: openings = the 960 start positions,
+                                                               or --fen-file read as 960; both engines must
+                                                               declare SUPPORTS_CHESS960)
                      [--sprt] [--sprt-min-pairs N]            (SPRT early-stop: quit as soon as the result is
                                                                provably good/bad instead of playing the whole
                                                                budget -- default [0, 4] normalized, a=b=0.05;
@@ -208,6 +211,13 @@ BOOK_ENGINE2 = None
 # random move choice -- two bookless deterministic engines from startpos
 # would repeat the same game, so leave this False for normal A/Bs.
 START_POS = False
+# Chess960 (CLI: --chess960). Openings become the 960 Fischer-random start
+# positions, each played both colours like any other opening, and castling is
+# king-takes-rook end to end. With an explicit --fen-file the file's FENs are
+# read AS Chess960 instead (X-FEN or Shredder-FEN rights). Both engines must
+# carry SUPPORTS_CHESS960 -- battle_worker refuses the game otherwise, which
+# rules out every Old Engine/ snapshot that predates it.
+CHESS960 = False
 SUBSET_SEED = 65            # FIXED so parallel windows shuffle identically.
                             # ROTATION POLICY (2026-07-18): bump to the new
                             # version number at every vN snapshot -- within an
@@ -253,7 +263,8 @@ import chess
 import chess.pgn
 
 from battle_worker import (engine_worker, nnue_label,
-                           describe_nnue_source)
+                           describe_nnue_source, board_from_fen, plain_fen,
+                           CHESS960_PREFIX)
 from time_manager import calculate_move_time
 
 # Optional SPRT early-stop (--sprt). Imported defensively so a broken/missing
@@ -781,7 +792,7 @@ def fmt_clock(ms):
 
 def build_pgn(round_no, fen, white, black, board, result, now, tc_label, tpm):
     game = chess.pgn.Game()
-    game.setup(chess.Board(fen))
+    game.setup(board_from_fen(fen))
     game.headers["Result"] = result   # ensures movetext ends with the correct terminator
     node = game
     for mv in board.move_stack:
@@ -806,7 +817,11 @@ def build_pgn(round_no, fen, white, black, board, result, now, tc_label, tpm):
         # f'[Time Per Move "{tpm}ms"]' if tpm is not None else '',
         f'[BlackElo "{black_elo}"]',
         f'[WhiteElo "{white_elo}"]',
-        f'[FEN "{fen}"]', f'[Result "{result}"]',
+        f'[FEN "{plain_fen(fen)}"]', f'[Result "{result}"]',
+        # Chess960 PGN needs the variant tag, or a reader replays the FEN as
+        # standard chess and every king-takes-rook castle is illegal.
+        '[Variant "Chess960"]' if fen.startswith(CHESS960_PREFIX) else '',
+        '[SetUp "1"]' if fen.startswith(CHESS960_PREFIX) else '',
     ]
     return "\n".join(h for h in header if h) + "\n" + movetext
 
@@ -922,7 +937,7 @@ def _phase24(board):
 
 def play_game(round_no, fen, white, black, e1, mode_cfg):
     """Play a single game. Returns a dict of results + the per-move log lines."""
-    board = chess.Board(fen)
+    board = board_from_fen(fen)
     engine_log = []
     error = None
     result = "*"
@@ -1576,7 +1591,7 @@ def _pack_result(g, e1, widx=-1):
 
 def _unpack_result(r, e1, e2):
     """Rebuild a g-style dict (with main-side EngineProcess/stub refs)."""
-    board = chess.Board(r["fen"])
+    board = board_from_fen(r["fen"])
     for uci in r["moves_uci"]:
         board.push(chess.Move.from_uci(uci))
     white = e1 if r["white_is_e1"] else e2
@@ -1924,8 +1939,9 @@ def main():
     # dashboard, harmless from a terminal). Anything not passed keeps CONFIG.
     global MODE, TIME_PER_MOVE_MS, FIXED_DEPTH, TC_SECONDS, TC_INCREMENT, \
         ADJUDICATE, FEN_FILE, BOOK_ENGINE1, BOOK_ENGINE2, START_POS, \
-        SUBSET_SEED
+        SUBSET_SEED, CHESS960
     argv = sys.argv[1:]
+    fen_file_given = False
     workers_str = None
     nodes_budget = None
     positional = []
@@ -2013,7 +2029,11 @@ def main():
             i += 2
         elif argv[i] == "--fen-file" and i + 1 < len(argv):
             FEN_FILE = argv[i + 1]
+            fen_file_given = True
             i += 2
+        elif argv[i] == "--chess960":
+            CHESS960 = True
+            i += 1
         elif argv[i] == "--nodes" and i + 1 < len(argv):
             # Opt-in fixed-node mode (machine-load-immune SCREENS; 10k GSPRT
             # confirmations stay 50+0.2 timed per doctrine). Each side's
@@ -2228,7 +2248,24 @@ def main():
     # Positions -> seeded shuffle, then take the slice [offset : offset+n].
     # With a FIXED SUBSET_SEED every window shuffles identically, so distinct
     # offsets give DISJOINT shards (no overlap across parallel windows).
-    if START_POS:
+    if CHESS960 and START_POS:
+        print("ERROR: --chess960 and --start-pos are exclusive (a 960 run "
+              "draws its openings from the 960 start positions)")
+        return
+    if CHESS960 and not fen_file_given:
+        # The 960 Fischer-random start positions ARE the opening book: each
+        # is a legal, balanced game start, so no file is needed. FEN_FILE
+        # becomes a label, which also keeps 960 runs out of standard runs'
+        # resume fingerprint.
+        FEN_FILE = "chess960 start positions"
+        pool = [CHESS960_PREFIX + chess.Board.from_chess960_pos(i).fen()
+                for i in range(960)]
+        print(f"--chess960: {len(pool)} Fischer-random start positions")
+    elif CHESS960:
+        pool = [CHESS960_PREFIX + f for f in load_fens(FEN_FILE)]
+        print(f'Loaded {FEN_FILE} as Chess960\n'
+              f'Total Positions Loaded: {len(pool):,}')
+    elif START_POS:
         # --start-pos True: every game from the standard starting position
         # (book testing). One repeated "position" per scheduled pair; the
         # offset/shuffle machinery below degenerates harmlessly.
@@ -2302,6 +2339,10 @@ def main():
                    "clock": f"tc{TC_SECONDS:g}+{TC_INCREMENT:g}"}[MODE])
     if int(ENGINE_SMP) != 1:
         instrument += f"_smp{int(ENGINE_SMP)}"
+    if CHESS960:
+        # A different game, not a different budget: a 960 run must never
+        # auto-pool with a standard one between the same engines at one TC.
+        instrument += "_960"
     workers_desc = (f"{n_workers} parallel" if parallel else "1 sequential")
     _nn_lines = "".join(x + "\n" for x in _net_lines([e1, e2]))
     banner = (f"Match: {e1.name}  vs  {e2.name}\n"
@@ -2433,14 +2474,18 @@ def main():
                 # different number on every box, so recording it there would
                 # fire the warning on every legitimate cross-box tranche.
                 "workers": (int(n_workers) if MODE in ("clock", "time") else None),
+                "chess960": bool(CHESS960),
                 "started": run_stamp()}
     # A short stable digest of the instrument, so a human can compare two files
     # at a glance instead of diffing ten fields.
+    # chess960 joins the digest only when ON, so every standard campaign keeps
+    # the key it already has on disk (--chess960 with an explicit --fen-file
+    # would otherwise hash identically to the same file played as standard).
+    _key_fields = ["engine1", "engine2", "mode", "smp", "seed", "fen_file",
+                   "sf_elo", "sf_our_clock", "adjudicate", "book1", "book2",
+                   "workers", "sf_version"] + (["chess960"] if CHESS960 else [])
     this_run["instrument_key"] = "k" + hashlib.sha256(json.dumps(
-        {k: this_run[k] for k in ("engine1", "engine2", "mode", "smp",
-                                  "seed", "fen_file", "sf_elo", "sf_our_clock",
-                                  "adjudicate", "book1", "book2", "workers",
-                                  "sf_version")},
+        {k: this_run[k] for k in _key_fields},
         sort_keys=True).encode()).hexdigest()[:8]
     # The gate is gone, so the CHECK has to be loud instead. Compare against
     # the last recorded run and say what moved. This is the part that used to
@@ -2457,7 +2502,7 @@ def main():
                  for k in ("engine1", "engine2", "mode", "smp", "seed",
                            "fen_file", "sf_elo", "sf_our_clock", "adjudicate",
                            "book1", "book2", "workers", "sf_version",
-                           "instrument_key")
+                           "chess960", "instrument_key")
                  if k in prev and prev.get(k) != this_run[k]]
         if moved:
             print("  ** CONFIG CHANGED since the last run in this file -- "

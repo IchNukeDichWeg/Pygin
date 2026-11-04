@@ -424,6 +424,100 @@ static inline int legal_q(const Board* b, const LegalCtx* c,
     return legal(b, from, to, is_ep);
 }
 
+/* ---------- Chess960 castling (UCI_Chess960) ------------------------------ *
+ * OFF (0) is the shipped standard-chess engine, node-identical to before this
+ * block existed: every standard path below is untouched and the 960 path is
+ * reached only behind g_chess960. The driver sets it per search from
+ * python-chess's board.chess960, so the two sides always agree on encoding.
+ *
+ * ENCODING: a 960 castle is the king "capturing" its own rook -- from = king
+ * square, to = ROOK square, mover KING, victim 0. That is UCI_Chess960's wire
+ * format and python-chess's internal representation on a chess960 board, so
+ * the 15-bit key round-trips to the Python side with no translation. King-to-
+ * destination (standard e1g1) cannot work here: with Kf1/Rh1 the castle and
+ * the plain king step f1g1 would share one key, and with Kg1/Rh1 the king does
+ * not move at all.
+ *
+ * RULES: python-chess's generate_castling_moves, line for line -- the king
+ * lands on c/g and the rook on d/f; every square either piece passes over or
+ * lands on must be empty apart from the king and that rook; the king's start,
+ * every square strictly between start and destination (scanned with the king
+ * lifted off, so an x-ray along the rank counts) and the destination (scanned
+ * with the rook already on d/f) must be unattacked. Rights are the rook-square
+ * bitboard python-chess's clean_castling_rights hands over, so a king move
+ * clears the whole back rank and a rook move or capture clears its square --
+ * apply_move does both for standard chess too, where only corners exist.
+ * ------------------------------------------------------------------------- */
+static int g_chess960 = 0;
+void cs_set_chess960(int on) { g_chess960 = on ? 1 : 0; }
+int cs_get_chess960(void) { return g_chess960; }
+
+/* Squares strictly between a and b on one rank (0 when adjacent or equal). */
+static inline uint64_t rank_span(int a, int b)
+{
+    int lo = a < b ? a : b, hi = a < b ? b : a;
+    if (hi - lo < 2) return 0;
+    return ((1ULL << hi) - 1) & ~((2ULL << lo) - 1);
+}
+
+/* Destination squares of a castle by `us` with the rook on `rsq`, king `ksq`. */
+static inline void castle960_dest(int us, int ksq, int rsq, int* kto, int* rto)
+{
+    int r0 = (us == WHITE) ? 0 : 56;
+    int a_side = rsq < ksq;
+    *kto = r0 + (a_side ? 2 : 6);
+    *rto = r0 + (a_side ? 3 : 5);
+}
+
+/* Is `sq` attacked by the side not to move, against occupancy `occ`? */
+static inline int sq_attacked_occ(const Board* b, int sq, uint64_t occ)
+{
+    int us = b->turn, them = us ^ 1;
+    uint64_t to = b->occ[them];
+    return attacked(sq, occ, us, b->pawns & to, b->knights & to,
+                    (b->bishops | b->queens) & to,
+                    (b->rooks | b->queens) & to, b->kings & to);
+}
+
+/* Is castling with our rook on `rsq` legal for the king on `ksq`? Caller
+ * guarantees: right present on rsq, our rook there, our king on ksq, same
+ * back rank. */
+static int castle960_legal(const Board* b, int ksq, int rsq)
+{
+    int us = b->turn, kto, rto;
+    castle960_dest(us, ksq, rsq, &kto, &rto);
+    uint64_t occ = b->occ[0] | b->occ[1];
+    uint64_t kb = 1ULL << ksq, rb = 1ULL << rsq;
+    uint64_t ktb = 1ULL << kto, rtb = 1ULL << rto;
+    uint64_t kpath = rank_span(ksq, kto);
+    uint64_t rpath = rank_span(rsq, rto);
+    if ((occ ^ kb ^ rb) & (kpath | rpath | ktb | rtb)) return 0;
+    uint64_t occ_nok = occ ^ kb;
+    for (uint64_t t = kpath | kb; t; t &= t - 1)
+        if (sq_attacked_occ(b, __builtin_ctzll(t), occ_nok)) return 0;
+    return !sq_attacked_occ(b, kto, occ ^ kb ^ rb ^ rtb);
+}
+
+/* Emit every legal 960 castle in python-chess order: descending rook square,
+ * i.e. h-side before a-side -- the same slot standard castling takes. */
+static int gen_castle960(const Board* b, uint32_t* out)
+{
+    int us = b->turn, cnt = 0;
+    uint64_t back = (us == WHITE) ? RANK_1 : RANK_8;
+    uint64_t cand = b->castling & back & b->rooks & b->occ[us];
+    if (!cand) return 0;
+    uint64_t kbb = b->kings & b->occ[us] & back;
+    if (!kbb) return 0;
+    int ksq = __builtin_ctzll(kbb);
+    while (cand) {
+        int rsq = 63 - __builtin_clzll(cand);
+        cand &= ~(1ULL << rsq);
+        if (castle960_legal(b, ksq, rsq))
+            out[cnt++] = MOVE_TAG(ksq, rsq, 0, PT_KING, 0, 0);
+    }
+    return cnt;
+}
+
 /* ---------- legal move generation (python-chess pseudo-legal order) ------- */
 /* Emits in exactly generate_pseudo_legal_moves order, minus illegal moves.
  * Correct SET in every position; correct ORDER when not in check. */
@@ -462,7 +556,9 @@ static int gen_legal(const Board* b, uint32_t* out)
 
     /* 2. castling: descending rook-square => king side before queen side.
      *    Mover is the king; never a capture. */
-    {
+    if (g_chess960) {
+        cnt += gen_castle960(b, out + cnt);
+    } else {
         int e = (us == WHITE) ? 4 : 60;
         int ks_rook = (us == WHITE) ? 7 : 63;
         int qs_rook = (us == WHITE) ? 0 : 56;
@@ -666,6 +762,14 @@ static int has_legal_quiet(const Board* b)
         int from = (us == WHITE) ? to - 8 : to + 8;
         if (legal_q(b, &lc, from, to, 0, 0)) return 1;
     }
+    /* Chess960 breaks the castling subsumption above: with Kg1/Rh1 the king
+     * never steps, and with f1 attacked O-O can be the ONLY quiet move (the
+     * king's destination is checked, the square beside it is not). Reached
+     * only once every other quiet failed, so it costs standard chess nothing. */
+    if (g_chess960) {
+        uint32_t c960[2];
+        if (gen_castle960(b, c960)) return 1;
+    }
     return 0;
 }
 
@@ -758,7 +862,9 @@ static int gen_quiets(const Board* b, uint32_t* out)
                 out[cnt++] = MOVE_TAG(from, to, 0, mover_pt, 0, 0);
         }
     }
-    {                                                       /* castling */
+    if (g_chess960) {                                       /* castling */
+        cnt += gen_castle960(b, out + cnt);
+    } else {
         int e = (us == WHITE) ? 4 : 60;
         int ks_rook = (us == WHITE) ? 7 : 63;
         int qs_rook = (us == WHITE) ? 0 : 56;
@@ -820,6 +926,16 @@ static uint32_t move_from_key(const Board* b, uint32_t key)
     int us = b->turn, them = us ^ 1;
     uint64_t fb = 1ULL << from, tb = 1ULL << to;
     uint64_t own = b->occ[us], enemy = b->occ[them], occ = own | enemy;
+    if (g_chess960 && (own & fb) && (own & tb)) {   /* king takes own rook */
+        uint64_t back = (us == WHITE) ? RANK_1 : RANK_8;
+        uint64_t kbb = b->kings & own & back;
+        if (promo || !(b->kings & fb) || !kbb
+                || from != __builtin_ctzll(kbb)
+                || !(b->castling & b->rooks & back & tb))
+            return 0;
+        if (!castle960_legal(b, from, to)) return 0;
+        return MOVE_TAG(from, to, 0, PT_KING, 0, 0);
+    }
     if (!(own & fb) || (own & tb)) return 0;
     int mover = board_piece_type_at(b, from);
     int victim = (enemy & tb) ? board_piece_type_at(b, to) : 0;
@@ -838,6 +954,7 @@ static uint32_t move_from_key(const Board* b, uint32_t key)
             return MOVE_TAG(from, to, 0, mover, victim, 0);
         }
         if (mover != PT_KING || victim) return 0;
+        if (g_chess960) return 0;   /* 960 castles are king-takes-rook only */
         {                                           /* castling two-step */
             int e = (us == WHITE) ? 4 : 60;
             if (from != e) return 0;
@@ -894,6 +1011,39 @@ static uint32_t move_from_key(const Board* b, uint32_t key)
     return 0;
 }
 
+/* Chess960 castle: king `ksq` takes own rook `rsq` (see the 960 block above
+ * gen_legal). Cold path, out of apply_move's body. Every Zobrist XOR pairs
+ * with an FI-42 accumulator term on the same square, as in apply_move, and
+ * the four terms are applied as remove-both-then-add-both so the squares may
+ * coincide (Kg1/Rh1: king stays; Kf1/Rg1: the two swap; Rf1: rook stays). */
+static void apply_castle960(Board* b, int ksq, int rsq)
+{
+    int us = b->turn, them = us ^ 1, kto, rto;
+    castle960_dest(us, ksq, rsq, &kto, &rto);
+    uint64_t kb = 1ULL << ksq, rb = 1ULL << rsq;
+    uint64_t ktb = 1ULL << kto, rtb = 1ULL << rto;
+    uint64_t zkey = b->key ^ Z_TURN;
+    zkey ^= Z_PSQ[us][PT_KING][ksq] ^ Z_PSQ[us][PT_ROOK][rsq]
+          ^ Z_PSQ[us][PT_KING][kto] ^ Z_PSQ[us][PT_ROOK][rto];
+    int acc_mg = b->a_mg, acc_eg = b->a_eg, acc_ph = b->a_ph;
+    ACC_REMOVE(acc_mg, acc_eg, acc_ph, us, PT_KING, ksq);
+    ACC_REMOVE(acc_mg, acc_eg, acc_ph, us, PT_ROOK, rsq);
+    ACC_ADD(acc_mg, acc_eg, acc_ph, us, PT_KING, kto);
+    ACC_ADD(acc_mg, acc_eg, acc_ph, us, PT_ROOK, rto);
+    b->kings = (b->kings & ~kb) | ktb;
+    b->rooks = (b->rooks & ~rb) | rtb;
+    b->occ[us] = (b->occ[us] & ~(kb | rb)) | ktb | rtb;
+    uint64_t cr = b->castling & ~((us == WHITE) ? RANK_1 : RANK_8);
+    for (uint64_t crx = b->castling ^ cr; crx; crx &= crx - 1)
+        zkey ^= Z_CR[__builtin_ctzll(crx)];
+    b->castling = cr;
+    zkey ^= Z_EP[b->ep + 1] ^ Z_EP[0];
+    b->ep = -1;
+    b->turn = them;
+    b->key = zkey;
+    b->a_mg = acc_mg; b->a_eg = acc_eg; b->a_ph = acc_ph;
+}
+
 /* ---------- exported: generate_legal ------------------------------------- */
 /* Returns move count, or -1 if the side to move is in check (caller should
  * fall back to python-chess to preserve the evasion move order). */
@@ -908,6 +1058,14 @@ static void apply_move(Board* b, uint32_t mv)
      * call sites pass their words through) -- the old 5-branch bitboard
      * probe re-derived it per child, millions of times per second. */
     int movpt = (mv >> MV_SHIFT_MOVER) & 7;     /* 1=P 2=N 3=B 4=R 5=Q 6=K */
+
+    /* Chess960: a king landing on its OWN piece is a castle (king takes own
+     * rook). Never true in standard chess, so this costs one test on king
+     * moves and changes nothing there. */
+    if (__builtin_expect(movpt == PT_KING && (b->occ[us] & tb), 0)) {
+        apply_castle960(b, from, to);
+        return;
+    }
 
     uint64_t capmask = tb;
     if (movpt == 1 && to == b->ep && !(b->occ[them] & tb))
@@ -967,9 +1125,11 @@ static void apply_move(Board* b, uint32_t mv)
     }
 
     uint64_t cr = b->castling;
+    /* A king move clears its whole back rank: in standard chess rights only
+     * ever sit on the corners, so this is bit-identical to clearing a1/h1
+     * (a8/h8) -- and in Chess960 it reaches rooks on any file. */
     if (movpt == 6)
-        cr &= (us == WHITE) ? ~((1ULL << 0) | (1ULL << 7))
-                            : ~((1ULL << 56) | (1ULL << 63));
+        cr &= (us == WHITE) ? ~RANK_1 : ~RANK_8;
     cr &= ~fb;
     cr &= ~capmask;
     for (uint64_t crx = b->castling ^ cr; crx; crx &= crx - 1)
@@ -1448,6 +1608,59 @@ uint64_t cs_acc_walk(uint64_t pawns, uint64_t knights, uint64_t bishops,
     Board b = make_board(pawns, knights, bishops, rooks, queens, kings,
                          occ_w, occ_b, turn, ep, castling);
     return acc_walk(&b, depth);
+}
+
+/* Perft over csearch's OWN gen_legal + apply_move. perft.py drives movegen.so,
+ * which cannot see this copy; Chess960 is where the two first had to be
+ * written separately, so the 960 gate counts nodes here directly. */
+static uint64_t cs_perft_rec(const Board* b, int depth)
+{
+    uint32_t moves[256];
+    int n = gen_legal(b, moves);
+    if (depth <= 1) return depth == 1 ? (uint64_t)n : 1;
+    uint64_t total = 0;
+    for (int i = 0; i < n; i++) {
+        Board c = *b;
+        apply_move(&c, moves[i]);
+        total += cs_perft_rec(&c, depth - 1);
+    }
+    return total;
+}
+
+uint64_t cs_perft(uint64_t pawns, uint64_t knights, uint64_t bishops,
+                  uint64_t rooks, uint64_t queens, uint64_t kings,
+                  uint64_t occ_w, uint64_t occ_b,
+                  int turn, int ep, uint64_t castling, int depth)
+{
+    Board b = make_board(pawns, knights, bishops, rooks, queens, kings,
+                         occ_w, occ_b, turn, ep, castling);
+    return cs_perft_rec(&b, depth);
+}
+
+/* FI-01 ZKEY differential, re-exported: the incremental key apply_move keeps
+ * vs key_from_scratch, at every node of a real tree. Counts mismatches. */
+static uint64_t zkey_walk(const Board* b, int depth)
+{
+    uint64_t bad = (b->key == key_from_scratch(b)) ? 0 : 1;
+    if (depth <= 0) return bad;
+    uint32_t moves[256];
+    int n = gen_legal(b, moves);
+    for (int i = 0; i < n; i++) {
+        Board c = *b;
+        apply_move(&c, moves[i]);
+        bad += zkey_walk(&c, depth - 1);
+    }
+    return bad;
+}
+
+uint64_t cs_zkey_walk(uint64_t pawns, uint64_t knights, uint64_t bishops,
+                      uint64_t rooks, uint64_t queens, uint64_t kings,
+                      uint64_t occ_w, uint64_t occ_b,
+                      int turn, int ep, uint64_t castling, int depth)
+{
+    Board b = make_board(pawns, knights, bishops, rooks, queens, kings,
+                         occ_w, occ_b, turn, ep, castling);
+    return zkey_walk(&b, depth);
 }
 
 static int eval_white(const Board* b)
@@ -2780,10 +2993,8 @@ static inline int upcoming_repetition(const Board* b, uint64_t key,
         /* key-soundness: the move must not strip castling rights (the real
          * post-move key would differ from `past` by Z_CR terms) */
         uint64_t crh = b->castling & (b1 | b2);
-        if (pt == PT_KING)
-            crh |= b->castling & (b->turn == WHITE
-                                  ? ((1ULL << 0) | (1ULL << 7))
-                                  : ((1ULL << 56) | (1ULL << 63)));
+        if (pt == PT_KING)          /* whole back rank: Chess960 rooks too */
+            crh |= b->castling & (b->turn == WHITE ? RANK_1 : RANK_8);
         if (crh) continue;
 #ifdef CYCLE_VERIFY
         {   /* differential: really make the claimed move; the child key
@@ -4472,8 +4683,11 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             continue;
 
         /* FI-38 quiets half: prune a quiet move that hangs more than
-         * K2 * depth^2 on its destination square. */
+         * K2 * depth^2 on its destination square. A Chess960 castle (king
+         * onto its own rook) is exempt: its `to` is the ROOK's square, so
+         * see_quiet would price a king standing where the rook stood. */
         if (g_see_quiet && quiet && !is_pv && !in_chk && !gives_check
+                && !(mover == PT_KING && (b->occ[b->turn] & (1ULL << ((m >> 6) & 63))))
                 && depth <= 4 && best > -MATE_THRESH
                 && see_quiet(b->pawns, b->knights, b->bishops, b->rooks,
                              b->queens, b->kings, b->occ[WHITE], b->occ[BLACK],
@@ -5173,7 +5387,9 @@ int cs_rep_probe(const uint64_t* path, int ply, const uint64_t* hist,
     return r;
 }
 
-int csearch_abi(void) { return 40; }  /* 40 = E-05 set_nn_tempo;
+int csearch_abi(void) { return 41; }  /* 41 = cs_set_chess960
+                                       *      (+ cs_perft / cs_zkey_walk);
+                                       * 40 = E-05 set_nn_tempo;
                                        * 39 = E-04 set_nn_matscale;
                                        * 38 = FI-38 set_see_quiet;
                                        * 37 = FI-38 set_see_scaled;
