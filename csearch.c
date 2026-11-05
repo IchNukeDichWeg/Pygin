@@ -2113,12 +2113,7 @@ typedef struct {
  * denominated in. Default stays OFF until that run reports. */
 static int g_tt_deadtag = 0;                  /* visible switch, default OFF */
 void set_tt_deadtag(int v) { g_tt_deadtag = v ? 1 : 0; }
-/* FI-115 stamp: each store passes the STORING node's own piece count (pc).
- * It used to come from a per-thread g_node_pc set on node entry -- but every
- * descendant overwrote it before the node's own post-search store, so the
- * stamp was the count of the LAST node visited in the subtree (<= the true
- * count after any capture below). Being too low, it never evicted a live
- * entry; it hid dead ones, so the rule fired less than designed. */
+static __thread int g_node_pc = 0;            /* piece count at this node */
 static int g_root_pc = 32;                    /* piece count at the root */
 void cs_set_root_pc(int n) { g_root_pc = n; }
 #define TT_PC(e) ((int)(((e).d2 >> 19) & 63))
@@ -2272,7 +2267,7 @@ static __thread int g_is_helper = 0;    /* set at helper-thread entry;
 
 static inline void tt_store_raw(TTEntry* t, uint64_t key, int value,
                                 uint32_t move, int depth, int flag, int ev,
-                                int pv, int pc)
+                                int pv)
 {
 #ifdef FI96_HELPER_MUTE
     /* FI-96 ORCHESTRATION ORACLE -- a differential BUILD, never the shipped
@@ -2298,7 +2293,7 @@ static inline void tt_store_raw(TTEntry* t, uint64_t key, int value,
     uint64_t d1 = (uint64_t)(uint32_t)value | ((uint64_t)move << 32);
     uint64_t d2 = (uint64_t)(uint16_t)depth
                 | ((uint64_t)(uint16_t)(flag | ((pv & 1) << 2)) << 16)
-                | ((uint64_t)(pc & 63) << 19)          /* FI-115 */
+                | ((uint64_t)(g_node_pc & 63) << 19)   /* FI-115 */
                 | ((uint64_t)(uint16_t)g_gen << 32)
                 | ((uint64_t)(uint16_t)(int16_t)ev << 48);   /* FI-03 */
     /* FB-12: relaxed ATOMIC stores. The table is shared by every Lazy-SMP
@@ -3917,14 +3912,13 @@ void set_iir_weak(int v) { g_iir_weak = v ? 1 : 0; }
 static int g_lmr_badcap = 0;
 void set_lmr_badcap(int v) { g_lmr_badcap = v ? 1 : 0; }
 
-static void tt_store_terminal(TTEntry* t, uint64_t key, int val, int ply,
-                              int pc)
+static void tt_store_terminal(TTEntry* t, uint64_t key, int val, int ply)
 {
     if (!g_term_store || !g_use_tt || t == NULL || CS_UNWINDING()) return;
     int sv = val;
     if (sv >= MATE_THRESH) sv += ply;                /* node -> ply-relative */
     else if (sv <= -MATE_THRESH) sv -= ply;
-    tt_store_raw(t, key, sv, 0, 200, TT_EXACT, TT_EVAL_NONE, 0, pc);
+    tt_store_raw(t, key, sv, 0, 200, TT_EXACT, TT_EVAL_NONE, 0);
 }
 
 /* FB-12(c), the qsearch-store clobber, RESOLVED-AS-ACCEPTED 2026-07-25.
@@ -3948,8 +3942,7 @@ static void tt_store_terminal(TTEntry* t, uint64_t key, int val, int ply,
  * missed -- and does not "fix" it with a CAS that costs NPS for nothing. */
 static inline void qs_tt_store(TTEntry* t, uint64_t key, int val, int ply,
                                uint32_t move, int flag, int ev,
-                               int depth,  /* FI-52: depth; FI-71: slot in */
-                               int pc)     /* FI-115: the node's men */
+                               int depth)  /* FI-52: depth; FI-71: slot in */
 {
     /* FI-71: the slot pointer is computed once at the probe and threaded
      * in -- every call site is inside `if (use_qtt ...)`, and g_tt cannot
@@ -3979,7 +3972,7 @@ static inline void qs_tt_store(TTEntry* t, uint64_t key, int val, int ply,
                                                       * a same-key entry's
                                                       * ordering asset */
         mv = TT_MOVE(cur) & 0x7FFF;
-    tt_store_raw(t, key, sv, mv, depth, flag, ev, 0, pc);
+    tt_store_raw(t, key, sv, mv, depth, flag, ev, 0);
 }
 
 /* FB-40: the FI-30(a) stand-pat sharpen rule, shared by both qsearch
@@ -4013,7 +4006,7 @@ _Static_assert(offsetof(Board, knights) == offsetof(Board, pawns) + 1 * sizeof(u
 static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
                    int hmc)
 {
-    const int node_pc = __builtin_popcountll(b->occ[0] | b->occ[1]); /* FI-115 */
+    g_node_pc = __builtin_popcountll(b->occ[0] | b->occ[1]);  /* FI-115 */
     g_nodes++;
     g_pv_len[ply] = 0;     /* PV-01: every exit path leaves a valid (empty)
                             * line -- a stale slot would splice wrong moves
@@ -4098,7 +4091,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         if (n == 0) {                                /* checkmate */
             if (use_qtt)                             /* FI-54: permanent fact */
                 tt_store_terminal(&g_tt[key & TT_MASK], key,
-                                  -CS_INF + ply, ply, node_pc);
+                                  -CS_INF + ply, ply);
             return -CS_INF + ply;
         }
         best = -CS_INF;
@@ -4117,8 +4110,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         if (stand >= beta) {                         /* fail-soft stand-pat */
             if (has_legal_quiet(b) || gen_noisy(b, moves) > 0) {
                 if (use_qtt && !CS_UNWINDING())      /* P-44: cache the cutoff */
-                    qs_tt_store(qslot, key, stand, ply, 0, TT_LOWER, raw_stand, 0,
-                                node_pc);
+                    qs_tt_store(qslot, key, stand, ply, 0, TT_LOWER, raw_stand, 0);
                 return stand;
             }
             SM_TALLY(b);
@@ -4176,7 +4168,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
                                                   * eval kept, FI-52 tag 0) */
                     if (use_qtt && !CS_UNWINDING())
                         qs_tt_store(qslot, key, best, ply, bm, TT_LOWER,
-                                    raw_stand, 0, node_pc);
+                                    raw_stand, 0);
                     return best;
                 }
             }
@@ -4207,8 +4199,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         stand = qs_sharpen_stand(stand, qs_sh_flag, qs_sh_val);   /* FB-40 */
         if (stand >= beta) {                         /* fail-soft stand-pat */
             if (use_qtt && !CS_UNWINDING())          /* P-44: cache the cutoff */
-                qs_tt_store(qslot, key, stand, ply, 0, TT_LOWER, raw_stand, 0,
-                            node_pc);
+                qs_tt_store(qslot, key, stand, ply, 0, TT_LOWER, raw_stand, 0);
             return stand;
         }
         if (stand > alpha) alpha = stand;
@@ -4296,8 +4287,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
                  : (best >= beta)       ? TT_LOWER : TT_EXACT;
         qs_tt_store(qslot, key, best, ply, bm, flag,
                     in_chk ? TT_EVAL_NONE : raw_stand,   /* FI-03: RAW eval */
-                    (g_qs_chk_d1 && in_chk) ? 1 : 0,     /* FI-52: depth-1 tag */
-                    node_pc);
+                    (g_qs_chk_d1 && in_chk) ? 1 : 0);    /* FI-52: depth-1 tag */
     }
     return best;
 }
@@ -4306,7 +4296,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                    uint32_t prev12, int in_chk, int hmc, int chk, int srb,
                    int cutnode)
 {
-    const int node_pc = __builtin_popcountll(b->occ[0] | b->occ[1]); /* FI-115 */
+    g_node_pc = __builtin_popcountll(b->occ[0] | b->occ[1]);  /* FI-115 */
     /* FI-104: sticky ttPv. Set here rather than beside is_pv further down,
      * because the TT probe that ORs in a stored marker runs BEFORE that
      * declaration -- (beta - alpha) > 1 is the same test, just hoisted. */
@@ -4587,7 +4577,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                         && !CS_UNWINDING()) {
                         if (!g_cb2) {
                             tt_store_raw(tte, key, ns, 0, depth, TT_LOWER,
-                                         store_eval, 0, node_pc); /* FI-106 */
+                                         store_eval, 0);      /* FI-106 */
                         } else {
                             /* CB-02(a)/FB-22: obey the replacement policy;
                              * never clobber a DEEPER entry, and keep a
@@ -4601,12 +4591,12 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                                     tt_store_raw(tte, key, ns,
                                                  TT_MOVE(cur) & 0x7FFF,
                                                  depth, TT_LOWER,
-                                                 store_eval, 0, node_pc);
+                                                 store_eval, 0);
                             } else if (TT_GEN(cur) != (int)(uint16_t)g_gen
                                        || depth >= TT_DEPTH(cur)
                                                    + tt_exact_bonus(cur)) {
                                 tt_store_raw(tte, key, ns, 0, depth,
-                                             TT_LOWER, store_eval, 0, node_pc);
+                                             TT_LOWER, store_eval, 0);
                             }
                         }
                     }
@@ -4680,7 +4670,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             if (!in_chk) SM_TALLY(b);
             int tv = in_chk ? -CS_INF + ply
                             : (g_sm_contempt ? draw_score(b) : 0);   /* FB-48 */
-            tt_store_terminal(tte, key, tv, ply, node_pc);   /* FI-54 */
+            tt_store_terminal(tte, key, tv, ply);    /* FI-54 */
             return tv;
         }
         /* P-43: single-reply extension -- node-level, fires when this node
@@ -4867,7 +4857,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         if (!in_chk) SM_TALLY(b);
         int tv = in_chk ? -CS_INF + ply
                         : (g_sm_contempt ? draw_score(b) : 0);       /* FB-48 */
-        tt_store_terminal(tte, key, tv, ply, node_pc);   /* FI-54 */
+        tt_store_terminal(tte, key, tv, ply);        /* FI-54 */
         return tv;
     }
 
@@ -4924,7 +4914,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
              * (pawn/bishop/queen) -- TT-move ordering was silently dead
              * for those movers. */
             tt_store_raw(tte, key, sv, best_move & 0x7FFF, depth, flag,
-                         store_eval, ttpv, node_pc);              /* FI-104 */
+                         store_eval, ttpv);                       /* FI-104 */
         }
     }
     return best;
@@ -5148,8 +5138,7 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
         int flag = (best <= alpha_orig) ? TT_UPPER
                  : (best >= beta)       ? TT_LOWER : TT_EXACT;
         tt_store_raw(&g_tt[key & TT_MASK], key, best,
-                     best_move & 0x7FFF, depth, flag, TT_EVAL_NONE, 1,
-                     __builtin_popcountll(b.occ[0] | b.occ[1]));   /* FI-115 */
+                     best_move & 0x7FFF, depth, flag, TT_EVAL_NONE, 1);
     }
     *out_score = best;
     *out_second = best2;                             /* FI-09(b) */
