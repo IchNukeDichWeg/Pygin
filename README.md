@@ -241,7 +241,8 @@ removal are nodes-to-depth gains at flat speed.
   pthreads on a lock-free shared TT (`Threads`).
 - **Play:** local **Syzygy** 3-4-5 (WDL + DTZ) with online Lichess probing for
   6-7 men; Polyglot book (`Perfect2023.bin`); pondering; **MultiPV**; certified
-  instant premoves; `wdl` info lines.
+  instant premoves; `wdl` info lines; **Chess960** (`UCI_Chess960`, see
+  [Chess960](#chess960)).
 - **Built, measured, and deliberately OFF:** singular extensions, outpost and
   king-shelter terms, subtree-count root ordering, history-driven quiet
   pruning, several qsearch-TT variants, a growing TT. Each measured null or
