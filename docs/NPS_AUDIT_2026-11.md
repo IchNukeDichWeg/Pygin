@@ -4,7 +4,7 @@ An audit of where single-thread search time goes, looking for speed that
 earlier work missed. Everything that shipped on this branch is **node-identical**:
 bench 672,025 before and after, the d14 ladder exact, and the retained-TT probe
 unchanged at 2,197,716. A speed change still owes a timed A/B before its Elo
-can be banked, and none has been run yet.
+can be banked; it was run on 2026-11-05, see section 8.
 
 **Headline (x86 Linux VM, clang 18, vs `54e5016` built with clang):**
 
@@ -171,9 +171,29 @@ the searches only.
 Everything above was either shipped, measured and dropped, or bounded. Three
 things remain, and none of them can be done on this box:
 
-1. **The timed Elo A/B the speed changes owe**, ideally on the reference Mac.
-   The huge-page part is Linux-only, and the lazy accumulator may show more
-   on Apple silicon than here.
+1. **The timed Elo A/B the speed changes owe.** Done on x86, section 8. An
+   arm64 A/B is still owed: the huge-page part is Linux-only, and the lazy
+   accumulator may show more on Apple silicon than here.
 2. **The FI-115 stamp-only A/B**, if the owner wants it after all (section 4).
 3. **A sparsity-regularised net**, which is the only route to a cheaper
    layer 1 (section 5).
+
+## 8. The A/B (2026-11-05)
+
+The branch head against `Old Engine/65`, TIMED 50+0.5 over a **fixed**
+10,000 games (no early stop), on a 2x EPYC 7443 box (96 threads, Ubuntu,
+THP `madvise`, 48 workers), seed 65:
+
+| | |
+|---|---|
+| Elo | **+26.32 ± 4.1** (53.78%), normalized +43.51 |
+| Ptnml | 92 / 982 / 2247 / 1436 / 243, pair ratio 1.56 |
+| Search-only NPS, same box, idle, paired | **+11.29% ± 0.29%** over 30 rounds, nodes identical (4,946,591) |
+| Search-only NPS, Apple M5 Pro (no huge pages) | +4.57% ± 0.45% over 30 rounds |
+
+The Elo is about twice what the ledger's ~1.16 Elo per 1% NPS would
+predict from the x86 speed-up. The A/B ran 96 engine processes at once,
+so the TT working sets compete for the TLB and the L3 far harder than in
+the idle paired measurement, and that is where huge pages pay most. This
+is an inference, not measured. On macOS, which the release binary
+targets, only the code half applies, and its Elo there is unmeasured.

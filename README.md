@@ -23,7 +23,7 @@ representation, move generation and legality.
 
 <table>
 <tr><td><b>~3164</b></td><td>CCRL Blitz placement of v64, &plusmn;15</td><td><b>5.84M nps</b></td><td>the net costs ~28% of it</td></tr>
-<tr><td><b>~+422 Elo</b></td><td>A/B-confirmed, v31&rarr;v65</td><td><b>~19 ply</b></td><td>from startpos in 5 s</td></tr>
+<tr><td><b>~+474 Elo</b></td><td>A/B-confirmed, v31&rarr;v66</td><td><b>~19 ply</b></td><td>from startpos in 5 s</td></tr>
 <tr><td><b>+93.87 Elo</b></td><td>v58&rarr;v64, measured directly</td><td><b>1.18&times;</b></td><td>single-thread vs v31</td></tr>
 <tr><td><b>v53+v54</b> eval lane</td><td>+37.52 &amp; +31.20, the two biggest</td><td><b>1 dependency</b></td><td><code>python-chess</code> only</td></tr>
 </table>
@@ -99,8 +99,8 @@ from it**: the list runs its own hardware, book and tablebases, while these
 games used our openings, our machine and opponents built from source at the
 rated versions. Reproduce with `scripts/rating_ladder.py`.
 
-The placement was measured with **v64**. v65 has not been placed yet: its
-+61.91 over v64 is a self-play A/B, and gains between two versions of one
+The placement was measured with **v64**. v65 and v66 have not been placed
+yet: their gains are self-play A/Bs, and gains between two versions of one
 engine do not carry one to one onto another engine's scale.
 
 The old ~2868 Elo was retracted 2026-09-05: the run's Elo cap never reached the
@@ -131,9 +131,9 @@ them.
 
 ## Version progression
 
-65 versions, each A/B-tested against the one before it. Speed is nodes/s,
+66 versions, each A/B-tested against the one before it. Speed is nodes/s,
 depth is from startpos in 5 s (book off, best-of-N), and `Elo Δ` is the A/B
-result against the previous version. Cumulatively that is ≈ +422 over v31.
+result against the previous version. Cumulatively that is ≈ +474 over v31.
 
 The list below has the full per-version speed, depth and Elo, and the charts
 above summarise it. Regenerate both with `bench/bench_progress.py` and
@@ -142,6 +142,7 @@ above summarise it. Regenerate both with `bench/bench_progress.py` and
 <details>
 <summary><b>Every version in full</b> -- complete milestone + Elo list</summary>
 
+- **v66** -- **a tempo term for the net, and a faster search.** Two changes, each measured on its own against v65 over a **fixed** 10,000 games at 50+0.5 on x86. **E-05:** the net's side-to-move value gets +15 cp, the tempo bonus the hand-written eval always had and the net path never did (v15's export carried a +29 cp offset that had been doing that job by accident). **The NPS audit:** the transposition table and the net's first-layer weights sit on 2 MiB huge pages on Linux, net accumulator updates are lazy (54% of them were never read), the child's TT entry is prefetched before the move is made, and a bare `make` builds with clang as intended. Node-identical: **+11.29% ±0.29%** search-only NPS on x86, **+4.57% ±0.45%** on arm64, where there are no huge pages. Also carried: Chess960 (`UCI_Chess960`), and `Old Engine` snapshots 51-54 compile again. *(Tempo: **+25.62 ±4.2**, ptnml 93/1020/2185/1462/240, nElo +42.01, after a 10+0.1 screen ACCEPTed H1. NPS audit: **+26.32 ±4.1**, ptnml 92/982/2247/1436/243, nElo +43.51. No early stop on either, so the ledger advances: +422 -> **~+474**, on the assumption that the two add; v66 against v65 as a whole has not been run. Bench 672,025 -> 593,598.)*
 - **v65** -- **a new evaluation network.** Same architecture and the same search as v64; `NNUE_FILE` moves to `nnue_v15_4f85b4f247cd.nnue`. Also carried, none of them moving the bench signature: a history-bonus clamp so deep iterations cannot overflow, a shift past the h8 square in the cuckoo table, a deadline that no longer wraps on an absurd time budget, a `Contempt` change that clears the TT between searches instead of mid-search, MultiPV `bestmove` from the last completed depth, and `SyzygyPath` re-detecting the table piece count, plus a real 4-row NEON dot kernel (4.5% fewer search cycles on arm64, node-identical). *(**+61.91 ±4.3** over a **fixed** 9,976-game budget at 50+0.5 on x86, ptnml 65/722/1975/1841/385, nElo +100.02, pair ratio 2.83. No early stop, so the ledger advances: +360 -> **+422**. The 10+0.1 screen on arm64 read +60.46 ±8.5, ACCEPT H1 at the 1,500-pair minimum, so the longer control did not shrink it. Bench 785,901 -> 672,025.)*
 - **v64** -- **a new net, and four settings that only pay together.** The evaluation network is replaced, and four search parameters that each measured as nothing on their own cross the accept bound when armed as one change: less late-move reduction (`LMR_DIV` 170), a sharper capture-pruning threshold (`SEE_SCALED_K` 75), and two clock settings that let a stable move think slightly longer. *(Bundle: **+6.19 ±4.1** over 11,896 games at 50+0.5, SPRT[0,4] LLR +2.969 **ACCEPT H1** -- its first tranche ran a **full** 10,000 games at +5.94 ±4.4 with no early stop. Net, measured **on top of** that bundle so the two are known to work together: **+78.82 ±8.3** over 3,004 games at 50+0.5, LLR +9.264 **ACCEPT H1** at the minimum, nElo +121.86, pair ratio 3.37. Also carried: a profile-guided build, **+4.7%** speed on the reference machine, node-identical. Bench 1,123,567 -> 785,901.)*
 - **v63** -- **losing captures near the leaves are no longer searched, and v62's rejected TT rule is gone.** FI-38 skips a capture that loses material by SEE when it loses more than 50cp per remaining ply, at depth 6 or less, off the PV, and never in or into check. The core under it is v61's again: the b05 FI-115 completion v62 shipped after it had been rejected is reverted, and a retained-TT probe in `selftest.py` now pins that rule. *(HEAD vs v61 at 50+0.5: **+20.95 ±7.9** over 3,006 games, SPRT[0,4] LLR +3.049 **ACCEPT H1**. FI-38 K=50 on top: **+9.50 ±6.0** at 50+0.5 over 6,802 games, LLR +2.961 **ACCEPT H1**, after +9.34 ±5.3 / LLR +2.946 on the 10+0.1 screen. K=75 and K=100 were NULL at the full budget, so 50 is the setting. Every run **stopped early, so the ledger is not advanced**; a fixed-budget 50+0.5 run of v63 vs v61 is owed. Bench 1,203,792 -> 1,123,567.)*
@@ -454,7 +455,7 @@ layer translates moves:
 | `movegen.c`, `engine.py` | the same rules for the Python engine and `perft.py` |
 
 **Standard chess is node-identical.** Every 960 path is behind the flag, and
-the bench signature (672,025) and the pinned d14 ladder are unchanged.
+the bench signature and the pinned d14 ladder are the same with it built in.
 
 Correctness is gated rather than assumed:
 

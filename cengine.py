@@ -9,7 +9,11 @@ transposition table, pruning, quiescence and the full static eval
 positions). Born as phase-3 step 6 of the C-core plan; the shipped engine
 since Old Engine/31.
 
-ITS DEFAULTS ARE v65 (2026-10-14, frozen as Old Engine/65): v64 with the v15
+ITS DEFAULTS ARE v66 (2026-11-05, frozen as Old Engine/66): v65 with E-05
+NNUE tempo +15 (+25.62 +/- 4.2) and the 2026-11 NPS audit (huge-page TT and w1
+on Linux, lazy accumulator, early TT prefetch; node-identical, +11.29% NPS x86,
++26.32 +/- 4.1), each over a fixed 10,000 games at 50+0.5 x86 against v65, plus
+Chess960. Bench signature 593,598. v65 (2026-10-14) was: v64 with the v15
 net (+61.91 +/- 4.3 over 9,976 games at 50+0.5 on a fixed budget, x86, so the
 ledger advances on it) and the post-v64 correctness fixes (history-bonus clamp,
 cuckoo h8 shift, deadline overflow, Contempt TT handling, MultiPV bestmove,
