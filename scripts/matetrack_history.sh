@@ -35,7 +35,7 @@ EPD="mates2000.epd"; TIME_S=0.2; CONC=6      # seconds per position (matecheck -
 # 17-74 defaulted attributes each (uci/cuci_old.py <N> --audit lists them) and
 # v1-v30 run through a synthesised protocol, so those rows are indicative
 # rather than proof the snapshot behaves as it shipped.
-VERSIONS="$(ls "Old Engine" | grep -E '^[0-9]+$' | sort -n)"   # default: C era; pass --versions "$(seq 1 60)" for everything
+VERSIONS="$(ls "Old Engine" | grep -E '^[0-9]+$' | sort -n | awk '$1 >= 31')"   # default: C era; pass --versions "$(seq 1 60)" for everything
 SYZYGY="$REPO/syzygy"
 while [ $# -gt 0 ]; do
   case "$1" in
