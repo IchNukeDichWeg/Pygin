@@ -19,21 +19,25 @@ import os
 # v31 is the C-era baseline (delta 0); its +215 vs v30 is odds-derived, not an
 # A/B, so it does not enter the cumulative line.
 DATA = {
-    31: (0.00, 4.93), 32: (7.30, 5.02), 33: (23.52, 5.05), 34: (6.81, 5.18),
-    35: (72.00, 5.87), 36: (24.67, 6.39), 37: (0.17, 6.42), 38: (1.36, 5.96),
-    39: (8.86, 6.99), 40: (4.31, 6.91), 41: (-2.88, 6.61), 42: (3.27, 6.89),
-    43: (5.18, 6.78), 44: (13.31, 7.95), 45: (13.52, 7.72), 46: (5.94, 7.33),
-    47: (3.16, 6.96), 48: (4.73, 7.02), 49: (0.97, 6.94), 50: (1.60, 6.94),
-    51: (11.12, 6.98), 52: (6.63, 6.96), 53: (37.52, 6.97), 54: (31.20, 6.72),
-    55: (9.66, 7.06), 56: (11.44, 7.14), 57: (0.00, 7.16), 58: (19.11, 5.17),
-    59: (13.84, 5.73), 60: (0.00, 5.57), 61: (15.89, 5.61), 62: (0.00, 5.78),
-    63: (0.00, 5.63), 64: (5.94, 5.66), 65: (61.91, 5.84),
+    31: (0.00, 5.10), 32: (7.30, 5.22), 33: (23.52, 5.21), 34: (6.81, 5.49),
+    35: (72.00, 6.51), 36: (24.67, 7.20), 37: (0.17, 7.03), 38: (1.36, 6.85),
+    39: (8.86, 7.64), 40: (4.31, 7.61), 41: (-2.88, 7.73), 42: (3.27, 7.44),
+    43: (5.18, 7.34), 44: (13.31, 7.68), 45: (13.52, 7.00), 46: (5.94, 7.10),
+    47: (3.16, 6.85), 48: (4.73, 7.03), 49: (0.97, 7.02), 50: (1.60, 7.12),
+    51: (11.12, 6.67), 52: (6.63, 6.73), 53: (37.52, 6.82), 54: (31.20, 6.57),
+    55: (9.66, 6.96), 56: (11.44, 7.26), 57: (0.00, 7.17), 58: (19.11, 5.46),
+    59: (13.84, 6.11), 60: (0.00, 5.88), 61: (15.89, 5.92), 62: (0.00, 5.98),
+    63: (0.00, 5.97), 64: (5.94, 5.85), 65: (61.91, 5.76), 66: (51.94, 6.17),
 }
 
 # EVERY NPS FIGURE ABOVE IS FROM ONE MACHINE and one instrument:
 # nps_history_bench.py's trimmed mean across 10 positions, 3 runs x 4s,
-# --workers 1, swept v31-v65 in ONE session on a Mac17,8 (Apple M5 Pro),
-# 2026-10-14 22:20-23:35 CEST on a lightly loaded machine (load ~2-5: the
+# --workers 1, swept v31-v66 in ONE session on a Mac17,8 (Apple M5 Pro),
+# 2026-11-05 13:45-14:26 CET, load 3.7 at the start. Against the 2026-10-14 sweep v31
+# reads +3.4% (5.10 vs 4.93) and v65 -1.4% (5.76 vs 5.84). v66 reads +7.2%
+# over v65, inferred to be the NPS audit's arm64 code half (+4.57% search-only,
+# paired) plus the tempo term's different tree. The 2026-10-14 sweep ran
+# 22:20-23:35 CEST on a lightly loaded machine (load ~2-5: the
 # sweep itself plus a browser). Against the 2026-09-13 idle sweep the median
 # version moved -1.3%, the range -12.5% (v43) to +1.6% (v45) -- so a single
 # version's step is only good to ~10% between sessions. v31 itself read 5%
@@ -57,7 +61,11 @@ DATA = {
 # the SHORTEST mate. v1-v30 predate the C core and are not runnable through
 # cuci_old, so the series starts at v31.
 #
-# WHOLE SERIES re-run in ONE session, 2026-10-14 23:16-23:58 CEST, Mac17,8,
+# WHOLE SERIES re-run in ONE session, 2026-11-05 14:28-15:03 CET, Mac17,8,
+# ~57s per version. Against the 2026-10-14 run the median version reads 0.85
+# points HIGHER (range -0.30 to +1.95), so again read steps, not the level. v65 -> v66 is +1.85
+# found (42.20 -> 44.05), +1.15 shortest: the tempo term and the faster search
+# together, not separated. The 2026-10-14 run was 23:16-23:58 CEST, Mac17,8,
 # lightly loaded (load ~3-5), ~70s per version. Against the 2026-09-13 idle
 # re-run the median version reads ~0.6 points LOWER (range -1.65 at v64 to
 # +0.35 at v40) -- a near-uniform session offset, so steps between versions
@@ -67,15 +75,15 @@ DATA = {
 # its own snapshot (matetrack_history.sh used to hardcode it as the live tree,
 # which put v64's number under a v60 label).
 MATETRACK = [
-    (31, 23.25, 20.90), (32, 25.45, 22.70), (33, 25.25, 22.55), (34, 26.60, 23.60),
-    (35, 40.70, 35.25), (36, 44.05, 38.25), (37, 44.30, 38.75), (38, 50.40, 44.00),
-    (39, 51.30, 44.90), (40, 51.35, 44.85), (41, 51.10, 44.60), (42, 50.50, 44.10),
-    (43, 50.40, 44.20), (44, 51.15, 44.90), (45, 50.15, 43.45), (46, 50.15, 43.20),
-    (47, 49.50, 42.55), (48, 49.90, 42.70), (49, 50.65, 43.40), (50, 50.70, 44.10),
-    (51, 51.20, 44.25), (52, 47.25, 40.60), (53, 47.90, 40.75), (54, 47.60, 40.45),
-    (55, 47.45, 40.40), (56, 42.55, 35.95), (57, 42.65, 36.10), (58, 36.25, 32.30),
-    (59, 39.50, 35.40), (60, 40.25, 35.55), (61, 39.85, 35.25), (62, 39.45, 35.25),
-    (63, 39.40, 35.25), (64, 41.30, 35.85), (65, 41.35, 36.00),
+    (31, 24.45, 21.90), (32, 26.95, 23.95), (33, 26.95, 23.95), (34, 27.80, 24.55),
+    (35, 42.05, 36.45), (36, 44.20, 38.35), (37, 44.35, 38.85), (38, 50.70, 44.30),
+    (39, 51.75, 45.30), (40, 51.45, 44.95), (41, 51.20, 44.60), (42, 51.15, 44.65),
+    (43, 51.15, 44.90), (44, 51.45, 45.20), (45, 51.45, 44.45), (46, 51.15, 43.95),
+    (47, 50.55, 43.30), (48, 50.80, 43.35), (49, 51.60, 44.20), (50, 51.55, 44.85),
+    (51, 52.95, 45.55), (52, 48.80, 41.95), (53, 49.20, 41.80), (54, 49.55, 41.90),
+    (55, 47.80, 40.70), (56, 43.30, 36.60), (57, 43.35, 36.75), (58, 37.75, 33.65),
+    (59, 39.55, 35.50), (60, 40.15, 35.45), (61, 40.10, 35.40), (62, 39.15, 35.05),
+    (63, 39.50, 35.30), (64, 42.95, 37.25), (65, 42.20, 36.75), (66, 44.05, 37.90),
 ]
 
 # Knight odds win% vs FULL-STRENGTH Stockfish 18 -- the external yardstick.
