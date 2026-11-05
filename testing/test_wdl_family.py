@@ -18,11 +18,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
 import fit_wdl_model as F
 
 # Dated on/after NNUE_MIN_DATE, which tracks the CURRENT net rather than the
-# first net ever trained (moved to nnue_v12's 2026-08-22 on 2026-08-28). A net
-# change is a cp-scale change, so a log from an older net is now as unusable
-# as a pre-net one -- STALE_NNUE_LOG pins that half of the contract.
-NNUE_LOG = "engine_nnue_vs_engine55_2026-08-22_13-15-20_10556.txt"
-STALE_NNUE_LOG = "engine_nnue_vs_engine55_2026-07-28_13-15-20_10556.txt"
+# first net ever trained (nnue_v12's 2026-08-22 on 2026-08-28, nnue_v15's
+# 2026-10-14 on 2026-11-05). Built from the constant so the next bump does not
+# have to touch this file. A net change is a cp-scale change, so a log from an
+# older net is as unusable as a pre-net one -- STALE_NNUE_LOG (the v12 date,
+# which this test accepted until 2026-11-05) pins that half of the contract.
+_CUR = F.NNUE_MIN_DATE
+NNUE_LOG = f"engine_nnue_vs_engine55_{_CUR}_13-15-20_10556.txt"
+STALE_NNUE_LOG = "engine_nnue_vs_engine55_2026-08-22_13-15-20_10556.txt"
 HCE_LOG = "cengine_vs_engine55_2026-07-28_09-00-00_1.txt"
 OLD_LOG = "cengine_vs_engine52_2026-07-01_09-00-00_1.txt"
 
@@ -65,6 +68,23 @@ try:
     assert F._side_usable("engine_nnue_lazy", NNUE_LOG)
     assert not F._side_usable("engine55", NNUE_LOG)
     assert not F._side_usable("engine_nnue", OLD_LOG)  # pre-net date gate
+
+    # Contract changed 2026-11-05 (was: only *nnue*-named arms were date-
+    # gated). The net gate covers EVERY nnue-family side: a cengine or engine64
+    # side from an older net is a different cp scale whatever its name says,
+    # and the 2026-09-13 fit pooled v4/v12/v14 cp because of exactly this.
+    _OLD_NET = "cengine_vs_engine64_2026-09-13_02-57-25_50002.txt"
+    assert F.eval_family("cengine", _OLD_NET) == "nnue"
+    assert not F._side_in_era("cengine", _OLD_NET)     # was True
+    assert not F._side_in_era("engine64", _OLD_NET)    # was True
+    _NEW = f"engine65_vs_engine64_{_CUR}_09-00-00_1.txt"
+    assert F._side_in_era("engine65", _NEW)
+    assert not F._side_in_era("engine64", _NEW)        # older net, newer log
+    assert not F.near_equal_pair("engine65", "engine64", _NEW)
+    _TEMPO = f"engine_tempo15_vs_cengine_{_CUR}_09-00-00_1.txt"
+    assert F.near_equal_pair("engine_tempo15", "cengine", _TEMPO)
+    assert F._side_usable("engine_tempo15", _TEMPO)
+    assert F._side_usable("cengine", _TEMPO)
 
     F.EVAL_FAMILY = None                               # texel.py's widening
     assert F._side_usable("engine_nnue", NNUE_LOG)

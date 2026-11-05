@@ -271,6 +271,14 @@ NEAR_EQUAL_EXTRA = {
     "engine_hash_small",    # TT sizing, 24 MiB vs 192 MiB
     "engine_hash_default",
     "engine_grow_on",       # FI-116 growing TT, vs engine_nnue_v12
+    # E-05 NNUE tempo (+15 cp on the net's stm value) vs the identical build.
+    # Checked 2026-11-05 that the term does not move the score -> outcome map:
+    # per-side fits on the 10,000-game 50+0.5 confirm put engine_tempo15's 50%
+    # point 15-26 cp below cengine's, and the control (cengine vs engine65,
+    # tempo 0 both sides, the same +26 Elo gap) shows 11-24 cp -- the gap is
+    # the strength difference, not a scale shift.
+    "engine_tempo15",
+    # ALSO ABSENT: engine_v15a/v15b/v16o swap the net (same reason as v13s*).
 }
 _BASE_NUM_RE = re.compile(r"^engine(\d+)$")
 _MIN_C_ERA_SNAPSHOT = 53
@@ -290,14 +298,23 @@ _MIN_C_ERA_SNAPSHOT = 53
 # engine<N>) start reporting NNUE cp under the old names -- set
 # NNUE_DEFAULT_SINCE to that ship date then; nothing else needs to change.
 _NNUE_RE = re.compile(r"(?:^|_)nnue(?:_|$)")
-NNUE_MIN_DATE = "2026-08-22"     # nnue_v12_bf86c4ced057, the net v60 ships
-                                 # (added 2026-08-22 01:55). This tracks the
+NNUE_MIN_DATE = "2026-10-14"     # nnue_v15_4f85b4f247cd, the net v65 ships
+                                 # (added 2026-10-14 20:32). This tracks the
                                  # CURRENT net on purpose: a new net is a new
                                  # cp scale, and leaving this at the old
                                  # nnue_v3 date (2026-07-28) silently pooled
                                  # v3..v12 cp into one fit -- the exact blur
                                  # the family guard below exists to prevent.
-                                 # BUMP THIS WHENEVER THE SHIPPED NET CHANGES.
+                                 # It gates EVERY nnue-family side, cengine and
+                                 # numbered snapshots included: until 2026-11-05
+                                 # it gated only *nnue*-named arms, so the
+                                 # 2026-09-13 fit pooled v4/v12/v14 cp anyway.
+                                 # BUMP THIS AND NNUE_MIN_VERSION WHENEVER THE
+                                 # SHIPPED NET CHANGES.
+NNUE_MIN_VERSION = 65            # first snapshot carrying that net: a later log
+                                 # can still play engine64 (v14 net) as the
+                                 # adjacent-version opponent, and the date alone
+                                 # would let its cp in.
 NNUE_DEFAULT_SINCE = "2026-08-03"  # v58 shipped USE_NNUE=True: from this date
                                  # the un-suffixed dev names (cengine) report
                                  # NNUE cp. Was left None until 2026-08-10, so
@@ -366,12 +383,18 @@ def _side_in_era(base, path=None):
     if base == "stockfish_engine":
         return (os.path.splitext(os.path.basename(path or ""))[0]
                 in NEAR_EQUAL_STOCKFISH_LOGS)
-    if _NNUE_RE.search(base):
-        return _date_ok(path, NNUE_MIN_DATE)
+    n = _base_num(base)
+    if eval_family(base, path) == "nnue":
+        # One net, one scale: the current net's era only, whatever the name.
+        if not _date_ok(path, NNUE_MIN_DATE):
+            return False
+        if n is not None and n < NNUE_MIN_VERSION:
+            return False
+        if _NNUE_RE.search(base):
+            return True
     if base in NEAR_EQUAL_EXTRA:
         # Era-gate the dev build by the log's own date (see CENGINE_MIN_DATE).
         return _date_ok(path, CENGINE_MIN_DATE)
-    n = _base_num(base)
     return n is not None and n >= _MIN_C_ERA_SNAPSHOT
 
 
@@ -937,7 +960,8 @@ def main():
           f"{_MIN_C_ERA_SNAPSHOT}"
           + (f", cengine logs on/after {CENGINE_MIN_DATE}"
              if CENGINE_MIN_DATE else ", no cengine date gate")
-          + (f", NNUE logs on/after {NNUE_MIN_DATE}"
+          + (f", NNUE logs on/after {NNUE_MIN_DATE} and engine<N> >= "
+             f"{NNUE_MIN_VERSION} (the current net)"
              if EVAL_FAMILY == "nnue" else ""))
 
     if args.fit_only:
