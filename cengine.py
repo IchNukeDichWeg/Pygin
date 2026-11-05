@@ -592,9 +592,10 @@ DORMANT (default OFF, mechanism kept for longer-TC re-tests):
     audit's scratch build. Closes only the HCE-leaf variant: it does not
     transfer if E-07 ever puts the net at the qsearch leaves.
   * E-05 NNUE tempo (set_nn_tempo; NNUE_TEMPO cp added to the net's stm-POV
-    value; 0 = node-exact). PENDING, one 10+0.1 screen on top of v65. v15's
-    export carries a +29 cp stm offset (l2.weight rounding) worth ~55 Elo,
-    so the net path's missing tempo term is real and its size untuned.
+    value; 0 = node-exact). CONFIRMED at +15: +25.62 +/-4.2 over a fixed
+    10,000 games @50+0.5 vs v65 (x86 EPYC, 48 workers), after the 10+0.1
+    screen ACCEPTed H1. v15's export carries a +29 cp stm offset (l2.weight
+    rounding) worth ~55 Elo, so the net path's missing tempo term was real.
   * P-43 single-reply / forced-move extension (set_single_reply; +3.5
     +/-4.8 over 20k pooled games vs v34 -- positive-leaning on every
     signal but sub-significant, kept-marginal by user call; OFF = v34
@@ -1626,10 +1627,10 @@ class Engine:
     # the fixed-node instrument. False = node-exact.
     NNUE_MATSCALE = False
     # E-05 NNUE tempo, cp added to the net's stm-POV value (the HCE paths
-    # already add TEMPO; the net path added nothing). PENDING: v15's export
+    # already add TEMPO; the net path added nothing). CONFIRMED at 15:
+    # +25.62 +/-4.2 over a fixed 10,000 games @50+0.5 vs v65. v15's export
     # carries a +29 cp stm offset from rounding l2.weight, and removing it
-    # cost ~55 Elo (v15b +5.80 vs v15a +60.46 @10+0.1), so the size of this
-    # term is untuned. 0 = node-exact.
+    # cost ~55 Elo (v15b +5.80 vs v15a +60.46 @10+0.1). 0 = node-exact.
     NNUE_TEMPO = 0
     LAZY_NNUE_MARGIN = 200
 
