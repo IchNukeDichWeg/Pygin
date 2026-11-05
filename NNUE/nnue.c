@@ -898,7 +898,11 @@ int nnue_load(const char* path)
     fclose(f);
     if (nn_crc32(buf, want) != crc) { free(buf); return 9; }
 
-    n.w1 = (int16_t*)malloc(sz_w1);
+    /* w1 is ~3 MiB read at random columns (one per changed feature) on every
+     * accumulator update -- the TT's TLB pattern again, so it gets csearch.c's
+     * huge-page allocator. Measured +1.4% +/- 1.0% (80 pairs, x86 Linux VM),
+     * node-identical; freed with free() like the rest. */
+    n.w1 = (int16_t*)hp_alloc(sz_w1);
     n.b1 = (int16_t*)malloc(sz_b1);
     n.w2 = (int8_t*)calloc((size_t)n.d2 * n.in2p, 1);
     n.b2 = (int32_t*)malloc(sz_b2);

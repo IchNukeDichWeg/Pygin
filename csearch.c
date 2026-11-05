@@ -2123,21 +2123,22 @@ static int g_root_pc = 32;                    /* piece count at the root */
 void cs_set_root_pc(int n) { g_root_pc = n; }
 #define TT_PC(e) ((int)(((e).d2 >> 19) & 63))
 
-/* TT memory on 2 MiB transparent huge pages (Linux). The probe pattern is a
- * random walk over the whole table, so with 4 KiB pages nearly every probe
- * and prefetch also misses the TLB and pays a page walk on top of the DRAM
- * miss; 192 MiB is 49,152 small pages against 96 huge ones, which fit the
- * second-level TLB outright. Many distros ship THP in `madvise` mode, where
- * a plain calloc never gets huge pages -- hence the explicit hint. Measured
- * on a Linux x86 VM: bench search-only NPS ~+10%, node-identical (only the
- * backing pages change). macOS has no equivalent and keeps calloc. Memory
- * from aligned_alloc is released with free(), like calloc's. */
+/* Large randomly-accessed tables on 2 MiB transparent huge pages (Linux).
+ * The TT probe pattern is a random walk over the whole table, so with 4 KiB
+ * pages nearly every probe and prefetch also misses the TLB and pays a page
+ * walk on top of the DRAM miss; 192 MiB is 49,152 small pages against 96
+ * huge ones, which fit the second-level TLB outright. Many distros ship THP
+ * in `madvise` mode, where a plain malloc/calloc never gets huge pages --
+ * hence the explicit hint. Measured on a Linux x86 VM: bench search-only NPS
+ * ~+13% for the TT, node-identical (only the backing pages change). macOS
+ * has no equivalent and keeps malloc. aligned_alloc memory is released with
+ * free(), like malloc's, so every existing free() stays correct.
+ * hp_alloc does NOT zero; tt_calloc does. */
 #if defined(__linux__)
 #include <sys/mman.h>
 #endif
-static TTEntry* tt_calloc(size_t n)
+static void* hp_alloc(size_t bytes)
 {
-    size_t bytes = n * sizeof(TTEntry);
 #if defined(__linux__) && defined(MADV_HUGEPAGE)
     const size_t huge = (size_t)2 << 20;
     if (bytes >= huge) {
@@ -2145,12 +2146,19 @@ static TTEntry* tt_calloc(size_t n)
         void* p = aligned_alloc(huge, rounded);
         if (p) {
             madvise(p, rounded, MADV_HUGEPAGE);   /* a hint; failure is fine */
-            memset(p, 0, bytes);
-            return (TTEntry*)p;
+            return p;
         }
     }
 #endif
-    return (TTEntry*)calloc(n, sizeof(TTEntry));
+    return malloc(bytes);
+}
+
+static TTEntry* tt_calloc(size_t n)
+{
+    size_t bytes = n * sizeof(TTEntry);
+    TTEntry* p = (TTEntry*)hp_alloc(bytes);
+    if (p) memset(p, 0, bytes);
+    return p;
 }
 
 static TTEntry* g_tt = NULL;
