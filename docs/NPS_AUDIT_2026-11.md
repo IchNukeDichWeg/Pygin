@@ -80,6 +80,7 @@ shadow.
 | `72c5717` | **`stager_next` reads history through the Stager.** In a dlopen'd `.so` the ~310 KB of `__thread` state costs a `__tls_get_addr` call per function entry; `stager_next` made 992,641 of the bench's ~2.4M such calls. | **-1.0%** | below resolution |
 | `2c119dc` | **NNUE `w1` (3 MiB) on huge pages too**, through a shared `hp_alloc`. | -- | +1.4% ± 1.0% (80, not significant) |
 | `b361793` / `86e5dea` | FI-115 stamp fix, **reverted** -- see 4. | | |
+| `6439b04` | **Keep the snapshots building.** Every `Old Engine` snapshot from 51 on includes the *live* `NNUE/nnue.c`. `2c119dc` broke their compile (`hp_alloc`), and the lazy scheme would have mis-evaluated their direct null-move slot copy. Both features are now opt-in macros (`NN_LAZY_ACC`, `NN_HP_ALLOC`) defined only by the live `csearch.c`; snapshots 55-65 bench node-for-node identical to a build against `54e5016`'s `nnue.c` (11/11). | -- | -- |
 
 ```mermaid
 xychart-beta
@@ -112,10 +113,17 @@ and was reverted for v63, and `selftest.py`'s retained-TT probe pins the
 shipped rule. My fix moved that pin (2,165,125 against 2,197,716), so it was
 reverted in `86e5dea`.
 
-**Open experiment:** the stamp fix on its own (qsearch-only victim rule
-unchanged) has never been measured. It is a one-line-per-site change (pass
-`node_pc` into the three store helpers), and it would also remove a TLS write
-per node. It needs an A/B at the shipped 192 MiB, at 50+0.5.
+**Not run as a solo A/B, on purpose.** `NNUE/shims/engine_b06_pcstamp.py`
+already records the owner's call: a stamp-only run "would price neither the
+bug nor the fix", because with correct tags the rule still covers only the
+qsearch store. I disagree a little. A stamp-only run is a well-defined
+question: does the *shipped* qsearch rule pay more with correct tags? But it
+is the owner's call, and it can't be settled on this box anyway. Resolving a
+few Elo needs ~10,000 games, and with two engines per game on 4 vCPUs that
+is 30+ hours at 10+0.1. If it is ever run: pass `node_pc` into the three
+store helpers (the reverted `b361793` is the patch) and run it at 192 MiB,
+50+0.5, against this branch. Removing `g_node_pc` would also save ~300k TLS
+calls per bench.
 
 ## 5. Tried and dropped
 
@@ -129,7 +137,9 @@ per node. It needs an A/B at the shipped 192 MiB, at 50+0.5.
 | Finny-table king refresh | instr. +0.7% | after lazy updates, king refreshes are already rare |
 | 512-bit VNNI layer-1 kernel | **-5.7% ± 1.3%** | 512-bit ops cost more than they save at this size |
 | `-mprefer-vector-width=512` | **-6.6% ± 1.2%** | same |
-| Sparse-input layer 1 (skip zero chunks) | not built | 59% zero bytes, but only 11.7% of 4-byte chunks are all-zero |
+| Sparse-input layer 1 (skip zero chunks) | not built | 143,744 real inputs: 59.9% zero bytes, but only 12.0% of 4-byte chunks are all-zero; reordering neurons (greedy co-zero grouping, held-out) reaches 34.4%. With 16 outputs a skipped chunk saves 2 VNNI ops, while finding non-zero chunks costs about as much -- this needs a net trained for sparsity (nets trained for it reach ~80-90%), not a kernel |
+| Per-thread context pointer (no `__tls_get_addr`) | upper bound **+0.8% ± 1.2%** | measured by making every `__thread` a plain static (single-thread only): instr. -1.2%, time not significant -- the refactor can't pay |
+| TT buckets | not built | at 192 MiB and 1.5M nodes/move only 2.25% of stores overwrite a live current-search entry (depth >= 4: 0.004%); even at 24 MiB it is 10.8% / 0.05%. The upside would be keeping old-generation entries (46.7% of stores), the FI-115 territory that already tested negative when extended |
 | Fixed-width (`h == 256`) NNUE loops | instr. -0.7% | |
 | Pawn-structure cache | instr. -0.8% | would also need invalidating on every eval-param sync |
 | Packed 64-bit key stager sort | instr. +0.9% | same branch pattern, more packing work |
@@ -144,6 +154,8 @@ per node. It needs an A/B at the shipped 192 MiB, at 50+0.5.
 |---|---|
 | SMP scaling | 1 / 2 / 4 threads: 2.33M / 4.46M / 8.79M nps (1.91x, 3.77x). No contention. |
 | Python driver | at 100 ms/move, 3.39 s of 3.45 s is inside the C search: ~1.7% overhead |
+| Snapshot builds | 55-65 build and bench identically to `54e5016` (after `6439b04`). **51-54 have not compiled since E-04 (`683c2aa`, 2026-09-11)**: `nnue.c` reads `Board.a_ph`, which only exists from v55, and `setup.sh` hides the error behind "(skip ...)". Pre-existing; not fixed here. |
+| Timed smoke match | branch vs `Old Engine/65`, 120 games at 10+0.1 (UHO, seed 65, 2 workers): 36W / 55D / 29L, **+20.3 ± 39.7 Elo**, ptnml 1/15/23/18/3. Endings: 28 threefold, 79 adjudicated, 4 material, 9 max-plies -- **no time losses, crashes or illegal moves**. A smoke test only: the error bar is ~10x what a few-Elo change needs. |
 
 ### 6.1 The bench NPS understates search speed
 
@@ -154,18 +166,14 @@ is unaffected. Changing what the line measures would break comparison with
 every recorded value, so it is left alone. When the NPS figure matters, time
 the searches only.
 
-## 7. Open ideas, not done
+## 7. What is left
 
-1. **The FI-115 stamp fix in isolation** (section 4).
-2. **A per-thread context pointer.** The search still makes ~1.1M
-   `__tls_get_addr` calls per bench, about one per negamax/qsearch entry
-   (~0.7% of instructions plus call overhead). One `initial-exec` `__thread`
-   pointer to a heap block, or passing it down the search, removes them.
-   Mechanical, but touches every `__thread` variable.
-3. **TT buckets.** Multi-entry buckets in one cache line (Stockfish-style)
-   are a hash-efficiency and Elo question, not node-identical.
-4. **Neuron permutation for sparse layer 1.** Reorder hidden units by
-   co-activation at load time (bit-exact) to cluster zeros into skippable
-   chunks.
-5. **Measure the shipped commits on the reference Mac**, especially the lazy
-   accumulator, and run the timed A/B the speed changes owe.
+Everything above was either shipped, measured and dropped, or bounded. Three
+things remain, and none of them can be done on this box:
+
+1. **The timed Elo A/B the speed changes owe**, ideally on the reference Mac.
+   The huge-page part is Linux-only, and the lazy accumulator may show more
+   on Apple silicon than here.
+2. **The FI-115 stamp-only A/B**, if the owner wants it after all (section 4).
+3. **A sparsity-regularised net**, which is the only route to a cheaper
+   layer 1 (section 5).
