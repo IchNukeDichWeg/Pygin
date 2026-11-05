@@ -9,8 +9,8 @@ actually turns into a win / draw / loss -- using engine.py's own historical
 match results as the training data (see the "Stockfish WDL model" writeup
 in chat for how win_rate_model() works upstream).
 
-Stage 1 (extract): scan every match log under "New logs/" and "logs/". A
-log file is USABLE when the two sides form a near-equal engine-family
+Stage 1 (extract): scan every match log (*.txt and *.txt.zst) under
+"New logs/" and "logs/". A log file is USABLE when the two sides form a near-equal engine-family
 pairing per near_equal_pair() (C-era snapshots >= v31, numbered pairs must
 be adjacent versions, cengine pairs with its contemporaries -- both sides'
 samples are then extracted, since each side's score -> outcome mapping is
@@ -108,6 +108,40 @@ import interruptible
 # model was already written repo-relative via __file__; these now match it.
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG_DIRS = [os.path.join(_REPO, "New logs"), os.path.join(_REPO, "logs")]
+
+
+def _open_log(path):
+    """Text handle on a match log, plain or .zst. Every log filed since the
+    2026-10-16 disk cleanup is .txt.zst, and a *.txt-only scan saw none of
+    them -- the corpus froze at whatever was still uncompressed. Python 3.14
+    has zstd in the stdlib; older interpreters (rented boxes) stream it
+    through the zstd CLI instead."""
+    if not path.endswith(".zst"):
+        return open(path, encoding="utf-8", errors="ignore")
+    try:
+        from compression import zstd
+        return zstd.open(path, "rt", encoding="utf-8", errors="ignore")
+    except ImportError:
+        import io, subprocess
+        out = subprocess.run(["zstd", "-dcq", path], check=True,
+                             capture_output=True).stdout
+        return io.StringIO(out.decode("utf-8", "ignore"))
+
+
+# A truncated or corrupt .zst fails as ZstdError / EOFError, not OSError, and
+# would otherwise crash the scan instead of landing in the T-23 UNREADABLE list.
+def _log_read_errors():
+    import subprocess
+    errs = [OSError, EOFError, subprocess.CalledProcessError]
+    try:
+        from compression import zstd
+        errs.append(zstd.ZstdError)
+    except ImportError:
+        pass
+    return tuple(errs)
+
+
+LOG_READ_ERRORS = _log_read_errors()
 DATA_CSV = os.path.join(_REPO, "wdl_training_data.csv")
 
 # Mirrors engine.py's PHASE_WEIGHTS / PHASE_MAX (engine.py:816-820) exactly:
@@ -417,7 +451,7 @@ def classify_file(path):
                         # original name -- scanning both double-counts games
     white_path = black_path = None
     try:
-        with open(path, encoding="utf-8", errors="ignore") as fh:
+        with _open_log(path) as fh:
             for _ in range(20):
                 line = fh.readline()
                 if not line:
@@ -430,7 +464,7 @@ def classify_file(path):
                     black_path = m.group(1)
                 if white_path and black_path:
                     break
-    except OSError as ex:
+    except LOG_READ_ERRORS as ex:
         UNREADABLE[path] = str(ex)        # T-23: counted and reported, not swallowed
         return False
     if white_path is None or black_path is None:
@@ -534,7 +568,12 @@ def extract_all(log_dirs):
         if not os.path.isdir(d):
             missing.append(d)
             continue
-        all_files.extend(sorted(glob.glob(os.path.join(d, "*.txt"))))
+        plain = sorted(glob.glob(os.path.join(d, "*.txt")))
+        # A .txt.zst whose .txt sibling is also on disk is the same match;
+        # reading both would double-count every game in it.
+        packed = [z for z in sorted(glob.glob(os.path.join(d, "*.txt.zst")))
+                  if z[:-4] not in set(plain)]
+        all_files.extend(plain + packed)
     # Say it. An empty scan and an absent directory produce the same "0 usable"
     # ending, and only one of them means what it looks like.
     for d in missing:
@@ -555,9 +594,9 @@ def extract_all(log_dirs):
             continue
         files_used += 1
         try:
-            with open(path, encoding="utf-8", errors="ignore") as fh:
+            with _open_log(path) as fh:
                 text = fh.read()
-        except OSError as ex:
+        except LOG_READ_ERRORS as ex:
             print(f"  [skip] {path}: {ex}")
             continue
         for block in iter_game_blocks(text):
