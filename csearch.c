@@ -2534,6 +2534,9 @@ typedef struct {
     int stage;                          /* 0 tt, 1 caps, 2 k0, 3 k1, 4 cnt,
                                          * 5 quiets, 6 badcaps, 7 done */
     uint32_t k0, k1;                    /* killer keys snapshot */
+    const int* hist;                    /* g_history[side to move], read live
+                                         * at quiet-scoring time as before --
+                                         * only the TLS lookup moves to init */
     uint32_t cap[192]; int csc[192]; int ncap, icap;   /* B-07: adversarial
     * gen_captures ceiling computes to ~128 exactly; 192 = headroom */
     uint32_t bad[192]; int bsc[192]; int nbad, ibad;
@@ -2548,6 +2551,7 @@ static void stager_init(Stager* st, const Board* b, int ply,
     st->tt_key = tt_move & 0x7FFF;
     st->stage = 0;
     st->k0 = g_killers[ply][0]; st->k1 = g_killers[ply][1];
+    st->hist = g_history[b->turn];
     st->ncap = st->icap = st->nbad = st->ibad = st->nqt = st->iqt = 0;
 }
 
@@ -2643,7 +2647,7 @@ static uint32_t stager_next(Stager* st)
                             || key == st->k1 || key == st->counter_key)
                         continue;                    /* already emitted */
                     int from = m & 63, to = (m >> 6) & 63;
-                    int s = g_history[color][(from << 6) | to];
+                    int s = st->hist[(from << 6) | to];
                     st->qt[st->nqt] = m;
                     st->qsc[st->nqt++] = s;
                 }
