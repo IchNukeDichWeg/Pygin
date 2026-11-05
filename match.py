@@ -218,7 +218,7 @@ START_POS = False
 # carry SUPPORTS_CHESS960 -- battle_worker refuses the game otherwise, which
 # rules out every Old Engine/ snapshot that predates it.
 CHESS960 = False
-SUBSET_SEED = 65            # FIXED so parallel windows shuffle identically.
+SUBSET_SEED = 66            # FIXED so parallel windows shuffle identically.
                             # ROTATION POLICY (2026-07-18): bump to the new
                             # version number at every vN snapshot -- within an
                             # era every campaign (and its extension tranches,
