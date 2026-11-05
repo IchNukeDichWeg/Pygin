@@ -5,8 +5,7 @@
 **A from-scratch chess engine in Python + C.** The search is hand-written.
 Since v58 the evaluation is an HCE/NNUE hybrid: the neural net scores positions
 inside the main search, and the hand-crafted eval keeps quiescence. Nothing
-calls out to another engine at runtime: the search, the eval and the net all run
-in this repo's own code.<br/>
+calls out to another engine at runtime.<br/>
 [`python-chess`](https://pypi.org/project/chess/) is used *only* for board
 representation, move generation and legality.
 
@@ -41,67 +40,55 @@ representation, move generation and legality.
 </tr>
 </table>
 
-All three charts are self-play. Every C-era version (v31 and up) is A/B-tested
-against the one before it, and the gains stack to about **+360 Elo**.
-Single-thread speed peaked at 1.55× and sits at 1.09× today: v58 hands about
-28% of it to the net and still comes out +19.11 ahead. The v30→v31 C rewrite
-(~34× faster) is off the left edge, so v31 is the honest zero.
+All three charts are self-play, with every C-era version (v31 and up) A/B-tested
+against the one before it. v58 hands about 28% of the speed to the net and
+still comes out +19.11 ahead. The v30→v31 C rewrite (~34× faster) is off the
+left edge, so v31 is the honest zero.
 
-Mate-finding is the one curve that does **not** track Elo, and it is left in
-because of that. It climbs to a ~51% plateau by v39, then falls away as the
-search gets more selective and the net arms — v62 finds 39.9% of
-`mates2000.epd` at 0.25s where v51 found 52.1%. Forward pruning and a net that
-values position over forced sequences both cost mate speed, and every one of
-those releases still measured POSITIVE in games. A tactical-suite score is a
-different instrument from an A/B, and where they disagree the A/B is the one
-that decides.
+Mate-finding is the one curve that does **not** track Elo, and is kept for that
+reason. It plateaus at ~51% by v39, then falls as the search gets more
+selective and the net arms: v62 finds 39.9% of `mates2000.epd` at 0.25s where
+v51 found 52.1%. Every one of those releases still measured POSITIVE in games;
+where a tactical suite and an A/B disagree, the A/B decides.
 
-The odds ladder against **full-strength** Stockfish is **unmeasured**, and
-that is now true for two separate reasons. The pre-2026-08-13 rungs were
-measured on a harness that erased Stockfish's won endgames, so those figures
-are withdrawn rather than footnoted; see
+The odds ladder against **full-strength** Stockfish is still **unmeasured**; see
 [Measured strength](#measured-strength).
 
 ### Two engines, one eval
 
-`cengine.py` and `csearch.c` are the C search core, and the strongest engine
-here. The whole per-node loop runs in C: board, ordering, TT, pruning,
-quiescence, and since v58 the NNUE forward pass. Python keeps only the root,
-which means iterative deepening, time management and the book. That is about
-50× the Python core.
+`cengine.py` + `csearch.c` are the C search core and the strongest engine here,
+about 50× the Python core. The whole per-node loop runs in C (board, ordering,
+TT, pruning, quiescence, and since v58 the NNUE forward pass); Python keeps only
+the root: iterative deepening, time management and the book.
 
-The eval is a hybrid. The net scores positions inside negamax, while qsearch
-stand-pat stays on the hand-crafted eval. The split is deliberate: an earlier
-all-NN attempt measured -203 to -273 Elo. `NNUE_REQUIRE_SIMD` keeps the net off
-CPUs with neither NEON nor AVX2, where the scalar tail costs more than the eval
-is worth.
+The net scores positions inside negamax; qsearch stand-pat stays on the
+hand-crafted eval. The split is deliberate: an earlier all-NN attempt measured
+-203 to -273 Elo. `NNUE_REQUIRE_SIMD` keeps the net off CPUs with neither NEON
+nor AVX2, where the scalar tail costs more than the eval is worth.
 
-`engine.py` is the reference Python engine, and the single source of
+`engine.py` is the reference Python engine and the single source of
 *hand-crafted* eval truth: the C core reads every HCE parameter from it at
-startup. The net's weights live in `NNUE/nets/` instead.
+startup. The net's weights live in `NNUE/nets/`.
 
 ### Measured strength
 
 **~3164 ±15 on the CCRL Blitz scale**, from 960 games at 2'+1" on 2026-09-17
-against two opponents carrying published ratings on that list.
+against two opponents with published ratings on that list.
 
 | Opponent | Games | Score | Result | Places us at |
 |---|---|---|---|---|
 | rated 2986 | 480 | 73.54% (274W/158D/48L) | **+177.59 ±24.3** | 3163.59 |
 | rated 3254 | 480 | 37.29% (68W/222D/190L) | **-90.29 ±18.7** | 3163.71 |
 
-Both ran a full 480-game budget with no early stop, so neither magnitude is
-bound-biased. The two placements were computed independently from opponents 268
-points apart, one we beat and one that beat us, and they agree to **0.12 Elo**.
+Both ran the full 480-game budget (no early stop, so neither magnitude is
+bound-biased), and the two independent placements, from opponents 268 points
+apart, agree to **0.12 Elo**.
 
 This is a **placement on that list's scale under our conditions, not a rating
-from it**: the list runs its own hardware, book and tablebases, while these
-games used our openings, our machine and opponents built from source at the
-rated versions. Reproduce with `scripts/rating_ladder.py`.
-
-The placement was measured with **v64**. v65 and v66 have not been placed
-yet: their gains are self-play A/Bs, and gains between two versions of one
-engine do not carry one to one onto another engine's scale.
+from it**: our openings, our machine, and opponents built from source at the
+rated versions. Reproduce with `scripts/rating_ladder.py`. It was measured with
+**v64**; v65 and v66 are not placed yet, because self-play gains do not carry one
+to one onto another engine's scale.
 
 The old ~2868 Elo was retracted 2026-09-05: the run's Elo cap never reached the
 engine subprocess (T-14), and everything before 2026-08-13 came from a harness
@@ -110,7 +97,7 @@ that mis-scored repetitions in Stockfish's favour (fixed in `45dd989`).
 **Odds ladder -- every rung was played against a CAPPED Stockfish** (`odds.py`
 never applied `STOCKFISH_ELO`; UCI_Elo 2900 before 2026-08-07, 3000 after, fixed
 under B-15). A cap compresses real gaps, so none of these is a full-strength
-reading and the f2 series spans two opponents.
+reading, and the f2 series spans two opponents.
 
 | Rung | Result | Vintage |
 |---|---|---|
@@ -119,25 +106,21 @@ reading and the f2 series spans two opponents.
 | Knight, rook, queen odds | 100%, saturated | v53/v54 |
 | vs the Python engine v30 | 195W / 5D / 0L over 200 games | v59, 2026-08-12 |
 
-h2 is active for resolution: it answers the same question as f2 with 41% fewer
-games. Why h2 costs Stockfish so much less than the other seven pawns is **not
-explained** -- the open-file hypothesis was tested and rejected.
+h2 is the active rung: it answers the same question as f2 with 41% fewer games.
+Why h2 costs Stockfish so much less than the other seven pawns is **not
+explained** (the open-file hypothesis was tested and rejected).
 
-The internal A/B ledger is unaffected: between two Pygins the repetition bug was
-near-symmetric, so it compressed effect sizes toward zero rather than inflating
-them.
+The repetition bug did not inflate the internal A/B ledger: between two Pygins
+it was near-symmetric, so it compressed effect sizes toward zero.
 
 ---
 
 ## Version progression
 
-66 versions, each A/B-tested against the one before it. Speed is nodes/s,
-depth is from startpos in 5 s (book off, best-of-N), and `Elo Δ` is the A/B
-result against the previous version. Cumulatively that is ≈ +474 over v31.
-
-The list below has the full per-version speed, depth and Elo, and the charts
-above summarise it. Regenerate both with `bench/bench_progress.py` and
-`scripts/make_readme_charts.py`.
+66 versions, each A/B-tested against the one before it: ≈ +474 cumulative over
+v31. `Elo Δ` is the A/B result against the previous version; speed is nodes/s
+and depth is from startpos in 5 s (book off, best-of-N). Regenerate the list and
+the charts with `bench/bench_progress.py` and `scripts/make_readme_charts.py`.
 
 <details>
 <summary><b>Every version in full</b> -- complete milestone + Elo list</summary>
@@ -215,14 +198,13 @@ above summarise it. Regenerate both with `bench/bench_progress.py` and
 <summary><b>Reading the table</b> (footnotes & caveats)</summary>
 
 - **Elo Δ** is the A/B vs the previous version (C-era = 10,000 games). It is
-  not summable across the whole column, because the TCs differ (Python era
+  not summable down the whole column, because the TCs differ (Python era
   assorted ⁴, v32–36 at 45+0.10, v37–47 at 50+0.20, v48+ on `--nodes`).
-- **`est` ⁵** is a feature-based estimate, not an A/B. The real anchor is ≈2442
+- **`est` ⁵** is a feature-based estimate, not an A/B; the real anchor is ≈2442
   by v25.
 - **Bundled A/Bs:** v16+v17 vs v15 = +69 ±16 ³; v22–24 vs v21 = +11.75 ±6.8 ².
-  v31's ≈+215 ¹ was odds-derived and is **withdrawn** -- the odds ladder it came
-  from was measured on the pre-`45dd989` harness. The v30→v31 gate (29W/1D/0L
-  over 30 games) stands on its own: the jump was past what Elo could express.
+  v31's ≈+215 ¹ was odds-derived on the pre-`45dd989` harness and is
+  **withdrawn**; the v30→v31 gate (29W/1D/0L over 30 games) stands on its own.
 - **NPS 4T** is "--" for v1–24 (no reliable SMP). v25–30 were multi-process,
   v31+ pthread Lazy-SMP, so the v30→v31 jump is partly methodology.
 
@@ -240,7 +222,7 @@ above summarise it. Regenerate both with `bench/bench_progress.py` and
 | **v53** | -- | Texel eval retune: +37.52 Elo, biggest single release |
 | **v54→v55** | 3.69× → **4.19×** | pin-aware legality + eval accumulator: +9.66 Elo, ~1.16 Elo per 1% NPS |
 | **v55→v56** | **4.19×** | ProbCut: **+11.44 timed** (+4.11 on `--nodes`) at -21.6% nodes; S-06 pool +9.83% at 4 threads |
-| **v56→v57** | **4.19×** | host layer only, node-identical: ponderhit soft-stop + the time-policy knobs over UCI. **Last pure-HCE release** |
+| **v56→v57** | **4.19×** | host layer only, node-identical. **Last pure-HCE release** |
 | **v57→v58** | **~2.9×** | NNUE armed: **+19.11 timed** while GIVING BACK ~30% NPS to the net. First hybrid; the gain is the training schedule, not the architecture |
 
 *Not visible as NPS:* v39→v40 (ep-key merge) and the v41→v43 verified-null
@@ -254,80 +236,74 @@ removal are nodes-to-depth gains at flat speed.
 - Negamax / alpha-beta with **PVS**; iterative deepening reusing the previous
   iteration's PV move, killers, history and TT; **aspiration windows**.
 - Partial-iteration salvage: if time runs out mid-depth, the best root move
-  evaluated so far is used rather than falling back to the last full depth.
-- **Quiescence** with stand-pat, delta pruning, check evasions, and a lazy
-  stand-pat that skips the expensive eval terms when the cheap base already
-  proves a cutoff (exact -- the tree is unchanged).
-- **Internal Iterative Reduction** at TT-less nodes; **ProbCut** on the
-  fail-high side, where a qsearch filter is *confirmed* by a real reduced-depth
-  search so nothing is ever cut on a static score.
+  evaluated so far is played.
+- **Quiescence** with stand-pat, delta pruning, check evasions, and an exact lazy
+  stand-pat that skips expensive terms when the cheap base already proves a cutoff.
+- **Internal Iterative Reduction** at TT-less nodes; **ProbCut**, where a qsearch
+  filter is *confirmed* by a reduced-depth search before anything is cut.
 
 **Transposition table** (24-byte entries, lockless XOR-folded, `Hash` MB)
 - **Dead-entry replacement (FI-115, ours):** material is irreversible, so an
-  entry whose piece count exceeds the root's can never recur -- evicted first,
-  while a still-reachable old entry is depth-protected instead of clobbered on
-  age. The count rides in 6 spare bits.
-- **Kept warm across irreversible moves** rather than wiped, plus a rule-50
-  guard so a stored score cannot outlive the draw counter that justified it.
+  entry whose piece count exceeds the root's can never recur. It is evicted
+  first, and still-reachable old entries are depth-protected. The count rides
+  in 6 spare bits.
+- **Kept warm across irreversible moves**, with a rule-50 guard so a stored
+  score cannot outlive the draw counter that justified it.
 - Depth-preferred replacement with an exact-bound bonus, terminal-node storing,
-  depth-independent mate handling, and a two-cache-line prefetch of the child
-  entry issued right after `apply_move`.
+  depth-independent mate handling, and a two-cache-line child prefetch right
+  after `apply_move`.
 - **Cuckoo upcoming-repetition detection** (Stockfish's scheme): a cycle
-  reachable in one move scores as a draw before the repetition physically happens.
+  reachable in one move scores as a draw one ply early.
 
 **Selectivity**
 - Null-move pruning with no-double-null and eval-scaled reduction; reverse
-  futility (static null); futility pruning; **LMR** including *root* moves; LMP.
+  futility; futility pruning; **LMR** including *root* moves; LMP.
 - SEE gating of captures at frontier nodes; a cannot-win clamp so a side without
   mating material is never scored as winning.
 
 **Extensions** -- checks (per-line budget 5), single reply, passed-pawn pushes.
 
 **Move ordering** -- TT move, MVV-LVA plus capture history, killers,
-counter-moves, the history heuristic with quiet malus, and SEE for capture
-sorting.
+counter-moves, history with quiet malus, SEE for capture sorting.
 
 **Evaluation -- NNUE (armed)**
 - `(6144 → 256)×2 → 16 → 32 → 1`, perspective accumulators updated
-  **incrementally** through the game, int8/int16 quantized (QA 127, QB 64,
-  output cp/400).
+  **incrementally**, int8/int16 quantized (QA 127, QB 64, output cp/400).
 - **Lazy NNUE:** the forward pass is skipped wherever a cheap bound already
-  decides the node -- the gain is in the nodes that buys.
-- SIMD kernels (NEON+dotprod / AVX2) with a hard guard that refuses to arm the
-  net on scalar builds, where the ~3× slower tail makes the engine *worse*.
+  decides the node.
+- SIMD kernels (NEON+dotprod / AVX2); the net refuses to arm on scalar builds,
+  where the ~3× slower tail makes the engine *worse*.
 - Trained on positions labelled by search, with a cosine LR schedule -- the
   schedule alone was worth +19 Elo.
 
 **Evaluation -- hand-crafted (the qsearch stand-pat, and the whole eval on
 non-SIMD hosts)**
-- Tapered mg/eg by game phase: material, piece-square tables.
-- Pawns: doubled, isolated, backward, passed.
-- King safety: pawn shield, king-ring attacks, open/semi-open file penalties.
-- Mobility, rook open and semi-open files, bishop pair, threats, pin penalty, tempo.
-- Endgame: mop-up (centre-manhattan drive), simplification bias, contempt, and
-  insufficient-material / cannot-win handling.
+- Tapered mg/eg: material, piece-square tables; pawns (doubled, isolated,
+  backward, passed); king safety (pawn shield, king-ring attacks, open/semi-open
+  files); mobility, rook files, bishop pair, threats, pins, tempo.
+- Endgame: mop-up, simplification bias, contempt, and insufficient-material /
+  cannot-win handling.
 - 44 scalars Texel-fitted; the C port is verified **bit-exact** against the
   Python reference over 3M positions.
 
 **Engine internals**
 - Magic-bitboard movegen reproducing python-chess's move order **byte-for-byte**,
   perft-verified over 1.49 billion nodes.
-- The entire per-node loop in C; Python keeps only clock, host and orchestration.
 - **Lazy SMP** over pthreads on a lock-free shared TT (`Threads`); the Python
   engine has a separate multi-process variant.
 
 **Endgame and play**
 - Local **Syzygy** 3-4-5 probing (WDL + DTZ, so it converts rather than
   shuffling), with online Lichess probing for 6-7 men.
-- Bundled Polyglot book (`Perfect2023.bin`); real UCI pondering with a
-  soft-stop-aware ponderhit; **MultiPV** by root exclusion; certified instant
-  premoves; `wdl` info lines from a WDL model fitted per eval family.
+- Bundled Polyglot book (`Perfect2023.bin`); UCI pondering with a soft-stop-aware
+  ponderhit; **MultiPV** by root exclusion; certified instant premoves; `wdl`
+  info lines from a WDL model fitted per eval family.
 
-**Built, measured, and deliberately OFF** -- kept because the mechanism is
-sound and the verdict is recorded: singular extensions, outpost and king-shelter
-eval terms, root-move ordering by subtree count, history-driven quiet pruning,
-several qsearch-TT variants, and a growing transposition table. Each was A/B'd, measured null or negative, and left in the
-tree at its default rather than deleted.
+**Built, measured, and deliberately OFF:** singular extensions, outpost and
+king-shelter eval terms, root-move ordering by subtree count, history-driven
+quiet pruning, several qsearch-TT variants, and a growing transposition table.
+Each measured null or negative and stays in the tree at its default, with the
+verdict recorded.
 
 ## Setup
 
@@ -338,11 +314,9 @@ cd Pygin
 ```
 
 `setup.sh` installs anything missing (Homebrew on macOS, apt/dnf/pacman/zypper
-on Linux), builds the C libraries, best-effort builds the `Old Engine/`
-snapshots, and self-tests.
-
-Needs Python 3.10+, a C compiler (`clang`/`gcc`), `python-chess` (the only
-dependency), and Stockfish if you want strength/odds testing.
+on Linux), builds the C libraries and, best-effort, the `Old Engine/` snapshots,
+then self-tests. Needs Python 3.10+, a C compiler (`clang`/`gcc`),
+`python-chess`, and Stockfish for strength/odds testing.
 
 ```bash
 python3 selftest.py        # health check; exit 0 = OK, chainable
@@ -360,9 +334,8 @@ python3 selftest.py        # health check; exit 0 = OK, chainable
 per-game log and PGN.
 
 ```bash
-# the live engine (v63: v62's settings on v61's core, plus FI-38) vs the
-# previous release: 100 positions (×2 colours)
-python3 match.py cengine.py "Old Engine/60/engine60.py" 100 0 --workers 0
+# the live engine vs the previous release: 100 positions (×2 colours)
+python3 match.py cengine.py "Old Engine/65/engine65.py" 100 0 --workers 0
 ```
 
 - Positional args are `engine1 engine2 NUM_POSITIONS OFFSET`. Each position is
@@ -379,15 +352,12 @@ python3 match.py cengine.py "Old Engine/60/engine60.py" 100 0 --workers 0
 python3 match.py engine.py stockfish_engine.py 100 0 --sf-elo 2000   # 0 = full strength
 ```
 
-**Material / time odds** are configured in `odds.py`'s `CONFIG` block (the
-default is pawn odds, `h2`). The opponent is **full-strength SF-18** -- that is
-what the ladder means, and a capped opponent measures something else that no
-recorded rung can be compared to. This is true of the code only since
-2026-09-05: before B-15 the setting never reached Stockfish and every recorded
-rung was played capped. Each worker runs two engines, so `--workers 0`
-here means cores/2, not cores-1 -- a real clock TC gets starved by
-oversubscription, and a Stockfish opponent squeezed to 10k nps stops being the
-yardstick the run is quoting:
+**Material / time odds** are configured in `odds.py`'s `CONFIG` block (default
+pawn odds, `h2`) against **full-strength SF-18**; a capped opponent measures
+something else. The code does this only since 2026-09-05: before B-15 every
+recorded rung was played capped. Each worker runs two engines, so `--workers 0`
+here means cores/2, not cores-1: oversubscription starves a real clock, and a
+Stockfish squeezed to 10k nps stops being the yardstick:
 
 ```bash
 python3 odds.py --positions 500 --workers 0
@@ -397,42 +367,39 @@ python3 odds.py --positions 500 --workers 0
 
 ## UCI options
 
-`cuci.py` is the UCI engine (`setoption name <Option> value <x>`). Standard
-GUI options:
+`cuci.py` is the UCI engine (`setoption name <Option> value <x>`):
 
 | Option | Type | Default | Range | Purpose |
 |:-------|:-----|--------:|:------|:--------|
 | `Threads` | spin | 1 | 1–512 | Lazy-SMP search threads. Above your **physical** core count they timeshare and cost strength |
-| `Hash` | spin | 192 | 2–24576 | Transposition-table size (MB); resizing wipes it. Sizes are powers of two, so anything between rounds **down** (6144 / 12288 / 24576 near the top). **Raise it for long games or analysis** -- at 50+0.20 the default is full by move 16 |
-| `MultiPV` | spin | 1 | 1–20 | PV lines reported. >1 is an analysis mode: it bypasses the book and is never active in match play |
-| `Skill Level` | spin | 40 | 0–40 | Deliberately imperfect play for human opponents. **40 = full strength** and is byte-identical to the option being absent; lower levels cap the search depth and add a random bias that grows with how far a candidate trails the best move, so weak levels routinely pick a worse one. **Not an Elo scale** -- see below |
-| `OwnBook` | check | false | -- | Play from the bundled Polyglot book. Off by default: a book is an opening preference, not strength |
+| `Hash` | spin | 192 | 2–24576 | Transposition-table size (MB); resizing wipes it. Powers of two, so anything between rounds **down** (6144 / 12288 / 24576 near the top). **Raise it for long games or analysis** -- at 50+0.20 the default is full by move 16 |
+| `MultiPV` | spin | 1 | 1–20 | PV lines reported. >1 is an analysis mode that bypasses the book |
+| `Skill Level` | spin | 40 | 0–40 | Deliberately imperfect play for human opponents. **40 = full strength**, byte-identical to the option being absent. **Not an Elo scale** -- see below |
+| `OwnBook` | check | false | -- | Play from the bundled Polyglot book (an opening preference, not strength) |
 | `BookFile` | string |  | -- | Path to Polyglot `.bin` book (empty ⇒ bundled `Perfect2023.bin`) |
-| `UseTB` | check | false | -- | Probe Syzygy at the root. **Local `SyzygyPath` is always tried first**; the online Lichess probe is the opt-in fallback for sizes you do not have (needs network) |
+| `UseTB` | check | false | -- | Probe Syzygy at the root. **Local `SyzygyPath` is always tried first**; the online Lichess probe is the fallback (needs network) |
 | `Move Overhead` | spin | 40 | 0–5000 | Clock margin (ms) for GUI/network lag |
-| `Premove` | check | false | -- | Emit certified instant-reply premoves (opt-in) |
+| `Premove` | check | false | -- | Emit certified instant-reply premoves |
 | `UCI_ShowWDL` | check | true | -- | Emit `wdl` on info lines (opt-out for strict arenas) |
 | `Clear Hash` | button | -- | -- | Wipe the transposition table without `ucinewgame` |
-| `UCI_Chess960` | check | false | -- | Chess960 / Fischer random. Castles are read and printed as king-takes-rook (`e1h1`, `b1a1`), FENs take X-FEN or Shredder-FEN rights, and the book is skipped. See [Chess960](#chess960) |
+| `UCI_Chess960` | check | false | -- | Chess960 / Fischer random, castles as king-takes-rook (`e1h1`, `b1a1`). See [Chess960](#chess960) |
 | `Contempt` | spin | 50 | -100–100 | Draw score bias (cp) when ahead/behind |
-| `SyzygyPath` | string |  | -- | Folder of local Syzygy `.rtbw`/`.rtbz` tables. The man-count is **detected from what is on disk**, so 6- and 7-man sets are used locally if you have them; the online probe is only a fallback for what you do not |
-| `Ponder` | check | false | -- | Think on the opponent's clock. A ponderhit honours the soft-stop rather than spending the full fresh budget |
+| `SyzygyPath` | string |  | -- | Folder of local Syzygy `.rtbw`/`.rtbz` tables. The man-count is **detected from what is on disk**, so local 6- and 7-man sets are used |
+| `Ponder` | check | false | -- | Think on the opponent's clock; a ponderhit honours the soft-stop |
 | `SoftStop` | spin | 55 | 1–100 | Base soft-stop fraction (% of the move budget) before the search may stop between iterations |
 | `SoftStopStable` | spin | 40 | 1–100 | Soft-stop fraction once the best move has held for `SoftStopStableIters` iterations |
 | `SoftStopUnstable` | spin | 90 | 1–100 | Soft-stop fraction while the best move is still changing |
 | `SoftStopStableIters` | spin | 3 | 1–20 | Iterations the best move must hold before "stable" applies |
 
 **On `Skill Level` and the missing `UCI_Elo`.** The weakening scheme is
-Stockfish's -- search at least four root candidates, then bias each score by how
-far it trails the best -- on a 0-40 scale, which halves the step size without
+Stockfish's (search at least four root candidates, then bias each score by how
+far it trails the best) on a 0-40 scale, which halves the step size without
 moving the endpoints (weakness `120 - level`, depth cap `1 + level // 2`).
 
 `UCI_Elo` and `UCI_LimitStrength` are **deliberately not implemented** and say so
-in an `info string` rather than silently doing nothing. `UCI_Elo` is a claim in
-Elo units and nobody has fitted that curve for this engine; `Skill Level`
-promises only a relative ordering, which the code can keep. It also needs no
-upkeep: levels are defined against the engine they sit in, so a stronger release
-lifts all of them and 40 stays full strength. `scripts/calibrate_skill.py`
+in an `info string`. Nobody has fitted an Elo curve for this engine; `Skill Level`
+promises only a relative ordering, and since levels are defined against the
+engine they sit in, a stronger release lifts all of them. `scripts/calibrate_skill.py`
 measures what each level is currently worth.
 
 ⚠️ **Never measure engine progress against a skill-limited opponent.** A limiter
@@ -442,9 +409,9 @@ worth +119 Elo read as ~22 against an Elo-limited one.
 ### Chess960
 
 `setoption name UCI_Chess960 value true` switches the whole engine to
-Fischer-random rules. Castles are encoded as **king takes own rook**, which is
-the UCI_Chess960 wire format and python-chess's own representation, so no
-layer translates moves:
+Fischer-random rules. FENs take X-FEN or Shredder-FEN rights, the book is
+skipped, and castles are encoded as **king takes own rook** (the UCI_Chess960
+wire format and python-chess's own representation), so no layer translates moves:
 
 | Layer | What changes in 960 mode |
 |---|---|
@@ -467,23 +434,21 @@ Correctness is gated rather than assumed:
 | fuzzing (during development) | 20,000 random back-rank positions with 11,554 legal castles against python-chess, 0 mismatches |
 
 `match.py --chess960` plays the 960 start positions as openings, both colours
-each, and writes PGN with `Variant "Chess960"`. Both engines must declare
-`SUPPORTS_CHESS960`, so a pre-960 `Old Engine/` snapshot is refused instead of
-quietly playing without castling.
+each, with PGN `Variant "Chess960"`. Both engines must declare
+`SUPPORTS_CHESS960`, so a pre-960 `Old Engine/` snapshot is refused.
 
 **Does the net still pay in 960?** The net was trained on standard chess
-only, so this was measured rather than assumed: the shipped engine against
-itself with the net off, 5+0.05, 200 games per arm on 2026-11-04.
+only, so this was measured: the shipped engine against itself with the net off,
+5+0.05, 200 games per arm on 2026-11-04.
 
 | Openings | Score | Net over HCE |
 |---|---|---|
 | Chess960 start positions | 77.50% (132W/46D/22L) | **+214.85 ±47.1** |
 | Standard (UHO) | 73.50% (125W/44D/31L) | **+177.22 ±39.8** |
 
-The gap between the two lies well inside the error bars, so there is no sign
-the net's edge shrinks in 960. Both evals are standard-tuned, so this is
-relative strength only: no Chess960 strength has been measured against an
-outside engine, and no net has been trained on 960 positions yet.
+The gap lies well inside the error bars, so there is no sign the net's edge
+shrinks in 960. This is relative strength only: no Chess960 strength has been
+measured against an outside engine, and no net has been trained on 960 positions yet.
 
 ---
 
@@ -491,21 +456,19 @@ outside engine, and no net has been trained on 960 positions yet.
 
 | Script | Purpose |
 |---|---|
-| `testing/perft.py` | Move-generator correctness gate vs the published Perft results, standard and Chess960 (`--deep` for the full 1.8 B-node suite). |
-| `bench/profile_bench.py` | Real NPS + a per-function bottleneck breakdown in one pass (`--graph` for an HTML report). |
+| `testing/perft.py` | Move-generator correctness gate vs published Perft results, standard and Chess960 (`--deep` for the full 1.8 B-node suite). |
+| `bench/profile_bench.py` | Real NPS + a per-function bottleneck breakdown (`--graph` for an HTML report). |
 | `bench/nps_history_bench.py` | NPS / depth benchmark across the `Old Engine/` snapshots. |
 | `bench/benchmark.py` | NPS / depth / nodes benchmark for the C search core (`--type`, `--threads`, `--hash`, averaged over `--runs`). |
-| `cuci.py` | UCI host for the C search core (`Threads` / `OwnBook` / `UseTB` options). |
-| `tuning/fit_wdl_model.py` | Fit the win/draw/loss model from match logs (`data/wdl_model.json` + `data/wdl_model_nnue.json`; `match.py` and `tuning/eval_bench.py` read them, `--sync-only` copies the coefficients into `cuci.py`). |
+| `tuning/fit_wdl_model.py` | Fit the win/draw/loss models from match logs (`data/wdl_model.json` + `data/wdl_model_nnue.json`, read by `match.py` and `tuning/eval_bench.py`; `--sync-only` copies the coefficients into `cuci.py`). |
 
 ---
 
 ## Project layout
 
 ```
-engine.py              the reference Python engine: the readable statement of
-                       the search, and the source of every eval scalar the C
-                       port is verified bit-exact against
+engine.py              the reference Python engine and the source of every HCE
+                       scalar (the C port is verified bit-exact against it)
 cengine.py             root driver for the C search core -- THE SHIPPED ENGINE.
                        Its class attributes are the live toggle set
 csearch.c              the whole per-node search loop in C (built to .so)
@@ -554,8 +517,7 @@ its [README](Old%20Engine/README.md).
 
 ## Notes
 
-- C `.so` files are not committed. They are platform-specific and built by
-  `setup.sh`.
+- C `.so` files are platform-specific and not committed; `setup.sh` builds them.
 - If a `.so` won't load, the engine falls back to pure Python (correct, slower);
   the self-test reports which path is active.
 
