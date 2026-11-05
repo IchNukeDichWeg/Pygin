@@ -237,7 +237,7 @@ removal are nodes-to-depth gains at flat speed.
   handling. 44 scalars Texel-fitted; the C port is **bit-exact** against the
   Python reference over 3M positions.
 - **Internals:** magic-bitboard movegen matching python-chess's move order
-  **byte-for-byte** (perft-verified over 1.49 billion nodes); **Lazy SMP** over
+  **byte-for-byte** (perft-verified over 1.49 billion nodes on the standard positions); **Lazy SMP** over
   pthreads on a lock-free shared TT (`Threads`).
 - **Play:** local **Syzygy** 3-4-5 (WDL + DTZ) with online Lichess probing for
   6-7 men; Polyglot book (`Perfect2023.bin`); pondering; **MultiPV**; certified
@@ -375,7 +375,7 @@ measured against an outside engine.
 
 | Script | Purpose |
 |---|---|
-| `testing/perft.py` | Move-generator correctness gate, standard and Chess960 (`--deep` for the full 1.8 B-node suite). |
+| `testing/perft.py` | Move-generator correctness gate, standard and Chess960 (`--deep` for the full 1.84 B-node suite: 1.49 B standard + 0.34 B Chess960 on both generators). |
 | `bench/profile_bench.py` | Real NPS + a per-function bottleneck breakdown (`--graph` for an HTML report). |
 | `bench/nps_history_bench.py` | NPS / depth benchmark across the `Old Engine/` snapshots. |
 | `bench/benchmark.py` | NPS / depth / nodes for the C core (`--type`, `--threads`, `--hash`, `--runs`). |

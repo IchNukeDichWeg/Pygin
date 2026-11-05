@@ -11,8 +11,12 @@ castle shape the table never exercises (python-chess counts), counted by BOTH
 movegen.so and csearch.so's own generator (cs_perft) -- the two are separate
 copies, and the 960 castle is where they first had to be written twice.
 
-    python3 perft.py            # quick suite (~16M nodes, a few seconds)
-    python3 perft.py --deep     # full suite  (~600M nodes, ~1-2 minutes)
+    python3 perft.py            # quick suite (29.6M nodes, ~0.1 s)
+    python3 perft.py --deep     # full suite  (1.84B nodes, ~7 s)
+
+Both measured 2026-11-05 on an M5 Pro Mac (~250M nps). The --deep total is
+1,494,874,546 standard nodes plus 341,268,608 Chess960 nodes counted on both
+generators, 1,836,143,154 in all.
 
 Exit code 0 = all pass, 1 = any mismatch (usable from other scripts/CI).
 """
@@ -128,7 +132,7 @@ def c_perft(board, depth):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     ap.add_argument("--deep", action="store_true",
-                    help="run every published depth (~600M nodes) "
+                    help="run every published depth (1.84B nodes) "
                          "instead of the quick <=5M-node cap")
     args = ap.parse_args()
     cap = None if args.deep else 5_000_000
