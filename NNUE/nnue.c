@@ -26,7 +26,8 @@
  * ACCUMULATOR (F49-31): NOT on the copy-make Board -- a per-thread
  * ply-indexed stack g_nn_acc[CS_MAXPLY + 62] mirroring g_path. The negamax
  * and root child sites call nn_push (parent slot ply -> child slot ply+1,
- * one fused write); a null-move child copies the slot (no pieces moved);
+ * one fused write, applied LAZILY -- see nn_materialize); a null-move child
+ * copies the slot (no pieces moved);
  * qsearch never reads NOR writes the stack (Phase-5 hybrid: HCE stand-pat),
  * so the tree's most populous nodes pay nothing. King moves refresh the
  * mover's perspective from the child board (bucket/mirror may change); the
@@ -71,6 +72,28 @@ typedef struct {
     uint8_t mirror[2], bucket[2];       /* per-perspective view state */
 } NNAccum;
 static __thread NNAccum g_nn_acc[CS_MAXPLY + 62];   /* mirrors g_path sizing */
+
+/* LAZY ACCUMULATOR. nn_push / nn_push_null only RECORD how slot ply+1 derives
+ * from slot ply; the delta is applied when something actually reads the slot
+ * (nn_eval, which materialises every pending slot between it and the nearest
+ * computed ancestor). Measured on the bench: 54% of eager pushes were never
+ * read -- the child went straight to qsearch (which never touches the stack),
+ * cut on the TT, hit a draw, took the lazy-eval bound or reused a TT eval --
+ * and those writes now cost a 16-byte record instead of 2 x 512-byte streams.
+ * Node-identical: the deltas applied are the same ones, just later and only
+ * where needed. Instructions per node -8.0% (callgrind, bench); wall-clock
+ * on a memory-bound x86 Linux VM was +1.8% +/- 2.2%, i.e. not resolved there,
+ * since the saved work mostly ran in the shadow of TT misses.
+ *
+ * The recorded Board pointers stay valid by construction: every board on the
+ * current path lives in an ancestor's stack frame while its descendants run,
+ * and a slot is only ever read from the node that owns it or below. A slot is
+ * always written (push/null/refresh) before anything below it reads it, so a
+ * stale g_nn_ok flag above the current ply is never consulted. */
+#define NN_PEND_NULL 0xFFFFFFFFu        /* null move: slot copies its parent */
+typedef struct { const Board* parent; const Board* child; uint32_t m; } NNPend;
+static __thread NNPend  g_nn_pend[CS_MAXPLY + 62];
+static __thread uint8_t g_nn_ok[CS_MAXPLY + 62];    /* 1 = slot is computed */
 
 /* verify mode (Phase-4 gate b): every nn_push re-derives the child slot by
  * full refresh and compares -- a mismatch is an accumulator desync. */
@@ -225,6 +248,7 @@ static void nn_acc_refresh_persp(const Board* b, NNAccum* a, int persp)
 
 static void nn_refresh(const Board* b, int ply)
 {
+    g_nn_ok[ply] = 1;
     nn_acc_refresh_persp(b, &g_nn_acc[ply], WHITE);
     nn_acc_refresh_persp(b, &g_nn_acc[ply], BLACK);
 }
@@ -257,9 +281,10 @@ static void nn_apply4(int16_t* restrict d, const int16_t* restrict s,
 /* parent slot ply + move word -> child slot ply+1. `parent`/`child` are the
  * boards before/after apply_move(m). Mover/victim PTs ride in the packed
  * move word (FI-02.2); ep and castling are derived exactly like apply_move.
- * King move => full refresh of the mover's perspective (bucket/mirror). */
-static void nn_push(int ply, const Board* parent, const Board* child,
-                    uint32_t m)
+ * King move => full refresh of the mover's perspective (bucket/mirror).
+ * This is the EAGER apply; the search calls nn_push, which defers it. */
+static void nn_push_apply(int ply, const Board* parent, const Board* child,
+                          uint32_t m)
 {
     const int from = m & 63, to = (m >> 6) & 63, promo = (m >> 12) & 7;
     const int mover = (m >> MV_SHIFT_MOVER) & 7;
@@ -344,6 +369,37 @@ static void nn_push(int ply, const Board* parent, const Board* child,
             || ref.bucket[0] != ca->bucket[0] || ref.bucket[1] != ca->bucket[1])
             g_nnv_bad++;
     }
+}
+
+/* The search's entry points: record the delta, apply it on first read. */
+static inline void nn_push(int ply, const Board* parent, const Board* child,
+                           uint32_t m)
+{
+    NNPend* p = &g_nn_pend[ply + 1];
+    p->parent = parent;
+    p->child = child;
+    p->m = m;
+    g_nn_ok[ply + 1] = 0;
+}
+static inline void nn_push_null(int ply)
+{
+    g_nn_pend[ply + 1].m = NN_PEND_NULL;
+    g_nn_ok[ply + 1] = 0;
+}
+static void nn_materialize(int ply)
+{
+    int k = ply;
+    while (k > 0 && !g_nn_ok[k]) k--;   /* slot 0 is refreshed per root */
+    for (int j = k + 1; j <= ply; j++) {
+        const NNPend* p = &g_nn_pend[j];
+        if (p->m == NN_PEND_NULL) g_nn_acc[j] = g_nn_acc[j - 1];
+        else nn_push_apply(j - 1, p->parent, p->child, p->m);
+        g_nn_ok[j] = 1;
+    }
+}
+static inline void nn_ensure(int ply)
+{
+    if (!g_nn_ok[ply]) nn_materialize(ply);
 }
 
 /* --------------------------- forward pass -------------------------------- */
@@ -743,6 +799,7 @@ static int nn_forward(const Board* b, const NNAccum* a)
  * mop-up/simplify are HCE-internal terms and do NOT apply to the net). */
 static int nn_eval(const Board* b, int ply)
 {
+    nn_ensure(ply);
     int v = nn_forward(b, &g_nn_acc[ply]);
     if (g_nn_matscale) {                            /* E-04 */
 #ifdef ACC_ADD
@@ -1074,7 +1131,7 @@ int nnue_profile(uint64_t pawns, uint64_t knights, uint64_t bishops,
             c.turn = us ^ 1;
             uint32_t m = (uint32_t)from | ((uint32_t)to << 6)
                        | ((uint32_t)PT_PAWN << MV_SHIFT_MOVER);
-            NN_TIME(nn_push(0, &b, &c, m), 4);
+            NN_TIME(nn_push_apply(0, &b, &c, m), 4);
         }
     }
 
