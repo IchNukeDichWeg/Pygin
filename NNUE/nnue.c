@@ -90,10 +90,19 @@ static __thread NNAccum g_nn_acc[CS_MAXPLY + 62];   /* mirrors g_path sizing */
  * and a slot is only ever read from the node that owns it or below. A slot is
  * always written (push/null/refresh) before anything below it reads it, so a
  * stale g_nn_ok flag above the current ply is never consulted. */
+/* OPT-IN. Every Old Engine snapshot from 51 on also #includes THIS file (the
+ * snapshots carry no NNUE/ copy, so "NNUE/nnue.c" resolves here), and their
+ * csearch.c writes g_nn_acc[ply + 1] directly for a null move -- under the
+ * lazy scheme that copy would read an unmaterialised slot and leave a stale
+ * g_nn_ok flag. So the lazy path exists only where the including file asks
+ * for it (the live csearch.c defines NN_LAZY_ACC); a snapshot gets the eager
+ * nn_push it was built and measured with. */
+#ifdef NN_LAZY_ACC
 #define NN_PEND_NULL 0xFFFFFFFFu        /* null move: slot copies its parent */
 typedef struct { const Board* parent; const Board* child; uint32_t m; } NNPend;
 static __thread NNPend  g_nn_pend[CS_MAXPLY + 62];
 static __thread uint8_t g_nn_ok[CS_MAXPLY + 62];    /* 1 = slot is computed */
+#endif
 
 /* verify mode (Phase-4 gate b): every nn_push re-derives the child slot by
  * full refresh and compares -- a mismatch is an accumulator desync. */
@@ -248,7 +257,9 @@ static void nn_acc_refresh_persp(const Board* b, NNAccum* a, int persp)
 
 static void nn_refresh(const Board* b, int ply)
 {
+#ifdef NN_LAZY_ACC
     g_nn_ok[ply] = 1;
+#endif
     nn_acc_refresh_persp(b, &g_nn_acc[ply], WHITE);
     nn_acc_refresh_persp(b, &g_nn_acc[ply], BLACK);
 }
@@ -371,6 +382,7 @@ static void nn_push_apply(int ply, const Board* parent, const Board* child,
     }
 }
 
+#ifdef NN_LAZY_ACC
 /* The search's entry points: record the delta, apply it on first read. */
 static inline void nn_push(int ply, const Board* parent, const Board* child,
                            uint32_t m)
@@ -401,6 +413,15 @@ static inline void nn_ensure(int ply)
 {
     if (!g_nn_ok[ply]) nn_materialize(ply);
 }
+#else
+/* snapshot builds: the eager push they were measured with */
+static inline void nn_push(int ply, const Board* parent, const Board* child,
+                           uint32_t m)
+{
+    nn_push_apply(ply, parent, child, m);
+}
+static inline void nn_ensure(int ply) { (void)ply; }
+#endif
 
 /* --------------------------- forward pass -------------------------------- */
 /* int8 dot over a padded row (pads are zero on both sides). NEON and scalar
@@ -902,7 +923,11 @@ int nnue_load(const char* path)
      * accumulator update -- the TT's TLB pattern again, so it gets csearch.c's
      * huge-page allocator. Measured +1.4% +/- 1.0% (80 pairs, x86 Linux VM),
      * node-identical; freed with free() like the rest. */
+#ifdef NN_HP_ALLOC
     n.w1 = (int16_t*)hp_alloc(sz_w1);
+#else
+    n.w1 = (int16_t*)malloc(sz_w1);    /* snapshot builds: no hp_alloc */
+#endif
     n.b1 = (int16_t*)malloc(sz_b1);
     n.w2 = (int8_t*)calloc((size_t)n.d2 * n.in2p, 1);
     n.b2 = (int32_t*)malloc(sz_b2);
