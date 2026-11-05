@@ -2098,6 +2098,36 @@ static int g_root_pc = 32;                    /* piece count at the root */
 void cs_set_root_pc(int n) { g_root_pc = n; }
 #define TT_PC(e) ((int)(((e).d2 >> 19) & 63))
 
+/* TT memory on 2 MiB transparent huge pages (Linux). The probe pattern is a
+ * random walk over the whole table, so with 4 KiB pages nearly every probe
+ * and prefetch also misses the TLB and pays a page walk on top of the DRAM
+ * miss; 192 MiB is 49,152 small pages against 96 huge ones, which fit the
+ * second-level TLB outright. Many distros ship THP in `madvise` mode, where
+ * a plain calloc never gets huge pages -- hence the explicit hint. Measured
+ * on a Linux x86 VM: bench search-only NPS ~+10%, node-identical (only the
+ * backing pages change). macOS has no equivalent and keeps calloc. Memory
+ * from aligned_alloc is released with free(), like calloc's. */
+#if defined(__linux__)
+#include <sys/mman.h>
+#endif
+static TTEntry* tt_calloc(size_t n)
+{
+    size_t bytes = n * sizeof(TTEntry);
+#if defined(__linux__) && defined(MADV_HUGEPAGE)
+    const size_t huge = (size_t)2 << 20;
+    if (bytes >= huge) {
+        size_t rounded = (bytes + huge - 1) & ~(huge - 1);
+        void* p = aligned_alloc(huge, rounded);
+        if (p) {
+            madvise(p, rounded, MADV_HUGEPAGE);   /* a hint; failure is fine */
+            memset(p, 0, bytes);
+            return (TTEntry*)p;
+        }
+    }
+#endif
+    return (TTEntry*)calloc(n, sizeof(TTEntry));
+}
+
 static TTEntry* g_tt = NULL;
 static int g_use_tt = 1;
 static int g_gen = 0;       /* step 6: bumped per root search; old-gen entries
@@ -2130,7 +2160,7 @@ void set_tt_bits(int bits)
     size_t old_size = g_tt_alloc;            /* FB-26: the comment promised */
     uint64_t old_mask = g_tt_mask;           /* "the OLD size" -- keep it   */
     free(g_tt);
-    g_tt = (TTEntry*)calloc(n, sizeof(TTEntry));
+    g_tt = tt_calloc(n);
     if (g_tt == NULL) {                      /* degrade like Q-13: retry at
                                               * the old size next move */
         g_tt_alloc = old_size;
@@ -4901,7 +4931,7 @@ void cs_search_begin(const uint64_t* hist, int nhist, double budget_sec)
         /* Q-13 + FB-13b: degrade, don't segfault -- and RETRY each move
          * instead of latching g_use_tt=0 forever (a transient failure would
          * have permanently disabled the TT). Consumers guard on g_tt. */
-        g_tt = (TTEntry*)calloc(g_tt_alloc, sizeof(TTEntry));
+        g_tt = tt_calloc(g_tt_alloc);
         if (g_tt == NULL)
             fprintf(stderr, "csearch: TT calloc(%zu) failed -- searching "
                     "without a transposition table this move\n",
