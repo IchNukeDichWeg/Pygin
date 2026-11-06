@@ -11,7 +11,7 @@
              random-game positions -- EXACT match required, 0 tolerance.
              Also cross-checks nnue_features_oracle vs extract_features.
              Without --net, a seeded random net is written first (the gate
-             tests arithmetic, not learning).
+             tests arithmetic, not learning); --hidden sets its width.
   increment  gate (b): run real searches with set_nnue_verify(1) -- every
              nn_push re-derives the child slot by full refresh and
              compares (values + mirror/bucket metadata). Covers ordinary
@@ -67,12 +67,12 @@ def load_lib():
     return lib
 
 
-def random_net(path, seed=1234):
+def random_net(path, seed=1234, hidden=HIDDEN):
     rng = np.random.default_rng(seed)
     QuantNet.from_float(
-        rng.normal(0, 0.05, (IN_DIM, HIDDEN)),
-        rng.normal(0, 0.2, HIDDEN),
-        rng.normal(0, 0.3, (D2, 2 * HIDDEN + THREAT_DIM)),
+        rng.normal(0, 0.05, (IN_DIM, hidden)),
+        rng.normal(0, 0.2, hidden),
+        rng.normal(0, 0.3, (D2, 2 * hidden + THREAT_DIM)),
         rng.normal(0, 0.2, D2),
         rng.normal(0, 0.3, (D3, D2)), rng.normal(0, 0.2, D3),
         rng.normal(0, 0.3, D3), 0.05).save(path)
@@ -82,10 +82,18 @@ def random_net(path, seed=1234):
 def default_net(args):
     if args.net:
         return args.net
-    os.makedirs(NETS_DIR, exist_ok=True)
-    p = os.path.join(NETS_DIR, "verify_random.nnue")
-    random_net(p)
-    print(f"(using seeded random net {p})")
+    # A non-default width goes to the temp dir, not NNUE/nets: .gitignore
+    # un-ignores every *.nnue there (the live nets ride in git), so a 6 MB
+    # random net would sit in `git status` as an untracked file.
+    if args.hidden == HIDDEN:
+        os.makedirs(NETS_DIR, exist_ok=True)
+        p = os.path.join(NETS_DIR, "verify_random.nnue")
+    else:
+        import tempfile
+        p = os.path.join(tempfile.gettempdir(),
+                         f"pygin_verify_random_h{args.hidden}.nnue")
+    random_net(p, hidden=args.hidden)
+    print(f"(using seeded random net {p}, H={args.hidden})")
     return p
 
 
@@ -262,6 +270,9 @@ def main():
     ap.add_argument("--seconds", type=float, default=4.0)
     ap.add_argument("--calls", type=int, default=200_000)
     ap.add_argument("--net")
+    ap.add_argument("--hidden", type=int, default=HIDDEN,
+                    help="accumulator width of the seeded random net when no "
+                         "--net is given (default %(default)s)")
     args = ap.parse_args()
     {"forward": cmd_forward, "increment": cmd_increment,
      "nps": cmd_nps, "threatcost": cmd_threatcost}[args.gate](args)

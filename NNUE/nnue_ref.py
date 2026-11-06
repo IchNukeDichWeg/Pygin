@@ -17,7 +17,8 @@ import zlib
 
 import numpy as np
 
-from config import (FEATURE_SET, IN_DIM, HIDDEN, THREAT_DIM, KING_BUCKETS,
+from config import (FEATURE_SET, IN_DIM, HIDDEN, HIDDEN_MAX, THREAT_DIM,
+                    KING_BUCKETS,
                     D2, D3, QA, QB, OUT_CP, ACT_MAX, QK_MAP,
                     NNUE_MAGIC, NNUE_VERSION,
                     FT_WEIGHT_CLIP, FT_BIAS_CLIP, TAIL_WEIGHT_CLIP)
@@ -159,7 +160,7 @@ class QuantNet:
             np.int32(self.b4).astype("<i4").tobytes(),
         ])
         hdr = _HDR.pack(NNUE_MAGIC, NNUE_VERSION, FEATURE_SET, IN_DIM,
-                        HIDDEN, THREAT_DIM, KING_BUCKETS,
+                        self.w1.shape[1], THREAT_DIM, KING_BUCKETS,
                         self.w2.shape[0], self.w3.shape[0],   # actual, not config
                         QA, QB, OUT_CP, zlib.crc32(payload), len(payload))
         with open(path, "wb") as f:
@@ -178,11 +179,15 @@ class QuantNet:
         # nnue.c validates them as 1..NN_D2_MAX and sizes itself from the
         # header, so insisting on equality here would be stricter than the
         # engine and would block the narrow-tail experiment for no reason.
-        # Everything that genuinely must match still does.
-        if (fs, ind, h, td, kb, qa, qb, ocp) != \
-           (FEATURE_SET, IN_DIM, HIDDEN, THREAT_DIM, KING_BUCKETS,
+        # Everything that genuinely must match still does. The accumulator
+        # width h is read from the file the same way (the wide-net
+        # experiment), bounded by what nnue.c's NN_H_MAX accepts.
+        if (fs, ind, td, kb, qa, qb, ocp) != \
+           (FEATURE_SET, IN_DIM, THREAT_DIM, KING_BUCKETS,
                 QA, QB, OUT_CP):
             raise ValueError("arch mismatch vs config.py")
+        if not 8 <= h <= HIDDEN_MAX:
+            raise ValueError(f"accumulator width out of range: h={h}")
         if not (1 <= d2 <= 32 and 1 <= d3 <= 32):
             raise ValueError(f"tail dims out of range: d2={d2} d3={d3}")
         if len(payload) != psz or zlib.crc32(payload) != crc:

@@ -23,7 +23,11 @@ QK_MAP = [
 ]
 
 # --- net shape ------------------------------------------------------------
-HIDDEN = 256             # accumulator width H (per perspective)
+HIDDEN = 256             # accumulator width H (per perspective); the default.
+                         # A net carries its own H in the .nnue header, so a
+                         # wider one (train.py --hidden) needs no re-freeze.
+HIDDEN_MAX = 512         # widest H the engine accepts: nnue.c's NN_H_MAX as
+                         # the live csearch.c sets it (snapshots stay at 256)
 D2 = 32                  # tail hidden 1
 D3 = 32                  # tail hidden 2
 

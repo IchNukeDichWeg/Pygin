@@ -352,6 +352,11 @@ tail : x  = [CReLU(acc_stm) | CReLU(acc_nstm) | T16]           (528)
        out= W4 h2 + b4                                         (32 -> 1)
 ```
 H is configurable (`NNUE/config.py: HIDDEN`); 256 is the locked default.
+A net carries its own H in the header, so `train.py --hidden` trains a wider
+one with no format change. The live engine accepts H up to 512 (`NN_H_MAX`,
+set in csearch.c; the Old Engine snapshots stay at 256 and reject a wider
+net with load error 5). Price on the reference Mac: v15 zero-padded to 512
+(identical evals, node-identical search) runs 12.4% slower.
 The float model is trained to predict `cp / 400`, clamped to [-5, 5].
 
 ## Quantization (locked integer semantics -- the bit-exact contract)

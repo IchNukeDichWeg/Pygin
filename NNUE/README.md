@@ -18,7 +18,8 @@ The frozen architecture/format contract is **docs/DESIGN_nnue.md → "Phase 1 sp
 (FROZEN)"**. Summary: KA8T feature set (8 king buckets, horizontal mirror,
 12 planes, IN=6144/perspective; plain-768 = same code path at KB=1) + T16
 threat encoding (16 int8 aggregate scalars from one attack-union pass),
-net FT→2×256 → [512+16]→32→32→1, int16/int8 quantization QA=127/QB=64,
+net FT→2×H → [2H+16]→d2→32→1 (shipped: H=256, d2=16; `train.py --hidden`
+takes H up to 512), int16/int8 quantization QA=127/QB=64,
 `.nnue` format v1, `.pygdata` training data format v1.
 
 State (2026-07-31): BEST MEASUREMENT -- +19.30 +/- 15.3 vs the CURRENT engine.

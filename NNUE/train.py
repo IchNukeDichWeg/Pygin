@@ -47,6 +47,7 @@ sys.path.insert(0, NNUE_DIR)
 import torch
 
 from config import (OUT_CP, THREAT_DIM, QA, CHECKPOINTS_DIR, TOY_NET, D2,
+                    HIDDEN, HIDDEN_MAX,
                     LABEL_MAX_ABS_CP, stamp_net_hash, cgroup_cores)
 
 # Size torch's pool BEFORE any tensor work: on a container it otherwise
@@ -258,6 +259,14 @@ def main():
                          "some cost in capacity, which only a screen can "
                          "price. The engine needs no change: nnue.c reads d2 "
                          "from the .nnue header.")
+    ap.add_argument("--hidden", type=int, default=None,
+                    help="accumulator width H per perspective (default %d, "
+                         "max %d). The feature transformer and the first "
+                         "tail layer both scale with it, so 512 roughly "
+                         "doubles training time and the accumulator and "
+                         "layer-1 cost of an evaluation. The engine needs no "
+                         "change: nnue.c reads H from the .nnue header."
+                         % (HIDDEN, HIDDEN_MAX))
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--wd", type=float, default=0.0,
                     help="AdamW decoupled weight decay (0 = plain Adam, "
@@ -365,7 +374,8 @@ def main():
         # the right flag is exactly what someone recovering a dead run will
         # get wrong -- and getting it wrong is a shape mismatch at best.
         model = NNUEModel(d2=sd["l2.weight"].shape[0],
-                          d3=sd["l3.weight"].shape[0])
+                          d3=sd["l3.weight"].shape[0],
+                          hidden=sd["ft.weight"].shape[1])
         model.load_state_dict(sd)
         export_nnue(model, args.out)
         out = stamp_net_hash(args.out)
@@ -417,7 +427,11 @@ def main():
             args.d2 = int(_init_sd["l2.weight"].shape[0])
             print(f"warm start: tail width d2={args.d2} taken from the checkpoint",
                   flush=True)
-    model = NNUEModel(d2=args.d2 or D2).to(DEVICE)
+        if args.hidden is None:
+            args.hidden = int(_init_sd["ft.weight"].shape[1])
+    model = NNUEModel(d2=args.d2 or D2, hidden=args.hidden or HIDDEN).to(DEVICE)
+    print(f"net: H={model.hidden} x2 + T{THREAT_DIM} -> {model.d2} -> "
+          f"{model.d3} -> 1", flush=True)
     if args.init:
         # Weights only, no optimiser state: a warm start is a new run with a
         # head start, not the continuation of an old one. Loud about what it

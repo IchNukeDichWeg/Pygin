@@ -1463,6 +1463,27 @@ if os.path.exists(os.path.join("NNUE", "selftest_nnue.py")):
     except subprocess.TimeoutExpired:
         check("NNUE unit checks (toy net, subprocess)", False, "timeout")
 
+# --- 5l. NNUE at the widest accumulator (H=512) -------------------------- #
+# The shipped net is 256 wide and exercises none of the 512-lane paths, so a
+# seeded random 512 net runs both Phase-4 gates: C forward == numpy reference
+# exactly, and incremental pushes == full refresh. Subprocesses, for the same
+# one-process-one-config reason as 5k.
+if os.path.exists(os.path.join("NNUE", "verify_c.py")):
+    for _gate, _extra, _label in (
+            ("forward", ["--positions", "2000"],
+             "NNUE H=512 forward == numpy reference (2,000 pos)"),
+            ("increment", ["--pushes", "200000"],
+             "NNUE H=512 incremental accumulator == full refresh")):
+        try:
+            r = subprocess.run(
+                [sys.executable, os.path.join("NNUE", "verify_c.py"), _gate,
+                 "--hidden", "512"] + _extra,
+                capture_output=True, text=True, timeout=300)
+            tail = (r.stdout.strip().splitlines() or ["(no output)"])[-1]
+            check(_label, r.returncode == 0, tail[:90])
+        except subprocess.TimeoutExpired:
+            check(_label, False, "timeout")
+
 # --- 6. optional pieces: report, don't fail ------------------------------ #
 print("\noptional:")
 print(f"  {'ok  ' if os.path.exists('data/wdl_model.json') else 'none'}  data/wdl_model.json "

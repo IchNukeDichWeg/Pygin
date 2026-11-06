@@ -19,7 +19,8 @@
  *   T16 threat encoding: 8 aggregate int8 scalars per side, recomputed per
  *   eval from one attack-union pass (full attack planes rejected: not
  *   incrementally updatable and ~5k extra accumulate ops per eval).
- *   Net: FT IN->256 x2 persp (int16), tail [512+16]->32->32->1 (int8/int32,
+ *   Net: FT IN->H x2 persp (int16; H from the header, 256 shipped, up to
+ *   NN_H_MAX), tail [2H+16]->d2->d3->1 (int8/int32,
  *   QA=127, QB=64, clamp-then-shift activations, trunc-division output,
  *   cp = out * 400 / 8128).
  *
@@ -39,7 +40,15 @@
  * number quoted in a comment).
  */
 
-#define NN_H_MAX   256          /* compile-time ceiling; file's H <= this  */
+/* Compile-time ceiling on the accumulator width; the file's H must be <= this
+ * and the net sizes itself from its header. The live csearch.c raises it to
+ * 512 before the include (the wide-net experiment). Every Old Engine snapshot
+ * from 51 on also compiles this file, and they keep 256: a wider NNAccum
+ * doubles the per-thread accumulator stack, which a snapshot measured as a
+ * timed baseline must not pick up. */
+#ifndef NN_H_MAX
+#define NN_H_MAX   256
+#endif
 #define NN_T_MAX   16
 #define NN_D2_MAX  32
 #define NN_D3_MAX  32
