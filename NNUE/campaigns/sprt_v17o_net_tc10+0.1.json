@@ -1,0 +1,38 @@
+{
+ "decision": "H0",
+ "llr": -6.747429057962415,
+ "next_offset": 1501,
+ "pairs": 1500,
+ "penta": [
+  120,
+  497,
+  601,
+  243,
+  39
+ ],
+ "runs": [
+  {
+   "adjudicate": true,
+   "book1": null,
+   "book2": null,
+   "chess960": false,
+   "core1_md5": "b18859bb60a3457f69a44c95d7aadfb6",
+   "core2_md5": "b18859bb60a3457f69a44c95d7aadfb6",
+   "engine1": "engine_v17o",
+   "engine2": "cengine",
+   "fen_file": "UHO_4060_v4.epd",
+   "instrument_key": "k5b02ad27",
+   "mode": "clock 10.00+0.10",
+   "offset": 0,
+   "positions": 5000,
+   "positions_played": 1501,
+   "seed": 66,
+   "sf_elo": 3000,
+   "sf_our_clock": false,
+   "sf_version": null,
+   "smp": 1,
+   "started": "2026-11-06T02:00:26+01:00",
+   "workers": 9
+  }
+ ]
+}
