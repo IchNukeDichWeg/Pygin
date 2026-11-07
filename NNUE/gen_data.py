@@ -484,6 +484,14 @@ def main():
         args.book = os.path.abspath(args.book)
         if not os.path.exists(args.book):
             sys.exit(f"gen_data: book not found: {args.book}")
+    # Workers run with cwd=REPO_DIR, so every path they get must be absolute:
+    # a relative out put the shards under the repo root while the parent
+    # polled and merged relative to its own cwd (FileNotFoundError at merge,
+    # after all the work), and a relative --syzygy failed in every worker.
+    if not args.shard:
+        args.out = os.path.abspath(args.out)
+        if args.syzygy:
+            args.syzygy = os.path.abspath(args.syzygy)
 
     if args.shard:                     # worker mode (fresh process = fresh
         run_worker(args.shard, args.positions, args.nodes, args.seed,  # .so)
