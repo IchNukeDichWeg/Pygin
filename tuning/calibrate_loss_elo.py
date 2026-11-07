@@ -78,7 +78,8 @@ def main():
     W = max(1, mp.cpu_count() - 1)
 
     with mp.Pool(W, initializer=texel._worker_init,
-                 initargs=(POSITIONS, W, ntrain, ())) as pool:
+                 initargs=(POSITIONS, W, ntrain, (),
+                           texel.PARAMS)) as pool:  # spawn: hand over the PSTs
         new_vec = texel.baseline_vector(E.Engine())
         l_new = texel._loss(pool, W, new_vec, K, val=True)
         print(f"shipped held-out : {l_new:.6f}")

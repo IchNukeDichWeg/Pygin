@@ -439,9 +439,16 @@ def cmd_extract(a):
 _W = {}          # per-worker state
 
 
-def _worker_init(npy_path, nchunks, ntrain, dormant=()):
+def _worker_init(npy_path, nchunks, ntrain, dormant=(), params=None):
     interruptible.silence_worker()   # Ctrl-C hits the whole process
                                      # group; the parent owns shutdown
+    if params is not None:
+        # A spawn worker re-imports this module and sees only the 51 base
+        # PARAMS: the parent's --pst/--with-dormant extension never reached
+        # it, zip(PARAMS, vec) dropped those entries, and they could never
+        # move the loss (base vs every knight PST +100: identical loss).
+        global PARAMS
+        PARAMS = params
     import engine as E
     lib = ctypes.CDLL("./csearch.so")
     lib.csearch_eval_white.restype = ctypes.c_int
@@ -781,7 +788,7 @@ def cmd_tune(a):
               f"vs shipped) -- a PARTIAL descent, not a converged one")
     with mp.Pool(a.workers, initializer=_worker_init,
                  initargs=(a.positions, nchunks, ntrain,
-                           dormant)) as pool:
+                           dormant, PARAMS)) as pool:
         # --- fit K (the cp -> win-probability scale) on the shipped eval --- #
         t0 = time.time()
         k, kloss = None, None
