@@ -368,7 +368,7 @@ def main():
         ck = os.path.join(args.checkpoint_dir, "best.pt")
         if not os.path.exists(ck):
             sys.exit(f"train --export-only: no {ck} to export")
-        sd = torch.load(ck, weights_only=True)
+        sd = torch.load(ck, weights_only=True, map_location="cpu")
         # Infer the tail width FROM THE CHECKPOINT, never from --d2. The run
         # being recovered may have used a non-default width, and re-supplying
         # the right flag is exactly what someone recovering a dead run will
@@ -422,7 +422,10 @@ def main():
         # net this repo ever exported, and it keeps the warm-started net
         # ARCHITECTURALLY identical to the one it started from -- which a
         # comparison against that net needs.
-        _init_sd = torch.load(args.init, weights_only=True)
+        # map_location: a cuda/mps run saves the Adam moments on its device,
+        # and loading that last.pt on a box without it raised.
+        _init_sd = torch.load(args.init, weights_only=True,
+                              map_location="cpu")
         _init_sd = _init_sd.get("model", _init_sd)   # last.pt wraps, best.pt does not
         if args.d2 is None:
             args.d2 = int(_init_sd["l2.weight"].shape[0])
@@ -483,12 +486,13 @@ def main():
                      f"--epochs is {args.epochs}; use --export-only to write "
                      f"the net from best.pt")
         if os.path.isfile(last_path):
-            ck = torch.load(last_path, weights_only=True)
+            ck = torch.load(last_path, weights_only=True, map_location="cpu")
             model.load_state_dict(ck["model"])
             opt.load_state_dict(ck["opt"])
             how = "exact (weights + Adam state)"
         elif os.path.isfile(ckpt_path):
-            model.load_state_dict(torch.load(ckpt_path, weights_only=True))
+            model.load_state_dict(torch.load(ckpt_path, weights_only=True,
+                                             map_location="cpu"))
             how = "weights-only from best.pt (Adam moments re-warm)"
         else:
             sys.exit(f"train --resume: neither {last_path} nor {ckpt_path} "
@@ -619,7 +623,8 @@ def main():
     if best_state is not None:                 # in-memory: cannot be deleted
         model.load_state_dict(best_state)
     else:                                      # --export-only path
-        model.load_state_dict(torch.load(ckpt_path, weights_only=True))
+        model.load_state_dict(torch.load(ckpt_path, weights_only=True,
+                                         map_location="cpu"))
     q = export_nnue(model, args.out)
     args.out = stamp_net_hash(args.out)     # -> nnue_v1_<12 hex>.nnue
     print(f"exported best (epoch {best_epoch}, val {best_val:.6f}"
