@@ -3842,6 +3842,26 @@ void set_tt_fh_tight(int v) { g_tt_fh_tight = v ? 1 : 0; }
  * consumes stale values inside the window. 0 = off = v49 node-exact. */
 static int g_tt_r50 = 0;
 void set_tt_r50(int v) { g_tt_r50 = v ? 1 : 0; }
+
+/* R50_CHECK_DRAW (bug hunt 07.11.2026, PENDING A/B): at hmc >= 100 a node
+ * in check with a legal evasion is a draw (FIDE, Stockfish, and match.py's
+ * own arbiter), but both draw sites below skip in-check nodes, so a
+ * capturing evasion resets the clock and the line is searched as if the
+ * game went on. Measured with the fix in a scratch build:
+ * r6k/6pp/7N/8/2Q5/8/8/6K1 w - - 99 80 d8 read "mate 2" (Qg8+ at hmc 100
+ * is not mate) and becomes cp -50; r6k/p5pp/7N/8/2Q5/8/8/6K1 b - - 98 80
+ * d14 played g7h6 at cp -1188 and plays a8f8 at cp +50. Bench never
+ * reaches hmc 100, so it is 593,598 either way. 0 = shipped behaviour. */
+static int g_r50_chk = 0;
+void set_r50_check_draw(int v) { g_r50_chk = v ? 1 : 0; }
+static inline int r50_draw(const Board* b, int hmc, int in_chk)
+{
+    if (hmc < 100) return 0;
+    if (!in_chk) return 1;
+    if (!g_r50_chk) return 0;
+    uint32_t mv[256];
+    return gen_legal(b, mv) > 0;     /* checkmate still outranks the rule */
+}
 #define R50_TT_HMC   90                /* SF-classic window: hmc 90..99 */
 #define R50_DECISIVE 500               /* decisive-but-non-mate filter */
 static inline int tt_r50_stale(int hmc, int v)
@@ -4035,8 +4055,8 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
     if (g_score_hyg) {
         if (!(b->pawns | b->rooks | b->queens) && insufficient_material(b))
             return draw_score(b);            /* (c) dead-drawn exchanges */
-        if (g_cb2 && hmc >= 100 && !in_chk)  /* CB-02(b): 50-move rule --
-                                              * same in-check-plays-on
+        if (g_cb2 && r50_draw(b, hmc, in_chk))  /* CB-02(b): 50-move
+                                              * rule -- same in-check
                                               * semantics as negamax */
             return draw_score(b);
         key = board_key(b);                  /* (b) every qsearch node logs
@@ -4325,9 +4345,11 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     /* --- step 6: game-state draws (v30 order: before the TT probe) --- */
     if (!(b->pawns | b->rooks | b->queens) && insufficient_material(b))
         return draw_score(b);
-    if (hmc >= 100 && !in_chk)               /* 50-move (in check: play on --
+    if (r50_draw(b, hmc, in_chk))            /* 50-move (in check: play on --
                                               * the mate/stalemate result of
-                                              * the position takes priority) */
+                                              * the position takes priority,
+                                              * or with R50_CHECK_DRAW only a
+                                              * mate does) */
         return draw_score(b);
     uint64_t key = board_key(b);
     g_path[ply] = key;
@@ -5459,7 +5481,8 @@ int cs_rep_probe(const uint64_t* path, int ply, const uint64_t* hist,
     return r;
 }
 
-int csearch_abi(void) { return 41; }  /* 41 = cs_set_chess960
+int csearch_abi(void) { return 42; }  /* 42 = set_r50_check_draw;
+                                       * 41 = cs_set_chess960
                                        *      (+ cs_perft / cs_zkey_walk);
                                        * 40 = E-05 set_nn_tempo;
                                        * 39 = E-04 set_nn_matscale;

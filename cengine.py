@@ -1553,6 +1553,14 @@ class Engine:
     # the full CE_LADDER are UNCHANGED with it on, so it re-pins nothing.
     SM_CONTEMPT = True
 
+    # R50_CHECK_DRAW (bug hunt 07.11.2026, PENDING A/B): at hmc >= 100 an
+    # in-check node with a legal evasion scores the draw instead of playing
+    # on (both C sites; only a mate outranks the rule). Off, the search read
+    # "mate 2" through a 50-move draw and gave up a rook to dodge a phantom
+    # one (numbers in csearch.c at set_r50_check_draw). Bench 593,598 either
+    # way: no bench node reaches hmc 100. False = shipped behaviour.
+    R50_CHECK_DRAW = False
+
     # FI-89: repetition against the ROOT or the pre-root GAME HISTORY draws on
     # the FIRST match, while match.py's arbiter (python-chess
     # can_claim_threefold_repetition) needs the THIRD. True adopts SF's
@@ -1781,8 +1789,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, self.CSEARCH_SO))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (abi 41 = cs_set_chess960; 40 = E-05 set_nn_tempo; 39 = E-04 set_nn_matscale; 38 = FI-38 set_see_quiet; 37 = FI-38 set_see_scaled; 35 = FI-103/104/106/107 set_cutnode_lmr/ttpv_lmr/razor/probcut) -- bump with csearch_abi.
-        if lib.csearch_abi() < 41:
+        # (abi 42 = set_r50_check_draw; 41 = cs_set_chess960; 40 = E-05 set_nn_tempo; 39 = E-04 set_nn_matscale; 38 = FI-38 set_see_quiet; 37 = FI-38 set_see_scaled; 35 = FI-103/104/106/107 set_cutnode_lmr/ttpv_lmr/razor/probcut) -- bump with csearch_abi.
+        if lib.csearch_abi() < 42:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -1833,7 +1841,7 @@ class Engine:
             self.RAZOR_MARGIN, self.RAZOR_DEPTH,
             self.PROBCUT_MARGIN, self.PROBCUT_DEPTH, self.PROBCUT_RED,
             self.CORR_HIST, self.CORR_CAP,
-            self.SM_CONTEMPT,
+            self.SM_CONTEMPT, self.R50_CHECK_DRAW,
               # FB-55: the guard covered 49 TOGGLES and not one EVAL VALUE --
               # a hole exactly where the .so-cross-contamination class bites.
               # csearch.so's eval params are process-wide too, so two engines
@@ -1987,6 +1995,7 @@ class Engine:
         lib.set_corr_hist(1 if self.CORR_HIST else 0,
                           int(self.CORR_CAP))                       # FI-109
         lib.set_sm_contempt(1 if self.SM_CONTEMPT else 0)           # FB-48
+        lib.set_r50_check_draw(1 if self.R50_CHECK_DRAW else 0)
         # FB-04: entries scored under a PREVIOUS construction's eval params
         # would poison this one (the table is process-global and persistent).
         # First construction: the table is empty, reset is a no-op.
