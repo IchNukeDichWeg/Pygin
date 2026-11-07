@@ -724,6 +724,7 @@ def main():
     # flag. Castles read and print as king-takes-rook (e1h1), per the spec.
     chess960 = False
     board = chess.Board()
+    board_rejected = False   # the last `position` failed: go must not search
     search_thread = None
     # FB-44: the ponderhit release watcher wakes up to `budget` seconds later
     # and stops "the search" -- but engine._abort is PROCESS-wide, so if a new
@@ -1305,13 +1306,15 @@ def main():
                 engine._lib.cs_tt_reset()
                 engine.last_score = 0        # reset the TB difficulty gate
                 board = chess.Board(chess960=chess960)
+                board_rejected = False
             elif cmd == "position":
                 # BUG-02 + B-08: ALL-OR-NOTHING. Build on a scratch board;
                 # a bad FEN or an unparseable/illegal move token rejects the
                 # whole command (stderr note) and keeps the previous board --
                 # never a half-applied prefix that the next `go` silently
                 # searches, and never a stale board pretending to be the new
-                # position without saying so.
+                # position: until the next good `position` or `ucinewgame`,
+                # go answers `bestmove 0000` instead of searching it.
                 try:
                     if "fen" in tokens:
                         i = tokens.index("fen")
@@ -1338,9 +1341,13 @@ def main():
                                 raise ValueError(f"illegal move {u!r}")
                             nb.push(mv)
                     board = nb
+                    board_rejected = False
                 except Exception as ex:
                     print(f"cuci: position command rejected ({ex})",
                           file=sys.stderr)
+                    # The kept board is NOT the GUI's position: a search of
+                    # it played moves that are illegal in the real game.
+                    board_rejected = True
             elif cmd == "go":
                 if searching():
                     # FB-14: a self-terminated `go infinite` (mate break /
@@ -1378,6 +1385,10 @@ def main():
                                                       # or bailed), so the
                                                       # FB-32 next-go promise
                                                       # holds on FB-14 too
+                if board_rejected:
+                    out("info string position rejected, not searching")
+                    out("bestmove 0000")
+                    continue
                 with swap_lock:              # FB-44: go() clears _abort, so
                     search_thread = go(tokens[1:])   # an old ponder watcher
                     search_thread.start()    # must not fire across this swap
