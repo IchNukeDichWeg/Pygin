@@ -146,6 +146,27 @@ base, nxt, runs, _note = match.sprt_resume_load(state, 20000)
 check("loads a hand-written file with no provenance",
       base == FI30 and runs == [], f"penta {base}, runs {runs}")
 
+# --- 5. parallel windows sharing one auto-named file ------------------- #
+# Two runs that loaded the same file each saved base + own tally, and the
+# last writer erased the other (50 pairs played, 25 kept). Two processes are
+# simulated by swapping RUN_ID and the per-process contribution map.
+def _as_run(rid, own_map):
+    match.RUN_ID, match._STATE_OWN = rid, own_map
+os.remove(state)
+A, B = {}, {}
+ra, rb = {"run_id": "a"}, {"run_id": "b"}
+_as_run("a", A); match.sprt_resume_save(state, [0] * 5, 0, None, [ra], base=[0] * 5)
+_as_run("b", B); match.sprt_resume_save(state, [0] * 5, 25, None, [rb], base=[0] * 5)
+_as_run("a", A); match.sprt_resume_save(state, [0, 0, 1, 7, 9], 25, None, [ra], base=[0] * 5)
+_as_run("b", B); match.sprt_resume_save(state, [0, 0, 3, 10, 12], 50, None, [rb], base=[0] * 5)
+_as_run("a", A); out = match.sprt_resume_save(state, [0, 0, 1, 7, 17], 25, None, [ra], base=[0] * 5)
+check("parallel windows keep each other's pairs",
+      out["penta"] == [0, 0, 4, 17, 29] and out["next_offset"] == 50,
+      f"penta {out['penta']} next {out['next_offset']}")
+check("parallel windows keep each other's run records",
+      sorted(r["run_id"] for r in out["runs"]) == ["a", "b"],
+      str([r["run_id"] for r in out["runs"]]))
+
 for f in os.listdir(tmp):
     os.remove(os.path.join(tmp, f))
 os.rmdir(tmp)

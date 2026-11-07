@@ -258,7 +258,12 @@ import signal
 import sys
 import threading
 import time
+import uuid
 from queue import Empty
+try:
+    import fcntl                       # state-file lock; POSIX only
+except ImportError:                    # Windows: merge without the lock
+    fcntl = None
 
 import chess
 import chess.pgn
@@ -424,24 +429,67 @@ def sprt_resume_load(path, offset):
     return penta, nxt, prior_runs, note
 
 
-def sprt_resume_save(path, penta, next_offset, sprt_state, runs):
+# path -> the pairs THIS process has added to that file so far, and the id
+# that marks this process's run record in it (see sprt_resume_save).
+_STATE_OWN = {}
+RUN_ID = uuid.uuid4().hex[:12]
+
+
+def sprt_resume_save(path, penta, next_offset, sprt_state, runs, base=None):
     """Dump the pooled state atomically.
 
     Written at the START of a run, every SAVE_EVERY games, and from the finally
     block -- so it survives Ctrl-C, SIGTERM, a kill and a crash alike, and a
     run that dies at game 9,000 does not lose 9,000 games. `runs` is the
     provenance list: one record per tranche, so a pooled figure can be audited
-    even though pooling is no longer gated on a fingerprint."""
+    even though pooling is no longer gated on a fingerprint.
+
+    `base` is the penta this run LOADED. Given it, the save is a locked
+    read-merge-write: re-read the file, swap this run's previous contribution
+    for its current one, and keep every other run's pairs and records. Without
+    it, two parallel windows (offsets 0, N in one checkout, which the docstring
+    recommends) each wrote base + own tally and the last writer erased the
+    other: 50 pairs played, 25 in the file, one run record. The lock is POSIX
+    flock; on Windows the merge still runs, unlocked."""
     st = sprt_state or {}
-    tmp = f"{path}.tmp"                  # never truncate a good state file on
-    with open(tmp, "w", encoding="utf-8") as fh:      # a crash mid-write
-        json.dump({"penta": list(penta),
-                   "next_offset": int(next_offset),
-                   "pairs": int(sum(penta)),
-                   "decision": st.get("decided"),
-                   "llr": st.get("llr"),
-                   "runs": list(runs)}, fh, indent=1, sort_keys=True)
-    os.replace(tmp, path)
+    out = {"penta": list(penta), "next_offset": int(next_offset),
+           "decision": st.get("decided"), "llr": st.get("llr"),
+           "runs": list(runs)}
+    lock = None
+    if base is not None:
+        if fcntl is not None:
+            lock = open(f"{path}.lock", "w")
+            fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                cur = json.load(fh)
+        except (OSError, ValueError):
+            cur = None
+        own = [int(p) - int(b) for p, b in zip(penta, base)]
+        if cur is not None:
+            prev = _STATE_OWN.get(path, [0] * 5)
+            out["penta"] = [int(c) - pv + o for c, pv, o
+                            in zip(cur.get("penta", [0] * 5), prev, own)]
+            out["next_offset"] = max(int(cur.get("next_offset", 0)),
+                                     int(next_offset))
+            # other runs' records exactly as the file has them; this run's
+            # own record refreshed in place, or appended on its first save
+            me = [r for r in runs if r.get("run_id") == RUN_ID]
+            rest = [r for r in cur.get("runs", [])
+                    if r.get("run_id") != RUN_ID]
+            out["runs"] = rest + me
+        _STATE_OWN[path] = own
+    out["pairs"] = int(sum(out["penta"]))
+    try:
+        # per-process tmp: a shared one made a parallel run's os.replace fail
+        tmp = f"{path}.{os.getpid()}.tmp"    # never truncate a good state
+        with open(tmp, "w", encoding="utf-8") as fh:  # file on a crash
+            json.dump(out, fh, indent=1, sort_keys=True)
+        os.replace(tmp, path)
+    finally:
+        if lock is not None:
+            lock.close()                  # releases the flock
+    return out
 
 
 # How often the state file is refreshed mid-run, in completed GAMES.
@@ -2460,7 +2508,8 @@ def main():
     # This run's provenance record. Pooling is no longer blocked on config
     # equality, so the config has to be RECORDED instead -- otherwise a pooled
     # number could not be audited at all.
-    this_run = {"engine1": e1.name, "engine2": e2.name,
+    this_run = {"run_id": RUN_ID,
+                "engine1": e1.name, "engine2": e2.name,
                 "offset": offset, "positions": len(fens),
                 "seed": SUBSET_SEED, "fen_file": FEN_FILE,
                 "mode": mode_desc, "smp": int(ENGINE_SMP),
@@ -2589,7 +2638,8 @@ def main():
     # at the end is not a crash-safety net -- it is a summary.
     try:
         sprt_resume_save(sprt_resume_path, base_penta,
-                         max(prior_next_off, offset), None, runs_log)
+                         max(prior_next_off, offset), None, runs_log,
+                         base=base_penta)
     except OSError as ex:
         print(f"!! could not create state file {sprt_resume_path!r}: {ex}")
 
@@ -2775,7 +2825,7 @@ def main():
             this_run["decision"] = sprt_state.get("decided")
             this_run["llr"] = sprt_state.get("llr")
             sprt_resume_save(sprt_resume_path, pooled, nxt, sprt_state,
-                             runs_log)
+                             runs_log, base=base_penta)
         except (OSError, ValueError):
             pass
 
@@ -3078,8 +3128,11 @@ def main():
             this_run["decision"] = sprt_state.get("decided")
             this_run["llr"] = sprt_state.get("llr")
             try:
-                sprt_resume_save(sprt_resume_path, pooled,
-                                 next_off, sprt_state, runs_log)
+                # the FILE's numbers: a parallel window's pairs are in it too
+                saved = sprt_resume_save(sprt_resume_path, pooled, next_off,
+                                         sprt_state, runs_log,
+                                         base=base_penta)
+                pooled, next_off = saved["penta"], saved["next_offset"]
                 print(f"\nSPRT state written to: {sprt_resume_path} "
                       f"({sum(pooled):,} pooled pairs; next tranche must use "
                       f"--offset >= {next_off})")
