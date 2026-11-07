@@ -479,6 +479,7 @@ def main():
     chunk_cache = {} if getattr(args, "cache_chunks", False) else None
     last_path = os.path.join(args.checkpoint_dir, "last.pt")
     start_ep = 0
+    bad_start = 0       # --patience streak carried over a --resume
 
     if args.resume:
         # How far the interrupted run got is read from the CURVE, not from a
@@ -512,6 +513,9 @@ def main():
         done = [(int(r["epoch"]), float(r["val_mse"])) for r in rows]
         start_ep = done[-1][0] + 1
         best_epoch, best_val = min(done, key=lambda r: r[1])
+        # Epochs since the best already count toward --patience: restarting
+        # the streak at 0 let a resumed run train `patience` extra epochs.
+        bad_start = sum(1 for e, _ in done if e > best_epoch)
         if start_ep >= args.epochs:
             sys.exit(f"train --resume: {start_ep} epochs already finished and "
                      f"--epochs is {args.epochs}; use --export-only to write "
@@ -598,7 +602,7 @@ def main():
         if not start_ep:                  # resuming must not re-header or
             cw.writerow(["epoch", "train_mse", "val_mse"])   # truncate
         try:
-            bad = 0
+            bad = bad_start
             for ep in range(start_ep, args.epochs):
                 t0 = time.time()
                 cur_lr = lr_at(args, ep)
