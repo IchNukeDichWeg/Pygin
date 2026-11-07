@@ -2769,6 +2769,10 @@ def main():
                       offset + min(len(fens), shard_used["max_pair"] + 1))
             this_run["positions_played"] = min(len(fens),
                                                shard_used["max_pair"] + 1)
+            # Per run as well: the top-level decision/llr describe only the
+            # latest tranche, so a later run without --sprt erased them.
+            this_run["decision"] = sprt_state.get("decided")
+            this_run["llr"] = sprt_state.get("llr")
             sprt_resume_save(sprt_resume_path, pooled, nxt, sprt_state,
                              runs_log)
         except (OSError, ValueError):
@@ -3068,6 +3072,10 @@ def main():
                            offset + min(len(fens), shard_used["max_pair"] + 1))
             this_run["positions_played"] = min(len(fens),
                                                shard_used["max_pair"] + 1)
+            # Per run as well: the top-level decision/llr describe only the
+            # latest tranche, so a later run without --sprt erased them.
+            this_run["decision"] = sprt_state.get("decided")
+            this_run["llr"] = sprt_state.get("llr")
             try:
                 sprt_resume_save(sprt_resume_path, pooled,
                                  next_off, sprt_state, runs_log)
