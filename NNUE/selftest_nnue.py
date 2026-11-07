@@ -26,8 +26,10 @@ sys.path.insert(0, REPO_DIR)
 # passes the net actually under acceptance, because a gate that silently
 # checks a DIFFERENT artifact than the one being accepted is worse than no
 # gate: it reports PASS for a net it never loaded.
-NET = (sys.argv[1] if len(sys.argv) > 1
-       else os.path.join(NNUE_DIR, "nets", "toy.nnue"))
+# Absolute: cengine resolves a relative NNUE_FILE against the repo root, not
+# the cwd that the existence check and the numpy oracle below use.
+NET = os.path.abspath(sys.argv[1] if len(sys.argv) > 1
+                      else os.path.join(NNUE_DIR, "nets", "toy.nnue"))
 
 if not os.path.exists(NET):
     print(f"skip: no net file at {NET} (dormant build; train one via "
