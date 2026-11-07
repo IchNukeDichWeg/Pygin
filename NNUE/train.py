@@ -484,22 +484,39 @@ def main():
         # How far the interrupted run got is read from the CURVE, not from a
         # counter inside a checkpoint: the curve is flushed every epoch, so it
         # is the one artifact that survives a SIGHUP mid-epoch.
-        done = []
+        rows = []
         if os.path.isfile(curve_path):
             with open(curve_path, newline="") as cf:
-                for row in csv.DictReader(cf):
-                    done.append((int(row["epoch"]), float(row["val_mse"])))
-        if not done:
+                rows = list(csv.DictReader(cf))
+        if not rows:
             sys.exit(f"train --resume: {curve_path} has no completed epochs; "
                      f"drop --resume and start the run")
+        ck = None
+        if os.path.isfile(last_path):
+            ck = torch.load(last_path, weights_only=True, map_location="cpu")
+            ck_ep = ck.get("epoch")
+            if ck_ep is not None and ck_ep < int(rows[-1]["epoch"]):
+                # Killed between the curve flush and the checkpoint writes:
+                # last.pt (and maybe best.pt) lag the curve. Resuming from
+                # the curve skipped those epochs while claiming "exact", and
+                # could export an older best.pt under a newer epoch's label.
+                # Drop the rows the checkpoint never saw; they re-run.
+                print(f"resume: last.pt is from epoch {ck_ep} but the curve "
+                      f"ends at {rows[-1]['epoch']}; re-running from epoch "
+                      f"{ck_ep + 1}", flush=True)
+                rows = [r for r in rows if int(r["epoch"]) <= ck_ep]
+                with open(curve_path, "w", newline="") as cf:
+                    cw = csv.DictWriter(cf, fieldnames=list(rows[0].keys()))
+                    cw.writeheader()
+                    cw.writerows(rows)
+        done = [(int(r["epoch"]), float(r["val_mse"])) for r in rows]
         start_ep = done[-1][0] + 1
         best_epoch, best_val = min(done, key=lambda r: r[1])
         if start_ep >= args.epochs:
             sys.exit(f"train --resume: {start_ep} epochs already finished and "
                      f"--epochs is {args.epochs}; use --export-only to write "
                      f"the net from best.pt")
-        if os.path.isfile(last_path):
-            ck = torch.load(last_path, weights_only=True, map_location="cpu")
+        if ck is not None:
             model.load_state_dict(ck["model"])
             opt.load_state_dict(ck["opt"])
             how = "exact (weights + Adam state)"
