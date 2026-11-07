@@ -1570,6 +1570,13 @@ class Engine:
     # A/B needs a warm table: TIMED, or --nodes across a whole game.
     DEADTAG_PC_FIX = False
 
+    # PROBCUT_SENTINEL_FIX (bug hunt 07.11.2026, PENDING A/B): ProbCut's
+    # stage-2 search told its child "the parent played a null move" after a
+    # real capture, so NULL_NODOUBLE blocked null move there (448 of 1,359
+    # bench stage-2 searches) and the counter-move update was skipped. True
+    # passes the capture's from/to. Bench 593,597 on vs 593,598 off.
+    PROBCUT_SENTINEL_FIX = False
+
     # FI-89: repetition against the ROOT or the pre-root GAME HISTORY draws on
     # the FIRST match, while match.py's arbiter (python-chess
     # can_claim_threefold_repetition) needs the THIRD. True adopts SF's
@@ -1798,8 +1805,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, self.CSEARCH_SO))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (abi 43 = set_tt_pcfix; 42 = set_r50_check_draw; 41 = cs_set_chess960; 40 = E-05 set_nn_tempo; 39 = E-04 set_nn_matscale; 38 = FI-38 set_see_quiet; 37 = FI-38 set_see_scaled; 35 = FI-103/104/106/107 set_cutnode_lmr/ttpv_lmr/razor/probcut) -- bump with csearch_abi.
-        if lib.csearch_abi() < 43:
+        # (abi 44 = set_probcut_cp; 43 = set_tt_pcfix; 42 = set_r50_check_draw; 41 = cs_set_chess960; 40 = E-05 set_nn_tempo; 39 = E-04 set_nn_matscale; 38 = FI-38 set_see_quiet; 37 = FI-38 set_see_scaled; 35 = FI-103/104/106/107 set_cutnode_lmr/ttpv_lmr/razor/probcut) -- bump with csearch_abi.
+        if lib.csearch_abi() < 44:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -1851,6 +1858,7 @@ class Engine:
             self.PROBCUT_MARGIN, self.PROBCUT_DEPTH, self.PROBCUT_RED,
             self.CORR_HIST, self.CORR_CAP,
             self.SM_CONTEMPT, self.R50_CHECK_DRAW, self.DEADTAG_PC_FIX,
+            self.PROBCUT_SENTINEL_FIX,
               # FB-55: the guard covered 49 TOGGLES and not one EVAL VALUE --
               # a hole exactly where the .so-cross-contamination class bites.
               # csearch.so's eval params are process-wide too, so two engines
@@ -2006,6 +2014,7 @@ class Engine:
         lib.set_sm_contempt(1 if self.SM_CONTEMPT else 0)           # FB-48
         lib.set_r50_check_draw(1 if self.R50_CHECK_DRAW else 0)
         lib.set_tt_pcfix(1 if self.DEADTAG_PC_FIX else 0)
+        lib.set_probcut_cp(1 if self.PROBCUT_SENTINEL_FIX else 0)
         # FB-04: entries scored under a PREVIOUS construction's eval params
         # would poison this one (the table is process-global and persistent).
         # First construction: the table is empty, reset is a no-op.

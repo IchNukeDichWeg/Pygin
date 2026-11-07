@@ -3265,6 +3265,14 @@ static inline void corr_update(const Board* b, int diff, int depth)
 static int g_probcut_margin = 0;            /* 0 = off; armed base 200 */
 static int g_probcut_depth  = 5;
 static int g_probcut_red    = 4;
+/* PROBCUT_SENTINEL_FIX (bug hunt 07.11.2026, PENDING A/B): stage 2 passes
+ * prev12 = 0xFFFFFFFF after a REAL capture -- the null-move sentinel -- so
+ * with NULL_NODOUBLE the child may never try null move (448 of 1,359 bench
+ * stage-2 searches at child depth >= 3, all blocked) and its counter-move
+ * update is skipped. On, the capture's from/to is passed, as the main move
+ * loop does. Bench 593,597 on vs 593,598 off. */
+static int g_probcut_cp = 0;
+void set_probcut_cp(int v) { g_probcut_cp = v ? 1 : 0; }
 void set_probcut(int margin, int depth, int red)
 {
     g_probcut_margin = margin < 0 ? 0 : margin;
@@ -4677,8 +4685,11 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                 if (CS_UNWINDING()) return 0;
                 if (v < pbeta) continue;
                 /* stage 2: a REAL search confirms before anything is cut */
+                uint32_t pcp = 0xFFFFFFFF;       /* PROBCUT_SENTINEL_FIX */
+                if (g_probcut_cp && ply + 1 < CS_MAXPLY)
+                    pcp = (uint32_t)((m & 63) << 6 | ((m >> 6) & 63));
                 v = -negamax(&c, depth - g_probcut_red, -pbeta, -pbeta + 1,
-                             ply + 1, 0xFFFFFFFF, gc, 0, chk, srb, 0);
+                             ply + 1, pcp, gc, 0, chk, srb, 0);
                 if (CS_UNWINDING()) return 0;
                 if (v >= pbeta)
                     return v - (pbeta - beta);   /* still >= beta; do not
@@ -5502,7 +5513,8 @@ int cs_rep_probe(const uint64_t* path, int ply, const uint64_t* hist,
     return r;
 }
 
-int csearch_abi(void) { return 43; }  /* 43 = set_tt_pcfix;
+int csearch_abi(void) { return 44; }  /* 44 = set_probcut_cp;
+                                       * 43 = set_tt_pcfix;
                                        * 42 = set_r50_check_draw;
                                        * 41 = cs_set_chess960
                                        *      (+ cs_perft / cs_zkey_walk);
