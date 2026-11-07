@@ -1589,6 +1589,12 @@ class Engine:
     # way (fixed depth never aborts); hits --nodes and timed play directly.
     ABORT_FAILLOW_KEEP = False
 
+    # TB_ZEROING_FIX (bug hunt 07.11.2026, PENDING A/B): mirrored onto the
+    # embedded engine.py, whose local Syzygy mover never zeroed a won pawn
+    # ending and drew it by repetition (details at engine.py
+    # tb_zeroing_fix). Only reached with UseTB on and a SyzygyPath set.
+    TB_ZEROING_FIX = False
+
     # FI-89: repetition against the ROOT or the pre-root GAME HISTORY draws on
     # the FIRST match, while match.py's arbiter (python-chess
     # can_claim_threefold_repetition) needs the THIRD. True adopts SF's
@@ -1795,6 +1801,7 @@ class Engine:
         # embedded engine BEFORE _sync_c_params pushes them into csearch.so.
         self._py.use_king_shelter = bool(self.USE_KING_SHELTER)
         self._py.use_outpost = bool(self.USE_OUTPOST)
+        self._py.tb_zeroing_fix = bool(self.TB_ZEROING_FIX)
         self._py.use_cantwin = bool(self.CANTWIN)          # CW-01 mirror
         # FI-27: mirror simplify too -- flipping USE_SIMPLIFY for its queued
         # re-test must not split the GUI eval bar (evaluate_position -> _py)

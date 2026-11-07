@@ -1156,6 +1156,7 @@ def main():
                     f" deadtag_pc_fix={int(engine.DEADTAG_PC_FIX)}"
                     f" probcut_sentinel_fix={int(engine.PROBCUT_SENTINEL_FIX)}"
                     f" abort_faillow_keep={int(engine.ABORT_FAILLOW_KEEP)}"
+                    f" tb_zeroing_fix={int(engine.TB_ZEROING_FIX)}"
                     f" simplify_threshold={engine.SIMPLIFY_THRESHOLD}"
                     f" contempt={engine.contempt}"
                     f" hash_bits={engine.TT_BITS}"
