@@ -2928,6 +2928,13 @@ def main():
         else:
             e1.start()
             e2.start()
+            if mode_cfg["mode"] == "nodes":
+                # Same per-side budgets _worker_loop sets: without them
+                # play_game fell back to mode_cfg["nodes"] for BOTH sides, so
+                # a 1-worker --nodes run silently dropped forced and
+                # calibrated budgets while the banner still recorded them.
+                e1.node_budget = int(mode_cfg["nodes_e1"])
+                e2.node_budget = int(mode_cfg["nodes_e2"])
             for round_no, fen, white_is_e1 in schedule:
                 white = e1 if white_is_e1 else e2
                 black = e2 if white_is_e1 else e1
