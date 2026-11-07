@@ -546,14 +546,24 @@ class EngineProcess:
         raise EngineError(f"{self.name} failed calibration:\n{msg[1]}")
 
     def request_move(self, fen, mode, value, timeout):
-        """Ask for a move; kill+respawn and raise on a timeout (hung search)."""
-        self.conn.send(("move", fen, mode, value, MAX_DEPTH_CAP))
-        if not self.conn.poll(timeout):
+        """Ask for a move; kill+respawn and raise on a timeout (hung search)
+        or a dead process (segfault, OOM kill)."""
+        try:
+            self.conn.send(("move", fen, mode, value, MAX_DEPTH_CAP))
+            if not self.conn.poll(timeout):
+                self.kill()
+                self._spawn()            # fresh process for the remaining games
+                raise EngineTimeout(
+                    f"{self.name}: no move within {timeout:.2f}s (killed)")
+            msg = self.conn.recv()
+        except (EOFError, OSError) as ex:
+            # The pipe died with the process. Without the respawn every later
+            # request on this handle failed at once with a broken pipe: one
+            # segfault in a worker turned 77 of 80 games into errors and
+            # drained the shared queue from the healthy worker.
             self.kill()
-            self._spawn()                # fresh process for the remaining games
-            raise EngineTimeout(
-                f"{self.name}: no move within {timeout:.2f}s (killed)")
-        msg = self.conn.recv()
+            self._spawn()
+            raise EngineError(f"{self.name}: engine process died ({ex!r})")
         if msg[0] == "ok":
             return msg[1]
         if msg[0] == "error":
