@@ -47,12 +47,21 @@ eval_c.so: eval_c.c Constants.c Constants.h
 movegen.so: movegen.c Constants.c Constants.h
 	$(CC) $(CFLAGS) -o $@ movegen.c Constants.c
 
-$(EXE): csearch.so eval_c.so movegen.so cuci.py cengine.py engine.py time_manager.py
+# The armed net, read from cengine.py exactly as scripts/build_exe.sh does:
+# the binary dies at startup without it (USE_NNUE has no HCE fallback).
+# Recursive `=` so `make clean` never runs the import.
+NET = $(shell $(PY) -c 'import cengine; print(cengine.Engine.NNUE_FILE)')
+
+# lib/: time_manager moved there on 2026-07-24 and cuci.py reaches it with a
+# runtime sys.path insert PyInstaller cannot follow (build_exe.sh's --paths).
+$(EXE): csearch.so eval_c.so movegen.so cuci.py cengine.py engine.py lib/time_manager.py
 	$(PY) -m PyInstaller --onefile --name $(EXE) cuci.py \
+	    --paths "$(CURDIR)/lib" --hidden-import time_manager \
 	    --add-binary "$(CURDIR)/csearch.so:." \
 	    --add-binary "$(CURDIR)/eval_c.so:." \
 	    --add-binary "$(CURDIR)/movegen.so:." \
 	    --add-data   "$(CURDIR)/data/Perfect2023.bin:." \
+	    --add-data   "$(CURDIR)/$(NET):NNUE/nets" \
 	    --hidden-import engine --hidden-import chess.polyglot \
 	    --exclude-module pygame --exclude-module tkinter --exclude-module numpy \
 	    --exclude-module PySide6 --exclude-module matplotlib --exclude-module flask \
