@@ -735,6 +735,12 @@ def main():
     # fresh thread object).
     swap_lock = threading.Lock()
     pending_hash_mb = None                   # FB-25: Hash sent mid-search
+    # Threads / OwnBook sent while a search thread runs: MultiPV, Skill and
+    # the PM-01 premove certification save and restore use_book and
+    # smp_workers around their sub-searches, so a value set meanwhile was
+    # silently reverted ("Using 2 threads", then threads=1). Applied at the
+    # next idle go / ucinewgame, like Hash.
+    pending_opts = {}
     pending_contempt = None                  # Contempt sent mid-search: since
                                              # 6fe8c3e a real change resets the
                                              # TT, which must not run under a
@@ -1026,6 +1032,10 @@ def main():
                 continue
             tokens = line.split()
             cmd = tokens[0]
+            if pending_opts and not searching():   # thread done: apply now
+                for _k, _v in pending_opts.items():
+                    setattr(engine, _k, _v)
+                pending_opts.clear()
 
             if cmd == "uci":
                 out(f"id name {NAME}")
@@ -1145,13 +1155,17 @@ def main():
                 if name == "threads":
                     # 512 = csearch.c's CS_MAX_THREADS; keep the three
                     # clamps (here, cengine, battle_worker) in step with it.
-                    engine.smp_workers = max(1, min(512, int(value)))
+                    v = max(1, min(512, int(value)))
+                    if searching():
+                        pending_opts["smp_workers"] = v
+                    else:
+                        engine.smp_workers = v
                     # Confirm it, Stockfish-style. Silence here cost a real
                     # measurement: `setoption name Threads 4` (no `value`
                     # keyword) parses as the option NAME "threads4", matches
                     # nothing, and was dropped without a word -- so a 112-
                     # thread benchmark ran single-threaded and read 1.8M nps.
-                    out(f"info string Using {engine.smp_workers} threads")
+                    out(f"info string Using {v} threads")
                 elif name == "multipv":
                     engine.multipv = max(1, min(20, int(value)))
                 elif name == "ponder":
@@ -1159,7 +1173,10 @@ def main():
                     # informational -- go-ponder is honored whenever it
                     # arrives; the option exists so GUIs enable pondering
                 elif name == "ownbook":
-                    engine.use_book = value.lower() == "true"
+                    if searching():
+                        pending_opts["use_book"] = value.lower() == "true"
+                    else:
+                        engine.use_book = value.lower() == "true"
                 elif name == "bookfile":
                     # Point at a custom Polyglot .bin; empty/<empty> restores
                     # the auto-discovered bundled book (Perfect2023.bin ...).
