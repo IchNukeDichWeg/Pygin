@@ -71,8 +71,11 @@ def load_wdl_model():
 
 def p_win(cp, phase, m):
     x = max(m["phase_clamp_min"], min(m["phase_max"], phase)) / m["phase_max"]
-    a = sum(c * x ** i for i, c in enumerate(m["as"]))
-    b = sum(c * x ** i for i, c in enumerate(m["bs"]))
+    # np.polyfit order, HIGHEST power first (as cuci.py and match.py read
+    # it). Summing it lowest-first gave 41.7% at phase 12 / cp 0, not 9.0%.
+    a = b = 0.0
+    for ca, cb in zip(m["as"], m["bs"]):
+        a, b = a * x + ca, b * x + cb
     return 1.0 / (1.0 + math.exp((a - cp) / b))
 
 
