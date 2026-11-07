@@ -374,11 +374,15 @@ elif [ -d "Old Engine" ]; then
         build_so "$d" movegen
         # C-era snapshots (31+): csearch.so links the SNAPSHOT's eval_c.c
         # (multi-source + -lm -lpthread, so it can't reuse build_so).
+        # Snapshots 51+ single-TU-include the LIVE NNUE/nnue.c (-I.), so it
+        # is a dependency too: without it an nnue.c edit left every existing
+        # box running stale snapshot code while a fresh clone rebuilt.
         if [ -f "$d/csearch.c" ]; then
             if [ "$d/csearch.so" -nt "$d/csearch.c" ] \
                 && [ "$d/csearch.so" -nt "$d/eval_c.c" ] \
                 && [ "$d/csearch.so" -nt Constants.c ] \
-                && [ "$d/csearch.so" -nt Constants.h ]; then
+                && [ "$d/csearch.so" -nt Constants.h ] \
+                && { [ ! -f NNUE/nnue.c ] || [ "$d/csearch.so" -nt NNUE/nnue.c ]; }; then
                 :
             else
                 "$CC" $CFLAGS -o "$d/csearch.so" "$d/csearch.c" "$d/eval_c.c" \
