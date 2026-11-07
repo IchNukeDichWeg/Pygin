@@ -1479,6 +1479,14 @@ def main():
         except Exception:
             err = traceback.format_exc().splitlines()[-1]
             out(f"info string error: {err}")
+    else:
+        # End of input without `quit` is a quit, as in Stockfish. The search
+        # thread is a daemon, so returning here killed a running search
+        # before it printed its bestmove (`go depth 12` piped in: nothing).
+        if searching():
+            engine.stop()
+            search_thread.stop_evt.set()
+            search_thread.join()
 
 
 if __name__ == "__main__":
