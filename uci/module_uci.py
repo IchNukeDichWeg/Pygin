@@ -80,7 +80,17 @@ def main():
             mv = eng.get_best_move(board, depth)
             white = int(getattr(eng, "last_score", 0) or 0)
             stm = white if board.turn == chess.WHITE else -white
-            out.write(f"info depth {depth} score cp {stm} "
+            # Mates as `score mate N` (uci_old.py's _score_line rule): as cp
+            # they printed +/-999999 and entered imbalance_probe's bucket
+            # means, which drop only `score mate` lines.
+            mate_score = getattr(eng, "MATE_SCORE", 1_000_000)
+            mate_thresh = getattr(eng, "MATE_THRESHOLD", mate_score - 1_000)
+            if abs(stm) >= mate_thresh:
+                n = (mate_score - abs(stm) + 1) // 2
+                score = f"mate {n if stm > 0 else -n}"
+            else:
+                score = f"cp {stm}"
+            out.write(f"info depth {depth} score {score} "
                       f"nodes {getattr(eng, 'nodes_searched', 0)} "
                       f"pv {mv.uci() if mv else '0000'}\n")
             out.write(f"bestmove {mv.uci() if mv else '0000'}\n")
