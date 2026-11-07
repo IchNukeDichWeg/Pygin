@@ -1763,6 +1763,11 @@ class Engine:
         self._py.SIMPLIFY_THRESHOLD = int(self.SIMPLIFY_THRESHOLD)
         assert not self._py.use_pin_eval, \
             "use_pin_eval has no C port; the eval oracle would desync"
+        # _py.__init__ already synced eval_c.so with the toggles at their
+        # engine.py defaults; the GUI eval bar (evaluate_position) runs on
+        # eval_c.so, so re-push it or USE_OUTPOST=True read +25 there while
+        # the C search's HCE read +58 -- the split FI-27 exists to prevent.
+        self._py._sync_c_params()
 
         lib = ctypes.CDLL(os.path.join(_DIR, self.CSEARCH_SO))
         # BUG-04: must match the NEWEST abi whose exports this file calls
