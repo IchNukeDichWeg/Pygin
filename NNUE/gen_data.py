@@ -513,14 +513,21 @@ def main():
                  "round offset larger than either box's worker count "
                  "(e.g. 1000).")
 
-    per = (args.positions + args.workers - 1) // args.workers
-    per_g = (args.games + args.workers - 1) // args.workers if args.games \
-        else 0
+    # Exact split: the first N % workers workers take one extra. Ceiling
+    # division gave every worker the rounded-up share, so --positions 5
+    # --workers 2 wrote 6 (help: "collect exactly this many").
+    # Never more workers than units: a worker with a games share of 0 would
+    # fall back to positions mode.
+    args.workers = max(1, min(args.workers, args.games or args.positions))
+
+    def _share(n, w):
+        return n // args.workers + (1 if w < n % args.workers else 0)
     shards = []
     procs = []
     for w in range(args.workers):
         sp = f"{args.out}.shard{w}"
         shards.append(sp)
+        per, per_g = _share(args.positions, w), _share(args.games, w)
         procs.append(subprocess.Popen(
             [sys.executable, os.path.abspath(__file__), args.out,
              "--shard", sp, "--positions", str(per),
@@ -539,7 +546,7 @@ def main():
     # nohup/tail -f (match.py's in-place bar is TTY-gated and would not).
     t0 = time.time()
     games_mode = bool(args.games)
-    target = (per_g if games_mode else per) * args.workers
+    target = args.games if games_mode else args.positions
     unit = "games" if games_mode else "positions"
     try:
       while any(p.poll() is None for p in procs):
