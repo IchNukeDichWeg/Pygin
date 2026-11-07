@@ -809,11 +809,35 @@ if os.path.exists("csearch.c"):
         # only in a retuned scalar (a texel candidate vs the shipped eval --
         # this project's commonest same-process pairing) used to pass the
         # guard and silently share whichever was built first.
+        # Comparing the fingerprint with itself proved nothing (dropping it
+        # from the guard still passed): perturb one scalar from each push
+        # path -- csearch_set_eval (TEMPO) and _sync_c_params
+        # (KING_SHIELD_MG, MOBILITY_WEIGHT) -- and require the hash to move,
+        # then to come back when the value is restored.
         _fp_eval = ce._eval_fingerprint()
+        _moved = []
+        for _attr in ("TEMPO", "KING_SHIELD_MG", "MOBILITY_WEIGHT"):
+            _own = _attr in vars(ce._py)
+            _old = getattr(ce._py, _attr)
+            if isinstance(_old, dict):
+                _new = dict(_old)
+                _new[chess.KNIGHT] += 40
+            else:
+                _new = _old + 40
+            setattr(ce._py, _attr, _new)
+            _fp_new = ce._eval_fingerprint()
+            if _own:
+                setattr(ce._py, _attr, _old)
+            else:
+                delattr(ce._py, _attr)
+            if _fp_new == _fp_eval:
+                _moved.append(f"{_attr} not covered")
+        if ce._eval_fingerprint() != _fp_eval:
+            _moved.append("restore did not reproduce the hash")
         check("FB-55: construction guard hashes the eval payload",
               isinstance(_fp_eval, str) and len(_fp_eval) == 16
-              and _fp_eval == ce._eval_fingerprint(),
-              f"eval fingerprint {_fp_eval}")
+              and not _moved,
+              "; ".join(_moved) or f"eval fingerprint {_fp_eval}")
 
         # --- 5g1. FI-42: eval accumulator vs the from-scratch oracle ----- #
         # apply_move maintains (mg, eg, phase) incrementally on the same

@@ -1688,7 +1688,8 @@ class Engine:
                                              # does nothing for depth.
 
     def _eval_fingerprint(self):
-        """FB-55: sha1 of the exact eval payload csearch_set_eval receives.
+        """FB-55: sha1 of the exact eval payload csearch_set_eval and
+        _sync_c_params push into csearch.so.
 
         Mirrors the push below field for field -- if a field is added there
         and not here, the guard silently stops covering it, so keep the two
@@ -1709,8 +1710,29 @@ class Engine:
              eng.MOPUP_STRONG_KING_WEIGHT],
             [eng.DOUBLED_PAWN_EG, eng.ISOLATED_PAWN_EG, eng.BACKWARD_PAWN_EG],
             [eng.CONTEMPT, eng.DRAW_AVOID_MARGIN],
+            [eng.SIMPLIFY_WEIGHT],
         ]
         blob = ";".join(",".join(str(int(v)) for v in p) for p in parts)
+        # Plus everything _sync_c_params pushes (mobility, king safety, rook
+        # files, bishop pair, threats, outposts, ...), RECORDED from the call
+        # itself rather than re-listed, so a field added there is covered
+        # automatically. Without it a second Engine with KING_SHIELD_MG +40
+        # constructed silently and changed the first one's d9 search.
+        calls = []
+
+        class _Rec:
+            def __getattr__(self, name):
+                def _call(*args):
+                    calls.append((name, [list(a) if hasattr(a, "_length_")
+                                         else a for a in args]))
+                return _call
+        orig = self._pymod._eval_lib
+        self._pymod._eval_lib = _Rec()
+        try:
+            eng._sync_c_params()
+        finally:
+            self._pymod._eval_lib = orig
+        blob += ";" + repr(calls)
         return hashlib.sha1(blob.encode()).hexdigest()[:16]
 
     def __init__(self):
