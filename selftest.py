@@ -1522,9 +1522,11 @@ if os.path.isdir("Old Engine"):
         sdir = os.path.join("Old Engine", d)
         if not os.path.isdir(sdir):
             continue
-        has_c = os.path.exists(os.path.join(sdir, "eval_c.c"))
-        has_so = os.path.exists(os.path.join(sdir, "eval_c.so"))
-        if has_c and not has_so:
+        # every library setup.sh builds, not just eval_c: a snapshot with
+        # eval_c.so but no csearch.so read "ok" and ran its search in Python
+        if any(os.path.exists(os.path.join(sdir, f"{lib}.c"))
+               and not os.path.exists(os.path.join(sdir, f"{lib}.so"))
+               for lib in ("eval_c", "movegen", "csearch")):
             snaps_missing.append(d)
     if snaps_missing:
         print(f"  note  Old Engine snapshots without built .so: "
