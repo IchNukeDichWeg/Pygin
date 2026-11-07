@@ -283,13 +283,22 @@ done
 if [ -f csearch.c ]; then
     # FI-15: csearch.c single-TU-includes NNUE/nnue.c -- it is a real
     # dependency of the staleness check (missing file = always rebuild).
+    # A --pgo build leaves .pgo/built: it is newer than every source, so
+    # without the stamp a later plain run called it "up to date" and kept the
+    # PGO core forever (one A/B arm +5.81% NPS while the snapshots are plain).
     if [ csearch.so -nt csearch.c ] && [ csearch.so -nt eval_c.c ] \
         && [ csearch.so -nt Constants.c ] && [ csearch.so -nt Constants.h ] \
-        && [ -f NNUE/nnue.c ] && [ csearch.so -nt NNUE/nnue.c ]; then
+        && [ -f NNUE/nnue.c ] && [ csearch.so -nt NNUE/nnue.c ] \
+        && { [ "$PGO" -eq 1 ] || [ ! -f .pgo/built ]; }; then
         echo "   csearch.so up to date"
     else
         "$CC" $CFLAGS -o csearch.so csearch.c eval_c.c Constants.c -lm -lpthread
-        echo "   built csearch.so"
+        if [ -f .pgo/built ] && [ "$PGO" -eq 0 ]; then
+            rm -f .pgo/built
+            echo "   built csearch.so (plain, replacing the PGO build; --pgo keeps PGO)"
+        else
+            echo "   built csearch.so"
+        fi
     fi
 fi
 
@@ -332,7 +341,7 @@ if [ "$PGO" -eq 1 ] && [ -f csearch.c ]; then
     if [ "$PGO" -eq 1 ]; then
         echo "-> PGO pass 2/2: rebuilding with the profile ..."
         "$CC" $CFLAGS $USE_FLAG -o csearch.so csearch.c eval_c.c Constants.c -lm -lpthread \
-            && echo "   built csearch.so (PGO)" \
+            && touch "$PROF_DIR/built" && echo "   built csearch.so (PGO)" \
             || { echo "   !! PGO rebuild failed -- restoring the plain build";
                  "$CC" $CFLAGS -o csearch.so csearch.c eval_c.c Constants.c -lm -lpthread; }
     fi
