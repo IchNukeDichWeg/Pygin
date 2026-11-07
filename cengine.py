@@ -2106,7 +2106,10 @@ class Engine:
     # ------------------------------------------------------------------ #
     def evaluate_position(self, board):
         """Terminal-aware static eval, White's perspective -- delegated to
-        the embedded Python engine (bit-exact the same evaluation)."""
+        the embedded Python engine. This is the HAND-CRAFTED eval (bit-exact
+        with the C search's HCE), NOT the net: with USE_NNUE on (the shipped
+        default) the search scores with NNUE, so this reads differently
+        (+7 vs +42 raw net in the Two Knights after 3...Nf6)."""
         return self._py.evaluate_position(board)
 
     @property
