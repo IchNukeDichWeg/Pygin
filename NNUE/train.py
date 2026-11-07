@@ -377,6 +377,7 @@ def main():
                           d3=sd["l3.weight"].shape[0],
                           hidden=sd["ft.weight"].shape[1])
         model.load_state_dict(sd)
+        os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
         export_nnue(model, args.out)
         out = stamp_net_hash(args.out)
         print(f"exported checkpoints/best.pt (RECOVERED, epoch unknown -- "
@@ -451,8 +452,10 @@ def main():
            torch.optim.Adam(model.parameters(), lr=args.lr))
     if args.device != "cpu":
         print(f"training on {args.device}", flush=True)
-    os.makedirs(CHECKPOINTS_DIR, exist_ok=True)
-    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    # Only the directories this run writes: the default checkpoints dir was
+    # created even under --checkpoint-dir elsewhere, and a bare --out name
+    # made dirname() "" and makedirs("") raise.
+    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     os.makedirs(args.checkpoint_dir, exist_ok=True)
     ckpt_path = os.path.join(args.checkpoint_dir, "best.pt")
     curve_path = os.path.join(args.checkpoint_dir, "loss_curve.csv")
