@@ -244,10 +244,10 @@ def main():
     ap.add_argument("dataset")
     ap.add_argument("--out", default=TOY_NET)
     ap.add_argument("--export-only", action="store_true",
-                    help="skip training: export checkpoints/best.pt to --out "
-                         "and exit. Recovery for a run that died after some "
-                         "epochs (there is no resume; best.pt is the only "
-                         "thing that survives).")
+                    help="skip training: export <checkpoint-dir>/best.pt to "
+                         "--out and exit. Recovery for a run that died after "
+                         "some epochs and will not be continued (--resume "
+                         "continues one instead).")
     ap.add_argument("--epochs", type=int, default=40)
     ap.add_argument("--batch", type=int, default=8192)
     ap.add_argument("--lambda", dest="lam", type=float, default=LAMBDA,
@@ -372,8 +372,8 @@ def main():
         # Recovery path. best.pt is written every time val improves, but only
         # the export turns it into a .nnue -- so a run that dies at epoch 15
         # (crash, OOM, machine sleep, closed terminal) leaves hours of work on
-        # disk in a form nothing can load. There is no resume, so without this
-        # the only option is to train again from scratch.
+        # disk in a form nothing can load. --resume continues such a run;
+        # this exports it as it stands.
         ck = os.path.join(args.checkpoint_dir, "best.pt")
         if not os.path.exists(ck):
             sys.exit(f"train --export-only: no {ck} to export")
@@ -389,8 +389,9 @@ def main():
         os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
         export_nnue(model, args.out)
         out = stamp_net_hash(args.out)
-        print(f"exported checkpoints/best.pt (RECOVERED, epoch unknown -- "
-              f"read checkpoints/loss_curve.csv for the val curve) -> {out}")
+        print(f"exported {ck} (RECOVERED, epoch unknown -- read "
+              f"{os.path.join(args.checkpoint_dir, 'loss_curve.csv')} for "
+              f"the val curve) -> {out}")
         return
     recs = read_pygdata(args.dataset)              # mmap, read-only
     if args.limit:
@@ -616,6 +617,7 @@ def main():
     # Nothing about the export needs the file to still be there.
     best_state = None
     stopped = False
+    last_done = start_ep - 1               # newest epoch with a curve row
     with open(curve_path, "a" if start_ep else "w", newline="") as cf:
         cw = csv.writer(cf)
         if not start_ep:                  # resuming must not re-header or
@@ -631,6 +633,7 @@ def main():
                 va = evaluate(model, val_t, args.batch)
                 cw.writerow([ep, f"{tr:.6f}", f"{va:.6f}"])
                 cf.flush()
+                last_done = ep
                 marker = ""
                 if va < best_val:
                     best_val, best_epoch = va, ep
@@ -665,7 +668,9 @@ def main():
             # budget, so "watch it and stop when it plateaus" is the expected
             # way to use this -- it must produce a net.
             stopped = True
-            print(f"\ntraining interrupted after {best_epoch + 1} completed "
+            # epochs are 0-based; best_epoch + 1 understated it whenever the
+            # best was not the newest epoch (36 printed after 40)
+            print(f"\ntraining interrupted after {last_done + 1} completed "
                   f"epoch(s) -- exporting the best one", flush=True)
 
     if best_epoch < 0:
