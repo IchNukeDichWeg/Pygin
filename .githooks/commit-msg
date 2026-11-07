@@ -6,7 +6,9 @@
 # whole session of commits landed with Type values outside the allowed set
 # ("feature", "fix", "chore") and with no Co-Authored-By trailer at all.
 msg="$1"
-body=$(grep -v '^#' "$msg")
+# Stop at git's scissors line: `git commit -v` (or commit.verbose) leaves the
+# diff below it in this file, and its lines failed the Type-is-last check.
+body=$(awk '/^# -+ >8 -+$/ { exit } { print }' "$msg" | grep -v '^#')
 fail() { printf '\ncommit-msg: %s\n\n' "$1" >&2; exit 1; }
 
 type_line=$(printf '%s\n' "$body" | grep -c '^Type: ')
@@ -22,7 +24,8 @@ case "$t" in
               cosmetic | docs | tooling | benchmark" ;;
 esac
 
-printf '%s\n' "$body" | grep -q '^Co-Authored-By: ' || \
+printf '%s\n' "$body" | awk '/^Type: / { t = 1; next }
+  t && /^Co-Authored-By: / { ok = 1 } END { exit ok ? 0 : 1 }' || \
   fail "missing the Co-Authored-By trailer (must come after everything)."
 
 # The Type line is the last line of the BODY -- only trailers may follow.
@@ -47,7 +50,8 @@ if printf '%s\n' "$body" | grep -qE '^Benchmark:?[[:space:]]*$'; then
   Fixed layout: Against / Games / Wins / Draws / Losses / TC / Elo /
   Normalized Elo / Range / Pairs scored / Ptnml / Game pair ratio / SPRT"
   done
-  printf '%s\n' "$body" | grep '^Elo:' | grep -q '+/-' || \
+  # EVERY Elo line, not just one of them
+  ! printf '%s\n' "$body" | grep '^Elo:' | grep -vq '+/-' || \
     fail "'Elo:' must always carry its error margin (e.g. 'Elo: +37.52 +/- 6.3')."
 fi
 exit 0
