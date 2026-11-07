@@ -433,6 +433,19 @@ def main():
                   flush=True)
         if args.hidden is None:
             args.hidden = int(_init_sd["ft.weight"].shape[1])
+    if args.resume and (args.hidden is None or args.d2 is None):
+        # Same inference for --resume: a --hidden 512 run resumed without
+        # the flag died on a shape mismatch, and only after the dataset read.
+        for _name in ("last.pt", "best.pt"):
+            _p = os.path.join(args.checkpoint_dir, _name)
+            if os.path.isfile(_p):
+                _sd = torch.load(_p, weights_only=True, map_location="cpu")
+                _sd = _sd.get("model", _sd)
+                if args.d2 is None:
+                    args.d2 = int(_sd["l2.weight"].shape[0])
+                if args.hidden is None:
+                    args.hidden = int(_sd["ft.weight"].shape[1])
+                break
     model = NNUEModel(d2=args.d2 or D2, hidden=args.hidden or HIDDEN).to(DEVICE)
     print(f"net: H={model.hidden} x2 + T{THREAT_DIM} -> {model.d2} -> "
           f"{model.d3} -> 1", flush=True)
