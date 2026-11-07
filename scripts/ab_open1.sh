@@ -46,8 +46,12 @@ say "=== PREFLIGHT A -- both arms must run the SAME core ==="
 # box that built both correctly gets two identical hashes. A DIFFERENCE here
 # means the revert did not land or a stale .so survived, and the run would
 # measure the core instead of the window.
-H1=$(md5sum csearch.so 2>/dev/null | cut -d' ' -f1 || md5 -q csearch.so)
-H2=$(md5sum "Old Engine/61/csearch.so" 2>/dev/null | cut -d' ' -f1 || md5 -q "Old Engine/61/csearch.so")
+# The pipeline's status is cut's, so `md5sum ... | cut || md5 -q` never fell
+# back: without md5sum both hashes came out empty and compared equal.
+md5of(){ if command -v md5sum >/dev/null; then md5sum "$1" | cut -d' ' -f1; else md5 -q "$1"; fi; }
+H1=$(md5of csearch.so)
+H2=$(md5of "Old Engine/61/csearch.so")
+[ -n "$H1" ] && [ -n "$H2" ] || { echo "    REFUSING TO RUN: could not hash the cores"; exit 1; }
 echo "    HEAD          $H1"
 echo "    Old Engine/61 $H2"
 [ "$H1" = "$H2" ] || { echo "    REFUSING TO RUN: the two cores differ"; exit 1; }
