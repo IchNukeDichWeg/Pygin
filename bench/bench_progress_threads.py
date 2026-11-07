@@ -30,7 +30,10 @@ if "-h" in sys.argv or "--help" in sys.argv:
     print(__doc__.strip()); sys.exit(0)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WORKER = os.path.join(REPO, "bench_progress_threads_worker.py")
+# Beside this file: the worker moved to bench/ on 24.07 and the repo-root
+# path made every child fail and print {} with no error.
+WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                      "bench_progress_threads_worker.py")
 THREADS = int(sys.argv[1]) if len(sys.argv) > 1 else 4
 SECONDS = float(sys.argv[2]) if len(sys.argv) > 2 else 5.0
 REPS = 5
