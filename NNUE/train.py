@@ -72,6 +72,15 @@ LAMBDA = 0.75          # search-score vs game-WDL blend
 RESULT_CP = 300        # a won game pulls the label by this many cp
 
 
+def save_atomic(obj, path):
+    """torch.save via a temp file and os.replace. A 19-75 MB last.pt written
+    in place and cut short (Ctrl-C, which the epoch loop catches and goes on
+    from, a kill, ENOSPC) left a truncated file that --resume died on."""
+    tmp = path + ".tmp"
+    torch.save(obj, tmp)
+    os.replace(tmp, path)
+
+
 def prepare(recs, log=print):
     t0 = time.time()
     idx_w, idx_b = extract_features(recs)
@@ -439,7 +448,11 @@ def main():
         for _name in ("last.pt", "best.pt"):
             _p = os.path.join(args.checkpoint_dir, _name)
             if os.path.isfile(_p):
-                _sd = torch.load(_p, weights_only=True, map_location="cpu")
+                try:
+                    _sd = torch.load(_p, weights_only=True,
+                                     map_location="cpu")
+                except Exception:        # unreadable: the resume falls back
+                    continue
                 _sd = _sd.get("model", _sd)
                 if args.d2 is None:
                     args.d2 = int(_sd["l2.weight"].shape[0])
@@ -494,7 +507,13 @@ def main():
                      f"drop --resume and start the run")
         ck = None
         if os.path.isfile(last_path):
-            ck = torch.load(last_path, weights_only=True, map_location="cpu")
+            try:
+                ck = torch.load(last_path, weights_only=True,
+                                map_location="cpu")
+            except Exception as ex:      # truncated by an older, in-place save
+                print(f"resume: {last_path} unreadable ({ex.__class__.__name__}"
+                      f"); falling back to best.pt", flush=True)
+        if ck is not None:
             ck_ep = ck.get("epoch")
             if ck_ep is not None and ck_ep < int(rows[-1]["epoch"]):
                 # Killed between the curve flush and the checkpoint writes:
@@ -617,7 +636,7 @@ def main():
                     best_val, best_epoch = va, ep
                     best_state = {k: v.detach().cpu().clone()
                                   for k, v in model.state_dict().items()}
-                    torch.save(best_state, ckpt_path)
+                    save_atomic(best_state, ckpt_path)
                     marker = "  *best"
                 print(f"epoch {ep:3d}  train {tr:.6f}  val {va:.6f}  "
                       f"lr {cur_lr:.2e}  ({time.time()-t0:.1f}s){marker}",
@@ -627,10 +646,10 @@ def main():
                 # counter live nowhere else. Written after the curve flush so
                 # a kill between the two loses the checkpoint, never the
                 # record of what was done.
-                torch.save({"model": {k: v.detach().cpu().clone()
-                                      for k, v in model.state_dict().items()},
-                            "opt": opt.state_dict(),
-                            "epoch": ep}, last_path)
+                save_atomic({"model": {k: v.detach().cpu().clone()
+                                       for k, v in model.state_dict().items()},
+                             "opt": opt.state_dict(),
+                             "epoch": ep}, last_path)
                 bad = 0 if marker else bad + 1
                 if args.patience and bad >= args.patience:
                     print(f"early stop: {bad} epochs without a val "
