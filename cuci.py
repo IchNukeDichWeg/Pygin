@@ -1325,6 +1325,10 @@ def main():
                     # missing king); csearch.c ctzll's the king bitboard, so
                     # a kingless board is UB. Reject via the existing
                     # all-or-nothing path; nb.status() names the reason.
+                    # Castling rights without their rook are dropped first,
+                    # as Stockfish does: GUIs send FENs like that, and
+                    # rejecting them used to answer for the previous board.
+                    nb.castling_rights = nb.clean_castling_rights()
                     if not nb.is_valid():
                         raise ValueError(f"invalid position: {nb.status()!r}")
                     if "moves" in tokens:
