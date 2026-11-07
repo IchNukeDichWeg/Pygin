@@ -4,9 +4,10 @@ sprt.py -- Sequential Probability Ratio Test for paired-game engine matches.
 
 An independent implementation of the published GSPRT statistics (the
 generalized sequential probability ratio test via empirical likelihood, per
-Michel Van den Bergh's GSPRT write-up -- the method Fishtest also uses),
-verified numerically against the tests.stockfishchess.org sprt_calc
-calculator on identical inputs. It lets a match.py run STOP EARLY the moment a change is provably good or provably
+Michel Van den Bergh's GSPRT write-up -- the method Fishtest also uses).
+It is an approximation of Fishtest's exact MLE, not a copy: within 0.3% of it
+on realistic ptnml samples (FI-30: +3.4752 vs +3.4756), but up to ~23% off on
+degenerate ones such as [0,3,200,30,0]. It lets a match.py run STOP EARLY the moment a change is provably good or provably
 bad, instead of always playing the full game budget. On a 223-worker server
 that is most of the CPU/money saving -- an obvious winner (or loser) is decided
 in a fraction of the games; only genuinely borderline changes run to the cap.

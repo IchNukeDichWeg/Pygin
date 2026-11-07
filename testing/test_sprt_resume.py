@@ -8,7 +8,9 @@ The thing being protected is the POOLED STATISTIC: a campaign that runs to
 decision spends tranches on different boxes and days, and the two ways to
 corrupt it are pooling the wrong experiment (FI-30's tranche 4 ran on the
 wrong checkout) and pooling overlapping shards (the same evidence counted
-twice). Both must be refusals, not warnings.
+twice). The first is caught by --tag and the config-change warning, the
+second by the overlap WARNING checked below; neither refuses, so a split
+campaign can still pool. A corrupt penta is the one hard refusal.
 """
 import json
 import os

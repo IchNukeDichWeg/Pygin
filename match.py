@@ -57,12 +57,13 @@ Usage::
                                                                override --sprt-elo0/elo1/alpha/beta/model)
                      [--sprt-resume state.json]               (pool this tranche with the earlier ones in that
                                                                file: the LLR continues instead of restarting.
-                                                               Refuses to pool a different experiment or an
-                                                               overlapping --offset; written on every exit
-                                                               path, including Ctrl-C. OPTIONAL: --sprt alone
-                                                               auto-names one after the run and prints the
-                                                               path at startup and in the summary, so a
-                                                               no-decision tranche is never unpoolable)
+                                                               WARNS (does not refuse) on a changed config
+                                                               or an overlapping --offset; written on every
+                                                               exit path, including Ctrl-C. OPTIONAL: every
+                                                               run keeps state in a stable auto-named file
+                                                               (sprt_<tag>.json with --tag, else
+                                                               sprt_<A>_vs_<B>_<instrument>.json) printed at
+                                                               startup and in the summary)
 
 Arguments (all optional, fall back to CONFIG section below):
   engine1.py      path to engine 1 (default: ENGINE_1)
@@ -86,8 +87,8 @@ Examples::
     python3 match.py A.py B.py 5000 0    --workers 0 --sprt --sprt-resume ab.json
     python3 match.py A.py B.py 5000 5000 --workers 0 --sprt --sprt-resume ab.json
 
-    # same thing without naming the file: tranche 1 auto-writes
-    # sprt_A_vs_B_<stamp>.json and prints it; feed that path to tranche 2
+    # same thing without naming the file: both tranches auto-use the stable
+    # sprt_A_vs_B_<instrument>.json (or sprt_<tag>.json with --tag)
     python3 match.py A.py B.py 5000 0 --workers 0 --sprt
 
 Progress is streamed to the terminal; a full per-move/PGN log is written to a
