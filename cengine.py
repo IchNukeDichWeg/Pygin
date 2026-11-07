@@ -841,6 +841,8 @@ class Engine:
     # TC -- bad captures are already ordered last, so alpha-beta was
     # getting most of the skip for free. matetrack stayed clean (913/783),
     # the Elo just wasn't there. False = v45 node-exact.
+    # DELETED from csearch.c 2026-07-27 (FI-91 wave 2): set_see_prune is an
+    # accepted no-op, so this attribute is INERT and __init__ refuses True.
     SEE_PRUNE = False
 
     # FI-38 depth-scaled SEE pruning, CAPTURES half only: CONFIRMED 2026-09-11,
@@ -1005,7 +1007,9 @@ class Engine:
     # a null. With FI-18's -1.25 the shallow quiet/capture-prune vein is
     # 0-for-2 in the C era: within-search history is too thin a signal at
     # depth <= 3 to beat the ordering that already buried those moves.
-    # REVERTED to 0 (dormant, do-not-retry at this TC); mechanism kept.
+    # REVERTED to 0 (dormant, do-not-retry at this TC). DELETED from
+    # csearch.c 2026-07-27 (FI-91 wave 2): set_hist_prune is an accepted
+    # no-op, so this attribute is INERT and __init__ refuses a nonzero value.
     HIST_PRUNE = 0
 
     # FI-30: (a) QS_TT_SHARPEN -- FI-25's rule applied at qsearch's
@@ -1294,9 +1298,11 @@ class Engine:
     # Parameter sweeps recorded for the graveyard (d16, 3 positions):
     # 10/128 +25.0%, 12/128 +24.6%, 14/128 +13.4%, 14/192 -2.8%, 16 vacuous;
     # the spec-default 8/64 costs +57% on the d11 bench (FI-49 died at
-    # +28%). No screen spent. Mechanism kept in-tree at 0 (v52 node-exact,
-    # abi 24); do-not-retry at this TC without a materially different
-    # extension rule (e.g. extending on a non-TT-move criterion).
+    # +28%). No screen spent. Do-not-retry at this TC without a materially
+    # different extension rule (e.g. extending on a non-TT-move criterion).
+    # The mechanism is DELETED from csearch.c (set_singular* are accepted
+    # no-ops kept for the ABI), so these four are INERT and __init__ refuses
+    # SINGULAR=True.
     SINGULAR = False
     SE_MIN_DEPTH = 14
     SE_MARGIN = 192
@@ -1763,6 +1769,10 @@ class Engine:
         self._py.SIMPLIFY_THRESHOLD = int(self.SIMPLIFY_THRESHOLD)
         assert not self._py.use_pin_eval, \
             "use_pin_eval has no C port; the eval oracle would desync"
+        # Their C setters are no-ops now: arming one ran bench at 593,598
+        # nodes either way, so an A/B of it would measure nothing.
+        assert not (self.SEE_PRUNE or self.HIST_PRUNE or self.SINGULAR), \
+            "SEE_PRUNE/HIST_PRUNE/SINGULAR were deleted from csearch.c"
         # _py.__init__ already synced eval_c.so with the toggles at their
         # engine.py defaults; the GUI eval bar (evaluate_position) runs on
         # eval_c.so, so re-push it or USE_OUTPOST=True read +25 there while
