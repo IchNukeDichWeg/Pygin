@@ -2424,6 +2424,20 @@ class Engine:
                         soft is not None and elapsed >= soft * time_limit):
                     break
 
+        if not best_key:
+            # A stop that lands before depth 1 completes (`go` + `stop` back
+            # to back, stdin EOF, a GUI "move now") left no move at all, and
+            # the net below played legal[0]: Nxf7 on Kiwipete, 10 of 10.
+            # Re-arm with no deadline and finish depth 1, a few hundred nodes.
+            # Only reachable after an abort, so fixed-depth bench is untouched.
+            self._lib.cs_search_begin(arr, len(hist), 0.0)
+            key, score, n1, done, aborted, _ = self._root(
+                bargs, 1, -CS_INF, CS_INF, 0, hmc)
+            if key and not aborted:
+                best_key = key
+                prev_score = score
+                reached_depth = 1
+                nodes += n1
         move = self._key_to_move(best_key)
         if move is None or move not in board.legal_moves:
             move = legal[0]                  # safety net; must never trigger
