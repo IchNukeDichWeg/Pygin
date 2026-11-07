@@ -496,7 +496,10 @@ def _search_skill(engine, board, level, budget, max_depth, white_to_move,
             if mv is None or mv in excl:
                 break
             total += engine.nodes_searched
-            lines.append((mv, engine.last_score))
+            # last_score is White-POV; _skill_pick ranks for the side to
+            # move, so Black's candidates were picked worst-first.
+            lines.append((mv, engine.last_score if white_to_move
+                          else -engine.last_score))
             states[mv] = (engine.last_score, engine.last_pv,
                           engine.last_depth or depth)
             excl.append(mv)
