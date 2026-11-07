@@ -1179,6 +1179,10 @@ def cmd_crosseval(a):
     cand = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(cand)
     import engine as E
+    # PSTs are in scope: a PST-only retune (v54 was one) used to compare
+    # equal on the 51 base scalars and exit "IDENTICAL" unscored.
+    global PARAMS
+    PARAMS = PARAMS + pst_params()
     base_vec = baseline_vector(E.Engine())
     cand_vec = baseline_vector(cand.Engine())
     moved = sum(1 for x, y in zip(base_vec, cand_vec) if x != y)
@@ -1196,7 +1200,8 @@ def cmd_crosseval(a):
             ntrain -= 1
     print(f"scoring on {a.positions}: {len(arr) - ntrain:,} held-out rows")
     with mp.Pool(a.workers, initializer=_worker_init,
-                 initargs=(a.positions, nchunks, ntrain, ())) as pool:
+                 initargs=(a.positions, nchunks, ntrain, (),
+                           PARAMS)) as pool:
         k, kloss, best_k = None, None, None
         for kk in [x / 10 for x in range(6, 20)]:
             l = _loss(pool, nchunks, base_vec, kk)
