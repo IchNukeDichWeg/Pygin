@@ -19,6 +19,7 @@ CORES=$(sysctl -n hw.ncpu 2>/dev/null || nproc); echo "### CORES: $CORES  -> tim
 echo ""
 echo "### BUILD + SELFTEST"
 ./setup.sh 2>&1 | grep -aE '^  FAIL|ALL CHECKS|setup complete|FAILED' | tail -3
+SETUP_OK=${PIPESTATUS[0]}   # the pipe's own status is tail's: a failed build still read READY
 
 echo ""
 echo "### ARMS: each must find its net (the sha in the filename IS the check)"
@@ -105,6 +106,7 @@ print(f'  UHO_4060_v4.epd: {n:,} positions (need >= 10,000 for offset 5000 + 500
 assert n >= 10000"
 
 echo ""
-[ "$SHIMS_OK" -eq 0 ] && echo "### READY -- run ./scripts/ab_open1.sh" \
-                      || echo "### NOT READY -- an arm could not find its net"
+if [ "$SETUP_OK" -ne 0 ]; then echo "### NOT READY -- setup.sh or the selftest failed (exit $SETUP_OK)"
+elif [ "$SHIMS_OK" -ne 0 ]; then echo "### NOT READY -- an arm could not find its net"
+else echo "### READY -- run ./scripts/ab_open1.sh"; fi
 echo "###   preflights alone: ./scripts/ab_open1.sh --preflight-only"
