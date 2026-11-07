@@ -322,9 +322,16 @@ def main():
                          "effect under ~1%%.")
     a = ap.parse_args()
 
-    for p in (a.engine_a, a.engine_b):
-        if not _os.path.isfile(_os.path.join(_ROOT_, p)) and not _os.path.isfile(p):
-            _sys.exit(f"engine not found: {p}")
+    # The child chdirs to the repo root, so hand it ABSOLUTE paths: a path
+    # that existed only relative to the caller's cwd was accepted here and
+    # then resolved against the root, benchmarking a different file.
+    def _resolve(p):
+        if _os.path.isfile(p):
+            return _os.path.abspath(p)
+        if _os.path.isfile(_os.path.join(_ROOT_, p)):
+            return _os.path.join(_ROOT_, p)
+        _sys.exit(f"engine not found: {p}")
+    a.path_a, a.path_b = _resolve(a.engine_a), _resolve(a.engine_b)
 
     _what = "TIME-TO-DEPTH" if a.threads > 1 else "NPS"
     print(f"paired d{a.depth} {_what} ratios -- B relative to A")
@@ -367,12 +374,12 @@ def run_once(a):
         # machine speed cannot favour whichever engine always goes first.
         if rnd % 2:
             (nps_a, na, sa), (nps_b, nb, sb) = (
-                measure(a.engine_a, a.fen, a.depth, a.cpu, a.threads),
-                measure(a.engine_b, a.fen, a.depth, a.cpu, a.threads))
+                measure(a.path_a, a.fen, a.depth, a.cpu, a.threads),
+                measure(a.path_b, a.fen, a.depth, a.cpu, a.threads))
         else:
             (nps_b, nb, sb), (nps_a, na, sa) = (
-                measure(a.engine_b, a.fen, a.depth, a.cpu, a.threads),
-                measure(a.engine_a, a.fen, a.depth, a.cpu, a.threads))
+                measure(a.path_b, a.fen, a.depth, a.cpu, a.threads),
+                measure(a.path_a, a.fen, a.depth, a.cpu, a.threads))
         nodes_a.add(na)
         nodes_b.add(nb)
         if rnd > 1:
