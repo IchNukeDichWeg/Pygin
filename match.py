@@ -2077,6 +2077,12 @@ def main():
             i += 2
         elif argv[i] == "--sprt-model" and i + 1 < len(argv):
             sprt_model = argv[i + 1].strip().lower()
+            if sprt_model not in ("normalized", "logistic"):
+                # sprt.py treats anything but "logistic" as normalized, so a
+                # typo ran the other model under the typo's name.
+                print(f"ERROR: --sprt-model wants normalized | logistic, "
+                      f"got {argv[i + 1]!r}")
+                return
             i += 2
         elif argv[i] == "--sprt-resume" and i + 1 < len(argv):
             sprt_resume_path = argv[i + 1]      # FI-82: pool with prior
