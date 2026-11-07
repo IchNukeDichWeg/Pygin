@@ -11,9 +11,11 @@ number matches what a single undivided run would have printed) plus the
 post-hoc LLR.
 
 POOLING IS ONLY VALID IF THE HALVES ARE THE SAME INSTRUMENT: same clock,
-same book, same seed, same worker density, and DISJOINT openings. The script
-checks what it can see in the logs and refuses on a mismatch -- density it
-cannot check, so that one is on you.
+same book, same seed, same engines in the same slots, same worker density,
+and DISJOINT openings. The script checks what it can see in the logs (Mode,
+book file name and seed, the "A vs B" header, the opening span, a log passed
+twice) and refuses on a mismatch or a log with no span. Density and the
+per-box node calibration of a --nodes run it cannot check, so those are on you.
 """
 import importlib.util
 import os
@@ -33,6 +35,14 @@ except SystemExit:
     pass
 
 
+def _engines(t):
+    """'A vs B' from the console banner, else the game log's first line."""
+    m = re.findall(r"^Match:\s*(\S+)\s+vs\s+(\S+)\s*$", t, re.M)
+    if not m:
+        m = re.findall(r"\A(\S+) vs (\S+)\s*$", t, re.M)
+    return f"{m[-1][0]} vs {m[-1][1]}" if m else "?"
+
+
 def parse(path):
     t = open(path, errors="ignore").read()
     pen = re.findall(r"^Ptnml:\s*([0-9,\s]+)$", t, re.M)
@@ -40,12 +50,18 @@ def parse(path):
         sys.exit(f"{path}: no Ptnml line -- did the run finish?")
     mode = re.findall(r"^Mode:\s*(.+?)\s*\|", t, re.M) or \
         re.findall(r"^Mode:\s*(.+)$", t, re.M)
-    ops = re.findall(r"positions \[(\d+), (\d+)\)", t)
+    ops = re.findall(r"positions \[(\d+), (\d+)\) of (.+?) \(shuffle seed (\S+?)\)",
+                     t)
     return {
         "path": os.path.basename(path),
+        "real": os.path.realpath(path),
         "penta": [int(x) for x in pen[-1].replace(",", " ").split()],
         "mode": (mode[-1].strip() if mode else "?"),
         "span": (int(ops[-1][0]), int(ops[-1][1])) if ops else None,
+        # the book's directory differs between boxes; its name and seed don't
+        "book": (f"{os.path.basename(ops[-1][2])} seed {ops[-1][3]}"
+                 if ops else None),
+        "engines": _engines(t),
     }
 
 
@@ -57,7 +73,21 @@ def main():
     modes = {r["mode"] for r in runs}
     if len(modes) != 1:
         sys.exit(f"REFUSING: different instruments, cannot pool -- {modes}")
-    spans = [r["span"] for r in runs if r["span"]]
+    if len({r["real"] for r in runs}) != len(runs):
+        sys.exit("REFUSING: the same log was passed twice")
+    nospan = [r["path"] for r in runs if not r["span"]]
+    if nospan:
+        sys.exit(f"REFUSING: no opening span in {nospan} -- overlap cannot "
+                 "be checked")
+    books = {r["book"] for r in runs}
+    if len(books) != 1:
+        sys.exit(f"REFUSING: different book or shuffle seed -- {books}; the "
+                 "same index is a different opening, so spans can't be "
+                 "disjoint")
+    engines = {r["engines"] for r in runs}
+    if len(engines) != 1:
+        sys.exit(f"REFUSING: different engines or slot order -- {engines}")
+    spans = [r["span"] for r in runs]
     for i in range(len(spans)):
         for j in range(i + 1, len(spans)):
             a, b = spans[i], spans[j]
