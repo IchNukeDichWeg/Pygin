@@ -787,7 +787,8 @@ def main():
             elif tok == "ponder":
                 params["ponder"] = True     # FI-13e: real go-ponder (2026-07-21)
 
-        max_depth = int(params.get("depth", 60))
+        # depth 0 or below skipped the ID loop and played legal[0] unsearched
+        max_depth = max(1, int(params.get("depth", 60)))
         if "mate" in params and "depth" not in params:   # FB-25: `go mate N`
             max_depth = min(60, 2 * max(1, params["mate"]))
         # FB-09: honor `go nodes N` (deterministic testing / OpenBench);
