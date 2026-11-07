@@ -243,6 +243,10 @@ def optimize_k(engine, boards, targets, k_lo=50, k_hi=500, steps=50):
 def compute_loss(engine, boards, sf_sigs, params):
     """MSE between sigmoid(engine_score/K) and sigmoid(sf_score/K)."""
     apply_params(params)
+    # The C-evaluated terms (mobility, king safety, rook files, bishop pair,
+    # passed-pawn taper) read eval_c's globals, not the class attrs: without
+    # the push 26 of the 40 params never changed the loss.
+    engine._sync_c_params()
     engine._acc_valid = False
     total = 0.0
     for board, target in zip(boards, sf_sigs):
