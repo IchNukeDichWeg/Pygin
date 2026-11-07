@@ -1577,6 +1577,18 @@ class Engine:
     # passes the capture's from/to. Bench 593,597 on vs 593,598 off.
     PROBCUT_SENTINEL_FIX = False
 
+    # ABORT_FAILLOW_KEEP (bug hunt 07.11.2026, PENDING A/B): when an
+    # iteration aborts (deadline, go nodes, stop) inside an aspiration window
+    # where every searched move failed low, the partial result's move is the
+    # one with the highest fail-soft UPPER bound -- unproven, and not the
+    # previous depth's best. Measured on 432 node-limited searches (bench +
+    # 3 middlegames, 20k-400k nodes): ~2% hit it, and 7 of 8 played moves
+    # scored worse at d13 than the previous best (Kiwipete g2h3 -335 vs e2a6
+    # -81). True keeps the previous best unless the partial move beat that
+    # call's alpha (Stockfish keeps the PV move here). Bench 593,598 either
+    # way (fixed depth never aborts); hits --nodes and timed play directly.
+    ABORT_FAILLOW_KEEP = False
+
     # FI-89: repetition against the ROOT or the pre-root GAME HISTORY draws on
     # the FIRST match, while match.py's arbiter (python-chess
     # can_claim_threefold_repetition) needs the THIRD. True adopts SF's
@@ -2570,6 +2582,11 @@ class Engine:
                     # move -- play the move a completed call PROVED >= beta
                     # this depth, not the previous iteration's refuted one.
                     return (provisional, res[1], res[2], 1, True, res[5])
+                if (self.ABORT_FAILLOW_KEEP and prev_key and res[0]
+                        and res[0] != prev_key and res[1] <= alpha):
+                    # every move so far failed low: none is proven better
+                    # than the one ordered first, so keep that one
+                    return (prev_key, res[1], res[2], res[3], True, res[5])
                 return res
             score = res[1]
             if score <= alpha:               # fail low: widen downward
