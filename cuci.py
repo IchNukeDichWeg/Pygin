@@ -1153,6 +1153,7 @@ def main():
                     # anyone who cannot read the source.
                     f" deadtag={int(getattr(engine, 'TT_DEADTAG', False))}"
                     f" r50_check_draw={int(engine.R50_CHECK_DRAW)}"
+                    f" deadtag_pc_fix={int(engine.DEADTAG_PC_FIX)}"
                     f" simplify_threshold={engine.SIMPLIFY_THRESHOLD}"
                     f" contempt={engine.contempt}"
                     f" hash_bits={engine.TT_BITS}"

@@ -2117,6 +2117,18 @@ static __thread int g_node_pc = 0;            /* piece count at this node */
 static int g_root_pc = 32;                    /* piece count at the root */
 void cs_set_root_pc(int n) { g_root_pc = n; }
 #define TT_PC(e) ((int)(((e).d2 >> 19) & 63))
+/* DEADTAG_PC_FIX (bug hunt 07.11.2026, PENDING A/B): g_node_pc is set at
+ * node entry, but a store that runs after ANY child search (the move loop,
+ * null move, ProbCut, the qsearch pre-loop TT move) packs the LAST
+ * descendant's count instead: 47,253 of 71,100 negamax stores over the
+ * bench (66%). The tag is then at most the true count, so it never kills a
+ * live entry but leaves truly dead ones depth-protected, weakening FI-115.
+ * On, every such store site recounts the node's own pieces first. Bench is
+ * 593,598 either way (one cold generation, the tag never decides there). */
+static int g_tt_pcfix = 0;
+void set_tt_pcfix(int v) { g_tt_pcfix = v ? 1 : 0; }
+#define PC_RESYNC(bd) do { if (g_tt_pcfix) g_node_pc = \
+        __builtin_popcountll((bd)->occ[0] | (bd)->occ[1]); } while (0)
 
 /* Large randomly-accessed tables on 2 MiB transparent huge pages (Linux).
  * The TT probe pattern is a random walk over the whole table, so with 4 KiB
@@ -4135,6 +4147,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         stand = qs_sharpen_stand(stand, qs_sh_flag, qs_sh_val);   /* FB-40 */
         if (stand >= beta) {                         /* fail-soft stand-pat */
             if (has_legal_quiet(b) || gen_noisy(b, moves) > 0) {
+                PC_RESYNC(b);
                 if (use_qtt && !CS_UNWINDING())      /* P-44: cache the cutoff */
                     qs_tt_store(qslot, key, stand, ply, 0, TT_LOWER, raw_stand, 0);
                 return stand;
@@ -4192,6 +4205,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
                                                   * exit's (best>=beta =>
                                                   * TT_LOWER; !in_chk => raw
                                                   * eval kept, FI-52 tag 0) */
+                    PC_RESYNC(b);
                     if (use_qtt && !CS_UNWINDING())
                         qs_tt_store(qslot, key, best, ply, bm, TT_LOWER,
                                     raw_stand, 0);
@@ -4224,6 +4238,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
         raw_stand = stand;               /* FI-30: the FI-03 store stays RAW */
         stand = qs_sharpen_stand(stand, qs_sh_flag, qs_sh_val);   /* FB-40 */
         if (stand >= beta) {                         /* fail-soft stand-pat */
+            PC_RESYNC(b);
             if (use_qtt && !CS_UNWINDING())          /* P-44: cache the cutoff */
                 qs_tt_store(qslot, key, stand, ply, 0, TT_LOWER, raw_stand, 0);
             return stand;
@@ -4311,6 +4326,7 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
     if (use_qtt && !CS_UNWINDING()) {
         int flag = (best <= alpha_orig) ? TT_UPPER
                  : (best >= beta)       ? TT_LOWER : TT_EXACT;
+        PC_RESYNC(b);
         qs_tt_store(qslot, key, best, ply, bm, flag,
                     in_chk ? TT_EVAL_NONE : raw_stand,   /* FI-03: RAW eval */
                     (g_qs_chk_d1 && in_chk) ? 1 : 0);    /* FI-52: depth-1 tag */
@@ -4601,6 +4617,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                      * info); an unproven null-move MATE is never trusted
                      * -- clamp. */
                     if (ns >= MATE_THRESH) ns = beta;
+                    PC_RESYNC(b);
                     if (g_use_tt && tte && ns < MATE_THRESH
                         && !CS_UNWINDING()) {
                         if (!g_cb2) {
@@ -4698,6 +4715,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
             if (!in_chk) SM_TALLY(b);
             int tv = in_chk ? -CS_INF + ply
                             : (g_sm_contempt ? draw_score(b) : 0);   /* FB-48 */
+            PC_RESYNC(b);
             tt_store_terminal(tte, key, tv, ply);    /* FI-54 */
             return tv;
         }
@@ -4885,6 +4903,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
         if (!in_chk) SM_TALLY(b);
         int tv = in_chk ? -CS_INF + ply
                         : (g_sm_contempt ? draw_score(b) : 0);       /* FB-48 */
+        PC_RESYNC(b);
         tt_store_terminal(tte, key, tv, ply);        /* FI-54 */
         return tv;
     }
@@ -4941,6 +4960,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
              * `(m & 0x7FFF) == tt_move` never match for odd mover PTs
              * (pawn/bishop/queen) -- TT-move ordering was silently dead
              * for those movers. */
+            PC_RESYNC(b);
             tt_store_raw(tte, key, sv, best_move & 0x7FFF, depth, flag,
                          store_eval, ttpv);                       /* FI-104 */
         }
@@ -5165,6 +5185,7 @@ static uint32_t root_search(const Board* rb, int depth, int alpha, int beta,
             && *out_done > 0 && !g_rx_n) {
         int flag = (best <= alpha_orig) ? TT_UPPER
                  : (best >= beta)       ? TT_LOWER : TT_EXACT;
+        PC_RESYNC(rb);
         tt_store_raw(&g_tt[key & TT_MASK], key, best,
                      best_move & 0x7FFF, depth, flag, TT_EVAL_NONE, 1);
     }
@@ -5481,7 +5502,8 @@ int cs_rep_probe(const uint64_t* path, int ply, const uint64_t* hist,
     return r;
 }
 
-int csearch_abi(void) { return 42; }  /* 42 = set_r50_check_draw;
+int csearch_abi(void) { return 43; }  /* 43 = set_tt_pcfix;
+                                       * 42 = set_r50_check_draw;
                                        * 41 = cs_set_chess960
                                        *      (+ cs_perft / cs_zkey_walk);
                                        * 40 = E-05 set_nn_tempo;
