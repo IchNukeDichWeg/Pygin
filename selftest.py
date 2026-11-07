@@ -1630,7 +1630,10 @@ try:
     check(f"cgroup_cores over {len(_cases)} /sys states", not _bad,
           detail="; ".join(_bad[:3]))
 except Exception as _e:
-    print(f"  note  could not run the cgroup probe ({_e})")
+    # A FAIL, not a note: config.py imports only the stdlib, so this means
+    # the probe or cgroup_cores itself is broken -- renaming cgroup_cores
+    # (which train.py imports) printed a note and ALL CHECKS PASSED.
+    check("cgroup quota probe ran", False, detail=str(_e))
 
 def _has_syzygy_dtz(d="syzygy"):
     """True only if DTZ (.rtbz) tables are present. The engine's local probe
