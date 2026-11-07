@@ -328,6 +328,9 @@ def _search_multipv(engine, board, k, budget, max_depth, white_to_move,
     engine.use_book = False          # a book reply has no PV to show
     engine.on_depth = engine.on_final = None   # we emit; no per-depth spam
     best_first, best_state, total_nodes = None, None, 0
+    # `go nodes N` is ONE budget for the whole go: each sub-search used to get
+    # all N again (MultiPV 3 + go nodes 20000 spent 3,311,188 nodes).
+    node_cap, spent = engine.node_limit, 0
     partial_first = None   # last resort only: no depth ever completed
     try:
         for d in range(1, max(1, top) + 1):
@@ -347,11 +350,17 @@ def _search_multipv(engine, board, k, budget, max_depth, white_to_move,
                 if deadline is not None and _t.perf_counter() >= deadline:
                     cut = True
                     break
+                if node_cap is not None:
+                    if spent >= node_cap:
+                        cut = True
+                        break
+                    engine.node_limit = node_cap - spent
                 lib.root_exclude_clear()
                 for m in excl:       # 15-bit key: from|to<<6|promo<<12
                     lib.root_exclude_add(m.from_square | (m.to_square << 6)
                                          | ((m.promotion or 0) << 12))
                 mv = engine.get_best_move(board, d)
+                spent += engine.nodes_searched
                 # Two ways to run out of lines. None is the clean one; the
                 # other is the C root ignoring a fully-exhausted exclusion
                 # list and handing back an already-listed move, which used
@@ -374,6 +383,9 @@ def _search_multipv(engine, board, k, budget, max_depth, white_to_move,
                         partial_first = mv
                     depth_state = (engine.last_score, engine.last_pv,
                                    engine.last_depth, engine.nodes_searched)
+                if node_cap is not None and spent >= node_cap:
+                    cut = True       # this line ran out mid-search
+                    break
             lib.root_exclude_clear()
             if not lines:
                 break
@@ -399,6 +411,7 @@ def _search_multipv(engine, board, k, budget, max_depth, white_to_move,
     finally:
         lib.root_exclude_clear()     # NEVER leak exclusions into play
         engine.use_book, engine.on_depth, engine.on_final = sv
+        engine.node_limit = node_cap
         if best_state is not None:   # leave line 1 as the visible state
             (engine.last_score, engine.last_pv, engine.last_depth,
              engine.nodes_searched) = best_state
@@ -482,12 +495,17 @@ def _search_skill(engine, board, level, budget, max_depth, white_to_move,
     engine.use_book = False        # a book move bypasses the whole scheme
     engine.on_depth = engine.on_final = None
     lines, excl, states, total = [], [], {}, 0
+    node_cap = engine.node_limit     # one `go nodes N` budget, not N per line
     try:
         for _ in range(k):
             if stop_evt.is_set() or engine._abort:
                 break
             if deadline is not None and _t.perf_counter() >= deadline:
                 break
+            if node_cap is not None:
+                if total >= node_cap:
+                    break
+                engine.node_limit = node_cap - total
             lib.root_exclude_clear()
             for m in excl:
                 lib.root_exclude_add(m.from_square | (m.to_square << 6)
@@ -506,6 +524,7 @@ def _search_skill(engine, board, level, budget, max_depth, white_to_move,
     finally:
         lib.root_exclude_clear()   # NEVER leak exclusions into play
         engine.use_book, engine.on_depth, engine.on_final = sv
+        engine.node_limit = node_cap
     if not lines:
         return None
     chosen = _skill_pick(lines, level, rng)
