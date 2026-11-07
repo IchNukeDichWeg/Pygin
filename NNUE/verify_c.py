@@ -69,13 +69,18 @@ def load_lib():
 
 def random_net(path, seed=1234, hidden=HIDDEN):
     rng = np.random.default_rng(seed)
+    # Written to a private temp file and renamed into place: the default
+    # paths are shared, and a concurrent run (selftest in a parallel
+    # worktree) loading a half-rewritten file failed 6 of 576 loads.
+    tmp = f"{path}.{os.getpid()}.tmp"
     QuantNet.from_float(
         rng.normal(0, 0.05, (IN_DIM, hidden)),
         rng.normal(0, 0.2, hidden),
         rng.normal(0, 0.3, (D2, 2 * hidden + THREAT_DIM)),
         rng.normal(0, 0.2, D2),
         rng.normal(0, 0.3, (D3, D2)), rng.normal(0, 0.2, D3),
-        rng.normal(0, 0.3, D3), 0.05).save(path)
+        rng.normal(0, 0.3, D3), 0.05).save(tmp)
+    os.replace(tmp, path)
     return path
 
 
