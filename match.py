@@ -2491,6 +2491,9 @@ def main():
                 # fire the warning on every legitimate cross-box tranche.
                 "workers": (int(n_workers) if MODE in ("clock", "time") else None),
                 "chess960": bool(CHESS960),
+                # The SPRT test this run evaluated (None without --sprt), so
+                # a resumed tranche under different bounds or model is seen.
+                "sprt": sprt_cfg,
                 "started": run_stamp()}
     # A short stable digest of the instrument, so a human can compare two files
     # at a glance instead of diffing ten fields.
@@ -2518,8 +2521,14 @@ def main():
                  for k in ("engine1", "engine2", "mode", "smp", "seed",
                            "fen_file", "sf_elo", "sf_our_clock", "adjudicate",
                            "book1", "book2", "workers", "sf_version",
-                           "chess960", "instrument_key")
+                           "chess960", "instrument_key",
+                           "core1_md5", "core2_md5")
                  if k in prev and prev.get(k) != this_run[k]]
+        # A tranche run without --sprt only adds games, so the test is
+        # compared only when both runs evaluated one.
+        if prev.get("sprt") and this_run["sprt"] \
+                and prev["sprt"] != this_run["sprt"]:
+            moved.append(("sprt", prev["sprt"], this_run["sprt"]))
         if moved:
             print("  ** CONFIG CHANGED since the last run in this file -- "
                   "pooling anyway (nothing is gated on it):")
