@@ -81,23 +81,34 @@ def check(path):
 def play(anchor_path, ours, games, tc, workers, seed):
     """One match against one anchor. Returns the parsed result dict."""
     positions = max(1, games // 2)
-    cmd = [sys.executable, "match.py", ours, anchor_path, str(positions), "0",
+    cmd = [sys.executable, "-u", "match.py", ours, anchor_path, str(positions), "0",
            "--tc", tc, "--workers", str(workers), "--seed", str(seed)]
     print("   " + " ".join(cmd), flush=True)
-    p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
-    out = p.stdout + p.stderr
+    # Streamed, not capture_output: a capture printed nothing until the
+    # anchor finished, which at 2000 games and 10+0.1 is hours of silence.
+    p = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE,
+                         stderr=subprocess.STDOUT, text=True, bufsize=1)
+    lines = []
+    for line in p.stdout:
+        sys.stdout.write("   | " + line)
+        sys.stdout.flush()
+        lines.append(line.rstrip("\n"))
+    p.wait()
     m = None
-    for line in out.splitlines():
+    openings = None
+    for line in lines:
         hit = SCORE_RE.search(line)
         if hit:
             m = hit
+        if line.startswith("Openings:") and openings is None:
+            openings = line.split(":", 1)[1].strip()
     if not m:
-        tail = "\n".join(out.strip().splitlines()[-5:])
+        tail = "\n".join(lines[-5:])
         print(f"   !! no score line from match.py (rc={p.returncode}). Tail:\n{tail}")
         return None
     return {"score": float(m.group(1)), "games": int(m.group(2)),
             "pct": float(m.group(3)), "elo": float(m.group(4)),
-            "err": float(m.group(5))}
+            "err": float(m.group(5)), "openings": openings}
 
 
 def main():
@@ -169,6 +180,7 @@ def main():
         json.dump({"conditions": {"tc": a.tc, "workers": workers,
                                   "ours": a.ours, "seed": a.seed,
                                   "games_per_anchor": a.games,
+                                  "openings": rows[0].get("openings"),
                                   "when": time.strftime("%Y-%m-%dT%H:%M:%S%z")},
                    "results": summary}, fh, indent=1)
     print(f"\n-> wrote {a.out}")
