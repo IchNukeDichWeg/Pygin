@@ -212,12 +212,18 @@ def main():
 
     # cycle-on comparison in a fresh process (one process = one config)
     p = subprocess.run(
-        [sys.executable, os.path.abspath(__file__), args.dataset,
+        # absolute: the child runs from REPO_DIR, and a relative dataset
+        # path failed there silently and the report printed "?"
+        [sys.executable, os.path.abspath(__file__),
+         os.path.abspath(args.dataset),
          "--sample", str(args.sample), "--nodes", str(args.nodes),
          "--seed", str(args.seed), "--cycle-on-worker"]
         + (["--label-nnue"] if args.label_nnue else []),
         capture_output=True, text=True, cwd=REPO_DIR)
     line = [l for l in p.stdout.splitlines() if l.startswith("CYCLE_ON_DIFFS")]
+    if not line:
+        print(f"  !! cycle-on worker failed (exit {p.returncode}): "
+              f"{(p.stderr.strip().splitlines() or ['no stderr'])[-1]}")
     print(f"FI-29 shaping population (report): "
           f"{line[0].split()[1] if line else '?'} of {args.sample} labels "
           "would differ with CYCLE_DETECT=1 (why F49-30 pins it off)")
