@@ -4488,7 +4488,12 @@ class Engine:
         # mate the same way). `not board.is_check()` is a cheap pre-filter --
         # checkmate requires check, so this only falls through to the normal
         # (correct) checkmate/stalemate handling below in the rare case of an
-        # in-check position at exactly the 50-move mark; insufficient-material
+        # in-check position at exactly the 50-move mark. An in-check node
+        # WITH a legal evasion is still the draw (bug hunt 07.11.2026, the
+        # same fix as cengine's R50_CHECK_DRAW): falling through searched a
+        # capturing evasion as if the game went on, and
+        # r6k/6pp/7N/8/2Q5/8/8/6K1 w - - 99 80 read "mate" at d4 (c4g8,
+        # answered by Rxg8 at hmc 100). insufficient-material
         # needs no such guard since it's a tautology (that side literally
         # cannot deliver mate with insufficient material). Also routed through
         # `_draw_score` (like the repetition check just below) instead of a
@@ -4499,7 +4504,9 @@ class Engine:
         # python-chess call on ~all middlegame nodes.
         if ((not (board.pawns | board.rooks | board.queens)
                 and board.is_insufficient_material())
-                or (board.halfmove_clock >= 100 and not board.is_check())):
+                or (board.halfmove_clock >= 100
+                    and (not board.is_check()
+                         or any(board.generate_legal_moves())))):
             return self._draw_score(board)
 
         # FIX: cheap internal position key instead of zobrist_hash (~22x faster).
