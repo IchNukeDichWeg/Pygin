@@ -2009,6 +2009,27 @@ try:
                 _slow.append(f"{_name}: {_b.result()} after {_plies} plies")
         check("local TB: DTZ mover converts to mate (not a 50-move shuffle)",
               not _slow, detail="; ".join(_slow))
+
+        # TB_ZEROING_FIX: won pawn endings, BOTH sides on the tables. Before
+        # the fix the mover never pushed the pawn and all three were drawn
+        # by repetition (24, 30, 18 plies); with it they mate in 37, 3, 15.
+        _drawn = []
+        for _fen in ("8/8/1k6/8/8/8/4P3/4K3 w - - 0 1",
+                     "8/8/8/8/8/2k5/2p5/K7 b - - 0 1",
+                     "8/8/8/8/8/8/4P3/k3K2Q w - - 0 1"):
+            _b = chess.Board(_fen)
+            _plies = 0
+            while not _b.is_game_over(claim_draw=True) and _plies < 120:
+                _r = _e._tb_probe_local(_b)
+                if _r is None:
+                    break
+                _b.push(_r[1])
+                _plies += 1
+            if not _b.is_checkmate():
+                _drawn.append(f"{_fen.split()[0]}: {_b.result(claim_draw=True)}"
+                              f" after {_plies} plies")
+        check("local TB: won pawn endings are converted (TB_ZEROING_FIX)",
+              not _drawn, detail="; ".join(_drawn))
     else:
         skip("syzygy/ absent -- conversion oracle needs the tables")
 except Exception as _e:

@@ -1591,11 +1591,12 @@ class Engine:
     # way (fixed depth never aborts); hits --nodes and timed play directly.
     ABORT_FAILLOW_KEEP = False
 
-    # TB_ZEROING_FIX (bug hunt 07.11.2026, PENDING A/B): mirrored onto the
-    # embedded engine.py, whose local Syzygy mover never zeroed a won pawn
-    # ending and drew it by repetition (details at engine.py
-    # tb_zeroing_fix). Only reached with UseTB on and a SyzygyPath set.
-    TB_ZEROING_FIX = False
+    # TB_ZEROING_FIX (bug hunt 07.11.2026, ON since 20.11.2026 without an
+    # A/B): mirrored onto the embedded engine.py, whose local Syzygy mover
+    # never zeroed a won pawn ending and drew it by repetition (details at
+    # engine.py tb_zeroing_fix). Only reached with UseTB on and a SyzygyPath
+    # set, which matches never use, so no screen could measure it.
+    TB_ZEROING_FIX = True
 
     # FI-89: repetition against the ROOT or the pre-root GAME HISTORY draws on
     # the FIRST match, while match.py's arbiter (python-chess

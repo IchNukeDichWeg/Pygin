@@ -2133,15 +2133,17 @@ class Engine:
         # had the 6-man tables sitting locally -- a network round-trip to be
         # told what was already on the filesystem. None = not probed yet.
         self.TB_LOCAL_MAX_PIECES = None
-        # TB_ZEROING_FIX (bug hunt 07.11.2026, PENDING A/B; cengine mirrors
-        # its class attr here). The local mover ranks a winning zeroing move
-        # (pawn push, capture, promotion) by the CHILD's DTZ, which counts
-        # from the next phase, so it preferred king shuffles with a smaller
-        # child DTZ: KPvK 8/8/1k6/8/8/8/4P3/4K3 w drew by threefold after 24
-        # plies with no pawn move while reporting a win. True ranks a winning
-        # zeroing move first among winning moves. False = shipped behaviour;
-        # only reached with UseTB on and a SyzygyPath set.
-        self.tb_zeroing_fix = False
+        # TB_ZEROING_FIX (bug hunt 07.11.2026, ON since 20.11.2026; cengine
+        # mirrors its class attr here). The local mover ranked a winning
+        # zeroing move (pawn push, capture, promotion) by the CHILD's DTZ,
+        # which counts from the next phase, so it preferred king shuffles
+        # with a smaller child DTZ. With both sides on the tables, off drew
+        # KPvK 8/8/1k6/8/8/8/4P3/4K3 w (24 plies), 8/8/8/8/8/2k5/2p5/K7 b
+        # (30) and even KQPvK 8/8/8/8/8/8/4P3/k3K2Q w (18) by repetition;
+        # on mates in 37, 3 and 15. True ranks a mate first, then winning
+        # zeroing moves, then the plain DTZ order. No A/B: matches run with
+        # UseTB off; only reached with UseTB on and a SyzygyPath set.
+        self.tb_zeroing_fix = True
         self._syzygy = None                 # lazy handle; False = unavailable
         self.tb_timeout = 1.0               # max seconds to wait on the network
         self.tb_url = "https://tablebase.lichess.ovh/standard?fen="
@@ -2516,13 +2518,19 @@ class Engine:
                 except Exception:
                     board.pop()
                     return None
+                mate = self.tb_zeroing_fix and wdl > 0 and board.is_checkmate()
                 board.pop()
                 # maximise wdl; among equals prefer the FASTEST conversion
                 # when winning (small positive dtz) and the SLOWEST loss
                 # otherwise, which is what a tablebase mover should do
-                key = (wdl, -abs(dtz) if wdl > 0 else abs(dtz))
-                if self.tb_zeroing_fix and wdl > 0 and board.is_zeroing(mv):
-                    key = (wdl, 1)           # above every -abs(dtz) <= 0
+                key = (wdl, 0, -abs(dtz) if wdl > 0 else abs(dtz))
+                if self.tb_zeroing_fix and wdl > 0:
+                    # a mate first, then a winning zeroing move (it resets
+                    # the clock and cannot repeat), then the plain DTZ order
+                    if mate:
+                        key = (wdl, 2, 0)
+                    elif board.is_zeroing(mv):
+                        key = (wdl, 1, -abs(dtz))
                 if best is None or key > best[0]:
                     best = (key, wdl, mv)
             if best is None:
