@@ -1553,13 +1553,15 @@ class Engine:
     # the full CE_LADDER are UNCHANGED with it on, so it re-pins nothing.
     SM_CONTEMPT = True
 
-    # R50_CHECK_DRAW (bug hunt 07.11.2026, PENDING A/B): at hmc >= 100 an
-    # in-check node with a legal evasion scores the draw instead of playing
-    # on (both C sites; only a mate outranks the rule). Off, the search read
-    # "mate 2" through a 50-move draw and gave up a rook to dodge a phantom
-    # one (numbers in csearch.c at set_r50_check_draw). Bench 593,598 either
-    # way: no bench node reaches hmc 100. False = shipped behaviour.
-    R50_CHECK_DRAW = False
+    # R50_CHECK_DRAW (bug hunt 07.11.2026, ON since 20.11.2026 without an
+    # A/B): at hmc >= 100 an in-check node with a legal evasion scores the
+    # draw instead of playing on (both C sites; only a mate outranks the
+    # rule). Off, the search read "mate 2" through a 50-move draw and gave
+    # up a rook to dodge a phantom one (numbers in csearch.c at
+    # set_r50_check_draw). Adopted as a rules fix: it is what FIDE and
+    # match.py's arbiter score, and a screen cannot resolve a population
+    # this small. Bench 593,598 either way: no bench node reaches hmc 100.
+    R50_CHECK_DRAW = True
 
     # DEADTAG_PC_FIX (bug hunt 07.11.2026, PENDING A/B): FI-115's piece-count
     # tag was packed AFTER the children ran, so it carried the last

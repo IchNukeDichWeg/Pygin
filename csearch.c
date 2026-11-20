@@ -3863,7 +3863,8 @@ void set_tt_fh_tight(int v) { g_tt_fh_tight = v ? 1 : 0; }
 static int g_tt_r50 = 0;
 void set_tt_r50(int v) { g_tt_r50 = v ? 1 : 0; }
 
-/* R50_CHECK_DRAW (bug hunt 07.11.2026, PENDING A/B): at hmc >= 100 a node
+/* R50_CHECK_DRAW (bug hunt 07.11.2026; cengine turns it ON since
+ * 20.11.2026, adopted as a rules fix without an A/B): at hmc >= 100 a node
  * in check with a legal evasion is a draw (FIDE, Stockfish, and match.py's
  * own arbiter), but both draw sites below skip in-check nodes, so a
  * capturing evasion resets the clock and the line is searched as if the
@@ -3871,7 +3872,7 @@ void set_tt_r50(int v) { g_tt_r50 = v ? 1 : 0; }
  * r6k/6pp/7N/8/2Q5/8/8/6K1 w - - 99 80 d8 read "mate 2" (Qg8+ at hmc 100
  * is not mate) and becomes cp -50; r6k/p5pp/7N/8/2Q5/8/8/6K1 b - - 98 80
  * d14 played g7h6 at cp -1188 and plays a8f8 at cp +50. Bench never
- * reaches hmc 100, so it is 593,598 either way. 0 = shipped behaviour. */
+ * reaches hmc 100, so it is 593,598 either way. 0 = the pre-fix rule. */
 static int g_r50_chk = 0;
 void set_r50_check_draw(int v) { g_r50_chk = v ? 1 : 0; }
 static inline int r50_draw(const Board* b, int hmc, int in_chk)
