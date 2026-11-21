@@ -57,6 +57,9 @@ def board_of(rec):
             b.set_piece_at(sq, chess.Piece(pt, bool(occ_w >> sq & 1)))
             bb &= bb - 1
     b.turn = chess.WHITE if rec["stm"] else chess.BLACK
+    # Syzygy WDL depends on a pending en-passant capture: without it
+    # 8/3k4/K7/6Pp/8/8/8/8 w - h6 probes as a loss instead of a win.
+    b.ep_square = int(rec["ep"]) if rec["ep"] >= 0 else None
     return b
 
 
