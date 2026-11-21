@@ -56,6 +56,7 @@ Regenerate rather than edit: scripts/calibrate_skill.py --levels {lv}
 """
 
 import random
+import time
 import sys as _sys
 import os as _os
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.dirname(
@@ -77,22 +78,40 @@ class Engine(cengine.Engine):
         super().__init__(*a, **kw)
         self._skill_rng = random.Random()
 
-    def _skill_move(self, board, max_depth):
+    def _skill_move(self, board, max_depth, time_limit=None):
         depth = max(1, min(1 + _LEVEL // 2, max_depth))
+        deadline = None if time_limit is None else time.perf_counter() + time_limit
         k = max(cuci.SKILL_CANDIDATES, 1)
         lines, excl, states, total = [], [], {{}}, 0
         try:
             for _ in range(k):
+                if deadline is not None and time.perf_counter() >= deadline:
+                    break
                 self._lib.root_exclude_clear()
                 for m in excl:
                     self._lib.root_exclude_add(
                         m.from_square | (m.to_square << 6)
                         | ((m.promotion or 0) << 12))
-                mv = super().get_best_move(board, depth)
+                if deadline is None:
+                    mv = super().get_best_move(board, depth)
+                else:
+                    sv = (self.soft_stop_frac, self.use_stability_time)
+                    self.soft_stop_frac, self.use_stability_time = None, False
+                    try:
+                        mv = super().get_best_move_timed(
+                            board, max(0.001, deadline - time.perf_counter()),
+                            depth)
+                    finally:
+                        self.soft_stop_frac, self.use_stability_time = sv
+                    if lines and (self.last_depth or 0) < depth:
+                        total += self.nodes_searched
+                        break
                 if mv is None or mv in excl:
                     break
                 total += self.nodes_searched
-                lines.append((mv, self.last_score))
+                # last_score is White-POV; _skill_pick ranks for the side to move
+                lines.append((mv, self.last_score if board.turn
+                              else -self.last_score))
                 states[mv] = (self.last_score, self.last_pv,
                               self.last_depth or depth)
                 excl.append(mv)
@@ -109,8 +128,8 @@ class Engine(cengine.Engine):
         return self._skill_move(board, depth)
 
     def get_best_move_timed(self, board, time_limit, max_depth=245):
-        # The depth cap IS the limiter; the clock only bounds it.
-        return self._skill_move(board, min(max_depth, 40))
+        # The depth cap IS the limiter; the clock only bounds it, as in cuci.
+        return self._skill_move(board, min(max_depth, 40), time_limit)
 '''
 
 
