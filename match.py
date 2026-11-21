@@ -2980,7 +2980,11 @@ def main():
                 daemon=True,
             )
             feeder.start()
-            for _ in range(len(schedule)):
+            # Count GAME results, not queue records: a WORKER_STARTUP_FAILED
+            # record took an iteration and the loop stopped one game short
+            # per tolerated failure (8 workers, 1 failure: 11 of 12 scored).
+            got = 0
+            while got < len(schedule):
                 # Bounded wait (smp.py's P-03 rule): a worker killed by the
                 # OS (OOM / kill -9) puts nothing on the queue -- a bare
                 # get() then hangs the match forever. Python-level failures
@@ -3012,6 +3016,7 @@ def main():
                             f"not load their engines -- aborting rather than "
                             f"running a short, possibly one-sided campaign")
                     continue
+                got += 1
                 g = _unpack_result(r, e1, e2)
                 handle_result(g, g["round"])
                 if deadline and time.time() >= deadline:
