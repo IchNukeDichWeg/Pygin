@@ -1591,12 +1591,13 @@ class Engine:
     # way (fixed depth never aborts); hits --nodes and timed play directly.
     ABORT_FAILLOW_KEEP = False
 
-    # PROBCUT_MATE_FIX (bug hunt 21.11.2026, PENDING A/B): a confirmed
+    # PROBCUT_MATE_FIX (bug hunt 21.11.2026, ON since 21.11.2026 without an
+    # A/B, a score-correctness fix as Stockfish guards it): a confirmed
     # ProbCut subtracted its margin from mate scores too, returning fake mate
     # distances (29797 = "mate in 203 plies"; 2,376 times over 311 WAC
     # positions at 0.25 s) that parent TT entries then carried as mates. True
     # returns a mate score unchanged. Bench 593,598 either way.
-    PROBCUT_MATE_FIX = False
+    PROBCUT_MATE_FIX = True
 
     # TT_MATE_R50 (bug hunt 21.11.2026, PENDING A/B): a TT mate stored at a
     # low 50-move clock cut at a node where its k plies no longer fit before

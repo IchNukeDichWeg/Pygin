@@ -3273,7 +3273,7 @@ static int g_probcut_red    = 4;
  * loop does. Bench 593,597 on vs 593,598 off. */
 static int g_probcut_cp = 0;
 void set_probcut_cp(int v) { g_probcut_cp = v ? 1 : 0; }
-/* PROBCUT_MATE_FIX (bug hunt 21.11.2026, PENDING A/B): a confirmed ProbCut
+/* PROBCUT_MATE_FIX (bug hunt 21.11.2026; cengine turns it ON since 21.11.2026): a confirmed ProbCut
  * returns v - (pbeta - beta); with v a mate score that is a fake mate
  * distance (29797 = "mate in 203 plies"), 2,376 such returns over 311 WAC
  * positions at 0.25 s. Still a valid lower bound, but it lands in parent TT
