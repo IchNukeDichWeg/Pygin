@@ -359,6 +359,10 @@ def _search_multipv(engine, board, k, budget, max_depth, white_to_move,
                 for m in excl:       # 15-bit key: from|to<<6|promo<<12
                     lib.root_exclude_add(m.from_square | (m.to_square << 6)
                                          | ((m.promotion or 0) << 12))
+                # A stop landing between sub-searches is live, not stale:
+                # without this, get_best_move's FB-10 clear erased it and the
+                # next line ran to its depth (3.8 s late with a widened gap).
+                engine._go_pending = True
                 mv = engine.get_best_move(board, d)
                 spent += engine.nodes_searched
                 # Two ways to run out of lines. None is the clean one; the
@@ -510,6 +514,7 @@ def _search_skill(engine, board, level, budget, max_depth, white_to_move,
             for m in excl:
                 lib.root_exclude_add(m.from_square | (m.to_square << 6)
                                      | ((m.promotion or 0) << 12))
+            engine._go_pending = True    # a raced stop is live (see MultiPV)
             if deadline is None:
                 mv = engine.get_best_move(board, depth)
             else:
