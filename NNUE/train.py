@@ -81,8 +81,17 @@ def save_atomic(obj, path):
     os.replace(tmp, path)
 
 
-def prepare(recs, log=print):
-    t0 = time.time()
+# prepare() splits the records over this many threads (numpy releases the
+# GIL in the bulk work). Rows are independent and each thread writes its own
+# slice of the preallocated outputs, so the tensors are bit-identical to the
+# single-threaded path and peak memory does not grow. 1 = single-threaded.
+# Measured 21.11.2026 on a loaded Mac (arm64), see the commit message.
+PREP_THREADS = 8
+PREP_MIN_ROWS = 50_000          # below this per thread, threads only cost
+
+
+def _prepare_into(recs, out):
+    """Fill out = (idx_us, idx_th, thr, target) numpy views for recs."""
     idx_w, idx_b = extract_features(recs)
     stm = recs["stm"].astype(bool)
     score = np.clip(recs["score"].astype(np.float32),
@@ -90,19 +99,33 @@ def prepare(recs, log=print):
     target_w = (LAMBDA * score / OUT_CP
                 + (1 - LAMBDA) * recs["result"].astype(np.float32)
                 * RESULT_CP / OUT_CP)
-    target = np.where(stm, target_w, -target_w)          # stm POV
+    out[3][:] = np.where(stm, target_w, -target_w)       # stm POV
     thr = recs["threat"].astype(np.float32) / QA         # [N,16] W-vec,B-vec
     # stm-ordered threat: [us vec, them vec]
-    thr_us = np.where(stm[:, None], thr[:, :8], thr[:, 8:])
-    thr_th = np.where(stm[:, None], thr[:, 8:], thr[:, :8])
-    idx_us = np.where(stm[:, None], idx_w, idx_b)
-    idx_th = np.where(stm[:, None], idx_b, idx_w)
-    log(f"  prepared {len(recs)} positions in {time.time()-t0:.1f}s")
-    return (torch.from_numpy(np.ascontiguousarray(idx_us)),
-            torch.from_numpy(np.ascontiguousarray(idx_th)),
-            torch.from_numpy(np.ascontiguousarray(
-                np.concatenate([thr_us, thr_th], axis=1))),
-            torch.from_numpy(np.ascontiguousarray(target)))
+    out[2][:, :8] = np.where(stm[:, None], thr[:, :8], thr[:, 8:])
+    out[2][:, 8:] = np.where(stm[:, None], thr[:, 8:], thr[:, :8])
+    out[0][:] = np.where(stm[:, None], idx_w, idx_b)
+    out[1][:] = np.where(stm[:, None], idx_b, idx_w)
+
+
+def prepare(recs, log=print):
+    t0 = time.time()
+    n = len(recs)
+    out = (np.empty((n, 32), dtype=np.int64), np.empty((n, 32), dtype=np.int64),
+           np.empty((n, 16), dtype=np.float32), np.empty(n, dtype=np.float32))
+    k = max(1, min(PREP_THREADS, os.cpu_count() or 1, n // PREP_MIN_ROWS))
+    bounds = np.linspace(0, n, k + 1).astype(np.int64)
+    parts = [(recs[lo:hi], tuple(a[lo:hi] for a in out))
+             for lo, hi in zip(bounds[:-1], bounds[1:])]
+    if k == 1:
+        _prepare_into(*parts[0])
+    else:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(k) as ex:
+            for f in [ex.submit(_prepare_into, *p) for p in parts]:
+                f.result()                                 # re-raise errors
+    log(f"  prepared {n} positions in {time.time()-t0:.1f}s")
+    return tuple(torch.from_numpy(a) for a in out)
 
 
 DEVICE = torch.device("cpu")    # set once in main() from --device; the
