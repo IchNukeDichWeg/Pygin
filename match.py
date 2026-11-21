@@ -2293,6 +2293,14 @@ def main():
 
     cal_start = None                    # FI-101: compared against at the end
     forced_both = force_nodes_1 is not None and force_nodes_2 is not None
+    if MODE != "nodes" and (force_nodes_1 is not None
+                            or force_nodes_2 is not None):
+        # Without --nodes the forced budgets were silently ignored and the
+        # run played the default clock instead (50+0.5 for hours, unasked).
+        print("ERROR: --force-nodes-1/--force-nodes-2 need --nodes N: the "
+              f"forced budgets replace its calibration. This run is in "
+              f"'{MODE}' mode, where they would be ignored.")
+        return
     if MODE == "nodes" and forced_both:
         # CROSS-BOX MODE. The calibration exists to give each engine an equal
         # TIME-equivalent budget on THIS machine, which is exactly what makes a
