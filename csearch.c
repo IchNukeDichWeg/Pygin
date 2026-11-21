@@ -3899,7 +3899,8 @@ static inline int tt_r50_stale(int hmc, int v)
         && v > -MATE_THRESH && v < MATE_THRESH        /* mates still cut */
         && (v >= R50_DECISIVE || v <= -R50_DECISIVE); /* quiet vals still cut */
 }
-/* TT_MATE_R50 (bug hunt 21.11.2026, PENDING A/B): the key carries no
+/* TT_MATE_R50 (bug hunt 21.11.2026; cengine turns it ON since
+ * 21.11.2026): the key carries no
  * 50-move clock and TT_KEEP_WARM keeps entries all game, so a "mated in k"
  * stored at a low clock was replayed where k plies no longer fit before the
  * draw. Repro: 8/7k/1p6/p6K/P7/8/8/4Q3 b - - 97 120 after the three king-move

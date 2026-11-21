@@ -1599,13 +1599,14 @@ class Engine:
     # returns a mate score unchanged. Bench 593,598 either way.
     PROBCUT_MATE_FIX = True
 
-    # TT_MATE_R50 (bug hunt 21.11.2026, PENDING A/B): a TT mate stored at a
+    # TT_MATE_R50 (bug hunt 21.11.2026, ON since 21.11.2026 without an A/B,
+    # a score-correctness fix as Stockfish has it): a TT mate stored at a
     # low 50-move clock cut at a node where its k plies no longer fit before
     # the draw (the key has no clock, TT_KEEP_WARM keeps entries all game).
     # Repro: 8/7k/1p6/p6K/P7/8/8/4Q3 b - - 97 120 after its king-move children
     # were searched at hmc 1 played b6b5 (mated in 3) instead of the draw.
     # True skips the cutoff for such entries. Bench 593,598 either way.
-    TT_MATE_R50 = False
+    TT_MATE_R50 = True
 
     # NULL_R50_GATE (bug hunt 21.11.2026, PENDING A/B): the null move hands
     # its child a 50-move clock of 0, so the 50-move draw is invisible inside
