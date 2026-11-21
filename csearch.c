@@ -3273,6 +3273,14 @@ static int g_probcut_red    = 4;
  * loop does. Bench 593,597 on vs 593,598 off. */
 static int g_probcut_cp = 0;
 void set_probcut_cp(int v) { g_probcut_cp = v ? 1 : 0; }
+/* PROBCUT_MATE_FIX (bug hunt 21.11.2026, PENDING A/B): a confirmed ProbCut
+ * returns v - (pbeta - beta); with v a mate score that is a fake mate
+ * distance (29797 = "mate in 203 plies"), 2,376 such returns over 311 WAC
+ * positions at 0.25 s. Still a valid lower bound, but it lands in parent TT
+ * entries as a mate-range bound that TT_MATE_CUT and the FI-53 r50 filter
+ * treat as a real mate. On, a mate score is returned unchanged. */
+static int g_probcut_mate = 0;
+void set_probcut_mate(int v) { g_probcut_mate = v ? 1 : 0; }
 void set_probcut(int margin, int depth, int red)
 {
     g_probcut_margin = margin < 0 ? 0 : margin;
@@ -4693,7 +4701,8 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                              ply + 1, pcp, gc, 0, chk, srb, 0);
                 if (CS_UNWINDING()) return 0;
                 if (v >= pbeta)
-                    return v - (pbeta - beta);   /* still >= beta; do not
+                    return (g_probcut_mate && v >= MATE_THRESH) ? v
+                           : v - (pbeta - beta);   /* still >= beta; do not
                                                   * report the inflated score */
             }
         }
@@ -5514,7 +5523,8 @@ int cs_rep_probe(const uint64_t* path, int ply, const uint64_t* hist,
     return r;
 }
 
-int csearch_abi(void) { return 44; }  /* 44 = set_probcut_cp;
+int csearch_abi(void) { return 45; }  /* 45 = set_probcut_mate;
+                                       * 44 = set_probcut_cp;
                                        * 43 = set_tt_pcfix;
                                        * 42 = set_r50_check_draw;
                                        * 41 = cs_set_chess960

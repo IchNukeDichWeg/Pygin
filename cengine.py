@@ -1591,6 +1591,13 @@ class Engine:
     # way (fixed depth never aborts); hits --nodes and timed play directly.
     ABORT_FAILLOW_KEEP = False
 
+    # PROBCUT_MATE_FIX (bug hunt 21.11.2026, PENDING A/B): a confirmed
+    # ProbCut subtracted its margin from mate scores too, returning fake mate
+    # distances (29797 = "mate in 203 plies"; 2,376 times over 311 WAC
+    # positions at 0.25 s) that parent TT entries then carried as mates. True
+    # returns a mate score unchanged. Bench 593,598 either way.
+    PROBCUT_MATE_FIX = False
+
     # TB_ZEROING_FIX (bug hunt 07.11.2026, ON since 20.11.2026 without an
     # A/B): mirrored onto the embedded engine.py, whose local Syzygy mover
     # never zeroed a won pawn ending and drew it by repetition (details at
@@ -1827,8 +1834,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, self.CSEARCH_SO))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (abi 44 = set_probcut_cp; 43 = set_tt_pcfix; 42 = set_r50_check_draw; 41 = cs_set_chess960; 40 = E-05 set_nn_tempo; 39 = E-04 set_nn_matscale; 38 = FI-38 set_see_quiet; 37 = FI-38 set_see_scaled; 35 = FI-103/104/106/107 set_cutnode_lmr/ttpv_lmr/razor/probcut) -- bump with csearch_abi.
-        if lib.csearch_abi() < 44:
+        # (abi 45 = set_probcut_mate; 44 = set_probcut_cp; 43 = set_tt_pcfix; 42 = set_r50_check_draw; 41 = cs_set_chess960; 40 = E-05 set_nn_tempo; 39 = E-04 set_nn_matscale; 38 = FI-38 set_see_quiet; 37 = FI-38 set_see_scaled; 35 = FI-103/104/106/107 set_cutnode_lmr/ttpv_lmr/razor/probcut) -- bump with csearch_abi.
+        if lib.csearch_abi() < 45:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -1881,6 +1888,7 @@ class Engine:
             self.CORR_HIST, self.CORR_CAP,
             self.SM_CONTEMPT, self.R50_CHECK_DRAW, self.DEADTAG_PC_FIX,
             self.PROBCUT_SENTINEL_FIX,
+            self.PROBCUT_MATE_FIX,
               # FB-55: the guard covered 49 TOGGLES and not one EVAL VALUE --
               # a hole exactly where the .so-cross-contamination class bites.
               # csearch.so's eval params are process-wide too, so two engines
@@ -2037,6 +2045,7 @@ class Engine:
         lib.set_r50_check_draw(1 if self.R50_CHECK_DRAW else 0)
         lib.set_tt_pcfix(1 if self.DEADTAG_PC_FIX else 0)
         lib.set_probcut_cp(1 if self.PROBCUT_SENTINEL_FIX else 0)
+        lib.set_probcut_mate(1 if self.PROBCUT_MATE_FIX else 0)
         # FB-04: entries scored under a PREVIOUS construction's eval params
         # would poison this one (the table is process-global and persistent).
         # First construction: the table is empty, reset is a no-op.
