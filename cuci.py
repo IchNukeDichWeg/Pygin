@@ -1434,6 +1434,10 @@ def main():
                         search_thread.join()
                     else:
                         continue             # actively searching; ignore
+                if pending_opts:                     # Threads/OwnBook sent
+                    for _k, _v in pending_opts.items():   # during the held
+                        setattr(engine, _k, _v)           # search: the loop
+                    pending_opts.clear()                  # top skipped them
                 if pending_contempt is not None:     # idle here, as below
                     apply_contempt(pending_contempt)
                     pending_contempt = None
