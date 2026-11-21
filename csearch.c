@@ -3899,6 +3899,21 @@ static inline int tt_r50_stale(int hmc, int v)
         && v > -MATE_THRESH && v < MATE_THRESH        /* mates still cut */
         && (v >= R50_DECISIVE || v <= -R50_DECISIVE); /* quiet vals still cut */
 }
+/* TT_MATE_R50 (bug hunt 21.11.2026, PENDING A/B): the key carries no
+ * 50-move clock and TT_KEEP_WARM keeps entries all game, so a "mated in k"
+ * stored at a low clock was replayed where k plies no longer fit before the
+ * draw. Repro: 8/7k/1p6/p6K/P7/8/8/4Q3 b - - 97 120 after the three king-move
+ * children were searched at hmc 1 plays b6b5 (mate -3) instead of the draw
+ * (h7g7, cold TT). On, a stored mate needing more plies than 100 - hmc does
+ * not cut; the TT move is still used. raw = the stored, node-relative value.
+ * Conservative: a mate that runs through a zeroing move is skipped too. */
+static int g_tt_mate_r50 = 0;
+void set_tt_mate_r50(int v) { g_tt_mate_r50 = v ? 1 : 0; }
+static inline int tt_mate_r50_stale(int hmc, int raw)
+{
+    int a = raw < 0 ? -raw : raw;
+    return g_tt_mate_r50 && a >= MATE_THRESH && (CS_INF - a) > 100 - hmc;
+}
 
 /* FI-54 (BUILT-DORMANT, arm after the FI-49 verdict): depth-independent TT
  * mate handling -- a forced mate/stalemate is depth-invariant. Store side
@@ -4113,7 +4128,8 @@ static int qsearch(Board* b, int alpha, int beta, int ply, int in_chk,
             int fl = TT_FLAG(e);
             qs_sh_flag = fl; qs_sh_val = v;          /* FI-30(a) */
             if (!(g_pv_exact && is_pv)              /* PV-02: PV nodes walk on */
-                    && !tt_r50_stale(hmc, v)) {     /* FI-53: stale decisive
+                    && !tt_r50_stale(hmc, v)
+                    && !tt_mate_r50_stale(hmc, TT_VALUE(e))) {     /* FI-53: stale decisive
                                                      * values fall through */
                 if (fl == TT_EXACT) return v;
                 if (fl == TT_LOWER && v >= beta) return v;
@@ -4462,7 +4478,8 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                 int v = TT_VALUE(e);                /* ply-relative -> node */
                 if (v >= MATE_THRESH) v -= ply;
                 else if (v <= -MATE_THRESH) v += ply;
-                if (!tt_r50_stale(hmc, v)) {        /* FI-53: stale decisive
+                if (!tt_r50_stale(hmc, v)
+                        && !tt_mate_r50_stale(hmc, TT_VALUE(e))) { /* FI-53: stale decisive
                                                      * values near the 50-move
                                                      * horizon fall through */
                     if (TT_FLAG(e) == TT_EXACT) return v;
@@ -4477,7 +4494,8 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
                 int v = TT_VALUE(e);                /* ply-relative -> node */
                 if (v >= MATE_THRESH) v -= ply;
                 else if (v <= -MATE_THRESH) v += ply;
-                if (v >= MATE_THRESH || v <= -MATE_THRESH) {
+                if ((v >= MATE_THRESH || v <= -MATE_THRESH)
+                        && !tt_mate_r50_stale(hmc, TT_VALUE(e))) {
                     int fl = TT_FLAG(e);
                     if (fl == TT_EXACT) return v;
                     if (fl == TT_LOWER && v >= MATE_THRESH && v >= beta)
@@ -5523,7 +5541,8 @@ int cs_rep_probe(const uint64_t* path, int ply, const uint64_t* hist,
     return r;
 }
 
-int csearch_abi(void) { return 45; }  /* 45 = set_probcut_mate;
+int csearch_abi(void) { return 46; }  /* 46 = set_tt_mate_r50;
+                                       * 45 = set_probcut_mate;
                                        * 44 = set_probcut_cp;
                                        * 43 = set_tt_pcfix;
                                        * 42 = set_r50_check_draw;
