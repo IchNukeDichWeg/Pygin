@@ -3909,6 +3909,16 @@ static inline int tt_r50_stale(int hmc, int v)
  * Conservative: a mate that runs through a zeroing move is skipped too. */
 static int g_tt_mate_r50 = 0;
 void set_tt_mate_r50(int v) { g_tt_mate_r50 = v ? 1 : 0; }
+/* NULL_R50_GATE (bug hunt 21.11.2026, PENDING A/B): the null move passes
+ * hmc 0 to its child (right for the repetition window, wrong for the
+ * 50-move clock), so the 50-move draw is invisible inside null subtrees and
+ * the side ahead nulls its way past a defender's drawing move. Repro:
+ * 1kr5/8/7n/4p3/4P2p/1P5P/4B3/4K3 w - - 95 35 d14 plays e2c4 at -439, where
+ * Kd2 holds the draw. On, no null move at hmc >= R50_TT_HMC (90). Ceiling:
+ * the gate, not a second clock carried through the null; build that if the
+ * A/B wants a principled version. */
+static int g_null_r50 = 0;
+void set_null_r50(int v) { g_null_r50 = v ? 1 : 0; }
 static inline int tt_mate_r50_stale(int hmc, int raw)
 {
     int a = raw < 0 ? -raw : raw;
@@ -4619,6 +4629,7 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
          * cannot be tracked across a non-move, so disable them there) */
         if (depth >= 3 && prune_eval >= beta && has_non_pawn(b, b->turn)
             && !(g_null_nodouble && prev12 == 0xFFFFFFFF)   /* FI-24(a) */
+            && !(g_null_r50 && hmc >= R50_TT_HMC)          /* NULL_R50_GATE */
             && !(g_cb2 && g_no_null)) {      /* CB-02(c): verify subtree */
             int R = g_null_base + depth / g_null_div;
             if (g_null_evalr) {              /* FI-24(b): eval-scaled R */
@@ -5541,7 +5552,8 @@ int cs_rep_probe(const uint64_t* path, int ply, const uint64_t* hist,
     return r;
 }
 
-int csearch_abi(void) { return 46; }  /* 46 = set_tt_mate_r50;
+int csearch_abi(void) { return 47; }  /* 47 = set_null_r50;
+                                       * 46 = set_tt_mate_r50;
                                        * 45 = set_probcut_mate;
                                        * 44 = set_probcut_cp;
                                        * 43 = set_tt_pcfix;

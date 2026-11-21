@@ -1606,6 +1606,13 @@ class Engine:
     # True skips the cutoff for such entries. Bench 593,598 either way.
     TT_MATE_R50 = False
 
+    # NULL_R50_GATE (bug hunt 21.11.2026, PENDING A/B): the null move hands
+    # its child a 50-move clock of 0, so the 50-move draw is invisible inside
+    # null subtrees: 1kr5/8/7n/4p3/4P2p/1P5P/4B3/4K3 w - - 95 35 plays e2c4
+    # at -439 where Kd2 holds the draw. True skips null move at hmc >= 90.
+    # Bench 593,598 either way.
+    NULL_R50_GATE = False
+
     # TB_ZEROING_FIX (bug hunt 07.11.2026, ON since 20.11.2026 without an
     # A/B): mirrored onto the embedded engine.py, whose local Syzygy mover
     # never zeroed a won pawn ending and drew it by repetition (details at
@@ -1842,8 +1849,8 @@ class Engine:
 
         lib = ctypes.CDLL(os.path.join(_DIR, self.CSEARCH_SO))
         # BUG-04: must match the NEWEST abi whose exports this file calls
-        # (abi 46 = set_tt_mate_r50; 45 = set_probcut_mate; 44 = set_probcut_cp; 43 = set_tt_pcfix; 42 = set_r50_check_draw; 41 = cs_set_chess960; 40 = E-05 set_nn_tempo; 39 = E-04 set_nn_matscale; 38 = FI-38 set_see_quiet; 37 = FI-38 set_see_scaled; 35 = FI-103/104/106/107 set_cutnode_lmr/ttpv_lmr/razor/probcut) -- bump with csearch_abi.
-        if lib.csearch_abi() < 46:
+        # (abi 47 = set_null_r50; 46 = set_tt_mate_r50; 45 = set_probcut_mate; 44 = set_probcut_cp; 43 = set_tt_pcfix; 42 = set_r50_check_draw; 41 = cs_set_chess960; 40 = E-05 set_nn_tempo; 39 = E-04 set_nn_matscale; 38 = FI-38 set_see_quiet; 37 = FI-38 set_see_scaled; 35 = FI-103/104/106/107 set_cutnode_lmr/ttpv_lmr/razor/probcut) -- bump with csearch_abi.
+        if lib.csearch_abi() < 47:
             raise RuntimeError("csearch.so too old -- rebuild via ./setup.sh")
         # FI-27: csearch.so links its OWN eval_c.c -- a shortcut rebuild that
         # touched eval_c without relinking csearch would silently drift the
@@ -1898,6 +1905,7 @@ class Engine:
             self.PROBCUT_SENTINEL_FIX,
             self.PROBCUT_MATE_FIX,
             self.TT_MATE_R50,
+            self.NULL_R50_GATE,
               # FB-55: the guard covered 49 TOGGLES and not one EVAL VALUE --
               # a hole exactly where the .so-cross-contamination class bites.
               # csearch.so's eval params are process-wide too, so two engines
@@ -2056,6 +2064,7 @@ class Engine:
         lib.set_probcut_cp(1 if self.PROBCUT_SENTINEL_FIX else 0)
         lib.set_probcut_mate(1 if self.PROBCUT_MATE_FIX else 0)
         lib.set_tt_mate_r50(1 if self.TT_MATE_R50 else 0)
+        lib.set_null_r50(1 if self.NULL_R50_GATE else 0)
         # FB-04: entries scored under a PREVIOUS construction's eval params
         # would poison this one (the table is process-global and persistent).
         # First construction: the table is empty, reset is a no-op.

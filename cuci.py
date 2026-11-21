@@ -1181,6 +1181,7 @@ def main():
                     f" abort_faillow_keep={int(engine.ABORT_FAILLOW_KEEP)}"
                     f" probcut_mate_fix={int(engine.PROBCUT_MATE_FIX)}"
                     f" tt_mate_r50={int(engine.TT_MATE_R50)}"
+                    f" null_r50_gate={int(engine.NULL_R50_GATE)}"
                     f" tb_zeroing_fix={int(engine.TB_ZEROING_FIX)}"
                     f" simplify_threshold={engine.SIMPLIFY_THRESHOLD}"
                     f" contempt={engine.contempt}"
