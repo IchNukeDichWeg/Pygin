@@ -69,10 +69,7 @@ _LEVEL = {lv}
 
 
 class Engine(cengine.Engine):
-    USE_NNUE = True
-    NNUE_FILE = "NNUE/nets/nnue_v12_bf86c4ced057.nnue"
-    LAZY_NNUE = True
-    TT_DEADTAG = True
+    # No net or toggle pins: the level must sit on the SHIPPED engine.
 
     def __init__(self, *a, **kw):
         super().__init__(*a, **kw)
