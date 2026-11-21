@@ -26,7 +26,8 @@ threat bytes): 100k positions ~ 50 MB. For the 50M real run pass
 --chunk 2000000: each epoch streams the mmap'd records in chunks (chunk
 order + within-chunk order shuffled per epoch -- the standard approximate
 shuffle; generation already interleaves games across worker shards), and
-features are re-extracted per chunk (~20 s per 2M chunk) instead of held
+features are re-extracted per chunk (~0.7 s per 2M chunk on 8 threads,
+measured on an arm64 Mac 21.11.2026; ~20 s before that) instead of held
 in RAM (50M in-memory would need ~25 GB of index tensors).
 """
 
@@ -342,9 +343,12 @@ def main():
                          "the re-prepare entirely. Identical math -- prepare "
                          "is deterministic per chunk and only the batch "
                          "shuffle differs per epoch; measured 47%% of epoch "
-                         "time on an M2. Costs roughly the prepared-tensor "
-                         "footprint of the WHOLE train split in RAM (~250-300 "
-                         "bytes/record, so ~18 GB at 64M records) -- for the "
+                         "time on an M2 before prepare got several times faster "
+                         "(21.11.2026), so it buys far less now. Costs the "
+                         "prepared-tensor footprint of the WHOLE train split "
+                         "in RAM (580 bytes/record: 2x int64[32] indices + "
+                         "16 float32 threat + target, so ~37 GB at 64M "
+                         "records) -- for the "
                          "96-core boxes, not the 16 GB Mac.")
     ap.add_argument("--init", metavar="CHECKPOINT.pt",
                     help="WARM START: begin from an existing net's float "
