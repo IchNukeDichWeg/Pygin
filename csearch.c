@@ -2547,9 +2547,46 @@ static inline void hist_update(int color, int fromto, int bonus)
 static int g_staged = 1;
 void set_staged(int v) { g_staged = v; }
 
+/* XFUT: squares from which a piece of the side to move checks the enemy
+ * king directly (chk[PT]), and our pieces that might uncover a slider (dc,
+ * conservative superset). A quiet non-king move with from not in dc gives
+ * check iff to is in chk[mover].
+ *
+ * Speed audit 21.11.2026, node-identical (bench 593,598, d13 2,146,972,
+ * 120 fen.txt positions at d10 same nodes and moves): 28% of negamax makes
+ * on the bench were made only to be dropped by frontier futility. XFUT
+ * proves "no check" without the make; XFUT2 drops those quiets before the
+ * stager scores and sorts them; XTOPK (below) sorts only the quiets LMP can
+ * still reach. Together -5.78% instructions at d13, cycles -2 to -2.6% on a
+ * loaded Mac (arm64); nps13 on an idle box and x86 are unmeasured. */
+typedef struct { uint64_t chk[8]; uint64_t dc; int ok; } CheckInfo;
+static void check_info(const Board* b, CheckInfo* ci)
+{
+    int us = b->turn, them = us ^ 1;
+    uint64_t kbb = b->kings & b->occ[them];
+    ci->ok = 0;
+    if (!kbb) return;
+    int eks = __builtin_ctzll(kbb);
+    uint64_t occ = b->occ[0] | b->occ[1], mine = b->occ[us];
+    uint64_t ra = rook_attacks(eks, occ), ba = bishop_attacks(eks, occ);
+    ci->chk[0] = 0; ci->chk[7] = 0;
+    ci->chk[PT_PAWN] = PAWN_ATT[them][eks];
+    ci->chk[PT_KNIGHT] = KNIGHT_ATT[eks];
+    ci->chk[PT_BISHOP] = ba; ci->chk[PT_ROOK] = ra; ci->chk[PT_QUEEN] = ra | ba;
+    ci->chk[PT_KING] = 0;
+    uint64_t dc = 0;
+    uint64_t rq = (b->rooks | b->queens) & mine, bq = (b->bishops | b->queens) & mine;
+    uint64_t rb = ra & mine, bb = ba & mine;
+    if (rb && rq && (rook_attacks(eks, occ ^ rb) & ~ra & rq)) dc |= rb;
+    if (bb && bq && (bishop_attacks(eks, occ ^ bb) & ~ba & bq)) dc |= bb;
+    ci->dc = dc;
+    ci->ok = 1;
+}
+
 typedef struct {
     const Board* b;
     int ply;
+    int fut;                            /* XFUT2: drop provably non-checking quiets */
     uint32_t counter_key, tt_key;
     int stage;                          /* 0 tt, 1 caps, 2 k0, 3 k1, 4 cnt,
                                          * 5 quiets, 6 badcaps, 7 done */
@@ -2561,6 +2598,9 @@ typedef struct {
     * gen_captures ceiling computes to ~128 exactly; 192 = headroom */
     uint32_t bad[192]; int bsc[192]; int nbad, ibad;
     uint32_t qt[256];  int qsc[256]; int nqt, iqt;
+    /* XTOPK: LMP-bounded partial sort of the quiet stage */
+    int qlimit, sat, skipped, partial, qk, qpromo;
+    uint32_t tq[16]; int tsc[16];
 } Stager;
 
 static void stager_init(Stager* st, const Board* b, int ply,
@@ -2572,7 +2612,8 @@ static void stager_init(Stager* st, const Board* b, int ply,
     st->stage = 0;
     st->k0 = g_killers[ply][0]; st->k1 = g_killers[ply][1];
     st->hist = g_history[b->turn];
-    st->ncap = st->icap = st->nbad = st->ibad = st->nqt = st->iqt = 0;
+    st->ncap = st->icap = st->nbad = st->ibad = st->nqt = st->iqt = 0; st->fut = 0;
+    st->qlimit = st->sat = st->skipped = st->partial = st->qk = st->qpromo = 0;
 }
 
 /* stable insertion sort of (mv, sc) pairs, score desc -- same comparator
@@ -2660,17 +2701,40 @@ static uint32_t stager_next(Stager* st)
             if (st->iqt == 0 && st->nqt == 0) {      /* lazy generation */
                 uint32_t raw[256];
                 int n = gen_quiets(b, raw);
+                CheckInfo ci; ci.ok = 0;
+                if (st->fut) check_info(b, &ci);
                 for (int i = 0; i < n; i++) {
                     uint32_t m = raw[i];
                     uint32_t key = m & 0x7FFF;
+                    if (ci.ok && !((m >> 12) & 7)
+                            && ((m >> MV_SHIFT_MOVER) & 7) != PT_KING
+                            && !(ci.dc & (1ULL << (m & 63)))
+                            && !(ci.chk[(m >> MV_SHIFT_MOVER) & 7] & (1ULL << ((m >> 6) & 63))))
+                        continue;                    /* XFUT2 */
                     if (key == st->tt_key || key == st->k0
                             || key == st->k1 || key == st->counter_key)
                         continue;                    /* already emitted */
                     int from = m & 63, to = (m >> 6) & 63;
                     int s = st->hist[(from << 6) | to];
+                    st->qpromo |= (int)((m >> 12) & 7);
                     st->qt[st->nqt] = m;
                     st->qsc[st->nqt++] = s;
                 }
+                int K = st->qlimit;
+                if (K > 0 && K <= 16 && !st->qpromo && st->nqt > K) {
+                    int tc = 0;
+                    for (int i = 0; i < st->nqt; i++) {
+                        int s = st->qsc[i], j;
+                        if (tc < K) j = tc++;
+                        else if (s > st->tsc[K - 1]) j = K - 1;
+                        else continue;
+                        while (j > 0 && st->tsc[j - 1] < s) {
+                            st->tq[j] = st->tq[j - 1]; st->tsc[j] = st->tsc[j - 1]; j--;
+                        }
+                        st->tq[j] = st->qt[i]; st->tsc[j] = s;
+                    }
+                    st->partial = 1; st->qk = K;
+                } else
                 stager_sort(st->qt, st->qsc, st->nqt);
                 /* (FI-26 note, 2026-07-12: a lazy-pick variant of this sort
                  * was tried -- stream-identical, ladder-verified -- but the
@@ -2679,6 +2743,20 @@ static uint32_t stager_next(Stager* st)
                  * memmove-heavy. Parked for the full FI-26 batch; the
                  * staged path reaches here mostly at non-cut nodes, unlike
                  * the FI-02.4 paths where lazy picking paid.) */
+            }
+            if (st->partial) {
+                if (st->iqt < st->qk) return st->tq[st->iqt++];
+                if (!st->sat) {              /* LMP did not saturate: finish
+                                              * the sort; its first qk slots
+                                              * are exactly tq[] */
+                    stager_sort(st->qt, st->qsc, st->nqt);
+                    st->partial = 0;
+                }
+            }
+            if (st->sat && !st->qpromo) {    /* every remaining quiet would be
+                                              * LMP-skipped: count, don't emit */
+                st->skipped = st->nqt - st->iqt;
+                st->iqt = st->nqt;
             }
             if (st->iqt < st->nqt) return st->qt[st->iqt++];
             st->stage = 6;
@@ -4766,11 +4844,19 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
     uint32_t best_move = 0;
     uint32_t quiets[256]; int nq = 0;
     int lmp_lim = (g_prune && !is_pv && !in_chk && depth <= 3) ? g_lmp[depth] : 999;
+    CheckInfo ci; int ci_state = 0;      /* XFUT: 0 not built, 1 built */
     for (int i = 0; ; i++) {
         uint32_t m;
         if (staged) {
+            st.sat = (best > -MATE_THRESH && nq >= lmp_lim);
+            st.fut = (g_prune && !is_pv && !in_chk && depth == 1
+                && best > -MATE_THRESH
+                && prune_eval + g_fut_margin
+                   + ((g_improving && !improving) ? g_rfp_margin / 2 : 0) <= alpha);
+            st.qlimit = (lmp_lim < 999 && best > -MATE_THRESH) ? lmp_lim - nq : 0;
             m = stager_next(&st);
             if (!m) break;
+            i += st.skipped; st.skipped = 0;
         } else {
             if (i >= n) break;
             m = pick_next(moves, msc, i, n);   /* FI-02.4 */
@@ -4789,6 +4875,16 @@ static int negamax(Board* b, int depth, int alpha, int beta, int ply,
          * SEE-negative captures; array path: FI-02.3 tag 2 = SEE < 0) */
         int badcap = staged ? (st.stage == 6) : (((m >> 22) & 3) == 2);
 
+        if (g_prune && quiet && !is_pv && !in_chk && depth == 1
+                && best > -MATE_THRESH && mover != PT_KING
+                && prune_eval + g_fut_margin
+                   + ((g_improving && !improving) ? g_rfp_margin / 2 : 0) <= alpha) {
+            if (!ci_state) { check_info(b, &ci); ci_state = 1; }
+            if (ci.ok && !(ci.dc & (1ULL << (m & 63)))
+                    && !(ci.chk[mover] & (1ULL << ((m >> 6) & 63)))) {
+                continue;          /* XFUT: provably no check => futility-pruned unmade */
+            }
+        }
         uint64_t pk = key_after_approx(b, m);        /* prefetch before the */
         TT_PREFETCH(pk);                             /* make, not after it  */
         Board c = *b;
