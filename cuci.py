@@ -510,7 +510,25 @@ def _search_skill(engine, board, level, budget, max_depth, white_to_move,
             for m in excl:
                 lib.root_exclude_add(m.from_square | (m.to_square << 6)
                                      | ((m.promotion or 0) << 12))
-            mv = engine.get_best_move(board, depth)
+            if deadline is None:
+                mv = engine.get_best_move(board, depth)
+            else:
+                # Each candidate used to run an UNTIMED search to the capped
+                # depth (up to 20) with the clock checked only between
+                # candidates: Skill 38 + `go movetime 200` took 7.9 s. One
+                # shared deadline, hard (soft-stop off, as in cert_search).
+                _sv = (engine.soft_stop_frac, engine.use_stability_time)
+                engine.soft_stop_frac, engine.use_stability_time = None, False
+                try:
+                    mv = engine.get_best_move_timed(
+                        board, max(0.001, deadline - _t.perf_counter()), depth)
+                finally:
+                    engine.soft_stop_frac, engine.use_stability_time = _sv
+                # A cut-short extra line is not comparable with the others;
+                # the first one stays (it is the best move found so far).
+                if lines and (engine.last_depth or 0) < depth:
+                    total += engine.nodes_searched
+                    break
             if mv is None or mv in excl:
                 break
             total += engine.nodes_searched
