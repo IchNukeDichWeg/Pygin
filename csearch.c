@@ -2117,14 +2117,16 @@ static __thread int g_node_pc = 0;            /* piece count at this node */
 static int g_root_pc = 32;                    /* piece count at the root */
 void cs_set_root_pc(int n) { g_root_pc = n; }
 #define TT_PC(e) ((int)(((e).d2 >> 19) & 63))
-/* DEADTAG_PC_FIX (bug hunt 07.11.2026, PENDING A/B): g_node_pc is set at
+/* DEADTAG_PC_FIX (bug hunt 07.11.2026, REJECTED 24.11.2026): g_node_pc is set at
  * node entry, but a store that runs after ANY child search (the move loop,
  * null move, ProbCut, the qsearch pre-loop TT move) packs the LAST
  * descendant's count instead: 47,253 of 71,100 negamax stores over the
  * bench (66%). The tag is then at most the true count, so it never kills a
  * live entry but leaves truly dead ones depth-protected, weakening FI-115.
  * On, every such store site recounts the node's own pieces first. Bench is
- * 593,598 either way (one cold generation, the tag never decides there). */
+ * 593,598 either way (one cold generation, the tag never decides there).
+ * Timed 50+0.5 SPRT on x86: -7.87 +/- 5.3 Elo, ACCEPT H0 at 6,046 games.
+ * FI-115 won with the low tag; the true count evicts too much. Stays 0. */
 static int g_tt_pcfix = 0;
 void set_tt_pcfix(int v) { g_tt_pcfix = v ? 1 : 0; }
 #define PC_RESYNC(bd) do { if (g_tt_pcfix) g_node_pc = \

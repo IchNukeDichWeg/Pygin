@@ -1563,13 +1563,14 @@ class Engine:
     # this small. Bench 593,598 either way: no bench node reaches hmc 100.
     R50_CHECK_DRAW = True
 
-    # DEADTAG_PC_FIX (bug hunt 07.11.2026, PENDING A/B): FI-115's piece-count
-    # tag was packed AFTER the children ran, so it carried the last
-    # descendant's count -- 66% of negamax stores over the bench mis-tagged,
-    # always low, so dead entries escaped eviction. True recounts at every
-    # store that can follow a child search. Bench 593,598 either way (one
-    # cold generation); it changes which entries survive in games, so the
-    # A/B needs a warm table: TIMED, or --nodes across a whole game.
+    # DEADTAG_PC_FIX (bug hunt 07.11.2026, REJECTED 24.11.2026): FI-115's
+    # piece-count tag was packed AFTER the children ran, so it carried the
+    # last descendant's count -- 66% of negamax stores over the bench
+    # mis-tagged, always low, so dead entries escaped eviction. True recounts
+    # at every store that can follow a child search. Bench 593,598 either way.
+    # Timed 50+0.5 SPRT vs cengine on x86: -7.87 +/- 5.3 Elo, ACCEPT H0 at
+    # 6,046 games. The low tag is load-bearing: FI-115 was measured and won
+    # with it, so the "correct" count evicts too much. Stays OFF.
     DEADTAG_PC_FIX = False
 
     # PROBCUT_SENTINEL_FIX (bug hunt 07.11.2026, PENDING A/B): ProbCut's
