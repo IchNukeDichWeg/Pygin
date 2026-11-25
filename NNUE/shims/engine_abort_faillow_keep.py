@@ -8,7 +8,10 @@ move with the highest upper bound. ~2% of node-limited searches; 7 of 8 played
 moves scored worse at d13. Fires on aborts only, so --nodes play reaches it
 directly.
 
-PENDING. Verdict goes here and into the toggle's comment in cengine.py.
+NULL 25.11.2026: --nodes 1750000, 127 workers on 2x EPYC 7543, full 10,000
+games, -0.97 +/- 4.2 Elo, SPRT [0,4] normalized LLR -1.187, no bound. Not a
+positive NULL, so it does not go to docs/null_bundle.md. State file
+NNUE/campaigns/sprt_abort_faillow_keep_nodes1.75M.json.
 """
 
 import cengine

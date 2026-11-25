@@ -1580,7 +1580,7 @@ class Engine:
     # passes the capture's from/to. Bench 593,597 on vs 593,598 off.
     PROBCUT_SENTINEL_FIX = False
 
-    # ABORT_FAILLOW_KEEP (bug hunt 07.11.2026, PENDING A/B): when an
+    # ABORT_FAILLOW_KEEP (bug hunt 07.11.2026, NULL 25.11.2026): when an
     # iteration aborts (deadline, go nodes, stop) inside an aspiration window
     # where every searched move failed low, the partial result's move is the
     # one with the highest fail-soft UPPER bound -- unproven, and not the
@@ -1590,6 +1590,8 @@ class Engine:
     # -81). True keeps the previous best unless the partial move beat that
     # call's alpha (Stockfish keeps the PV move here). Bench 593,598 either
     # way (fixed depth never aborts); hits --nodes and timed play directly.
+    # --nodes 1.75M screen, full 10,000 games: -0.97 +/- 4.2 Elo, LLR -1.187,
+    # no bound. The bad moves are real but too rare to move a result. Off.
     ABORT_FAILLOW_KEEP = False
 
     # PROBCUT_MATE_FIX (bug hunt 21.11.2026, ON since 21.11.2026 without an
