@@ -11,8 +11,8 @@ representation, move generation and legality.
 
 ![Strength](https://img.shields.io/badge/placement-~3164_CCRL_Blitz-58a6ff)
 ![Speed](https://img.shields.io/badge/speed-6.2M_nps-58a6ff)
-![Versions](https://img.shields.io/badge/versions-66-8b949e)
-![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B474_Elo-f0883e)
+![Versions](https://img.shields.io/badge/versions-67-8b949e)
+![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B483_Elo-f0883e)
 ![Source](https://img.shields.io/badge/source-MIT-green)
 &nbsp;·&nbsp; Built with **[Claude Code](https://claude.com/claude-code)**
 
@@ -22,7 +22,7 @@ representation, move generation and legality.
 
 <table>
 <tr><td><b>~3164</b></td><td>CCRL Blitz placement of v64, &plusmn;15</td><td><b>6.17M nps</b></td><td>the net costs ~28% of it</td></tr>
-<tr><td><b>~+474 Elo</b></td><td>A/B-confirmed, v31&rarr;v66</td><td><b>~19 ply</b></td><td>from startpos in 5 s</td></tr>
+<tr><td><b>~+483 Elo</b></td><td>A/B-confirmed, v31&rarr;v67</td><td><b>~19 ply</b></td><td>from startpos in 5 s</td></tr>
 <tr><td><b>+93.87 Elo</b></td><td>v58&rarr;v64, measured directly</td><td><b>1.21&times;</b></td><td>single-thread vs v31</td></tr>
 <tr><td><b>v53+v54</b> eval lane</td><td>+37.52 &amp; +31.20, the two biggest</td><td><b>1 dependency</b></td><td><code>python-chess</code> only</td></tr>
 </table>
@@ -61,8 +61,8 @@ in `NNUE/nets/`.
 ### Measured strength
 
 **~3164 ±15 on the CCRL Blitz scale**, from 960 games at 2'+1" on 2026-09-17
-with **v64** against two opponents rated on that list (v65 and v66 are not
-placed yet).
+with **v64** against two opponents rated on that list (v65, v66 and v67 are
+not placed yet).
 
 | Opponent | Games | Score | Result | Places us at |
 |---|---|---|---|---|
@@ -99,12 +99,13 @@ hypothesis was rejected).
 
 ## Version progression
 
-Each of the 66 versions is A/B-tested against the one before it. Regenerate the list and charts with `bench/bench_progress.py` and
+Each of the 67 versions is A/B-tested against the one before it. Regenerate the list and charts with `bench/bench_progress.py` and
 `scripts/make_readme_charts.py`.
 
 <details>
 <summary><b>Every version in full</b> -- complete milestone + Elo list</summary>
 
+- **v67** -- **score fixes and a faster search.** Four fixes from the November bug hunt are now on by default. Checkmate on the 100th half-move counts as mate, not a 50-move draw. Won tablebase pawn endings get converted instead of shuffled. ProbCut no longer invents mate distances. A cached mate that no longer fits before the 50-move draw is not trusted. Futility pruning also tests quiet moves before making them, and the quiet-move sort stops at the late-move limit. Same nodes, **+5.1 to +6.1%** search-only NPS on x86. *(**+9.17 ±4.1** vs v66 over a **fixed** 10,000 games at 50+0.5 on x86. No early stop, so the ledger advances: +474 -> **~+483**. Bench 593,598, unchanged.)*
 - **v66** -- **a tempo term for the net, and a faster search.** E-05 gives the net the +15 cp tempo bonus the hand-written eval always had; the node-identical NPS audit adds **+11.29% ±0.29%** search-only NPS on x86, **+4.57% ±0.45%** on arm64. Also carried: Chess960. *(Each alone vs v65, **fixed** 10,000 games at 50+0.5 on x86. Tempo: **+25.62 ±4.2**, after a 10+0.1 screen ACCEPTed H1. NPS audit: **+26.32 ±4.1**. No early stop, so the ledger advances: +422 -> **~+474**, assuming the two add (v66 vs v65 as a whole is unmeasured). Bench 672,025 -> 593,598.)*
 - **v65** -- **a new evaluation network.** Same architecture and search as v64; `NNUE_FILE` moves to `nnue_v15_4f85b4f247cd.nnue`, plus small fixes and a 4-row NEON dot kernel (4.5% fewer search cycles on arm64). *(**+61.91 ±4.3** over a **fixed** 9,976-game budget at 50+0.5 on x86. No early stop, so the ledger advances: +360 -> **+422**. 10+0.1 arm64 screen: +60.46 ±8.5, ACCEPT H1. Bench 785,901 -> 672,025.)*
 - **v64** -- **a new net, and four settings that only pay together.** Four search parameters that each measured as nothing alone (`LMR_DIV` 170, `SEE_SCALED_K` 75, two clock settings) pass as one change; a profile-guided build adds **+4.7%** speed, node-identical. *(Bundle: **+6.19 ±4.1** over 11,896 games at 50+0.5, SPRT[0,4] LLR +2.969 **ACCEPT H1**; its first tranche ran a **full** 10,000 games at +5.94 ±4.4. Net, on top of the bundle: **+78.82 ±8.3** over 3,004 games, LLR +9.264 **ACCEPT H1**. Bench 1,123,567 -> 785,901.)*

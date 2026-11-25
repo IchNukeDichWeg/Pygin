@@ -9,7 +9,12 @@ transposition table, pruning, quiescence and the full static eval
 positions). Born as phase-3 step 6 of the C-core plan; the shipped engine
 since Old Engine/31.
 
-ITS DEFAULTS ARE v66 (2026-11-05, frozen as Old Engine/66): v65 with E-05
+ITS DEFAULTS ARE v67 (2026-11-25, frozen as Old Engine/67): v66 plus the
+2026-11 bug-hunt score fixes on by default (R50_CHECK_DRAW, TB_ZEROING_FIX,
+PROBCUT_MATE_FIX, TT_MATE_R50) and the node-identical futility-without-make
+and LMP-bounded quiet sort (+5.1 to +6.1% NPS x86): +9.17 +/- 4.1 over v66 on
+a fixed 10,000 games at 50+0.5 x86. Bench signature 593,598, unchanged.
+v66 (2026-11-05) was: v65 with E-05
 NNUE tempo +15 (+25.62 +/- 4.2) and the 2026-11 NPS audit (huge-page TT and w1
 on Linux, lazy accumulator, early TT prefetch; node-identical, +11.29% NPS x86,
 +26.32 +/- 4.1), each over a fixed 10,000 games at 50+0.5 x86 against v65, plus
