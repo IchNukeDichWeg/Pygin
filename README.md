@@ -10,7 +10,7 @@ calls out to another engine at runtime.<br/>
 representation, move generation and legality.
 
 ![Strength](https://img.shields.io/badge/placement-~3164_CCRL_Blitz-58a6ff)
-![Speed](https://img.shields.io/badge/speed-6.2M_nps-58a6ff)
+![Speed](https://img.shields.io/badge/speed-6.7M_nps-58a6ff)
 ![Versions](https://img.shields.io/badge/versions-67-8b949e)
 ![C--era_gains](https://img.shields.io/badge/C--era_gains-%2B483_Elo-f0883e)
 ![Source](https://img.shields.io/badge/source-MIT-green)
@@ -21,22 +21,22 @@ representation, move generation and legality.
 ### At a glance
 
 <table>
-<tr><td><b>~3164</b></td><td>CCRL Blitz placement of v64, &plusmn;15</td><td><b>6.17M nps</b></td><td>the net costs ~28% of it</td></tr>
+<tr><td><b>~3164</b></td><td>CCRL Blitz placement of v64, &plusmn;15</td><td><b>6.71M nps</b></td><td>the net costs ~28% of it</td></tr>
 <tr><td><b>~+483 Elo</b></td><td>A/B-confirmed, v31&rarr;v67</td><td><b>~19 ply</b></td><td>from startpos in 5 s</td></tr>
-<tr><td><b>+93.87 Elo</b></td><td>v58&rarr;v64, measured directly</td><td><b>1.21&times;</b></td><td>single-thread vs v31</td></tr>
+<tr><td><b>+93.87 Elo</b></td><td>v58&rarr;v64, measured directly</td><td><b>1.28&times;</b></td><td>single-thread vs v31</td></tr>
 <tr><td><b>v53+v54</b> eval lane</td><td>+37.52 &amp; +31.20, the two biggest</td><td><b>1 dependency</b></td><td><code>python-chess</code> only</td></tr>
 </table>
 
 <table>
 <tr>
-<td><img src="docs/elo_progression.svg?v=66" width="100%" alt="Cumulative A/B Elo across the C era, v31=0 climbing to +474 at v66"/></td>
-<td><img src="docs/speed_progression.svg?v=66" width="100%" alt="Single-thread speed as a multiple of v31, peaking at 1.52x and ending at 1.21x"/></td>
+<td><img src="docs/elo_progression.svg?v=67" width="100%" alt="Cumulative A/B Elo across the C era, v31=0 climbing to +483 at v67"/></td>
+<td><img src="docs/speed_progression.svg?v=67" width="100%" alt="Single-thread speed as a multiple of v31, peaking at 1.62x and ending at 1.28x"/></td>
 </tr>
 </table>
 
 <table>
 <tr>
-<td><img src="docs/mate_progression.svg?v=66" width="100%" alt="Mate-finding on mates2000.epd across the C era, rising from 24.4% at v31 to a 51-53% plateau, then settling at 44.0% at v66"/></td>
+<td><img src="docs/mate_progression.svg?v=67" width="100%" alt="Mate-finding on mates2000.epd across the C era, rising from 24.4% at v31 to a 51-53% plateau, then settling at 44.5% at v67"/></td>
 </tr>
 </table>
 
