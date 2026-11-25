@@ -3345,12 +3345,13 @@ static inline void corr_update(const Board* b, int diff, int depth)
 static int g_probcut_margin = 0;            /* 0 = off; armed base 200 */
 static int g_probcut_depth  = 5;
 static int g_probcut_red    = 4;
-/* PROBCUT_SENTINEL_FIX (bug hunt 07.11.2026, PENDING A/B): stage 2 passes
+/* PROBCUT_SENTINEL_FIX (bug hunt 07.11.2026, NULL 25.11.2026): stage 2 passes
  * prev12 = 0xFFFFFFFF after a REAL capture -- the null-move sentinel -- so
  * with NULL_NODOUBLE the child may never try null move (448 of 1,359 bench
  * stage-2 searches at child depth >= 3, all blocked) and its counter-move
  * update is skipped. On, the capture's from/to is passed, as the main move
- * loop does. Bench 593,597 on vs 593,598 off. */
+ * loop does. Bench 593,597 on vs 593,598 off. --nodes 1.75M screen, full
+ * 10,000 games: -0.31 +/- 4.3 Elo, no bound. Stays 0. */
 static int g_probcut_cp = 0;
 void set_probcut_cp(int v) { g_probcut_cp = v ? 1 : 0; }
 /* PROBCUT_MATE_FIX (bug hunt 21.11.2026; cengine turns it ON since 21.11.2026): a confirmed ProbCut

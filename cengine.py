@@ -1573,11 +1573,13 @@ class Engine:
     # with it, so the "correct" count evicts too much. Stays OFF.
     DEADTAG_PC_FIX = False
 
-    # PROBCUT_SENTINEL_FIX (bug hunt 07.11.2026, PENDING A/B): ProbCut's
+    # PROBCUT_SENTINEL_FIX (bug hunt 07.11.2026, NULL 25.11.2026): ProbCut's
     # stage-2 search told its child "the parent played a null move" after a
     # real capture, so NULL_NODOUBLE blocked null move there (448 of 1,359
     # bench stage-2 searches) and the counter-move update was skipped. True
     # passes the capture's from/to. Bench 593,597 on vs 593,598 off.
+    # --nodes 1.75M screen, full 10,000 games: -0.31 +/- 4.3 Elo, LLR -0.827,
+    # no bound. Correct on paper, invisible in play. Off.
     PROBCUT_SENTINEL_FIX = False
 
     # ABORT_FAILLOW_KEEP (bug hunt 07.11.2026, NULL 25.11.2026): when an
